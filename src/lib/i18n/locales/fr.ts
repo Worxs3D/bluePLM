@@ -632,6 +632,138 @@ export const fr: TranslationDict = {
     contextMenuItem: 'Résoudre les fichiers déplacés…',
   },
 
+  realign: {
+    section: {
+      heading: 'Réaligner avec le serveur',
+      title: 'Comparer votre coffre au serveur',
+      description:
+        'Montre ce qui diffère entre votre ordinateur et le serveur, et corrige automatiquement ce qui peut être corrigé sans risque.',
+      button: "Vérifier l'alignement",
+    },
+
+    dialog: {
+      title: 'Réaligner avec le serveur',
+      subtitle: 'Compare vos fichiers au serveur et montre les différences avant tout changement.',
+    },
+
+    runButton: 'Corriger les éléments sélectionnés',
+    moreFiles: '…et {{count}} de plus',
+
+    headline: {
+      aligned: 'Votre coffre est aligné avec le serveur.',
+      notAligned: 'Votre coffre contient des fichiers qui diffèrent du serveur.',
+    },
+
+    orientation: {
+      local_one: '{{count}} fichier sur votre ordinateur',
+      local_other: '{{count}} fichiers sur votre ordinateur',
+      server_one: '{{count}} fichier sur le serveur',
+      server_other: '{{count}} fichiers sur le serveur',
+      inSync_one: '{{count}} fichier synchronisé',
+      inSync_other: '{{count}} fichiers synchronisés',
+    },
+
+    group: {
+      repairable: 'Peut être corrigé maintenant',
+      needsDecision: 'Nécessite votre décision',
+      needsDecisionNote: 'Le réalignement ne touchera à aucun de ceux-ci — ils nécessitent votre décision.',
+      needsDecisionEmpty: "Rien ici ne nécessite de décision.",
+      informational: 'Pour information',
+    },
+
+    syncIndex: {
+      label: "Actualiser aussi le registre interne de synchronisation de BluePLM",
+      description: "Entretien uniquement — cela ne touche à aucun fichier.",
+    },
+
+    pendingMove: {
+      label_one: '{{count}} fichier déplacé sur le disque mais pas dans le coffre',
+      label_other: '{{count}} fichiers déplacés sur le disque mais pas dans le coffre',
+      description: "Remet chaque fichier au chemin que le coffre attend.",
+    },
+    orphaned: {
+      label_one: "{{count}} fichier que le serveur n'a plus",
+      label_other: "{{count}} fichiers que le serveur n'a plus",
+      description:
+        "Déplace le fichier vers la corbeille. La copie du serveur a déjà disparu, il n'y a donc plus rien à synchroniser.",
+    },
+    outdated: {
+      label_one: '{{count}} fichier avec une version plus récente sur le serveur',
+      label_other: '{{count}} fichiers avec une version plus récente sur le serveur',
+      description: 'Télécharge la version actuelle du serveur pour remplacer la copie locale obsolète.',
+    },
+
+    localOnly: {
+      label_one: "{{count}} fichier qui n'existe que sur votre ordinateur",
+      label_other: "{{count}} fichiers qui n'existent que sur votre ordinateur",
+      description: 'Jamais archivé dans le coffre. Le réalignement les laisse exactement tels quels.',
+      actionButton: 'Aller les archiver…',
+      actionToast:
+        'Sélectionnez ces fichiers dans le navigateur de fichiers et archivez-les quand vous êtes prêt.',
+    },
+    modified: {
+      label_one: '{{count}} fichier avec des modifications locales pas encore sur le serveur',
+      label_other: '{{count}} fichiers avec des modifications locales pas encore sur le serveur',
+      description:
+        'Vos modifications sont conservées. Le réalignement ne supprime jamais les modifications locales — archivez-les pour partager la mise à jour.',
+      actionButton: 'Aller archiver vos modifications…',
+      actionToast:
+        'Sélectionnez ces fichiers dans le navigateur de fichiers et archivez vos modifications quand vous êtes prêt.',
+    },
+    ghost: {
+      label_one: "{{count}} fichier extrait par vous mais absent du disque",
+      label_other: "{{count}} fichiers extraits par vous mais absents du disque",
+      description:
+        "Quelque chose a supprimé le fichier après son extraction. Décidez si vous archivez un remplacement ou libérez l'extraction.",
+    },
+
+    cloudOnly: {
+      label_one: '{{count}} fichier uniquement sur le serveur',
+      label_other: '{{count}} fichiers uniquement sur le serveur',
+      whyNote:
+        "Non téléchargé — le réalignement n'est pas un téléchargement massif. Activez le téléchargement automatique, ou téléchargez les fichiers individuellement, si vous voulez une copie locale.",
+    },
+    ignored: {
+      label_one: "{{count}} fichier correspondant à un motif d'exclusion",
+      label_other: "{{count}} fichiers correspondant à un motif d'exclusion",
+      whyNote:
+        'Jamais touché par le réalignement, ni par rien d\'autre qui synchronise le coffre.',
+    },
+    blockedCheckout: {
+      label_one: "{{count}} fichier bloqué par une extraction",
+      label_other: "{{count}} fichiers bloqués par une extraction",
+      whyNote: "Le réalignement laisse intact tout fichier sous extraction active.",
+      selfHeld_one: "Vous avez ce fichier en extraction vous-même.",
+      selfHeld_other: "Vous avez {{count}} de ces fichiers en extraction vous-même.",
+      otherHeld_one: "Quelqu'un d'autre a ce fichier en extraction.",
+      otherHeld_other: "Quelqu'un d'autre a {{count}} de ces fichiers en extraction.",
+    },
+
+    outcome: {
+      heading: 'Résultat',
+      abortedHeading: "Le réalignement ne s'est pas exécuté.",
+      abortNoVault: 'Aucun coffre connecté.',
+      abortOffline: 'Vous êtes hors ligne — réessayez une fois de retour en ligne.',
+      abortOperationInFlight:
+        'Une autre opération de synchronisation est déjà en cours — réessayez une fois terminée.',
+      abortCancelled: 'Annulé.',
+      abortUnexpectedError:
+        "Quelque chose s'est mal passé. Réessayez, et contactez le support si cela persiste.",
+
+      step_resolvePendingMoves: 'Déplacements en attente',
+      step_recycleOrphans: 'Fichiers orphelins',
+      step_pullOutdated: 'Fichiers obsolètes',
+      step_rebuildSyncIndex: 'Index de synchronisation',
+
+      ok_one: '{{count}} fichier corrigé',
+      ok_other: '{{count}} fichiers corrigés',
+      partial: '{{succeeded}} sur {{attempted}} corrigés — {{failed}} échoués',
+      failedResult: "Cette étape n'a pas pu être terminée",
+      nothingToDo: 'Rien à faire',
+      refused: 'Ignoré par sécurité — réessayez dans un instant',
+    },
+  },
+
   hiddenFolders: {
     hideFromNonAdmins: 'Masquer aux non-administrateurs',
     showToEveryone: 'Afficher pour tout le monde',

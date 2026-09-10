@@ -631,6 +631,142 @@ export const de: TranslationDict = {
     contextMenuItem: 'Verschobene Dateien lösen…',
   },
 
+  realign: {
+    section: {
+      heading: 'Mit Server abgleichen',
+      title: 'Ihren Tresor mit dem Server vergleichen',
+      description:
+        'Zeigt Unterschiede zwischen Ihrem Computer und dem Server und behebt automatisch, was sicher behoben werden kann.',
+      button: 'Abgleich prüfen',
+    },
+
+    dialog: {
+      title: 'Mit Server abgleichen',
+      subtitle:
+        'Vergleicht Ihre Dateien mit dem Server und zeigt Unterschiede, bevor sich etwas ändert.',
+    },
+
+    runButton: 'Ausgewählte Elemente korrigieren',
+    moreFiles: '…und {{count}} weitere',
+
+    headline: {
+      aligned: 'Ihr Tresor ist mit dem Server abgeglichen.',
+      notAligned: 'Ihr Tresor enthält Dateien, die vom Server abweichen.',
+    },
+
+    orientation: {
+      local_one: '{{count}} Datei auf Ihrem Computer',
+      local_other: '{{count}} Dateien auf Ihrem Computer',
+      server_one: '{{count}} Datei auf dem Server',
+      server_other: '{{count}} Dateien auf dem Server',
+      inSync_one: '{{count}} Datei synchron',
+      inSync_other: '{{count}} Dateien synchron',
+    },
+
+    group: {
+      repairable: 'Kann jetzt behoben werden',
+      needsDecision: 'Erfordert Ihre Entscheidung',
+      needsDecisionNote:
+        'Der Abgleich fasst keine dieser Dateien an — sie erfordern Ihre Entscheidung.',
+      needsDecisionEmpty: 'Hier ist keine Entscheidung nötig.',
+      informational: 'Zur Information',
+    },
+
+    syncIndex: {
+      label: 'Auch BluePLMs internen Sync-Status neu aufbauen',
+      description: 'Nur interne Wartung — es werden keine Dateien verändert.',
+    },
+
+    pendingMove: {
+      label_one: '{{count}} Datei auf der Festplatte verschoben, aber nicht im Tresor',
+      label_other: '{{count}} Dateien auf der Festplatte verschoben, aber nicht im Tresor',
+      description: 'Verschiebt jede Datei zurück an den vom Tresor erwarteten Pfad.',
+    },
+    orphaned: {
+      label_one: '{{count}} Datei, die der Server nicht mehr hat',
+      label_other: '{{count}} Dateien, die der Server nicht mehr hat',
+      description:
+        'Verschiebt die Datei in den Papierkorb. Die Serverkopie ist bereits weg, es gibt also nichts mehr, mit dem synchronisiert werden könnte.',
+    },
+    outdated: {
+      label_one: '{{count}} Datei mit einer neueren Version auf dem Server',
+      label_other: '{{count}} Dateien mit einer neueren Version auf dem Server',
+      description: 'Lädt die aktuelle Serverversion herunter und ersetzt die veraltete lokale Kopie.',
+    },
+
+    localOnly: {
+      label_one: '{{count}} Datei, die nur auf Ihrem Computer existiert',
+      label_other: '{{count}} Dateien, die nur auf Ihrem Computer existieren',
+      description:
+        'Nie in den Tresor eingecheckt. Der Abgleich lässt diese Dateien unverändert.',
+      actionButton: 'Jetzt einchecken…',
+      actionToast:
+        'Wählen Sie diese Dateien im Datei-Browser aus und checken Sie sie ein, wenn Sie bereit sind.',
+    },
+    modified: {
+      label_one: '{{count}} Datei mit lokalen Änderungen, die noch nicht auf dem Server sind',
+      label_other:
+        '{{count}} Dateien mit lokalen Änderungen, die noch nicht auf dem Server sind',
+      description:
+        'Ihre Änderungen bleiben erhalten. Der Abgleich verwirft lokale Änderungen niemals — checken Sie sie ein, um das Update zu teilen.',
+      actionButton: 'Ihre Änderungen einchecken…',
+      actionToast:
+        'Wählen Sie diese Dateien im Datei-Browser aus und checken Sie Ihre Änderungen ein, wenn Sie bereit sind.',
+    },
+    ghost: {
+      label_one: '{{count}} Datei, die von Ihnen ausgecheckt, aber auf der Festplatte fehlt',
+      label_other:
+        '{{count}} Dateien, die von Ihnen ausgecheckt, aber auf der Festplatte fehlen',
+      description:
+        'Etwas hat die Datei entfernt, nachdem Sie sie ausgecheckt hatten. Entscheiden Sie, ob Sie einen Ersatz einchecken oder das Auschecken aufheben.',
+    },
+
+    cloudOnly: {
+      label_one: '{{count}} Datei nur auf dem Server',
+      label_other: '{{count}} Dateien nur auf dem Server',
+      whyNote:
+        'Nicht herunterladen — der Abgleich ist kein Massen-Download. Aktivieren Sie den Auto-Download oder laden Sie Dateien einzeln herunter, wenn Sie eine lokale Kopie möchten.',
+    },
+    ignored: {
+      label_one: '{{count}} Datei, die einem Ignorier-Muster entspricht',
+      label_other: '{{count}} Dateien, die einem Ignorier-Muster entsprechen',
+      whyNote: 'Wird vom Abgleich nie berührt, ebenso wie von allem anderen, das den Tresor synchronisiert.',
+    },
+    blockedCheckout: {
+      label_one: '{{count}} Datei durch eine Auscheckung blockiert',
+      label_other: '{{count}} Dateien durch eine Auscheckung blockiert',
+      whyNote: 'Der Abgleich lässt jede Datei mit aktiver Auscheckung unangetastet.',
+      selfHeld_one: 'Sie haben diese Datei selbst ausgecheckt.',
+      selfHeld_other: 'Sie haben {{count}} davon selbst ausgecheckt.',
+      otherHeld_one: 'Jemand anderes hat diese Datei ausgecheckt.',
+      otherHeld_other: 'Jemand anderes hat {{count}} davon ausgecheckt.',
+    },
+
+    outcome: {
+      heading: 'Ergebnis',
+      abortedHeading: 'Der Abgleich wurde nicht ausgeführt.',
+      abortNoVault: 'Es ist kein Tresor verbunden.',
+      abortOffline: 'Sie sind offline — versuchen Sie es erneut, sobald Sie wieder online sind.',
+      abortOperationInFlight:
+        'Ein anderer Sync-Vorgang läuft bereits — versuchen Sie es erneut, sobald er abgeschlossen ist.',
+      abortCancelled: 'Abgebrochen.',
+      abortUnexpectedError:
+        'Etwas ist schiefgelaufen. Versuchen Sie es erneut und kontaktieren Sie den Support, falls es weiterhin passiert.',
+
+      step_resolvePendingMoves: 'Ausstehende Verschiebungen',
+      step_recycleOrphans: 'Verwaiste Dateien',
+      step_pullOutdated: 'Veraltete Dateien',
+      step_rebuildSyncIndex: 'Sync-Status',
+
+      ok_one: '{{count}} Datei behoben',
+      ok_other: '{{count}} Dateien behoben',
+      partial: '{{succeeded}} von {{attempted}} behoben — {{failed}} fehlgeschlagen',
+      failedResult: 'Dieser Schritt konnte nicht abgeschlossen werden',
+      nothingToDo: 'Nichts zu tun',
+      refused: 'Aus Sicherheitsgründen übersprungen — versuchen Sie es gleich noch einmal',
+    },
+  },
+
   hiddenFolders: {
     hideFromNonAdmins: 'Vor Nicht-Administratoren ausblenden',
     showToEveryone: 'Für alle anzeigen',

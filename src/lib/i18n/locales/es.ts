@@ -627,6 +627,137 @@ export const es: TranslationDict = {
     contextMenuItem: 'Resolver archivos movidos…',
   },
 
+  realign: {
+    section: {
+      heading: 'Realinear con el servidor',
+      title: 'Comprobar su bóveda con el servidor',
+      description:
+        'Muestra qué es diferente entre su computadora y el servidor, y corrige automáticamente lo que sea seguro corregir.',
+      button: 'Comprobar alineación',
+    },
+
+    dialog: {
+      title: 'Realinear con el servidor',
+      subtitle: 'Compara sus archivos con el servidor y muestra las diferencias antes de cambiar nada.',
+    },
+
+    runButton: 'Corregir elementos seleccionados',
+    moreFiles: '…y {{count}} más',
+
+    headline: {
+      aligned: 'Su bóveda está alineada con el servidor.',
+      notAligned: 'Su bóveda tiene archivos que no coinciden con el servidor.',
+    },
+
+    orientation: {
+      local_one: '{{count}} archivo en su computadora',
+      local_other: '{{count}} archivos en su computadora',
+      server_one: '{{count}} archivo en el servidor',
+      server_other: '{{count}} archivos en el servidor',
+      inSync_one: '{{count}} archivo sincronizado',
+      inSync_other: '{{count}} archivos sincronizados',
+    },
+
+    group: {
+      repairable: 'Se puede corregir ahora',
+      needsDecision: 'Requiere su decisión',
+      needsDecisionNote:
+        'El realineado no tocará ninguno de estos — requieren su decisión.',
+      needsDecisionEmpty: 'Nada aquí requiere una decisión.',
+      informational: 'Solo información',
+    },
+
+    syncIndex: {
+      label: 'También actualizar el registro interno de sincronización de BluePLM',
+      description: 'Solo mantenimiento interno — no toca ningún archivo.',
+    },
+
+    pendingMove: {
+      label_one: '{{count}} archivo movido en el disco pero no en la bóveda',
+      label_other: '{{count}} archivos movidos en el disco pero no en la bóveda',
+      description: 'Devuelve cada archivo a la ruta que la bóveda espera.',
+    },
+    orphaned: {
+      label_one: '{{count}} archivo que el servidor ya no tiene',
+      label_other: '{{count}} archivos que el servidor ya no tiene',
+      description:
+        'Mueve el archivo a la papelera de reciclaje. La copia del servidor ya no existe, así que no hay nada con qué sincronizarlo.',
+    },
+    outdated: {
+      label_one: '{{count}} archivo con una versión más reciente en el servidor',
+      label_other: '{{count}} archivos con una versión más reciente en el servidor',
+      description: 'Descarga la versión actual del servidor para reemplazar la copia local desactualizada.',
+    },
+
+    localOnly: {
+      label_one: '{{count}} archivo que solo existe en su computadora',
+      label_other: '{{count}} archivos que solo existen en su computadora',
+      description: 'Nunca se registraron en la bóveda. El realineado los deja exactamente como están.',
+      actionButton: 'Ir a registrarlos…',
+      actionToast: 'Seleccione estos archivos en el explorador de archivos y regístrelos cuando esté listo.',
+    },
+    modified: {
+      label_one: '{{count}} archivo con cambios locales aún no en el servidor',
+      label_other: '{{count}} archivos con cambios locales aún no en el servidor',
+      description:
+        'Sus cambios se conservan. El realineado nunca descarta cambios locales — regístrelos para compartir la actualización.',
+      actionButton: 'Ir a registrar sus cambios…',
+      actionToast:
+        'Seleccione estos archivos en el explorador de archivos y registre sus cambios cuando esté listo.',
+    },
+    ghost: {
+      label_one: '{{count}} archivo registrado a su nombre pero ausente del disco',
+      label_other: '{{count}} archivos registrados a su nombre pero ausentes del disco',
+      description:
+        'Algo eliminó el archivo después de que usted lo registrara. Decida si registra un reemplazo o libera el registro.',
+    },
+
+    cloudOnly: {
+      label_one: '{{count}} archivo solo en el servidor',
+      label_other: '{{count}} archivos solo en el servidor',
+      whyNote:
+        'No se descarga — el realineado no es una descarga masiva. Active la descarga automática, o descargue archivos individualmente, si desea una copia local.',
+    },
+    ignored: {
+      label_one: '{{count}} archivo que coincide con un patrón de exclusión',
+      label_other: '{{count}} archivos que coinciden con un patrón de exclusión',
+      whyNote: 'El realineado nunca los toca, igual que cualquier otra sincronización de la bóveda.',
+    },
+    blockedCheckout: {
+      label_one: '{{count}} archivo bloqueado por un registro de salida',
+      label_other: '{{count}} archivos bloqueados por un registro de salida',
+      whyNote: 'El realineado deja intacto cualquier archivo con un registro de salida activo.',
+      selfHeld_one: 'Tú tienes este archivo registrado a tu nombre.',
+      selfHeld_other: 'Tú tienes {{count}} de estos registrados a tu nombre.',
+      otherHeld_one: 'Otra persona tiene este archivo registrado.',
+      otherHeld_other: 'Otra persona tiene {{count}} de estos registrados.',
+    },
+
+    outcome: {
+      heading: 'Resultado',
+      abortedHeading: 'El realineado no se ejecutó.',
+      abortNoVault: 'No hay ninguna bóveda conectada.',
+      abortOffline: 'Está sin conexión — inténtelo de nuevo cuando vuelva a estar en línea.',
+      abortOperationInFlight:
+        'Ya hay otra operación de sincronización en curso — inténtelo de nuevo cuando termine.',
+      abortCancelled: 'Cancelado.',
+      abortUnexpectedError:
+        'Algo salió mal. Inténtelo de nuevo, y contacte con soporte si sigue ocurriendo.',
+
+      step_resolvePendingMoves: 'Movimientos pendientes',
+      step_recycleOrphans: 'Archivos huérfanos',
+      step_pullOutdated: 'Archivos desactualizados',
+      step_rebuildSyncIndex: 'Índice de sincronización',
+
+      ok_one: 'Se corrigió {{count}} archivo',
+      ok_other: 'Se corrigieron {{count}} archivos',
+      partial: 'Se corrigieron {{succeeded}} de {{attempted}} — {{failed}} fallaron',
+      failedResult: 'No se pudo completar este paso',
+      nothingToDo: 'Nada que hacer',
+      refused: 'Omitido por seguridad — inténtelo de nuevo en un momento',
+    },
+  },
+
   hiddenFolders: {
     hideFromNonAdmins: 'Ocultar a los no administradores',
     showToEveryone: 'Mostrar a todos',

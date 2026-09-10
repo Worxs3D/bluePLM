@@ -65,6 +65,9 @@ export const createOperationsSlice: StateCreator<
   lastOperationCompletedAt: 0,
   expectedFileChanges: new Set<string>(),
 
+  // Initial state - Files reload request bridge (see type doc comment for why this exists)
+  filesReloadRequestId: 0,
+
   // Actions - Loading
   setIsLoading: (isLoading) => {
     if (import.meta.env.VITE_DEBUG_LOADING) {
@@ -278,4 +281,7 @@ export const createOperationsSlice: StateCreator<
     }),
 
   setLastOperationCompletedAt: (timestamp: number) => set({ lastOperationCompletedAt: timestamp }),
+
+  requestFilesReload: () =>
+    set((state) => ({ filesReloadRequestId: state.filesReloadRequestId + 1 })),
 })

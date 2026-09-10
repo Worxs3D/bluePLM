@@ -29,6 +29,7 @@ import { log } from '@/lib/logger'
 import { executeCommand } from '@/lib/commands'
 import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialogs'
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
+import { RealignSection } from './realign'
 
 // Build vault path based on platform
 function buildVaultPath(platform: string, vaultSlug: string): string {
@@ -1114,6 +1115,10 @@ export function VaultsSettings() {
           </div>
         </div>
       )}
+
+      {/* Re-align with Server — see src/features/settings/organization/realign/ for everything
+          this section renders. Not admin-gated: any user may re-align their own vault copy. */}
+      {connectedVaults.length > 0 && <RealignSection />}
 
       {/* Upload Warning Settings */}
       {connectedVaults.length > 0 && (

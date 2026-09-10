@@ -6,6 +6,29 @@ Settings that affect your entire organization. Most require admin access.
 
 Manage file storage containers. See [Vaults](/source-files/vaults) for details.
 
+### Re-align with Server
+
+Each connected vault has a **Re-align with Server** section that checks your local copy against
+the server and reports how they disagree — files that moved on your disk but not in the vault,
+files the server no longer has, files with a newer version on the server, and files that only
+exist locally or have local edits the server hasn't seen. It's available to every user, not just
+admins, since it only ever touches your own disk.
+
+Opening the check is instant — it reads the same file list the Explorer already shows, so there's
+no scan to wait for. What it finds is grouped into three kinds:
+
+- **Can be fixed now** — moved files put back where the vault expects them, files the server no
+  longer has moved to the Recycle Bin, and outdated files replaced with the server's current
+  version. Each is a checkbox, on by default; untick any you'd rather handle yourself.
+- **Needs your decision** — local-only files and files with unsaved local edits. Re-align never
+  touches these; it lists them so you can check them in or leave them as they are.
+- **For information** — files only on the server (re-align doesn't download in bulk), files
+  matching an ignore pattern, and files blocked by an active checkout, whether that checkout is
+  someone else's or your own.
+
+Running the fix reports what happened for each item you selected, and the check re-runs
+immediately afterward so you see the vault's new state without reopening the dialog.
+
 ## Members & Teams
 
 Manage users and access control.

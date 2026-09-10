@@ -1,4 +1,4 @@
-import { Profiler, Suspense, lazy, type ProfilerOnRenderCallback } from 'react'
+import { Profiler, Suspense, lazy, useEffect, useRef, type ProfilerOnRenderCallback } from 'react'
 import { Loader2, FileSearch } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { REACT_COMMIT_THRESHOLD_MS } from '@/lib/performanceThresholds'
@@ -91,6 +91,21 @@ export function MainContent({
   // Call hooks directly instead of receiving as props
   const { loadFiles, refreshCurrentFolder } = useLoadFiles()
   const { handleOpenRecentVault } = useVaultManagement()
+
+  // Bridge for callers with no direct reference to `loadFiles`/`refreshCurrentFolder` (e.g.
+  // the "Re-align with server" dialog under Settings, several component layers away from the
+  // file browser). See `filesReloadRequestId`'s doc comment in `stores/types.ts`. A full,
+  // silent `loadFiles` — not `refreshCurrentFolder(currentFolder)` — because re-align can
+  // repair files anywhere in the vault, not only the folder currently in view.
+  const filesReloadRequestId = usePDMStore((s) => s.filesReloadRequestId)
+  const isFirstFilesReloadRequest = useRef(true)
+  useEffect(() => {
+    if (isFirstFilesReloadRequest.current) {
+      isFirstFilesReloadRequest.current = false
+      return
+    }
+    loadFiles(true)
+  }, [filesReloadRequestId, loadFiles])
 
   return (
     <div

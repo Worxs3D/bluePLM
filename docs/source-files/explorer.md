@@ -53,6 +53,9 @@ disk back to the path the server already records, and writes nothing to the serv
 Either direction skips files checked out by someone else unless you explicitly include them, and
 skips any file whose destination is already occupied.
 
+To check every one of these states across a whole vault at once, and fix the ones that are safe
+to fix automatically, see **Re-align with Server** under [Organization Settings](/settings/organization).
+
 ### Check Out
 Before editing a file, check it out to lock it:
 - Others see who has it locked

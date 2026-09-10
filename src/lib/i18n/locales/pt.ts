@@ -624,6 +624,139 @@ export const pt: TranslationDict = {
     contextMenuItem: 'Resolver arquivos movidos…',
   },
 
+  // Not yet translated — served from the English dictionary via getTranslation's per-key
+  // fallback (see newKeys.test.ts). Keys exist here so structural checks pass; retranslate when
+  // confident.
+  realign: {
+    section: {
+      heading: 'Re-align with Server',
+      title: 'Check your vault against the server',
+      description:
+        "See what's different between your computer and the server, and fix what's safe to fix automatically.",
+      button: 'Check Alignment',
+    },
+
+    dialog: {
+      title: 'Re-align with Server',
+      subtitle:
+        "Compares your files against the server and shows what's different before anything changes.",
+    },
+
+    runButton: 'Fix Selected Items',
+    moreFiles: '…and {{count}} more',
+
+    headline: {
+      aligned: 'Your vault is aligned with the server.',
+      notAligned: 'Your vault has files that disagree with the server.',
+    },
+
+    orientation: {
+      local_one: '{{count}} file on your computer',
+      local_other: '{{count}} files on your computer',
+      server_one: '{{count}} file on the server',
+      server_other: '{{count}} files on the server',
+      inSync_one: '{{count}} file in sync',
+      inSync_other: '{{count}} files in sync',
+    },
+
+    group: {
+      repairable: 'Can be fixed now',
+      needsDecision: 'Needs your decision',
+      needsDecisionNote: "Re-align will not touch any of these — they need your decision.",
+      needsDecisionEmpty: 'Nothing here needs a decision.',
+      informational: 'For information',
+    },
+
+    syncIndex: {
+      label: "Also refresh BluePLM's internal record of what's synced",
+      description: "Housekeeping only — this doesn't touch any files.",
+    },
+
+    pendingMove: {
+      label_one: '{{count}} file moved on disk but not in the vault',
+      label_other: '{{count}} files moved on disk but not in the vault',
+      description: 'Puts each file back at the path the vault expects.',
+    },
+    orphaned: {
+      label_one: '{{count}} file the server no longer has',
+      label_other: '{{count}} files the server no longer has',
+      description:
+        'Moves the file to the Recycle Bin. The server copy is already gone, so there is nothing left to keep it in sync with.',
+    },
+    outdated: {
+      label_one: '{{count}} file with a newer version on the server',
+      label_other: '{{count}} files with a newer version on the server',
+      description: "Downloads the server's current version to replace the outdated local copy.",
+    },
+
+    localOnly: {
+      label_one: '{{count}} file that only exists on your computer',
+      label_other: '{{count}} files that only exist on your computer',
+      description: 'Never checked in to the vault. Re-align leaves these exactly as they are.',
+      actionButton: 'Go check them in…',
+      actionToast: 'Select these files in the file browser and check them in when ready.',
+    },
+    modified: {
+      label_one: '{{count}} file with local changes not yet on the server',
+      label_other: '{{count}} files with local changes not yet on the server',
+      description:
+        'Your edits are kept. Re-align never discards local changes — check them in to share the update.',
+      actionButton: 'Go check in your changes…',
+      actionToast: 'Select these files in the file browser and check in your changes when ready.',
+    },
+    ghost: {
+      label_one: '{{count}} file checked out by you but missing from disk',
+      label_other: '{{count}} files checked out by you but missing from disk',
+      description:
+        'Something removed the file after you checked it out. Decide whether to check in a replacement or release the checkout.',
+    },
+
+    cloudOnly: {
+      label_one: '{{count}} file on the server only',
+      label_other: '{{count}} files on the server only',
+      whyNote:
+        'Not downloaded — re-align is not a bulk download. Turn on auto-download, or download files individually, if you want a local copy.',
+    },
+    ignored: {
+      label_one: '{{count}} file matching an ignore pattern',
+      label_other: '{{count}} files matching an ignore pattern',
+      whyNote: 'Never touched by re-align, or by anything else that syncs the vault.',
+    },
+    blockedCheckout: {
+      label_one: '{{count}} file blocked by a checkout',
+      label_other: '{{count}} files blocked by a checkout',
+      whyNote: 'Re-align leaves any file under an active checkout alone.',
+      selfHeld_one: 'You have this checked out yourself.',
+      selfHeld_other: 'You have {{count}} of these checked out yourself.',
+      otherHeld_one: 'Someone else has this checked out.',
+      otherHeld_other: 'Someone else has {{count}} of these checked out.',
+    },
+
+    outcome: {
+      heading: 'Result',
+      abortedHeading: 'Re-align did not run.',
+      abortNoVault: 'No vault is connected.',
+      abortOffline: "You're offline — try again once you're back online.",
+      abortOperationInFlight:
+        'Another sync operation is already running — try again once it finishes.',
+      abortCancelled: 'Cancelled.',
+      abortUnexpectedError:
+        'Something went wrong. Try again, and contact support if it keeps happening.',
+
+      step_resolvePendingMoves: 'Pending moves',
+      step_recycleOrphans: 'Orphaned files',
+      step_pullOutdated: 'Outdated files',
+      step_rebuildSyncIndex: 'Sync index',
+
+      ok_one: 'Fixed {{count}} file',
+      ok_other: 'Fixed {{count}} files',
+      partial: 'Fixed {{succeeded}} of {{attempted}} — {{failed}} failed',
+      failedResult: 'Could not complete this step',
+      nothingToDo: 'Nothing to do',
+      refused: 'Skipped for safety — try again in a moment',
+    },
+  },
+
   hiddenFolders: {
     hideFromNonAdmins: 'Ocultar de não administradores',
     showToEveryone: 'Mostrar a todos',

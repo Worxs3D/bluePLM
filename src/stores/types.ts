@@ -1537,6 +1537,19 @@ export interface OperationsSlice {
    * Call at the end of each file operation (download, get-latest, etc.).
    */
   setLastOperationCompletedAt: (timestamp: number) => void
+
+  /**
+   * Bumped by any caller that changed files on disk (rename, recycle, download) but has
+   * no direct reference to `useLoadFiles`'s `refreshCurrentFolder` — e.g. a Settings
+   * dialog several component layers away from the file browser. `MainContent.tsx`'s
+   * mounted `useLoadFiles()` instance watches this value and calls
+   * `refreshCurrentFolder()` whenever it changes. Not itself a loading flag; it exists
+   * purely so a distant caller can request the same reload a nearby one gets by prop.
+   */
+  filesReloadRequestId: number
+
+  /** Request a re-merge of the current folder against current disk/server/index state. */
+  requestFilesReload: () => void
 }
 
 // ============================================================================

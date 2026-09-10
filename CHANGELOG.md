@@ -4,6 +4,38 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.0] - 2026-09-10
+
+Renderer-only release — no schema change, no API change.
+
+### Added
+
+- **Re-align with Server** — a vault settings section, open to every user, that answers "how
+  does my copy of this vault disagree with the server, and what can be fixed safely?" Until now
+  a user with a vault that had drifted — pending moves piling up, orphans left over from a
+  deletion elsewhere, outdated copies of files nobody had checked out — had no single place to
+  see all of it at once, let alone fix the safe part in one pass; each case had its own dialog or
+  context-menu entry, if it had one at all, and finding them meant already knowing something was
+  wrong. The new check reads the same merged file list the Explorer already renders, so opening
+  it is instant, and sorts every diverged file into what can be fixed automatically (a pending
+  move put back where the vault expects it, an orphan recycled, an outdated file replaced),
+  what needs the user's own decision (local-only work, unsaved local edits — re-align never
+  discards either), and what is reported for orientation only (cloud-only files, since re-align
+  is deliberately not a bulk download; files blocked by an active checkout). Running the fix
+  composes the same guarded commands (`adopt-server-paths`, `discard-orphaned`, `get-latest`)
+  that already protect a manual run of each one individually — the same blast-radius, cooldown
+  and re-entrancy guards apply, orphan recycling never falls back to a permanent delete, and a
+  rebuilt local sync index preserves every orphan tombstone so a genuine orphan can never
+  reappear as a new local file. The dialog re-runs its own check immediately after a fix so the
+  vault's new state shows without reopening it.
+- A checkout blocking a repair now says whose checkout it is. The bucket holding "this would be
+  fixable except for a checkout" always described it as someone else's work in progress, which
+  was accurate for a pending move or an orphan but not for an outdated file, where the current
+  user's own checkout blocks the pull too (pulling the server's newer copy over an open checkout
+  risks clobbering in-progress work that has not yet shown up as a local edit). The report now
+  says "you have this checked out" for a self-held row instead of attributing it to somebody
+  else.
+
 ## [4.3.3] - 2026-09-10
 
 Renderer-only release — no schema change, no API change.
