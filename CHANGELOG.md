@@ -36,6 +36,25 @@ Renderer-only release — no schema change, no API change.
   says "you have this checked out" for a self-held row instead of attributing it to somebody
   else.
 
+### Fixed
+
+- **Double-clicking a `moved_away` stub in the folder tree now opens the file, not nothing.**
+  4.3.3 left this call site out of its own sweep: the tree's double-click handler fell through
+  to opening `file.path` on a stub, which is a path with no file behind it. It now opens the
+  destination the stub names, matching the file list and grid card, which already did this
+  correctly because both route through the same handler.
+- **Drawing-reference lookups no longer read a `moved_away` stub as if it were the drawing.**
+  Two related call sites resolved a component's path to whichever local row sat there, without
+  checking whether that row actually had content. `configDrawingLookup.ts` could match a
+  drawing's stub instead of its `moved` partner when collecting candidates to confirm against
+  SolidWorks — sending a live Document Manager read at a path with nothing there, when the real
+  file was one row away — and now redirects to the row that holds the content, and excludes bare
+  stubs from the folder-sibling scan that once picked them up as false candidates.
+  `drawingReferenceSync.ts`'s `syncOneDrawing` was already safe in practice (nothing on disk at
+  a stub's path means the watcher event that reaches it is theoretical, and a failed read there
+  writes nothing by design), but now says so explicitly with a guard instead of relying on the
+  read failing.
+
 ## [4.3.3] - 2026-09-10
 
 Renderer-only release — no schema change, no API change.

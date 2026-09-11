@@ -81,6 +81,30 @@ function localFileInModelFolder(file: LocalFile, candidate: LocalFile): boolean 
   return getDirectory(file.path) === getDirectory(candidate.path)
 }
 
+/**
+ * Resolve a component path to the local file that actually holds its content.
+ *
+ * `findLocalFileByPath` matches on the path alone, so when a drawing has an
+ * unreconciled move it can return the `'moved_away'` stub sitting at the vault's
+ * recorded (now-stale) path instead of the `'moved'` row that holds the real
+ * content elsewhere in the vault. A stub has no file on disk at its own path, so
+ * treating it as the resolved local file sends every downstream read - the live
+ * Document Manager confirmation, the folder-sibling scan - at a path that no
+ * longer exists, degrading a confirmable drawing into an unconfirmed one.
+ * Redirect to the destination row named by the stub instead.
+ */
+function resolveLocalDrawingFile(path: string, files: LocalFile[]): LocalFile | undefined {
+  const match = findLocalFileByPath(path, files)
+  if (match?.diffStatus !== 'moved_away' || !match.movedToRelativePath) {
+    return match
+  }
+
+  const destinationPath = normalizePath(match.movedToRelativePath)
+  return (
+    files.find((candidate) => normalizePath(candidate.relativePath) === destinationPath) || match
+  )
+}
+
 function findCandidateByPath(
   candidates: Map<string, ConfigDrawingCandidate>,
   path: string,
@@ -105,7 +129,7 @@ export function collectCandidateDrawings(
   for (const item of dbItems) {
     if (!isDrawingName(item.file_name, item.file_path)) continue
 
-    const localFile = findLocalFileByPath(item.file_path, files)
+    const localFile = resolveLocalDrawingFile(item.file_path, files)
     const path = localFile?.path || item.file_path
     if (!path) continue
 
@@ -124,6 +148,9 @@ export function collectCandidateDrawings(
   for (const localFile of files) {
     if (
       localFile.isDirectory ||
+      // A 'moved_away' stub has no content at its own path; the drawing it stands
+      // in for is discovered normally via its 'moved' row at the real location.
+      localFile.diffStatus === 'moved_away' ||
       localFile.extension.toLowerCase() !== DRAWING_EXTENSION ||
       !localFileInModelFolder(file, localFile)
     ) {
@@ -159,7 +186,7 @@ function referenceMatchesModel(
     return true
   }
 
-  const localMatch = findLocalFileByPath(reference.path, files)
+  const localMatch = resolveLocalDrawingFile(reference.path, files)
   return localMatch ? pathsMatch(localMatch.path, file.path) : false
 }
 
@@ -168,14 +195,14 @@ function getDatabaseItemsForCandidate(
   files: LocalFile[],
   dbItems: DrawingRefItem[],
 ): DrawingRefItem[] {
-  const localFile = findLocalFileByPath(candidate.path, files)
+  const localFile = resolveLocalDrawingFile(candidate.path, files)
 
   return dbItems.filter((item) => {
     if (candidate.fileId && item.file_id === candidate.fileId) return true
     if (localFile?.pdmData?.id && item.file_id === localFile.pdmData.id) return true
     if (pathsMatch(item.file_path, candidate.path)) return true
 
-    const itemLocalFile = findLocalFileByPath(item.file_path, files)
+    const itemLocalFile = resolveLocalDrawingFile(item.file_path, files)
     return itemLocalFile ? pathsMatch(itemLocalFile.path, candidate.path) : false
   })
 }
@@ -253,7 +280,7 @@ async function persistResolvedReferences(
   files: LocalFile[],
   swRefs: SWServiceReference[],
 ): Promise<void> {
-  const drawingFile = findLocalFileByPath(candidate.path, files)
+  const drawingFile = resolveLocalDrawingFile(candidate.path, files)
   const pdmData = drawingFile?.pdmData
   if (!drawingFile || !pdmData?.id) return
 
@@ -325,7 +352,7 @@ export async function confirmConfigDrawingsWithSolidWorks(args: {
 
   for (const candidate of candidates) {
     const databaseItems = getDatabaseItemsForCandidate(candidate, files, dbItems)
-    const localFile = findLocalFileByPath(candidate.path, files)
+    const localFile = resolveLocalDrawingFile(candidate.path, files)
 
     try {
       const result = await getSwReferencesCached(candidate.path, 'background')

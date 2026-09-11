@@ -48,6 +48,7 @@ import { PinnedFoldersSection } from './file-tree/PinnedFoldersSection'
 import { NoVaultAccessMessage } from './file-tree/RecentVaultsSection'
 import { VirtualizedTreeRow } from './file-tree/VirtualizedTreeRow'
 import { TreeHoverProvider } from './file-tree/TreeHoverContext'
+import { resolveMovedAwayOpenPath } from './file-tree/movedAwayOpenPath'
 // FileTree hooks
 import { useVaultTree } from './file-tree/hooks/useVaultTree'
 import { useFlattenedTree } from './file-tree/hooks/useFlattenedTree'
@@ -703,11 +704,20 @@ export function FileTree({ onRefresh }: FileTreeProps) {
         if (result.success && window.electronAPI) {
           window.electronAPI.openFile(file.path)
         }
+      } else if (file.diffStatus === 'moved_away') {
+        // Stub at the vault's recorded path - there is nothing on disk at file.path
+        // anymore, the content lives at movedToRelativePath now. Open that instead of
+        // failing on a path that no longer exists. Mirrors FilePane.tsx's
+        // handleRowDoubleClick for the same status.
+        const openPath = resolveMovedAwayOpenPath(file, vaultPath)
+        if (openPath && window.electronAPI) {
+          window.electronAPI.openFile(openPath)
+        }
       } else if (window.electronAPI) {
         window.electronAPI.openFile(file.path)
       }
     },
-    [toggleFolder, onRefresh],
+    [toggleFolder, onRefresh, vaultPath],
   )
 
   // Handle context menu on tree items

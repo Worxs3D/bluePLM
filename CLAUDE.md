@@ -7,18 +7,48 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
-Nothing in flight. 4.3.3 shipped (renderer only — no schema change, no API change): when a
-file's local path diverges from the path the vault records, the merge used to drop the server
+Nothing in flight. 4.4.0 shipped (renderer only — no schema change, no API change) on top of
+4.3.3's `moved_away` stub (see below): a **Re-align with Server** button in vault settings that
+answers "how does my copy of this vault disagree with the server, and what can be fixed
+safely?" in one pass instead of one badge at a time. It classifies every file into buckets and
+groups them into what can be fixed now, what needs the user's decision, and what is reported for
+orientation only, then fixes the safe bucket by composing the existing guarded commands —
+`adopt-server-paths`, `discard-orphaned`, `get-latest` — in that order, because resolving a move
+changes the answer to whether a row is an orphan. Re-align is non-destructive by default and
+never discards work the user did not agree to lose: cloud-only files are not downloaded (this is
+not a bulk sync), local-only files are kept and listed so they can be checked in deliberately,
+locally modified files keep their edits and are only flagged, and orphan recycling runs through
+the automatic delete path, which leaves a file on disk rather than deleting it permanently when
+the recycle bin is unavailable. The sync index repair this needs is a diff, not a rebuild — it
+adds missing entries and drops genuinely stale ones while leaving orphan tombstones and
+`localOnly` entries alone, since clearing them would reclassify every real orphan as new local
+work, the exact pre-4.3.0 failure this release must not recreate.
+
+Folded into the same 4.4.0 tag: three call sites 4.3.3 knowingly deferred, all the same shape —
+code that assumed a row with `pdmData` has local content behind it, which stopped holding the
+day `moved_away` shipped. `FileTree.tsx`'s tree-row double-click fell through to opening a
+stub's path, which has no file behind it; it now opens the destination the stub names, matching
+the file list and grid card, which already did this correctly through a shared handler.
+`configDrawingLookup.ts` could resolve a drawing's component path to its stub instead of its
+`moved` partner, sending a live SolidWorks read at a path with nothing there when the real file
+was one row away; candidate resolution now redirects to the row with content, and the
+folder-sibling scan excludes bare stubs outright. `drawingReferenceSync.ts`'s `syncOneDrawing`
+turned out to already be safe — nothing on disk at a stub's path means the watcher event that
+would reach it is theoretical, and a failed read there writes nothing by design — so it now says
+so with an explicit guard instead of leaning on that read failing.
+
+4.3.3 (renderer only — no schema change, no API change) is the release this all builds on: when
+a file's local path diverges from the path the vault records, the merge used to drop the server
 row entirely, so a folder renamed on one machine looked *empty* to everyone else. It now leaves
 a `moved_away` stub at the recorded path naming where the content actually lives
 (`src/hooks/useLoadFiles/cloudFileReconciliation.ts`), and the pending-move count that was
 always computed but never rendered is visible on the tree row, file row, and grid card. A new
 `adopt-server-paths` command (server wins) is the inverse of the terminal-only
 `reconcile-moved-paths` (local wins), and a **Resolve Pending Moves** dialog puts both
-directions behind a badge and context menu with per-direction preflight. The rest of the
-release fixed call sites that assumed a row with `pdmData` has local content, or that a
-`files.id` maps to exactly one row — `moved_away` is the first status where neither holds.
-Plan and four agent reports: `.cursor/plans/pending-move-visibility-*`.
+directions behind a badge and context menu with per-direction preflight. `moved_away` is the
+first status where a row can have `pdmData` and no local content, and where a single `files.id`
+maps to two rows. Plan and four agent reports: `.cursor/plans/pending-move-visibility-*`; the
+4.4.0 work: `.cursor/plans/realign-with-server-*` and `.cursor/plans/realign-4.4.0-foldin-report.md`.
 
 `syncFile`'s primary existence check stays byte-exact and off `get_active_file_by_path` on
 purpose — that was a deliberate scope decision for 4.3.1, not an oversight, and paying for a

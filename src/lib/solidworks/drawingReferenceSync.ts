@@ -161,6 +161,17 @@ async function syncOneDrawing(
     return 'skipped'
   }
 
+  if (file.diffStatus === 'moved_away') {
+    // A 'moved_away' stub carries the same pdmData as the real file, which now sits at
+    // file.movedToRelativePath — there is nothing on disk at this path for the watcher to
+    // have detected a change on. In practice the watcher can't reach a stub's path this way
+    // (nothing changes where nothing exists), but a rename surfaces as a delete-at-old-path
+    // event too, so guard explicitly rather than relying on the Document Manager read below
+    // failing on a path with no file.
+    log.debug('[DrawingRefSync]', 'Skipping moved_away stub', { relativePath })
+    return 'skipped'
+  }
+
   const fileId = file.pdmData.id
 
   try {
