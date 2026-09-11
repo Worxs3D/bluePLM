@@ -54,6 +54,17 @@ Renderer-only release — no schema change, no API change.
   a stub's path means the watcher event that reaches it is theoretical, and a failed read there
   writes nothing by design), but now says so explicitly with a guard instead of relying on the
   read failing.
+- **The shared local-file-by-path lookup itself no longer prefers a `moved_away` stub over the
+  file that actually has content.** The previous fix wrapped one caller of
+  `findLocalFileByPath` (`configDrawingLookup.ts`) but left the helper itself path-only, so every
+  other caller inherited the same defect. Two of them were reachable and genuinely wrong:
+  clicking a config-drawing row could select and scroll to a stub instead of the real file, and -
+  the more serious case - checking out or syncing metadata for a config drawing that had moved
+  could resolve to the stub, leaving the drawing's real on-disk read-only flag untouched while
+  the server recorded it as checked out. The helper now redirects any stub match to its `moved`
+  partner by default, fixing every caller (including a `swBomItems.ts` / `loadDrawingReferences.ts`
+  case that only degrades gracefully, and a display-only BOM row that was already harmless) in
+  one place instead of requiring each one to guard itself.
 
 ## [4.3.3] - 2026-09-10
 
