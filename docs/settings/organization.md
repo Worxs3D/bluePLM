@@ -19,7 +19,12 @@ no scan to wait for. What it finds is grouped into three kinds:
 
 - **Can be fixed now** — moved files put back where the vault expects them, files the server no
   longer has moved to the Recycle Bin, and outdated files replaced with the server's current
-  version. Each is a checkbox, on by default; untick any you'd rather handle yourself.
+  version. Each is a checkbox, on by default; untick any you'd rather handle yourself. Moved
+  files default to keeping the server's path, but the list shows every one individually with its
+  vault path and its disk path, so you can flip any file to keep its local path instead — useful
+  when the rename on this machine is the one that should stick. A mixed choice can show more than
+  one confirmation prompt while it runs; the dialog says so rather than leaving you looking at a
+  spinner with no explanation.
 - **Needs your decision** — local-only files and files with unsaved local edits. Re-align never
   touches these; it lists them so you can check them in or leave them as they are.
 - **For information** — files only on the server (re-align doesn't download in bulk), files

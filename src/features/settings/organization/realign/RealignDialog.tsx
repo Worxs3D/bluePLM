@@ -108,12 +108,17 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
   )
 
   // Every open is a fresh review: reset the plan and drop any result left over from last time.
+  // Deliberately keyed on `isOpen` alone - `report.pendingMoveItems` is read for its value at the
+  // moment the dialog opens, not watched. The effect below keeps the map in sync with later
+  // changes to `report.pendingMoveItems` while the dialog stays open, which is the split that
+  // makes "fresh review" mean "reset on open" rather than "reset whenever the report recomputes."
   useEffect(() => {
     if (!isOpen) return
     setPlan(defaultAlignmentPlan())
     setPendingMoveActions(defaultPendingMoveActions(report.pendingMoveItems))
     setOutcome(null)
     setIsInformationalExpanded(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   useEffect(() => {

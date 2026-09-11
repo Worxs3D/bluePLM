@@ -4,22 +4,44 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [4.4.2] - 2026-09-11
 
-Renderer-only — no schema change, no API change.
+Renderer-only release — no schema change, no API change.
 
 ### Added
 
 - **Re-align with Server now lists every pending move and lets you choose keep-server or
   keep-local per file before Fix.** Until now the pending-move checkbox was all-or-nothing and
-  always renamed local files back to the vault path. The dialog shows each file's vault path and
-  disk path, defaults every row to keep-server, and can mix directions in one run: keep-server
-  still calls `adopt-server-paths`, keep-local commits that machine's path to the vault via
-  `reconcile-moved-paths` for only the files you named. Both commands accept an optional
-  `fileIds` filter so a mixed decision cannot spill onto a file you left the other way (or left
-  unresolved by unchecking the bucket). A mixed run can still show two confirmation dialogs —
-  one per command — and the waiting line now says so without assuming the next prompt is only a
-  rename.
+  always renamed local files back to the vault path — there was no way to fix nine moves one
+  way and a tenth the other without doing the tenth by hand afterward. The dialog now shows each
+  file's vault path and its disk path side by side, defaults every row to keep-server, and lets
+  you flip individual files (or all of them at once) to keep-local instead. A mixed run can still
+  show two confirmation prompts, one for each direction, and the dialog now says plainly that it
+  is waiting on a prompt rather than sitting on a bare spinner — see below.
+- **Re-align with Server explains a pause instead of looking stuck.** Resolving pending moves
+  asks for a final confirmation before renaming anything, and the dialog used to show nothing
+  but a spinner while that confirmation was open — indistinguishable from a hang. It now says
+  plainly that it is waiting for the pending renames to be confirmed.
+
+### Fixed
+
+- **Uploading a file that had already been moved could quietly duplicate it on the server
+  instead of completing the move.** First Check-In has no way to recognize a file it has not
+  seen before at its new location as the same file it already knows about at an old one — it
+  only ever looks up a server record by the exact path it is given. A file moved locally and
+  then run through First Check-In before the move itself had been reconciled created a second,
+  duplicate copy on the server rather than updating the original, leaving the old location
+  untouched and a confusing new copy sitting alongside it. Before uploading now warns when a
+  file's name and size exactly match another file the vault already has a record for at a
+  different path — the signature of a move, not new content — and lets you back those files out
+  of the upload to resolve the move properly first. The rest of the batch still uploads normally.
+- **A folder the server still lists is no longer silently left on disk with no explanation.**
+  Cleaning up after a deletion elsewhere only ever recycles a folder once nothing on the server
+  still claims it exists — the right call, since recycling it early would just have the server
+  recreate it on the next load. But when files with no way to be re-downloaded left a folder
+  permanently pinned in that state, the app said nothing at all: the folder just never went away,
+  indefinitely, with no way to tell why. It now reports when this happens, so an empty folder
+  that will not clean up itself reads as expected behavior instead of a mystery.
 
 ## [4.4.1] - 2026-09-10
 

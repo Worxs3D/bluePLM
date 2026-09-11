@@ -7,7 +7,43 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
-Nothing in flight. 4.4.0 shipped (renderer only — no schema change, no API change) on top of
+Nothing in flight. 4.4.2 shipped (renderer only — no schema change, no API change), two
+independent efforts that went out together without coordinating in the same working tree.
+
+The first closes the barxt600 incident (`.cursor/plans/barxt-move-download-incident-report.md`):
+`syncFile` (First Check-In) has no move awareness and keys only on the exact path it is given, so
+uploading a file that had already been moved locally, before the move itself was reconciled,
+created a duplicate row at the new path instead of recognizing it — the old path's row was left
+untouched and the "duplicate" only looked resolved once something else, out of band, deleted the
+extra rows. Uploading now warns when a file about to go up matches another file's name and size at
+a different path the vault already has a record for — a move signature, not new content, matched
+in memory against rows already loaded for the batch and never a per-file server query — and lets
+those files be pulled out of the batch to resolve the move first; the rest still uploads. Separately,
+a folder the server still lists was correctly never being recycled (recycling early would just have
+the server recreate it), but silently — some legacy rows can never be re-downloaded, which pins
+the folder in that state forever, and now the app says so instead of leaving it unexplained.
+
+The second lets Re-align choose keep-server or keep-local per pending move instead of one
+all-or-nothing checkbox that always ran server-wins: the dialog lists every pending move with its
+vault path and disk path, defaults each to keep-server, and keep-local now routes through
+`reconcile-moved-paths` for only the files named that way, while keep-server still calls
+`adopt-server-paths` — both commands take an optional `fileIds` filter for exactly this so a mixed
+decision cannot spill onto a file left the other way. Folded into the same tag: the "waiting for a
+confirmation" message for Re-align's own hang-avoidance line from 4.4.1's fix, written alongside
+that release but never shipped because it was amended into the local commit after the tag had
+already been cut.
+
+Working the same tree without coordinating left a real seam, not a functional bug: the barxt
+commit was made first and, because both efforts' changes were sitting uncommitted in the same
+files at that point, its diff to `src/lib/commands/types.ts` and the locale files ended up
+carrying some of the second effort's content too (the `fileIds` parameter additions and the
+`realign.pendingMove.*` / `waitingForConfirmation` keys) — harmless since nothing consumed those
+additions until the second commit wired them up, but it means the two commits' own descriptions of
+what they touched are not perfectly clean boundaries. Checked before tagging: no duplicate or
+orphaned i18n keys, every new key present in all seven locales, and the two efforts' command-layer
+changes (params, preflights, `applyAlignment`'s step order) agree with each other.
+
+4.4.0 shipped (renderer only — no schema change, no API change) on top of
 4.3.3's `moved_away` stub (see below): a **Re-align with Server** button in vault settings that
 answers "how does my copy of this vault disagree with the server, and what can be fixed
 safely?" in one pass instead of one badge at a time. It classifies every file into buckets and
@@ -53,7 +89,10 @@ maps to two rows. Plan and four agent reports: `.cursor/plans/pending-move-visib
 `syncFile`'s primary existence check stays byte-exact and off `get_active_file_by_path` on
 purpose — that was a deliberate scope decision for 4.3.1, not an oversight, and paying for a
 case-insensitive lookup on every file during a bulk first check-in would slow down the path that
-never collides.
+never collides. 4.4.2's duplicate-upload warning does not reverse this: it matches a file about
+to be uploaded against rows the batch already has loaded in memory, by name and size, and adds no
+per-file server query of any kind — it is advisory scaffolding in front of the same existence
+check, not a change to what that check does or costs.
 
 **Closed, do not reopen without new evidence:** cleaning up "orphaned" `files` rows from the
 pre-4.3.0 move handling. The diagnosis was finally run against production and the premise did
