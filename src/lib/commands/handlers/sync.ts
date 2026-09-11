@@ -9,7 +9,7 @@
  * or manually enter metadata in the datacard before syncing.
  */
 
-import type { Command, SyncParams, CommandResult } from '../types'
+import type { Command, LocalFile, SyncParams, CommandResult } from '../types'
 import { getUnsyncedFilesFromSelection } from '../types'
 import { ProgressTracker } from '../executor'
 import { syncFile, upsertFileReferences } from '../../supabase'
@@ -54,6 +54,57 @@ function logSync(
   context: Record<string, unknown>,
 ) {
   log[level]('[Sync]', message, context)
+}
+
+/**
+ * A file about to be uploaded through First Check-In whose name and size exactly match
+ * another file the vault already knows about (has `pdmData`) at a *different* path.
+ * That is the signature of a local move - Explorer, drag-drop, or an in-app move whose
+ * server-side path update failed - not of genuinely new content. `syncFile` has no
+ * move awareness: it looks up only the exact path it is given
+ * (`src/lib/supabase/files/mutations.ts`), so uploading one of these inserts a brand
+ * new server row and leaves the file at `existingServerPath` completely untouched -
+ * a genuine duplicate, not a completed move. See
+ * `.cursor/plans/barxt-move-download-incident-report.md`.
+ *
+ * Matching is name + size only, never a content hash: hashing cannot tell a stale row
+ * from an intentional duplicate in a CAD vault (`.cursor/plans/orphaned-file-rows-report.md`),
+ * so this never decides a row is redundant - it only asks the user to confirm before
+ * creating a new one that looks suspiciously like an old one already on the server.
+ */
+export interface LikelyMovedFile {
+  file: LocalFile
+  existingServerPath: string
+}
+
+/**
+ * Detect `filesToSync` entries that look like a move rather than new content, by
+ * comparing against every other file `allFiles` currently knows about (typically
+ * `ctx.files`, the whole vault, not just the current selection).
+ */
+export function findLikelyMovedFiles(
+  filesToSync: LocalFile[],
+  allFiles: LocalFile[],
+): LikelyMovedFile[] {
+  const selectedPaths = new Set(filesToSync.map((f) => f.relativePath.toLowerCase()))
+  const results: LikelyMovedFile[] = []
+
+  for (const file of filesToSync) {
+    const match = allFiles.find(
+      (candidate) =>
+        !candidate.isDirectory &&
+        candidate.pdmData?.file_path !== undefined &&
+        candidate.name.toLowerCase() === file.name.toLowerCase() &&
+        candidate.size === file.size &&
+        candidate.relativePath.toLowerCase() !== file.relativePath.toLowerCase() &&
+        !selectedPaths.has(candidate.relativePath.toLowerCase()),
+    )
+    if (match?.pdmData) {
+      results.push({ file, existingServerPath: match.pdmData.file_path })
+    }
+  }
+
+  return results
 }
 
 /**
@@ -148,6 +199,61 @@ export const syncCommand: Command<SyncParams> = {
     const { ignoreSolidworksTempFiles } = usePDMStore.getState()
     if (ignoreSolidworksTempFiles) {
       filesToSync = filesToSync.filter((f) => !isSolidworksTempFile(f.name))
+    }
+
+    if (filesToSync.length === 0) {
+      tracker.endOperation('completed')
+      return {
+        success: true,
+        message: 'No files to sync',
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+      }
+    }
+
+    // ========================================
+    // PRE-CHECK: Warn before uploading files that look like a move, not new content.
+    // See findLikelyMovedFiles's doc comment.
+    // ========================================
+    const likelyMoved = findLikelyMovedFiles(filesToSync, ctx.files)
+    if (likelyMoved.length > 0) {
+      if (ctx.confirm) {
+        const suffix = likelyMoved.length === 1 ? '_one' : '_other'
+        const confirmed = await ctx.confirm({
+          title: t(`sync.likelyMoved.title${suffix}`, { count: likelyMoved.length }),
+          message: t(`sync.likelyMoved.message${suffix}`, { count: likelyMoved.length }),
+          items: likelyMoved.map(({ file, existingServerPath }) =>
+            t('sync.likelyMoved.item', { path: file.relativePath, existingPath: existingServerPath }),
+          ),
+          confirmText: t('sync.likelyMoved.confirmText'),
+        })
+
+        if (!confirmed) {
+          const skippedPaths = new Set(
+            likelyMoved.map(({ file }) => file.relativePath.toLowerCase()),
+          )
+          filesToSync = filesToSync.filter((f) => !skippedPaths.has(f.relativePath.toLowerCase()))
+          logSync('info', 'User declined to upload files that looked like a move', {
+            count: likelyMoved.length,
+          })
+          const skippedSuffix = likelyMoved.length === 1 ? '_one' : '_other'
+          ctx.addToast(
+            'info',
+            t(`sync.likelyMoved.skippedToast${skippedSuffix}`, { count: likelyMoved.length }),
+          )
+        } else {
+          logSync('info', 'User confirmed uploading files that looked like a move', {
+            count: likelyMoved.length,
+          })
+        }
+      } else {
+        logSync(
+          'warn',
+          'Uploading files that look like a move without a confirmation dialog available',
+          { count: likelyMoved.length },
+        )
+      }
     }
 
     if (filesToSync.length === 0) {

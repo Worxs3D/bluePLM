@@ -353,6 +353,12 @@ export const pt: TranslationDict = {
       generic_one: 'Também foi eliminada {{count}} pasta vazia que ficou',
       generic_other: 'Também foram eliminadas {{count}} pastas vazias que ficaram',
     },
+    directoriesTrackedByServer: {
+      generic_one:
+        '{{count}} folder is empty here but still listed on the server, so it was left in place',
+      generic_other:
+        '{{count}} folders are empty here but still listed on the server, so they were left in place',
+    },
   },
 
   fileOps: {
@@ -387,6 +393,26 @@ export const pt: TranslationDict = {
     unknown: 'Erro desconhecido',
     pathCaseConflict:
       'Outro ficheiro já ocupa este caminho no servidor e difere apenas em maiúsculas e minúsculas. Atualize a lista de ficheiros para o ver.',
+  },
+
+  // Not yet translated — served from the English dictionary via getTranslation's per-key
+  // fallback (see newKeys.test.ts). Keys exist here so structural checks pass; retranslate when
+  // confident.
+  sync: {
+    likelyMoved: {
+      title_one: 'This file may already be on the server elsewhere',
+      title_other: '{{count}} files may already be on the server elsewhere',
+      message_one:
+        'This file has the same name and size as a file already on the server at a different path. Uploading it now creates a new copy there instead of moving the existing one. If you moved this file, use Move or Resolve Pending Moves instead so its history is kept.',
+      message_other:
+        '{{count}} of these files have the same name and size as files already on the server at different paths. Uploading them now creates new copies instead of moving the existing ones. If you moved these files, use Move or Resolve Pending Moves instead so their history is kept.',
+      item: '{{path}} \u2192 matches existing server file at {{existingPath}}',
+      confirmText: 'Upload Anyway',
+      skippedToast_one:
+        'Skipped 1 file that looked like a move - use Move or Resolve Pending Moves instead',
+      skippedToast_other:
+        'Skipped {{count}} files that looked like a move - use Move or Resolve Pending Moves instead',
+    },
   },
 
   status: {
@@ -645,7 +671,7 @@ export const pt: TranslationDict = {
       title: 'Re-align with Server',
       subtitle:
         "Compares your files against the server and shows what's different before anything changes.",
-      waitingForConfirmation: 'Waiting for you to confirm the pending file renames.',
+      waitingForConfirmation: 'Waiting for you to confirm the next change.',
     },
 
     runButton: 'Fix Selected Items',
@@ -681,7 +707,18 @@ export const pt: TranslationDict = {
     pendingMove: {
       label_one: '{{count}} file moved on disk but not in the vault',
       label_other: '{{count}} files moved on disk but not in the vault',
-      description: 'Puts each file back at the path the vault expects.',
+      description:
+        'Choose per file whether to restore the vault path or keep the path on this computer.',
+      keepServer: 'Keep server path',
+      keepLocal: 'Keep local path',
+      keepServerAll: 'Keep server path for all',
+      keepLocalAll: 'Keep local path for all',
+      keepLocalNote:
+        'Keep local path writes this computer’s location to the vault, so everyone else will see the rename.',
+      adoptSummary_one: '{{count}} file will be restored to the server path',
+      adoptSummary_other: '{{count}} files will be restored to the server path',
+      reconcileSummary_one: '{{count}} file will update the vault',
+      reconcileSummary_other: '{{count}} files will update the vault',
     },
     orphaned: {
       label_one: '{{count}} file the server no longer has',

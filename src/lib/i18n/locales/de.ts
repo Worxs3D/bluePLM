@@ -359,6 +359,12 @@ export const de: TranslationDict = {
       generic_one: 'Außerdem {{count}} leeren, zurückgebliebenen Ordner entfernt',
       generic_other: 'Außerdem {{count}} leere, zurückgebliebene Ordner entfernt',
     },
+    directoriesTrackedByServer: {
+      generic_one:
+        '{{count}} Ordner ist hier leer, wird aber noch auf dem Server geführt, daher belassen',
+      generic_other:
+        '{{count}} Ordner sind hier leer, werden aber noch auf dem Server geführt, daher belassen',
+    },
   },
 
   fileOps: {
@@ -393,6 +399,23 @@ export const de: TranslationDict = {
     unknown: 'Unbekannter Fehler',
     pathCaseConflict:
       'Eine andere Datei belegt auf dem Server bereits diesen Pfad und unterscheidet sich nur in der Groß- und Kleinschreibung. Aktualisiere die Dateiliste, um sie anzuzeigen.',
+  },
+
+  sync: {
+    likelyMoved: {
+      title_one: 'Diese Datei könnte bereits woanders auf dem Server liegen',
+      title_other: '{{count}} Dateien könnten bereits woanders auf dem Server liegen',
+      message_one:
+        'Diese Datei hat denselben Namen und dieselbe Größe wie eine Datei, die bereits unter einem anderen Pfad auf dem Server liegt. Ein Hochladen erstellt dort eine neue Kopie, statt die vorhandene zu verschieben. Falls du diese Datei verschoben hast, nutze stattdessen Verschieben oder Ausstehende Verschiebungen auflösen, damit der Verlauf erhalten bleibt.',
+      message_other:
+        '{{count}} dieser Dateien haben denselben Namen und dieselbe Größe wie Dateien, die bereits unter anderen Pfaden auf dem Server liegen. Ein Hochladen erstellt dort neue Kopien, statt die vorhandenen zu verschieben. Falls du diese Dateien verschoben hast, nutze stattdessen Verschieben oder Ausstehende Verschiebungen auflösen, damit der Verlauf erhalten bleibt.',
+      item: '{{path}} \u2192 entspricht vorhandener Serverdatei unter {{existingPath}}',
+      confirmText: 'Trotzdem hochladen',
+      skippedToast_one:
+        '1 Datei übersprungen, die wie eine Verschiebung aussah - nutze stattdessen Verschieben oder Ausstehende Verschiebungen auflösen',
+      skippedToast_other:
+        '{{count}} Dateien übersprungen, die wie eine Verschiebung aussahen - nutze stattdessen Verschieben oder Ausstehende Verschiebungen auflösen',
+    },
   },
 
   status: {
@@ -650,7 +673,7 @@ export const de: TranslationDict = {
       title: 'Mit Server abgleichen',
       subtitle:
         'Vergleicht Ihre Dateien mit dem Server und zeigt Unterschiede, bevor sich etwas ändert.',
-      waitingForConfirmation: 'Warten auf Ihre Bestätigung der ausstehenden Dateiumbenennungen.',
+      waitingForConfirmation: 'Warten auf Ihre Bestätigung der nächsten Änderung.',
     },
 
     runButton: 'Ausgewählte Elemente korrigieren',
@@ -687,7 +710,18 @@ export const de: TranslationDict = {
     pendingMove: {
       label_one: '{{count}} Datei auf der Festplatte verschoben, aber nicht im Tresor',
       label_other: '{{count}} Dateien auf der Festplatte verschoben, aber nicht im Tresor',
-      description: 'Verschiebt jede Datei zurück an den vom Tresor erwarteten Pfad.',
+      description:
+        'Wählen Sie pro Datei, ob der Tresorpfad wiederhergestellt oder der lokale Pfad behalten werden soll.',
+      keepServer: 'Serverpfad behalten',
+      keepLocal: 'Lokalen Pfad behalten',
+      keepServerAll: 'Serverpfad für alle behalten',
+      keepLocalAll: 'Lokalen Pfad für alle behalten',
+      keepLocalNote:
+        '„Lokalen Pfad behalten“ schreibt den Speicherort dieses Computers in den Tresor, sodass alle anderen die Umbenennung sehen.',
+      adoptSummary_one: '{{count}} Datei wird auf den Serverpfad zurückgesetzt',
+      adoptSummary_other: '{{count}} Dateien werden auf den Serverpfad zurückgesetzt',
+      reconcileSummary_one: '{{count}} Datei aktualisiert den Tresor',
+      reconcileSummary_other: '{{count}} Dateien aktualisieren den Tresor',
     },
     orphaned: {
       label_one: '{{count}} Datei, die der Server nicht mehr hat',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getOrphanedDirectoryCandidates } from './orphanedDirectories'
+import { getOrphanedDirectoryCandidates, getServerTrackedEmptyAncestors } from './orphanedDirectories'
 
 const VAULT = 'C:\\Vaults\\main'
 
@@ -161,5 +161,78 @@ describe('getOrphanedDirectoryCandidates', () => {
     })
 
     expect(result).toEqual([`${VAULT}\\a`])
+  })
+})
+
+// This incident: a folder move that duplicated server rows left the old path's
+// broken/stale rows active forever, so `serverFolderPaths` never stops asserting the
+// old directory exists and it never gets recycled - see
+// `.cursor/plans/barxt-move-download-incident-report.md` (claim 5). Nobody was ever
+// told why, because `getOrphanedDirectoryCandidates` drops that case in total silence.
+// `getServerTrackedEmptyAncestors` is the other half of the same derivation, kept in
+// sync with it by sharing `computeEmptiedAncestors` internally.
+describe('getServerTrackedEmptyAncestors', () => {
+  it('reports a directory the server still asserts exists, which getOrphanedDirectoryCandidates dropped', () => {
+    const input = {
+      succeededRelativePaths: ['a/b/gone.sldprt'],
+      keptRelativePaths: [],
+      serverFolderPaths: new Set(['a/b']),
+    }
+
+    expect(getOrphanedDirectoryCandidates({ ...input, vaultPath: VAULT })).toEqual([`${VAULT}\\a`])
+    expect(getServerTrackedEmptyAncestors(input)).toEqual(['a/b'])
+  })
+
+  it('returns nothing when no candidate is server-tracked', () => {
+    const result = getServerTrackedEmptyAncestors({
+      succeededRelativePaths: ['a/b/gone.sldprt'],
+      keptRelativePaths: [],
+      serverFolderPaths: new Set(),
+    })
+
+    expect(result).toEqual([])
+  })
+
+  it('returns nothing when nothing was actually emptied', () => {
+    const result = getServerTrackedEmptyAncestors({
+      succeededRelativePaths: [],
+      keptRelativePaths: ['a/b/locked.sldprt'],
+      serverFolderPaths: new Set(['a/b']),
+    })
+
+    expect(result).toEqual([])
+  })
+
+  it('excludes a directory that still holds a kept file even if the server also tracks it', () => {
+    const result = getServerTrackedEmptyAncestors({
+      succeededRelativePaths: ['a/b/gone.sldprt'],
+      keptRelativePaths: ['a/b/locked.sldprt'],
+      serverFolderPaths: new Set(['a/b']),
+    })
+
+    // 'a/b' is not actually empty (locked.sldprt is still there), so it is never a
+    // candidate for either export - reporting it here would blame the server for a
+    // directory that a local file, not the server, is keeping alive.
+    expect(result).toEqual([])
+  })
+
+  it('matches serverFolderPaths case-insensitively, same as getOrphanedDirectoryCandidates', () => {
+    const result = getServerTrackedEmptyAncestors({
+      succeededRelativePaths: ['A/B/gone.sldprt'],
+      keptRelativePaths: [],
+      serverFolderPaths: new Set(['a/b']),
+    })
+
+    expect(result).toEqual(['A/B'])
+  })
+
+  it('sorts deepest-first, same as getOrphanedDirectoryCandidates', () => {
+    const result = getServerTrackedEmptyAncestors({
+      succeededRelativePaths: ['a/b/c/d.sldprt'],
+      keptRelativePaths: [],
+      serverFolderPaths: new Set(['a', 'a/b', 'a/b/c']),
+    })
+
+    expect(result).toEqual(['a/b/c', 'a/b', 'a'])
   })
 })

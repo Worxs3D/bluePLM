@@ -26,6 +26,12 @@
  * `_other` pair, folded into the same toast rather than a second one - see
  * `src/lib/orphanedDirectories.ts` and
  * `.cursor/plans/release-4.3.2-empty-folders.plan.md`.
+ *
+ * `autoDiscard.directoriesTrackedByServer.*` (barxt incident,
+ * `.cursor/plans/barxt-move-download-incident-report.md`) is the one exception to "every
+ * locale gets a real translation": de/es/fr are real, but pt/zh-CN/zh-TW deliberately
+ * keep the English text for now, so it is only checked below for key-set parity, not
+ * folded into `KEY_PAIRS`/the per-locale distinctness assertions the older keys get.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -180,6 +186,8 @@ describe('autoDiscard plural-form structure across all seven locales', () => {
     expect(expected).toEqual([
       'directoriesRemoved.generic_one',
       'directoriesRemoved.generic_other',
+      'directoriesTrackedByServer.generic_one',
+      'directoriesTrackedByServer.generic_other',
       'failed.generic_one',
       'failed.generic_other',
       'removed.fromFolder_one',

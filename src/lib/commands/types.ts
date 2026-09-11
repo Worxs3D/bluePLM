@@ -194,6 +194,17 @@ export interface CommandResult {
    * could not recycle them. Mirrors `skipped` above, one register down.
    */
   directoriesKept?: number
+  /**
+   * Count of directories a discard batch emptied on disk but which are never even
+   * offered to `trashEmptyDirs`, because the server still asserts they exist
+   * (`serverFolderPaths` - see `getServerTrackedEmptyAncestors` in
+   * `src/lib/orphanedDirectories.ts`). Distinct from `directoriesKept`, which counts
+   * candidates that *were* offered and refused on disk: this one is never a disk
+   * refusal, and retrying the discard changes nothing about it. Surfaced separately so
+   * a caller can tell the user why the folder is not going away, instead of it just
+   * silently staying - see `.cursor/plans/barxt-move-download-incident-report.md`.
+   */
+  directoriesTrackedByServer?: number
 
   // Optional details
   details?: string[]
@@ -541,9 +552,11 @@ export interface MatchGhostFileParams {
 /**
  * Parameters for the reconcile-moved-paths command.
  *
- * Writes the current local path of every `diffStatus === 'moved'` file to its server record. The
- * command takes no selection: the targets are whatever the vault holds, because a partially
- * reconciled vault is what this exists to fix.
+ * Writes the current local path of `diffStatus === 'moved'` files to their server records. Omitted
+ * `fileIds` is vault-wide — the terminal and Resolve Moved Files still run that way, because a
+ * partially reconciled vault is what those entry points exist to fix. A caller that has already
+ * named specific files (Re-align's per-file keep-local choices) passes `fileIds` so the write
+ * cannot spill onto a file the user left on keep-server, or left unresolved.
  */
 export interface ReconcileMovedPathsParams {
   /**
@@ -561,15 +574,24 @@ export interface ReconcileMovedPathsParams {
    * the holders, so they can be asked to check in. Opting in is the deliberate second choice.
    */
   skipCheckedOut?: boolean
+
+  /**
+   * Restrict the pre-flight (and therefore the write) to these `files.id`s. Omitted considers
+   * every pending move in the vault. An empty array considers none — the command reports
+   * nothing-to-do rather than falling back to vault-wide.
+   */
+  fileIds?: string[]
 }
 
 /**
  * Parameters for the adopt-server-paths command.
  *
- * The inverse of `reconcile-moved-paths`: renames every `diffStatus === 'moved'` file on disk
- * back to the path its server row already records. Writes only to the local disk and the local
- * sync index - no RPC, no `files` or `folders` write. Like reconcile, the command takes no
- * selection: the targets are whatever the vault holds.
+ * The inverse of `reconcile-moved-paths`: renames `diffStatus === 'moved'` files on disk back
+ * to the path their server row already records. Writes only to the local disk and the local
+ * sync index - no RPC, no `files` or `folders` write. Omitted `fileIds` is vault-wide, matching
+ * the terminal and Resolve Moved Files. A caller that has already named specific files
+ * (Re-align's per-file keep-server choices) passes `fileIds` so the rename cannot spill onto a
+ * file the user left on keep-local, or left unresolved.
  */
 export interface AdoptServerPathsParams {
   /**
@@ -588,6 +610,13 @@ export interface AdoptServerPathsParams {
    * targets are held back and reported by default. Opting in is the deliberate second choice.
    */
   force?: boolean
+
+  /**
+   * Restrict the pre-flight (and therefore the rename) to these `files.id`s. Omitted considers
+   * every pending move in the vault. An empty array considers none — the command reports
+   * nothing-to-do rather than falling back to vault-wide.
+   */
+  fileIds?: string[]
 }
 
 // ============================================

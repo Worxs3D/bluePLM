@@ -356,6 +356,12 @@ export const es: TranslationDict = {
       generic_one: 'También se eliminó {{count}} carpeta vacía que quedó',
       generic_other: 'También se eliminaron {{count}} carpetas vacías que quedaron',
     },
+    directoriesTrackedByServer: {
+      generic_one:
+        '{{count}} carpeta está vacía aquí pero el servidor aún la registra, así que se dejó tal cual',
+      generic_other:
+        '{{count}} carpetas están vacías aquí pero el servidor aún las registra, así que se dejaron tal cual',
+    },
   },
 
   fileOps: {
@@ -390,6 +396,23 @@ export const es: TranslationDict = {
     unknown: 'Error desconocido',
     pathCaseConflict:
       'Otro archivo ya ocupa esta ruta en el servidor y solo se diferencia en mayúsculas y minúsculas. Actualiza la lista de archivos para verlo.',
+  },
+
+  sync: {
+    likelyMoved: {
+      title_one: 'Este archivo puede que ya esté en el servidor en otro lugar',
+      title_other: '{{count}} archivos puede que ya estén en el servidor en otro lugar',
+      message_one:
+        'Este archivo tiene el mismo nombre y tamaño que un archivo que ya existe en el servidor en otra ruta. Subirlo ahora crea una copia nueva allí en lugar de mover el existente. Si moviste este archivo, usa Mover o Resolver movimientos pendientes para conservar su historial.',
+      message_other:
+        '{{count}} de estos archivos tienen el mismo nombre y tamaño que archivos que ya existen en el servidor en otras rutas. Subirlos ahora crea copias nuevas en lugar de mover los existentes. Si moviste estos archivos, usa Mover o Resolver movimientos pendientes para conservar su historial.',
+      item: '{{path}} \u2192 coincide con el archivo existente en {{existingPath}}',
+      confirmText: 'Subir de todos modos',
+      skippedToast_one:
+        'Se omitió 1 archivo que parecía un movimiento - usa Mover o Resolver movimientos pendientes',
+      skippedToast_other:
+        'Se omitieron {{count}} archivos que parecían un movimiento - usa Mover o Resolver movimientos pendientes',
+    },
   },
 
   status: {
@@ -645,7 +668,7 @@ export const es: TranslationDict = {
     dialog: {
       title: 'Realinear con el servidor',
       subtitle: 'Compara sus archivos con el servidor y muestra las diferencias antes de cambiar nada.',
-      waitingForConfirmation: 'Esperando su confirmación para los cambios de nombre de archivo pendientes.',
+      waitingForConfirmation: 'Esperando su confirmación para el siguiente cambio.',
     },
 
     runButton: 'Corregir elementos seleccionados',
@@ -682,7 +705,18 @@ export const es: TranslationDict = {
     pendingMove: {
       label_one: '{{count}} archivo movido en el disco pero no en la bóveda',
       label_other: '{{count}} archivos movidos en el disco pero no en la bóveda',
-      description: 'Devuelve cada archivo a la ruta que la bóveda espera.',
+      description:
+        'Elija por archivo si restaurar la ruta de la bóveda o conservar la ruta de este equipo.',
+      keepServer: 'Conservar ruta del servidor',
+      keepLocal: 'Conservar ruta local',
+      keepServerAll: 'Conservar ruta del servidor para todos',
+      keepLocalAll: 'Conservar ruta local para todos',
+      keepLocalNote:
+        'Conservar la ruta local escribe la ubicación de este equipo en la bóveda, de modo que todos los demás verán el cambio de nombre.',
+      adoptSummary_one: '{{count}} archivo se restaurará a la ruta del servidor',
+      adoptSummary_other: '{{count}} archivos se restaurarán a la ruta del servidor',
+      reconcileSummary_one: '{{count}} archivo actualizará la bóveda',
+      reconcileSummary_other: '{{count}} archivos actualizarán la bóveda',
     },
     orphaned: {
       label_one: '{{count}} archivo que el servidor ya no tiene',

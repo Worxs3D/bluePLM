@@ -358,6 +358,12 @@ export const fr: TranslationDict = {
       generic_one: '{{count}} dossier vide laissé a également été supprimé',
       generic_other: '{{count}} dossiers vides laissés ont également été supprimés',
     },
+    directoriesTrackedByServer: {
+      generic_one:
+        '{{count}} dossier est vide ici mais encore répertorié sur le serveur, il a donc été laissé en place',
+      generic_other:
+        '{{count}} dossiers sont vides ici mais encore répertoriés sur le serveur, ils ont donc été laissés en place',
+    },
   },
 
   fileOps: {
@@ -392,6 +398,23 @@ export const fr: TranslationDict = {
     unknown: 'Erreur inconnue',
     pathCaseConflict:
       "Un autre fichier occupe déjà ce chemin sur le serveur et n'en diffère que par la casse. Actualisez la liste des fichiers pour le faire apparaître.",
+  },
+
+  sync: {
+    likelyMoved: {
+      title_one: 'Ce fichier se trouve peut-être déjà ailleurs sur le serveur',
+      title_other: '{{count}} fichiers se trouvent peut-être déjà ailleurs sur le serveur',
+      message_one:
+        "Ce fichier a le même nom et la même taille qu'un fichier déjà présent sur le serveur à un autre emplacement. L'envoyer maintenant y créera une nouvelle copie au lieu de déplacer le fichier existant. Si vous avez déplacé ce fichier, utilisez plutôt Déplacer ou Résoudre les déplacements en attente pour conserver son historique.",
+      message_other:
+        "{{count}} de ces fichiers ont le même nom et la même taille que des fichiers déjà présents sur le serveur à d'autres emplacements. Les envoyer maintenant y créera de nouvelles copies au lieu de déplacer les fichiers existants. Si vous avez déplacé ces fichiers, utilisez plutôt Déplacer ou Résoudre les déplacements en attente pour conserver leur historique.",
+      item: '{{path}} \u2192 correspond au fichier existant {{existingPath}}',
+      confirmText: 'Envoyer quand même',
+      skippedToast_one:
+        "1 fichier ignoré car il semblait déplacé - utilisez plutôt Déplacer ou Résoudre les déplacements en attente",
+      skippedToast_other:
+        "{{count}} fichiers ignorés car ils semblaient déplacés - utilisez plutôt Déplacer ou Résoudre les déplacements en attente",
+    },
   },
 
   status: {
@@ -650,7 +673,7 @@ export const fr: TranslationDict = {
     dialog: {
       title: 'Réaligner avec le serveur',
       subtitle: 'Compare vos fichiers au serveur et montre les différences avant tout changement.',
-      waitingForConfirmation: 'En attente de votre confirmation pour les renommages de fichiers en attente.',
+      waitingForConfirmation: 'En attente de votre confirmation pour la prochaine modification.',
     },
 
     runButton: 'Corriger les éléments sélectionnés',
@@ -686,7 +709,18 @@ export const fr: TranslationDict = {
     pendingMove: {
       label_one: '{{count}} fichier déplacé sur le disque mais pas dans le coffre',
       label_other: '{{count}} fichiers déplacés sur le disque mais pas dans le coffre',
-      description: "Remet chaque fichier au chemin que le coffre attend.",
+      description:
+        'Choisissez pour chaque fichier de restaurer le chemin du coffre ou de conserver le chemin de cet ordinateur.',
+      keepServer: 'Conserver le chemin serveur',
+      keepLocal: 'Conserver le chemin local',
+      keepServerAll: 'Conserver le chemin serveur pour tous',
+      keepLocalAll: 'Conserver le chemin local pour tous',
+      keepLocalNote:
+        'Conserver le chemin local écrit l’emplacement de cet ordinateur dans le coffre, de sorte que tout le monde verra le renommage.',
+      adoptSummary_one: '{{count}} fichier sera restauré au chemin serveur',
+      adoptSummary_other: '{{count}} fichiers seront restaurés au chemin serveur',
+      reconcileSummary_one: '{{count}} fichier mettra à jour le coffre',
+      reconcileSummary_other: '{{count}} fichiers mettront à jour le coffre',
     },
     orphaned: {
       label_one: "{{count}} fichier que le serveur n'a plus",

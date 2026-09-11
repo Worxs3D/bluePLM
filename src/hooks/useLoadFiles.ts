@@ -2521,10 +2521,15 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                   }
                   addToast('info', message)
                 }
-                if (result.directoriesRemoved || result.directoriesKept) {
+                if (
+                  result.directoriesRemoved ||
+                  result.directoriesKept ||
+                  result.directoriesTrackedByServer
+                ) {
                   window.electronAPI?.log('info', '[AutoDiscard] Orphaned directory cleanup', {
                     directoriesRemoved: result.directoriesRemoved,
                     directoriesKept: result.directoriesKept,
+                    directoriesTrackedByServer: result.directoriesTrackedByServer,
                   })
                 }
                 if (result.skipped) {

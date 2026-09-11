@@ -28,7 +28,7 @@ import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { removeFromSyncIndex } from '../../cache/localSyncIndex'
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
-import { getOrphanedDirectoryCandidates } from '../../orphanedDirectories'
+import { getOrphanedDirectoryCandidates, getServerTrackedEmptyAncestors } from '../../orphanedDirectories'
 import { getRelativePath } from '../../utils'
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -63,6 +63,15 @@ const lastAutomaticFailureSignatures = new Map<string, string>()
 const lastAutomaticAllSkippedAt = new Map<string, number>()
 
 /**
+ * Per vault, the directories the last automatic run reported as server-tracked (see
+ * `directoriesTrackedByServer` below), as a stable signature. Unlike a lock or a
+ * write failure this condition never clears itself - the folder stays asserted by the
+ * server until someone fixes the server-side data - so without this the same notice
+ * would repeat on every silent refresh forever.
+ */
+const lastAutomaticServerTrackedSignatures = new Map<string, string>()
+
+/**
  * How long an all-skipped automatic batch backs off before the same vault is tried
  * again.
  *
@@ -80,6 +89,7 @@ export function resetAutomaticSkipNotices(): void {
   lastAutomaticSkipSignatures.clear()
   lastAutomaticFailureSignatures.clear()
   lastAutomaticAllSkippedAt.clear()
+  lastAutomaticServerTrackedSignatures.clear()
 }
 
 /**
@@ -159,9 +169,9 @@ async function removeOrphanedDirectories(
   ctx: CommandContext,
   filesToDiscard: LocalFile[],
   deletedPaths: string[],
-): Promise<{ directoriesRemoved: number; directoriesKept: number }> {
+): Promise<{ directoriesRemoved: number; directoriesKept: number; directoriesTrackedByServer: number }> {
   const vaultPath = ctx.vaultPath
-  if (!vaultPath) return { directoriesRemoved: 0, directoriesKept: 0 }
+  if (!vaultPath) return { directoriesRemoved: 0, directoriesKept: 0, directoriesTrackedByServer: 0 }
 
   const relativeByPath = new Map(filesToDiscard.map((f) => [f.path, f.relativePath]))
   const deletedSet = new Set(deletedPaths)
@@ -180,13 +190,25 @@ async function removeOrphanedDirectories(
     vaultPath,
   })
 
-  if (candidates.length === 0) return { directoriesRemoved: 0, directoriesKept: 0 }
+  // Never a disk refusal, and retrying this discard changes nothing about it - the
+  // server has to stop asserting the folder exists before it can ever be recycled.
+  // Computed regardless of whether `candidates` is empty: a batch can be *entirely*
+  // server-tracked, in which case `candidates` is empty but this is not.
+  const directoriesTrackedByServer = getServerTrackedEmptyAncestors({
+    succeededRelativePaths,
+    keptRelativePaths,
+    serverFolderPaths,
+  }).length
+
+  if (candidates.length === 0) {
+    return { directoriesRemoved: 0, directoriesKept: 0, directoriesTrackedByServer }
+  }
 
   if (!window.electronAPI?.trashEmptyDirs) {
     logDiscardOrphaned('warn', 'No trashEmptyDirs bridge available - leaving directories on disk', {
       candidateCount: candidates.length,
     })
-    return { directoriesRemoved: 0, directoriesKept: candidates.length }
+    return { directoriesRemoved: 0, directoriesKept: candidates.length, directoriesTrackedByServer }
   }
 
   let dirResult: {
@@ -199,7 +221,7 @@ async function removeOrphanedDirectories(
       error: String(error),
       candidateCount: candidates.length,
     })
-    return { directoriesRemoved: 0, directoriesKept: candidates.length }
+    return { directoriesRemoved: 0, directoriesKept: candidates.length, directoriesTrackedByServer }
   }
 
   const removedDirectories = dirResult.results.filter((r) => r.success).map((r) => r.path)
@@ -210,7 +232,7 @@ async function removeOrphanedDirectories(
     relocateCurrentFolderIfRemoved(removedDirectories, vaultPath)
   }
 
-  return { directoriesRemoved: removedDirectories.length, directoriesKept }
+  return { directoriesRemoved: removedDirectories.length, directoriesKept, directoriesTrackedByServer }
 }
 
 /**
@@ -378,16 +400,14 @@ export const discardOrphanedCommand: Command<DiscardOrphanedParams> = {
       // inside the watcher-suppression window and the processing-folder bookkeeping
       // opened for the file batch, and deliberately the only call site for this - see
       // removeOrphanedDirectories's doc comment.
-      const { directoriesRemoved, directoriesKept } = await removeOrphanedDirectories(
-        ctx,
-        filesToDiscard,
-        deletedPaths,
-      )
-      if (directoriesRemoved > 0 || directoriesKept > 0) {
+      const { directoriesRemoved, directoriesKept, directoriesTrackedByServer } =
+        await removeOrphanedDirectories(ctx, filesToDiscard, deletedPaths)
+      if (directoriesRemoved > 0 || directoriesKept > 0 || directoriesTrackedByServer > 0) {
         logDiscardOrphaned('info', 'Orphaned directory cleanup', {
           operationId,
           directoriesRemoved,
           directoriesKept,
+          directoriesTrackedByServer,
         })
       }
 
@@ -484,6 +504,31 @@ export const discardOrphanedCommand: Command<DiscardOrphanedParams> = {
         lastAutomaticSkipSignatures.delete(skipNoticeKey)
       }
 
+      // A server-tracked empty folder is not a disk problem and never resolves itself
+      // by retrying, so - same as the skip notice above - report it once per distinct
+      // set of folders per vault on the automatic path, and always on a manual run.
+      if (directoriesTrackedByServer > 0) {
+        const signature = String(directoriesTrackedByServer)
+        const alreadyReported =
+          isAutomatic &&
+          skipNoticeKey !== null &&
+          lastAutomaticServerTrackedSignatures.get(skipNoticeKey) === signature
+        if (!alreadyReported) {
+          const suffix = directoriesTrackedByServer === 1 ? '_one' : '_other'
+          ctx.addToast(
+            'info',
+            t(`autoDiscard.directoriesTrackedByServer.generic${suffix}`, {
+              count: directoriesTrackedByServer,
+            }),
+          )
+        }
+        if (isAutomatic && skipNoticeKey !== null) {
+          lastAutomaticServerTrackedSignatures.set(skipNoticeKey, signature)
+        }
+      } else if (isAutomatic && skipNoticeKey !== null) {
+        lastAutomaticServerTrackedSignatures.delete(skipNoticeKey)
+      }
+
       // The automatic path's own toast is suppressed above unconditionally, which
       // means a genuine failure (e.g. a locked file) would otherwise never reach the
       // user at all, then retry silently on every refresh for as long as it lasts.
@@ -529,6 +574,7 @@ export const discardOrphanedCommand: Command<DiscardOrphanedParams> = {
         skipped: skippedPaths.length,
         directoriesRemoved,
         directoriesKept,
+        directoriesTrackedByServer,
         durationMs: Math.round(performance.now() - operationStart),
       })
 
@@ -547,6 +593,8 @@ export const discardOrphanedCommand: Command<DiscardOrphanedParams> = {
         skippedPaths: skippedPaths.length > 0 ? skippedPaths : undefined,
         directoriesRemoved: directoriesRemoved > 0 ? directoriesRemoved : undefined,
         directoriesKept: directoriesKept > 0 ? directoriesKept : undefined,
+        directoriesTrackedByServer:
+          directoriesTrackedByServer > 0 ? directoriesTrackedByServer : undefined,
         errors: errors.length > 0 ? errors : undefined,
         duration: batchResult.summary.duration,
       }

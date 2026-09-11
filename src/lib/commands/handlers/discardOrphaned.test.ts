@@ -720,6 +720,62 @@ describe('discard-orphaned directory cleanup', () => {
     expect(trashEmptyDirs).not.toHaveBeenCalled()
   })
 
+  // Incident: a folder the server still asserts exists (a stale row, or another file
+  // left behind under it) is never offered to trashEmptyDirs and never becomes
+  // `directoriesKept` either - both drop it in total silence, which is exactly what
+  // left an empty-looking folder on disk with no explanation. See
+  // `.cursor/plans/barxt-move-download-incident-report.md`, claim 5.
+  it('reports a server-tracked candidate as directoriesTrackedByServer, not as kept or removed', async () => {
+    const files = [orphan('folder/gone.sldprt')]
+    storeState.serverFolderPaths = new Set(['folder'])
+    const ctx = makeContext(files, { vaultPath: 'C:/vault' })
+
+    const result = await discardOrphanedCommand.execute({ files, isAutomatic: true }, ctx)
+
+    expect(result.directoriesTrackedByServer).toBe(1)
+    expect(result.directoriesRemoved).toBeUndefined()
+    expect(result.directoriesKept).toBeUndefined()
+  })
+
+  it('shows a toast about a server-tracked folder even on the automatic path, once per distinct count', async () => {
+    const files = [orphan('folder/gone.sldprt')]
+    storeState.serverFolderPaths = new Set(['folder'])
+    const ctx = makeContext(files, { vaultPath: 'C:/vault' })
+
+    await discardOrphanedCommand.execute({ files, isAutomatic: true }, ctx)
+    expect(ctx.addToast).toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('autoDiscard.directoriesTrackedByServer.generic'),
+    )
+
+    ctx.addToast.mockClear()
+
+    // Same vault, same count, still unresolved a refresh later - the notice must not
+    // repeat verbatim, same as the skip/failure notices above.
+    const ctx2 = makeContext([orphan('folder/gone.sldprt')], { vaultPath: 'C:/vault' })
+    await discardOrphanedCommand.execute(
+      { files: [orphan('folder/gone.sldprt')], isAutomatic: true },
+      ctx2,
+    )
+    expect(ctx2.addToast).not.toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('autoDiscard.directoriesTrackedByServer.generic'),
+    )
+  })
+
+  it('always toasts a server-tracked folder on a manual (non-automatic) run', async () => {
+    const files = [orphan('folder/gone.sldprt')]
+    storeState.serverFolderPaths = new Set(['folder'])
+    const ctx = makeContext(files, { vaultPath: 'C:/vault' })
+
+    await discardOrphanedCommand.execute({ files, isAutomatic: false }, ctx)
+
+    expect(ctx.addToast).toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('autoDiscard.directoriesTrackedByServer.generic'),
+    )
+  })
+
   it('does not call trashEmptyDirs when nothing was actually deleted', async () => {
     const files = [orphan('folder/locked.sldprt')]
     deleteBatch.mockImplementationOnce((paths: string[]) =>

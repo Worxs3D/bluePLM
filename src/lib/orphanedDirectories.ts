@@ -73,6 +73,59 @@ function getImmediateDirectory(relativePath: string): string {
   return ancestors.length > 0 ? ancestors[ancestors.length - 1] : ''
 }
 
+/** Deepest-first, then longest-string-first - shared sort for every view onto candidates. */
+function sortDeepestFirst(relativePaths: string[]): string[] {
+  return [...relativePaths].sort((a, b) => {
+    const segmentDelta = b.split('/').length - a.split('/').length
+    if (segmentDelta !== 0) return segmentDelta
+    return b.length - a.length
+  })
+}
+
+/**
+ * Every ancestor directory that became empty as a result of a discard batch, before
+ * the `serverFolderPaths` guard is applied. Shared by `getOrphanedDirectoryCandidates`
+ * (what is actually safe to recycle) and `getServerTrackedEmptyAncestors` (what would
+ * be safe if the server did not still assert it exists) so the two can never disagree
+ * about which directories the batch emptied.
+ */
+function computeEmptiedAncestors(
+  succeededRelativePaths: string[],
+  keptRelativePaths: string[],
+): Map<string, string> {
+  // Every ancestor of every successfully-deleted file is a candidate, up to but
+  // excluding the vault root (getAncestorDirectories never returns the root itself).
+  // Keyed by lowercase so a later case-insensitive removal below can address the same
+  // entry no matter which spelling first inserted it.
+  const candidates = new Map<string, string>()
+  for (const relativePath of succeededRelativePaths) {
+    for (const ancestor of getAncestorDirectories(relativePath)) {
+      const key = ancestor.toLowerCase()
+      if (!candidates.has(key)) candidates.set(key, ancestor)
+    }
+  }
+
+  if (candidates.size === 0) return candidates
+
+  // A kept file (skipped or genuinely failed) is still on disk, so its own directory,
+  // and every ancestor of that directory, is not empty. The main-process handler would
+  // refuse these anyway on its own re-stat; dropping them here up front is what makes
+  // the reported `directoriesKept` count mean "the handler found something we didn't
+  // know about" rather than counting refusals that were never going to succeed.
+  for (const keptPath of keptRelativePaths) {
+    const keptDirectory = getImmediateDirectory(keptPath)
+    if (!keptDirectory) continue
+    for (const key of Array.from(candidates.keys())) {
+      const candidate = candidates.get(key)
+      if (candidate !== undefined && isPathWithinDirectory(keptDirectory, candidate)) {
+        candidates.delete(key)
+      }
+    }
+  }
+
+  return candidates
+}
+
 /**
  * Derive the directories that became empty as a result of a discard batch, deepest
  * path first (more path segments first, then longer strings first as a tie-break).
@@ -89,35 +142,8 @@ export function getOrphanedDirectoryCandidates({
 }: OrphanedDirectoryCandidatesInput): string[] {
   if (!vaultPath) return []
 
-  // Every ancestor of every successfully-deleted file is a candidate, up to but
-  // excluding the vault root (getAncestorDirectories never returns the root itself).
-  // Keyed by lowercase so a later case-insensitive removal below can address the same
-  // entry no matter which spelling first inserted it.
-  const candidates = new Map<string, string>()
-  for (const relativePath of succeededRelativePaths) {
-    for (const ancestor of getAncestorDirectories(relativePath)) {
-      const key = ancestor.toLowerCase()
-      if (!candidates.has(key)) candidates.set(key, ancestor)
-    }
-  }
-
+  const candidates = computeEmptiedAncestors(succeededRelativePaths, keptRelativePaths)
   if (candidates.size === 0) return []
-
-  // A kept file (skipped or genuinely failed) is still on disk, so its own directory,
-  // and every ancestor of that directory, is not empty. Agent 1's handler would refuse
-  // these anyway on its own re-stat; dropping them here up front is what makes the
-  // reported `directoriesKept` count mean "the handler found something we didn't know
-  // about" rather than counting refusals that were never going to succeed.
-  for (const keptPath of keptRelativePaths) {
-    const keptDirectory = getImmediateDirectory(keptPath)
-    if (!keptDirectory) continue
-    for (const key of Array.from(candidates.keys())) {
-      const candidate = candidates.get(key)
-      if (candidate !== undefined && isPathWithinDirectory(keptDirectory, candidate)) {
-        candidates.delete(key)
-      }
-    }
-  }
 
   // Load-bearing, not just tidy: the merge auto-creates every server folder locally on
   // every load (`src/hooks/useLoadFiles.ts`'s server-folder pass), so removing a
@@ -133,13 +159,40 @@ export function getOrphanedDirectoryCandidates({
     if (lowerServerFolders.has(key)) candidates.delete(key)
   }
 
-  const relativeCandidates = Array.from(candidates.values())
-
-  relativeCandidates.sort((a, b) => {
-    const segmentDelta = b.split('/').length - a.split('/').length
-    if (segmentDelta !== 0) return segmentDelta
-    return b.length - a.length
-  })
+  const relativeCandidates = sortDeepestFirst(Array.from(candidates.values()))
 
   return relativeCandidates.map((relativePath) => buildFullPath(vaultPath, relativePath))
+}
+
+/**
+ * The directories a discard batch emptied on disk but which are left alone forever,
+ * not just this once, because the server still asserts they exist (`serverFolderPaths`
+ * - an explicit `folders` row, or a file the vault still has under that path, however
+ * stale). `getOrphanedDirectoryCandidates` drops these silently, by design - they are
+ * not a failure of this batch, they never reach `trashEmptyDirs`, and retrying changes
+ * nothing. That silence is exactly right for the removal decision and exactly wrong
+ * for the person looking at an empty-looking folder that never goes away: this export
+ * exists only so a caller can tell them why, in a message, without touching disk or
+ * re-deriving the candidate list itself.
+ *
+ * Vault-relative, not absolute - unlike `getOrphanedDirectoryCandidates`, nothing here
+ * is ever handed to `trashEmptyDirs`, so there is no need for a `vaultPath` and no risk
+ * of this list being mistaken for one more removal target.
+ */
+export function getServerTrackedEmptyAncestors({
+  succeededRelativePaths,
+  keptRelativePaths,
+  serverFolderPaths,
+}: Omit<OrphanedDirectoryCandidatesInput, 'vaultPath'>): string[] {
+  const candidates = computeEmptiedAncestors(succeededRelativePaths, keptRelativePaths)
+  if (candidates.size === 0) return []
+
+  const lowerServerFolders = new Set(
+    Array.from(serverFolderPaths, (path) => path.toLowerCase()),
+  )
+  const trackedByServer = Array.from(candidates.entries())
+    .filter(([key]) => lowerServerFolders.has(key))
+    .map(([, relativePath]) => relativePath)
+
+  return sortDeepestFirst(trackedByServer)
 }
