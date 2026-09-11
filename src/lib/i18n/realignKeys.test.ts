@@ -22,6 +22,7 @@ const PLAIN = [
   'realign.section.button',
   'realign.dialog.title',
   'realign.dialog.subtitle',
+  'realign.dialog.waitingForConfirmation',
   'realign.runButton',
   'realign.headline.aligned',
   'realign.headline.notAligned',

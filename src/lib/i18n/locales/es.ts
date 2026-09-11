@@ -645,6 +645,7 @@ export const es: TranslationDict = {
     dialog: {
       title: 'Realinear con el servidor',
       subtitle: 'Compara sus archivos con el servidor y muestra las diferencias antes de cambiar nada.',
+      waitingForConfirmation: 'Esperando su confirmación para los cambios de nombre de archivo pendientes.',
     },
 
     runButton: 'Corregir elementos seleccionados',

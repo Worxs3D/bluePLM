@@ -650,6 +650,7 @@ export const fr: TranslationDict = {
     dialog: {
       title: 'Réaligner avec le serveur',
       subtitle: 'Compare vos fichiers au serveur et montre les différences avant tout changement.',
+      waitingForConfirmation: 'En attente de votre confirmation pour les renommages de fichiers en attente.',
     },
 
     runButton: 'Corriger les éléments sélectionnés',

@@ -10,24 +10,26 @@ Renderer-only release — no schema change, no API change.
 
 ### Fixed
 
-- **A command confirmation dialog could render invisibly behind the dialog that opened it,
-  making the app look permanently hung.** `adopt-server-paths` and `reconcile-moved-paths` (used
-  by the terminal, by the context-menu "Resolve Pending Moves" dialog, and — new in 4.4.0 — by
-  the "Re-align with Server" button) ask for a final confirmation through a shared dialog
-  (`CommandConfirmContainer`) before writing anything. That dialog rendered at the same
-  z-index several other full-screen dialogs use, and lower than `ResolveMovedFilesDialog`'s,
-  which opens it and then sits on top of it: the confirmation was real and waiting for a click,
-  but the click had nowhere to land and nothing on screen said so. The only way out was to
-  force-quit. The confirmation dialog now renders above every full-screen overlay in the app,
-  unconditionally, and a test scans the whole codebase on every run so a future dialog cannot
-  quietly out-rank it again.
+- **Re-align with Server could hang on "Fix Selected Items" with no way to tell why.** Resolving
+  pending moves calls `adopt-server-paths`, which asks for a final confirmation through a shared
+  dialog (`CommandConfirmContainer`) before renaming anything. `RealignDialog`'s own "Run" button
+  kept showing a bare spinner the whole time that confirmation was open, with no indication a
+  second prompt existed or how to act on it — indistinguishable from the app being stuck, and
+  recoverable only by force-quitting. `RealignDialog` now says plainly that it is waiting for that
+  confirmation while it is open.
+- **The same confirmation dialog could also render invisibly behind the dialog that opened it.**
+  `ResolveMovedFilesDialog` (and, by the same mechanism, any future dialog) could render its own
+  backdrop above `CommandConfirmContainer`'s, hiding the confirmation entirely rather than merely
+  under-signaling it — built, wired, and completely unclickable. The confirmation dialog now
+  renders above every full-screen overlay in the app, unconditionally, and a test scans the whole
+  codebase on every run so a future dialog cannot quietly out-rank it again.
 - **The terminal gave no sign that a command it ran was waiting on that same dialog.** A
   terminal command that reaches the confirmation gate showed the same "Processing…" text as one
   that is genuinely still running, and Ctrl+C — the terminal's own cancel key — did nothing, a
   gap a comment in the code had flagged and never filled. The terminal now says plainly that a
   command is waiting for confirmation, and Ctrl+C declines it, the same as clicking Cancel on the
   dialog.
-- Reported from a session where invoking `adopt-server-paths --apply` from the terminal reached
+- Reported from a session where clicking "Fix Selected Items" in Re-align with Server reached
   this exact gate and never printed another line for the rest of the session, ending in a
   force-quit. Full writeup: `.cursor/plans/reconcile-hang-incident-report.md`.
 

@@ -72,6 +72,12 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
   const addToast = usePDMStore((state) => state.addToast)
   const isOperationRunning = usePDMStore((state) => state.isOperationRunning)
   const operationQueueLength = usePDMStore((state) => state.operationQueue.length)
+  // `resolvePendingMoves` calls `adopt-server-paths`, which opens its own full-screen
+  // confirmation (`ctx.confirm()` / `CommandConfirmContainer`) before it writes anything. While
+  // that is open, this dialog's own "Run" button is still showing its bare spinner - visually
+  // indistinguishable from ordinary work in progress - unless it is told to say otherwise. See
+  // the reconcile-hang incident report.
+  const pendingCommandConfirm = usePDMStore((state) => state.pendingCommandConfirm)
 
   const [plan, setPlan] = useState<AlignmentPlan>(defaultAlignmentPlan)
   const [isRunning, setIsRunning] = useState(false)
@@ -215,7 +221,12 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
           {outcome && <OutcomeSummary outcome={outcome} />}
         </div>
 
-        <div className="p-4 border-t border-plm-border flex justify-end gap-2">
+        <div className="p-4 border-t border-plm-border flex items-center justify-end gap-2">
+          {isRunning && pendingCommandConfirm && (
+            <span className="text-xs text-plm-fg-muted mr-auto">
+              {t('realign.dialog.waitingForConfirmation')}
+            </span>
+          )}
           <button onClick={handleClose} disabled={isRunning} className="btn btn-ghost">
             {t('common.close')}
           </button>

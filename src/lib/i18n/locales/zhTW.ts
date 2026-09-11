@@ -616,6 +616,7 @@ export const zhTW: TranslationDict = {
       title: 'Re-align with Server',
       subtitle:
         "Compares your files against the server and shows what's different before anything changes.",
+      waitingForConfirmation: 'Waiting for you to confirm the pending file renames.',
     },
 
     runButton: 'Fix Selected Items',

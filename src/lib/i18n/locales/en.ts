@@ -1686,6 +1686,13 @@ export const en: TranslationDict = {
       title: 'Re-align with Server',
       subtitle:
         "Compares your files against the server and shows what's different before anything changes.",
+      // Shown in place of the run button's bare spinner while a step it kicked off (today, only
+      // `resolvePendingMoves`) is waiting on its own confirmation dialog - a second, full-screen
+      // prompt that opens on top of this one. Without this line, the only visible thing while
+      // that prompt is open is a spinner that looks identical to ordinary work in progress -
+      // exactly what turned a real, answerable prompt into a session-ending hang. See the
+      // reconcile-hang incident report.
+      waitingForConfirmation: 'Waiting for you to confirm the pending file renames.',
     },
 
     runButton: 'Fix Selected Items',

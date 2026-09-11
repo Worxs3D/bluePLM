@@ -650,6 +650,7 @@ export const de: TranslationDict = {
       title: 'Mit Server abgleichen',
       subtitle:
         'Vergleicht Ihre Dateien mit dem Server und zeigt Unterschiede, bevor sich etwas ändert.',
+      waitingForConfirmation: 'Warten auf Ihre Bestätigung der ausstehenden Dateiumbenennungen.',
     },
 
     runButton: 'Ausgewählte Elemente korrigieren',
