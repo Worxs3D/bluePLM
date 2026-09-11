@@ -47,8 +47,17 @@ export const CommandConfirmContainer = memo(function CommandConfirmContainer() {
   const { title, message, items, confirmText = 'Continue' } = pendingConfirm
 
   return (
+    // z-[500]: this is the final, blocking gate in front of a write (`ctx.confirm()` in
+    // `executor.ts`), and it can be opened by a command handler from *any* calling context —
+    // the terminal, a context-menu dialog, a settings dialog. Several of those dialogs use their
+    // own elevated z-index (`ResolveMovedFilesDialog` is `z-[70]`, `DuplicatePartDialog` is
+    // `z-[200]`); at the old `z-50` this dialog rendered *behind* them instead of on top of them,
+    // so the confirmation a caller like `ResolveMovedFilesDialog` depends on to gate its own
+    // "Run" button was invisible and unclickable underneath it — indistinguishable from a hang,
+    // recoverable only by force-quitting. `CommandConfirmContainer.zIndex.test.ts` fails the
+    // build if any dialog in the app is given a higher z-index than this one.
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center"
+      className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-sm flex items-center justify-center"
       onClick={handleCancel}
     >
       <div

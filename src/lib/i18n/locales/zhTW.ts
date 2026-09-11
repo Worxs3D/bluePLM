@@ -552,6 +552,11 @@ export const zhTW: TranslationDict = {
     summarySkipped: '{{count}} 個已略過',
   },
 
+  terminal: {
+    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationCancelled: 'Confirmation cancelled.',
+  },
+
   resolveMoves: {
     title: '解決待處理的移動',
     subtitle: '有些檔案所在的路徑與庫記錄的不同。請選擇應以哪一側為準。',

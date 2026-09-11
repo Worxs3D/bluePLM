@@ -578,6 +578,12 @@ export const es: TranslationDict = {
     summarySkipped: '{{count}} omitidos',
   },
 
+  terminal: {
+    confirmationPending:
+      'Esperando confirmación — pulse Intro para confirmar, Esc o Ctrl+C para cancelar.',
+    confirmationCancelled: 'Confirmación cancelada.',
+  },
+
   resolveMoves: {
     title: 'Resolver movimientos pendientes',
     subtitle:

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { X, Terminal as TerminalIcon, Minus, ChevronUp, ChevronDown } from 'lucide-react'
+import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 // Force reimport of parser with all new commands (v3 - reload command)
@@ -8,6 +9,8 @@ import {
   getAutocompleteSuggestions,
   TerminalOutput,
 } from '@/lib/commands/parser'
+
+import { cancelPendingCommandConfirm } from './terminalConfirmCancel'
 
 interface TerminalProps {
   onRefresh?: (silent?: boolean) => void
@@ -23,6 +26,7 @@ export function Terminal({ onRefresh }: TerminalProps) {
     addTerminalHistory,
     files,
     currentFolder,
+    pendingCommandConfirm,
   } = usePDMStore()
 
   const [input, setInput] = useState('')
@@ -222,9 +226,22 @@ export function Terminal({ onRefresh }: TerminalProps) {
         toggleTerminal()
       }
     } else if (e.key === 'c' && e.ctrlKey) {
-      // Ctrl+C to cancel/clear
+      // Ctrl+C to cancel/clear. While a command is processing, the only thing that can actually
+      // be cancelled is a pending confirmation dialog (`ctx.confirm()`) — everything else a
+      // command awaits (disk I/O, an RPC) has no cancellation hook, and pretending otherwise
+      // would be worse than doing nothing. See `terminalConfirmCancel.ts`.
       if (isProcessing) {
-        // Could add cancel logic here if commands support it
+        if (cancelPendingCommandConfirm(pendingCommandConfirm)) {
+          setOutputs((prev) => [
+            ...prev,
+            {
+              id: `confirm-cancelled-${Date.now()}`,
+              type: 'info',
+              content: t('terminal.confirmationCancelled'),
+              timestamp: new Date(),
+            },
+          ])
+        }
       } else {
         setInput('')
         setHistoryIndex(-1)
@@ -348,7 +365,15 @@ export function Terminal({ onRefresh }: TerminalProps) {
             {output.content}
           </div>
         ))}
-        {isProcessing && <div className="text-amber-400 animate-pulse">Processing...</div>}
+        {isProcessing && (
+          <div className="text-amber-400 animate-pulse">
+            {/* A command awaiting `ctx.confirm()` is not "processing" in any sense a user can
+                see progress on — it is parked on a dialog outside this panel. Saying so plainly
+                is the difference between "the app is working" and "the app is stuck", which is
+                exactly the ambiguity that turned a confirmation prompt into a force-quit. */}
+            {pendingCommandConfirm ? t('terminal.confirmationPending') : 'Processing...'}
+          </div>
+        )}
       </div>
 
       {/* Input area */}

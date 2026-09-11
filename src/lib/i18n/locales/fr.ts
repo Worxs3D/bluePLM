@@ -583,6 +583,12 @@ export const fr: TranslationDict = {
     summarySkipped: '{{count}} ignorés',
   },
 
+  terminal: {
+    confirmationPending:
+      'En attente de confirmation — appuyez sur Entrée pour confirmer, Échap ou Ctrl+C pour annuler.',
+    confirmationCancelled: 'Confirmation annulée.',
+  },
+
   resolveMoves: {
     title: 'Résoudre les déplacements en attente',
     subtitle:

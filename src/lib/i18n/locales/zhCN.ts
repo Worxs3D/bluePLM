@@ -552,6 +552,11 @@ export const zhCN: TranslationDict = {
     summarySkipped: '{{count}} 个已跳过',
   },
 
+  terminal: {
+    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationCancelled: 'Confirmation cancelled.',
+  },
+
   resolveMoves: {
     title: '解决待处理的移动',
     subtitle: '有些文件所在的路径与库记录的不同。请选择应以哪一侧为准。',

@@ -582,6 +582,12 @@ export const de: TranslationDict = {
     summarySkipped: '{{count}} übersprungen',
   },
 
+  terminal: {
+    confirmationPending:
+      'Warten auf Bestätigung — Enter zum Bestätigen, Esc oder Strg+C zum Abbrechen.',
+    confirmationCancelled: 'Bestätigung abgebrochen.',
+  },
+
   resolveMoves: {
     title: 'Ausstehende Verschiebungen lösen',
     subtitle:

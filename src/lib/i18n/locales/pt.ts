@@ -575,6 +575,11 @@ export const pt: TranslationDict = {
     summarySkipped: '{{count}} ignorados',
   },
 
+  terminal: {
+    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationCancelled: 'Confirmation cancelled.',
+  },
+
   resolveMoves: {
     title: 'Resolver movimentações pendentes',
     subtitle:

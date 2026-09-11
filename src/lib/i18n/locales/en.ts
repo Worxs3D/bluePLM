@@ -1604,6 +1604,16 @@ export const en: TranslationDict = {
     summarySkipped: '{{count}} skipped',
   },
 
+  // The terminal panel itself, not any one command. `ctx.confirm()` opens a modal that lives
+  // outside the terminal's own DOM subtree — the terminal has no way to know a command finished,
+  // only that one is pending a human decision elsewhere on screen. These two lines exist so
+  // "Processing…" (which reads as "the app is doing work") is not the only signal a user gets
+  // while a write is actually blocked on their own click. See the reconcile-hang incident report.
+  terminal: {
+    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationCancelled: 'Confirmation cancelled.',
+  },
+
   // The resolve-moves dialog — the discoverable, two-directional entry point to
   // reconcile-moved-paths and adopt-server-paths. Each command still owns its own confirmation
   // and result text (reconcileMovedPaths.* / adoptServerPaths.*); these keys are only the

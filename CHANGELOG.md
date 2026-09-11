@@ -4,6 +4,33 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.1] - 2026-09-10
+
+Renderer-only release — no schema change, no API change.
+
+### Fixed
+
+- **A command confirmation dialog could render invisibly behind the dialog that opened it,
+  making the app look permanently hung.** `adopt-server-paths` and `reconcile-moved-paths` (used
+  by the terminal, by the context-menu "Resolve Pending Moves" dialog, and — new in 4.4.0 — by
+  the "Re-align with Server" button) ask for a final confirmation through a shared dialog
+  (`CommandConfirmContainer`) before writing anything. That dialog rendered at the same
+  z-index several other full-screen dialogs use, and lower than `ResolveMovedFilesDialog`'s,
+  which opens it and then sits on top of it: the confirmation was real and waiting for a click,
+  but the click had nowhere to land and nothing on screen said so. The only way out was to
+  force-quit. The confirmation dialog now renders above every full-screen overlay in the app,
+  unconditionally, and a test scans the whole codebase on every run so a future dialog cannot
+  quietly out-rank it again.
+- **The terminal gave no sign that a command it ran was waiting on that same dialog.** A
+  terminal command that reaches the confirmation gate showed the same "Processing…" text as one
+  that is genuinely still running, and Ctrl+C — the terminal's own cancel key — did nothing, a
+  gap a comment in the code had flagged and never filled. The terminal now says plainly that a
+  command is waiting for confirmation, and Ctrl+C declines it, the same as clicking Cancel on the
+  dialog.
+- Reported from a session where invoking `adopt-server-paths --apply` from the terminal reached
+  this exact gate and never printed another line for the rest of the session, ending in a
+  force-quit. Full writeup: `.cursor/plans/reconcile-hang-incident-report.md`.
+
 ## [4.4.0] - 2026-09-10
 
 Renderer-only release — no schema change, no API change.
