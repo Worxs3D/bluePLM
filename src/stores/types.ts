@@ -1061,6 +1061,11 @@ export interface FilesSlice {
   setServerFolderPaths: (paths: Set<string>) => void
   updateFileInStore: (path: string, updates: Partial<LocalFile>) => void
   updateFilesInStore: (updates: Array<{ path: string; updates: Partial<LocalFile> }>) => void
+  /**
+   * Drop named paths from `files`. A directory also prefix-prunes its descendants
+   * from `files` and `serverFiles`. Never call this for a path that still exists
+   * on disk — download of a cloud folder is the case that taught us.
+   */
   removeFilesFromStore: (paths: string[]) => void
   addFilesToStore: (files: LocalFile[]) => void
   // Returns the edit's address list, for callers that follow it with a file write. The edited

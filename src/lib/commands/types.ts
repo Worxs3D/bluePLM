@@ -67,6 +67,10 @@ export interface CommandContext {
   // Store updates
   updateFileInStore: (path: string, updates: Partial<LocalFile>) => void
   updateFilesInStore: (updates: Array<{ path: string; updates: Partial<LocalFile> }>) => void // Batch update
+  /**
+   * Drop named paths from `files`. A directory also prefix-prunes its descendants
+   * from `files` and `serverFiles`. Never call this for a path that still exists on disk.
+   */
   removeFilesFromStore: (paths: string[]) => void
   addFilesToStore: (files: LocalFile[]) => void
   renameFileInStore: (

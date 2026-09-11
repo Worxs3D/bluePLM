@@ -4,6 +4,24 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.3] - 2026-09-11
+
+Renderer-only release — no schema change, no API change.
+
+### Fixed
+
+- **Downloading a server-only folder no longer makes it vanish, then come back as local-only.**
+  After the files landed on disk, download asked the store to drop the folder row so a refresh
+  could pick it up as a real local folder. That store action now prefix-prunes every file under
+  the folder *and* their cached server rows — added so a delete would not resurrect as a cloud
+  ghost — and download no longer ends with a full reload. The incremental "these files are
+  downloaded" updates then matched nothing, the folder disappeared from the parent, and the
+  file-pane Refresh (disk only, no server refetch) rematerialized the files without any server
+  metadata, so they showed as local-only. A later full vault load was the only thing that put
+  the badges right. Download now leaves the folder in the store and clears its cloud status in
+  the same update as the files, including nested cloud directories that the download just gave
+  local content. Reported from doris: Burn Wire Release, 33 files.
+
 ## [4.4.2] - 2026-09-11
 
 Renderer-only release — no schema change, no API change.

@@ -22,6 +22,58 @@ const MAX_RETRY_ATTEMPTS = 3
 // Delay between retries (exponential backoff: 1s, 2s, 4s)
 const RETRY_BASE_DELAY_MS = 1000
 
+/** A folder that now exists locally is no longer server-only. Matches a full load. */
+const FOLDER_NOW_LOCAL: Partial<LocalFile> = {
+  diffStatus: undefined,
+  isSynced: true,
+}
+
+/**
+ * Cloud directories a download has just given local content, so they are no
+ * longer server-only. A folder is `cloud` only when it has cloud content and
+ * no local content (`useLoadFiles`); the moment a file lands inside it, that
+ * no longer holds.
+ *
+ * Includes the selected cloud folders plus every cloud directory that is an
+ * ancestor of a successfully downloaded file (nested dirs like `STEP Files`).
+ * One pass over `allFiles` against a Set of ancestor paths.
+ */
+export function cloudFoldersResolvedByDownload(
+  allFiles: LocalFile[],
+  selectedCloudFolders: LocalFile[],
+  downloadedRelativePaths: string[],
+): LocalFile[] {
+  const ancestorPaths = new Set<string>()
+
+  for (const folder of selectedCloudFolders) {
+    ancestorPaths.add(normalizeRelativePath(folder.relativePath))
+  }
+
+  for (const relativePath of downloadedRelativePaths) {
+    const parts = normalizeRelativePath(relativePath).split('/')
+    for (let i = 1; i < parts.length; i++) {
+      ancestorPaths.add(parts.slice(0, i).join('/'))
+    }
+  }
+
+  if (ancestorPaths.size === 0) return []
+
+  const seen = new Set<string>()
+  const resolved: LocalFile[] = []
+  for (const file of allFiles) {
+    if (!file.isDirectory || file.diffStatus !== 'cloud') continue
+    const key = normalizeRelativePath(file.relativePath)
+    if (!ancestorPaths.has(key) || seen.has(key)) continue
+    seen.add(key)
+    resolved.push(file)
+  }
+  return resolved
+}
+
+function normalizeRelativePath(relativePath: string): string {
+  return relativePath.replace(/\\/g, '/').toLowerCase()
+}
+
 function logDownload(
   level: 'info' | 'warn' | 'error' | 'debug',
   message: string,
@@ -159,10 +211,16 @@ export const downloadCommand: Command<DownloadParams> = {
         }
       }
 
-      // Remove the cloud-only folder entries from store
-      // The refresh will pick them up as real local folders
+      // The folder exists on disk now. Do not removeFilesFromStore — that prefix-prunes
+      // descendants and their serverFiles rows. Clear cloud status in place; the
+      // existing full refresh below still runs so the tree rebuilds from disk.
       if (createdPaths.length > 0) {
-        ctx.removeFilesFromStore(createdPaths)
+        const createdSet = new Set(createdPaths.map((p) => p.toLowerCase()))
+        ctx.updateFilesInStore(
+          cloudOnlyFolders
+            .filter((folder) => createdSet.has(folder.path.toLowerCase()))
+            .map((folder) => ({ path: folder.path, updates: FOLDER_NOW_LOCAL })),
+        )
       }
 
       // Refresh to pick up the newly created local folders
@@ -483,27 +541,44 @@ export const downloadCommand: Command<DownloadParams> = {
       }
     }
 
-    // Also handle any cloud-only folders from the selection.
-    // File downloads create parent dirs on disk, but the folder's store entry
-    // stays diffStatus='cloud' unless we explicitly remove it.
+    // Ensure selected cloud folders exist on disk. File downloads already mkdir
+    // their parents, but an empty selected folder (or one whose files all failed)
+    // still needs the directory itself.
     if (cloudOnlyFolders.length > 0) {
-      const resolvedFolderPaths: string[] = []
       for (const folder of cloudOnlyFolders) {
         try {
           const fullPath = buildFullPath(vaultPath, folder.relativePath)
           await window.electronAPI?.createFolder(fullPath)
-          resolvedFolderPaths.push(folder.path)
         } catch {
           // Folder likely already exists from parent dir creation during file downloads
         }
       }
-      if (resolvedFolderPaths.length > 0) {
-        ctx.removeFilesFromStore(resolvedFolderPaths)
-        logDownload('debug', 'Removed cloud-only folder entries from store', {
-          operationId,
-          folders: resolvedFolderPaths.map((p) => p.split(/[/\\]/).pop()),
-        })
-      }
+    }
+
+    // Paths of files that actually landed, shared by folder-status resolution
+    // and the sync-index update below. Computed before folder rows are appended
+    // to pendingUpdates so the list stays file-only.
+    const downloadedRelativePaths = pendingUpdates
+      .map((u) => cloudFiles.find((f) => f.path === u.path)?.relativePath)
+      .filter((p): p is string => !!p)
+
+    // A folder is cloud only while it has cloud content and no local content.
+    // Do not removeFilesFromStore — that prefix-prunes the files we just
+    // downloaded (and their serverFiles rows), which is the race that made
+    // Burn Wire Release vanish and then come back as local-only.
+    const resolvedFolders = cloudFoldersResolvedByDownload(
+      ctx.files,
+      cloudOnlyFolders,
+      downloadedRelativePaths,
+    )
+    for (const folder of resolvedFolders) {
+      pendingUpdates.push({ path: folder.path, updates: FOLDER_NOW_LOCAL })
+    }
+    if (resolvedFolders.length > 0) {
+      logDownload('debug', 'Cleared cloud status on resolved folders', {
+        operationId,
+        folders: resolvedFolders.map((f) => f.relativePath),
+      })
     }
 
     // Apply incremental store updates AND clear processing state atomically
@@ -577,19 +652,10 @@ export const downloadCommand: Command<DownloadParams> = {
 
     // Update the local sync index with successfully downloaded file paths
     // This tracks which files have been synced for orphan detection
-    if (succeeded > 0 && ctx.activeVaultId) {
-      const downloadedPaths = pendingUpdates
-        .map((u) => {
-          const file = cloudFiles.find((f) => f.path === u.path)
-          return file?.relativePath
-        })
-        .filter((p): p is string => !!p)
-
-      if (downloadedPaths.length > 0) {
-        addToSyncIndex(ctx.activeVaultId, downloadedPaths).catch((error) => {
-          logDownload('warn', 'Failed to update sync index after download', { error: String(error) })
-        })
-      }
+    if (succeeded > 0 && ctx.activeVaultId && downloadedRelativePaths.length > 0) {
+      addToSyncIndex(ctx.activeVaultId, downloadedRelativePaths).catch((error) => {
+        logDownload('warn', 'Failed to update sync index after download', { error: String(error) })
+      })
     }
 
     // Complete operation tracking

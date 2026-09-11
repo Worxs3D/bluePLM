@@ -7,7 +7,15 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
-Nothing in flight. 4.4.2 shipped (renderer only — no schema change, no API change), two
+Nothing in flight. 4.4.3 shipped (renderer only — no schema change, no API change): downloading
+a server-only folder no longer prefix-prunes that folder's files and cached server rows out of
+the store. The incremental download updates used to match nothing (`matchCount: 0` in the doris
+Burn Wire Release log), the folder vanished, and a file-pane Refresh rematerialized the files
+as local-only until a full vault load rematched them. Download now clears cloud status on the
+folder (and nested cloud dirs that just got local content) in the same store write as the files.
+Plan: `.cursor/plans/download_folder_status_race_34bf65c6.plan.md`.
+
+4.4.2 shipped the same day (renderer only — no schema change, no API change), two
 independent efforts that went out together without coordinating in the same working tree.
 
 The first closes the barxt600 incident (`.cursor/plans/barxt-move-download-incident-report.md`):
