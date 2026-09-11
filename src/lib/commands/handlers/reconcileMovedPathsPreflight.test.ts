@@ -289,3 +289,47 @@ describe('bucket precedence', () => {
     expect(result.skipped).toHaveLength(1)
   })
 })
+
+describe('fileIds selection', () => {
+  const a = moved('new/a.sldprt', { fileId: 'id-a' })
+  const b = moved('new/b.sldprt', { fileId: 'id-b' })
+
+  it('omitted fileIds considers every pending move', () => {
+    expect(classify([a, b]).eligible.map((target) => target.fileId)).toEqual(['id-a', 'id-b'])
+  })
+
+  it('restricts candidates to the named fileIds', () => {
+    const result = classifyMovedFiles({
+      files: [a, b],
+      serverFiles: [],
+      userId: ME,
+      fileIds: ['id-b'],
+    })
+
+    expect(result.total).toBe(1)
+    expect(result.eligible.map((target) => target.fileId)).toEqual(['id-b'])
+  })
+
+  it('an empty fileIds array considers none, rather than falling back to vault-wide', () => {
+    const result = classifyMovedFiles({
+      files: [a, b],
+      serverFiles: [],
+      userId: ME,
+      fileIds: [],
+    })
+
+    expect(result.total).toBe(0)
+    expect(result.eligible).toEqual([])
+  })
+
+  it('ignores fileIds that are not pending moves', () => {
+    const result = classifyMovedFiles({
+      files: [a, b],
+      serverFiles: [],
+      userId: ME,
+      fileIds: ['id-missing'],
+    })
+
+    expect(result.total).toBe(0)
+  })
+})

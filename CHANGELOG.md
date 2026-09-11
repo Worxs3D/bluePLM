@@ -4,6 +4,23 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+Renderer-only — no schema change, no API change.
+
+### Added
+
+- **Re-align with Server now lists every pending move and lets you choose keep-server or
+  keep-local per file before Fix.** Until now the pending-move checkbox was all-or-nothing and
+  always renamed local files back to the vault path. The dialog shows each file's vault path and
+  disk path, defaults every row to keep-server, and can mix directions in one run: keep-server
+  still calls `adopt-server-paths`, keep-local commits that machine's path to the vault via
+  `reconcile-moved-paths` for only the files you named. Both commands accept an optional
+  `fileIds` filter so a mixed decision cannot spill onto a file you left the other way (or left
+  unresolved by unchecking the bucket). A mixed run can still show two confirmation dialogs —
+  one per command — and the waiting line now says so without assuming the next prompt is only a
+  rename.
+
 ## [4.4.1] - 2026-09-10
 
 Renderer-only release — no schema change, no API change.

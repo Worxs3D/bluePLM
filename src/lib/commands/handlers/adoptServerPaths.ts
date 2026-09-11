@@ -161,7 +161,7 @@ export const adoptServerPathsCommand: Command<AdoptServerPathsParams> = {
   aliases: ['adopt-paths'],
   usage: 'adopt-server-paths [--apply] [--force]',
 
-  validate(_params, ctx) {
+  validate(params, ctx) {
     if (!ctx.user) {
       return t('adoptServerPaths.notSignedIn')
     }
@@ -170,7 +170,11 @@ export const adoptServerPathsCommand: Command<AdoptServerPathsParams> = {
       return t('adoptServerPaths.noVault')
     }
 
-    const preflight = classifyAdoptTargets({ files: ctx.files, userId: ctx.user.id })
+    const preflight = classifyAdoptTargets({
+      files: ctx.files,
+      userId: ctx.user.id,
+      fileIds: params.fileIds,
+    })
 
     if (preflight.total === 0) {
       return t('adoptServerPaths.nothingToAdopt')
@@ -179,12 +183,12 @@ export const adoptServerPathsCommand: Command<AdoptServerPathsParams> = {
     return null
   },
 
-  async execute({ apply, force }, ctx): Promise<CommandResult> {
+  async execute({ apply, force, fileIds }, ctx): Promise<CommandResult> {
     const user = ctx.user!
     const vaultPath = ctx.vaultPath!
     const startedAt = Date.now()
 
-    const preflight = classifyAdoptTargets({ files: ctx.files, userId: user.id })
+    const preflight = classifyAdoptTargets({ files: ctx.files, userId: user.id, fileIds })
 
     logAdopt('info', 'Pre-flight complete', {
       total: preflight.total,
@@ -194,6 +198,7 @@ export const adoptServerPathsCommand: Command<AdoptServerPathsParams> = {
       holders: preflight.holders.length,
       apply: apply === true,
       force: force === true,
+      fileIds: fileIds?.length,
     })
 
     // The default. A caller that has not asked for the write path in as many words gets the report.

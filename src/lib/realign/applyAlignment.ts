@@ -23,11 +23,13 @@
  *
  * ## Why the step order is fixed
  *
- * 1. `resolvePendingMoves` (`adopt-server-paths --apply`) first, because it changes which local
- *    path a file's content sits at, and orphan detection in step 2 depends on that answer being
- *    settled. This deliberately calls `adopt-server-paths`, never `reconcile-moved-paths`:
- *    reconcile writes the *local* path to the server, propagating one machine's accidental
- *    rename to everyone else, which is the opposite of what a bulk re-align is for.
+ * 1. `resolvePendingMoves` first, because it changes which local path a file's content sits at,
+ *    and orphan detection in step 2 depends on that answer being settled. When the plan omits
+ *    `pendingMoveActions`, this is still vault-wide `adopt-server-paths` (server wins), the
+ *    original bulk default. When the user has named per-file keep-server / keep-local choices,
+ *    the step splits: adopt the keep-server ids, then reconcile the keep-local ids. Reconcile
+ *    is only reached for files the user explicitly kept local — an unchecked bulk still never
+ *    writes one machine's rename to the server.
  * 2. `recycleOrphans` (`discard-orphaned`) second, now that step 1 has resolved any move that
  *    would otherwise look like a delete-and-recreate.
  * 3. `pullOutdated` (`get-latest`) third, restricted to rows with no checkout of any kind - see
@@ -52,6 +54,7 @@ import type {
   AlignmentPlan,
   AlignmentStepId,
   AlignmentStepResult,
+  PendingMoveAction,
 } from '@/types/realign'
 
 import { repairSyncIndex } from './syncIndexRepair'
@@ -147,18 +150,75 @@ function refusedStep(step: AlignmentStepId, attempted: number, detail: string): 
   return { step, attempted, succeeded: 0, failed: 0, skipped: attempted, outcome: 'refused', detail }
 }
 
+function splitPendingMoveActions(
+  actions: Record<string, PendingMoveAction>,
+): { adoptIds: string[]; reconcileIds: string[] } {
+  const adoptIds: string[] = []
+  const reconcileIds: string[] = []
+
+  for (const [fileId, action] of Object.entries(actions)) {
+    if (action === 'adopt') adoptIds.push(fileId)
+    else reconcileIds.push(fileId)
+  }
+
+  return { adoptIds, reconcileIds }
+}
+
+function combineCommandResults(first: CommandResult, second: CommandResult): CommandResult {
+  return {
+    success: first.success && second.success,
+    message: [first.message, second.message].filter(Boolean).join('; '),
+    total: first.total + second.total,
+    succeeded: first.succeeded + second.succeeded,
+    failed: first.failed + second.failed,
+    skipped: (first.skipped ?? 0) + (second.skipped ?? 0),
+  }
+}
+
 /**
- * Step 1: rename locally moved files back to the path their server row records.
+ * Step 1: resolve pending moves in the direction the user chose per file.
  *
  * `apply: true` is passed unconditionally - anything short of that would only run the
  * pre-flight and report, never write. `force` is deliberately omitted (defaults to `false`):
  * a target held by another user's checkout is safe to touch (it only renames this user's own
  * disk) but is still evidence a move may already be mid-flight elsewhere, so a bulk, unattended
- * re-align leaves it for the user to force explicitly if they choose to.
+ * re-align leaves it for the user to force explicitly if they choose to. Keep-local files pass
+ * `skipCheckedOut: true` for the same reason: a race that puts someone else's checkout on a
+ * named file skips that file rather than refusing the whole step.
+ *
+ * Adopt runs first so disk paths settle before any keep-local write, matching the original
+ * "moves before orphans" order. The two id sets are disjoint by construction.
  */
-async function runResolvePendingMoves(): Promise<AlignmentStepResult> {
-  const result = await executeCommand('adopt-server-paths', { apply: true })
-  return toStepResult('resolvePendingMoves', result)
+async function runResolvePendingMoves(plan: AlignmentPlan): Promise<AlignmentStepResult> {
+  if (plan.pendingMoveActions === undefined) {
+    const result = await executeCommand('adopt-server-paths', { apply: true })
+    return toStepResult('resolvePendingMoves', result)
+  }
+
+  const { adoptIds, reconcileIds } = splitPendingMoveActions(plan.pendingMoveActions)
+  const results: CommandResult[] = []
+
+  if (adoptIds.length > 0) {
+    results.push(await executeCommand('adopt-server-paths', { apply: true, fileIds: adoptIds }))
+  }
+
+  if (reconcileIds.length > 0) {
+    results.push(
+      await executeCommand('reconcile-moved-paths', {
+        apply: true,
+        fileIds: reconcileIds,
+        skipCheckedOut: true,
+      }),
+    )
+  }
+
+  if (results.length === 0) {
+    return nothingToDoStep('resolvePendingMoves')
+  }
+
+  const combined =
+    results.length === 1 ? results[0] : combineCommandResults(results[0], results[1])
+  return toStepResult('resolvePendingMoves', combined)
 }
 
 /**
@@ -298,7 +358,7 @@ export async function applyAlignment(
 
   try {
     if (plan.resolvePendingMoves) {
-      steps.push(await runResolvePendingMoves())
+      steps.push(await runResolvePendingMoves(plan))
     }
 
     if (plan.recycleOrphans) {

@@ -323,14 +323,103 @@ describe('applyAlignment', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
-  it('never calls reconcile-moved-paths', async () => {
+  it('does not call reconcile-moved-paths when pendingMoveActions is omitted (legacy all-adopt)', async () => {
     executeCommand.mockResolvedValue(commandResult({}))
     const ctx = baseCtx()
 
     await applyAlignment(FULL_PLAN, ctx)
 
+    expect(executeCommand).toHaveBeenCalledWith('adopt-server-paths', { apply: true })
     for (const call of executeCommand.mock.calls) {
       expect(call[0]).not.toBe('reconcile-moved-paths')
     }
+  })
+
+  it('does not call reconcile-moved-paths when every named decision is adopt', async () => {
+    executeCommand.mockResolvedValue(commandResult({ total: 2, succeeded: 2 }))
+    const ctx = baseCtx()
+
+    await applyAlignment(
+      {
+        ...NO_PLAN,
+        resolvePendingMoves: true,
+        pendingMoveActions: { 'id-a': 'adopt', 'id-b': 'adopt' },
+      },
+      ctx,
+    )
+
+    expect(executeCommand).toHaveBeenCalledTimes(1)
+    expect(executeCommand).toHaveBeenCalledWith('adopt-server-paths', {
+      apply: true,
+      fileIds: ['id-a', 'id-b'],
+    })
+  })
+
+  it('calls reconcile-moved-paths with exactly the keep-local fileIds, after adopt', async () => {
+    const callOrder: string[] = []
+    executeCommand.mockImplementation(async (commandId) => {
+      callOrder.push(commandId)
+      return commandResult({ total: 1, succeeded: 1 })
+    })
+    const ctx = baseCtx()
+
+    const outcome = await applyAlignment(
+      {
+        ...NO_PLAN,
+        resolvePendingMoves: true,
+        pendingMoveActions: { 'id-keep-server': 'adopt', 'id-keep-local': 'reconcile' },
+      },
+      ctx,
+    )
+
+    expect(callOrder).toEqual(['adopt-server-paths', 'reconcile-moved-paths'])
+    expect(executeCommand).toHaveBeenNthCalledWith(1, 'adopt-server-paths', {
+      apply: true,
+      fileIds: ['id-keep-server'],
+    })
+    expect(executeCommand).toHaveBeenNthCalledWith(2, 'reconcile-moved-paths', {
+      apply: true,
+      fileIds: ['id-keep-local'],
+      skipCheckedOut: true,
+    })
+
+    const step = outcome.steps.find((s) => s.step === 'resolvePendingMoves')
+    expect(step?.outcome).toBe('ok')
+    expect(step?.attempted).toBe(2)
+    expect(step?.succeeded).toBe(2)
+  })
+
+  it('calls only reconcile-moved-paths when every named decision is keep-local', async () => {
+    executeCommand.mockResolvedValue(commandResult({ total: 1, succeeded: 1 }))
+    const ctx = baseCtx()
+
+    await applyAlignment(
+      {
+        ...NO_PLAN,
+        resolvePendingMoves: true,
+        pendingMoveActions: { 'id-keep-local': 'reconcile' },
+      },
+      ctx,
+    )
+
+    expect(executeCommand).toHaveBeenCalledTimes(1)
+    expect(executeCommand).toHaveBeenCalledWith('reconcile-moved-paths', {
+      apply: true,
+      fileIds: ['id-keep-local'],
+      skipCheckedOut: true,
+    })
+  })
+
+  it('reports nothing-to-do when pendingMoveActions is present but empty', async () => {
+    const ctx = baseCtx()
+
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, resolvePendingMoves: true, pendingMoveActions: {} },
+      ctx,
+    )
+
+    const step = outcome.steps.find((s) => s.step === 'resolvePendingMoves')
+    expect(step?.outcome).toBe('nothing-to-do')
+    expect(executeCommand).not.toHaveBeenCalled()
   })
 })

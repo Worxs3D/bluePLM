@@ -300,3 +300,32 @@ describe('fields carried through for the rename and the sync-index re-key', () =
     expect(result.eligible[0]).toMatchObject({ ino: 42, localVersion: 3, localHash: 'aaa' })
   })
 })
+
+describe('fileIds selection', () => {
+  const a = moved('local/a.sldprt', { fileId: 'id-a' })
+  const b = moved('local/b.sldprt', { fileId: 'id-b' })
+
+  it('omitted fileIds considers every pending move', () => {
+    expect(classify([a, b]).eligible.map((target) => target.fileId)).toEqual(['id-a', 'id-b'])
+  })
+
+  it('restricts candidates to the named fileIds', () => {
+    const result = classifyAdoptTargets({ files: [a, b], userId: ME, fileIds: ['id-b'] })
+
+    expect(result.total).toBe(1)
+    expect(result.eligible.map((target) => target.fileId)).toEqual(['id-b'])
+  })
+
+  it('an empty fileIds array considers none, rather than falling back to vault-wide', () => {
+    const result = classifyAdoptTargets({ files: [a, b], userId: ME, fileIds: [] })
+
+    expect(result.total).toBe(0)
+    expect(result.eligible).toEqual([])
+  })
+
+  it('ignores fileIds that are not pending moves', () => {
+    const result = classifyAdoptTargets({ files: [a, b], userId: ME, fileIds: ['id-missing'] })
+
+    expect(result.total).toBe(0)
+  })
+})

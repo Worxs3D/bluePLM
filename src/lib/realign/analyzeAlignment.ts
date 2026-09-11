@@ -161,7 +161,12 @@ function resolveGuardedBucket(
 function toAlignmentItem(
   bucket: AlignmentBucketId,
   file: LocalFile,
-  options: { relativePath?: string; movedToRelativePath?: string; holder?: CheckoutHolder | null } = {},
+  options: {
+    relativePath?: string
+    movedToRelativePath?: string
+    serverRelativePath?: string
+    holder?: CheckoutHolder | null
+  } = {},
 ): AlignmentItem {
   const fileId = file.pdmData?.id ?? null
   const relativePath = options.relativePath ?? file.relativePath
@@ -175,11 +180,21 @@ function toAlignmentItem(
     ...(options.movedToRelativePath !== undefined && {
       movedToRelativePath: options.movedToRelativePath,
     }),
+    ...(options.serverRelativePath !== undefined && {
+      serverRelativePath: options.serverRelativePath,
+    }),
     ...(options.holder && {
       heldByUserId: options.holder.holderId,
       ...(options.holder.heldBy !== undefined && { heldBy: options.holder.heldBy }),
     }),
   }
+}
+
+/** Vault-relative path the server still records, forward-slashed. */
+function serverPathOf(file: LocalFile, fallback?: string): string | undefined {
+  const recorded = file.pdmData?.file_path?.replace(/\\/g, '/')
+  if (recorded) return recorded
+  return fallback
 }
 
 /**
@@ -192,6 +207,7 @@ function classifyPendingMoves(
   rows: readonly LocalFile[],
   currentUserId: string,
   accumulators: Record<AlignmentBucketId, BucketAccumulator>,
+  pendingMoveItems: AlignmentItem[],
 ): void {
   const stubsByFileId = new Map<string, LocalFile>()
   for (const row of rows) {
@@ -211,16 +227,14 @@ function classifyPendingMoves(
 
     const holder = getCheckoutHolder(row)
     const { bucket, holder: heldBy } = resolveGuardedBucket('pending_move', holder, currentUserId)
+    const item = toAlignmentItem(bucket, row, {
+      movedToRelativePath: stub?.movedToRelativePath,
+      serverRelativePath: serverPathOf(row, stub?.relativePath),
+      holder: heldBy,
+    })
 
-    recordItem(
-      accumulators,
-      bucket,
-      toAlignmentItem(bucket, row, {
-        movedToRelativePath: stub?.movedToRelativePath,
-        holder: heldBy,
-      }),
-      isSelfHeld(heldBy, currentUserId),
-    )
+    recordItem(accumulators, bucket, item, isSelfHeld(heldBy, currentUserId))
+    if (bucket === 'pending_move') pendingMoveItems.push(item)
   }
 
   // A stub with no `moved` partner in this input still names exactly one pending move — its own
@@ -231,16 +245,14 @@ function classifyPendingMoves(
 
     const holder = getCheckoutHolder(stub)
     const { bucket, holder: heldBy } = resolveGuardedBucket('pending_move', holder, currentUserId)
+    const item = toAlignmentItem(bucket, stub, {
+      movedToRelativePath: stub.movedToRelativePath,
+      serverRelativePath: serverPathOf(stub, stub.relativePath),
+      holder: heldBy,
+    })
 
-    recordItem(
-      accumulators,
-      bucket,
-      toAlignmentItem(bucket, stub, {
-        movedToRelativePath: stub.movedToRelativePath,
-        holder: heldBy,
-      }),
-      isSelfHeld(heldBy, currentUserId),
-    )
+    recordItem(accumulators, bucket, item, isSelfHeld(heldBy, currentUserId))
+    if (bucket === 'pending_move') pendingMoveItems.push(item)
     consumedStubs.add(stub)
   }
 }
@@ -256,8 +268,9 @@ function hasLocalPresence(file: LocalFile): boolean {
 export function analyzeAlignment(input: AnalyzeAlignmentInput): VaultAlignmentReport {
   const rows = input.files.filter((file) => !file.isDirectory)
   const accumulators = createAccumulators()
+  const pendingMoveItems: AlignmentItem[] = []
 
-  classifyPendingMoves(rows, input.currentUserId, accumulators)
+  classifyPendingMoves(rows, input.currentUserId, accumulators, pendingMoveItems)
 
   let localFileCount = 0
   let inSyncCount = 0
@@ -346,6 +359,7 @@ export function analyzeAlignment(input: AnalyzeAlignmentInput): VaultAlignmentRe
     serverFileCount: input.serverFileCount,
     inSyncCount,
     buckets,
+    pendingMoveItems,
     isAligned,
   }
 }

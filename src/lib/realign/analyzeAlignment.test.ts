@@ -21,6 +21,7 @@ interface PdmOptions {
   checkedOutBy?: string | null
   holderName?: string | null
   holderEmail?: string
+  filePath?: string
 }
 
 /** A minimal server row. Only the fields this module reads are populated. */
@@ -28,6 +29,7 @@ function pdm(fileId: string, options: PdmOptions = {}): PDMFile {
   const checkedOutBy = options.checkedOutBy ?? null
   return {
     id: fileId,
+    file_path: options.filePath,
     checked_out_by: checkedOutBy,
     checked_out_user: checkedOutBy
       ? {
@@ -93,6 +95,7 @@ describe('bucket shape', () => {
       'blocked_checkout',
     ])
     expect(report.buckets.every((b) => b.count === 0 && b.sample.length === 0)).toBe(true)
+    expect(report.pendingMoveItems).toEqual([])
     expect(report.isAligned).toBe(true)
     expect(report.localFileCount).toBe(0)
     expect(report.inSyncCount).toBe(0)
@@ -158,10 +161,13 @@ describe('each bucket in isolation', () => {
 
 describe('pending_move pairing', () => {
   it('counts a moved row and its moved_away stub once, keyed on the moved row', () => {
-    const movedRow = row('new/part.sldprt', { diffStatus: 'moved', pdmData: pdm('f1') })
+    const movedRow = row('new/part.sldprt', {
+      diffStatus: 'moved',
+      pdmData: pdm('f1', { filePath: 'old/part.sldprt' }),
+    })
     const stub = row('old/part.sldprt', {
       diffStatus: 'moved_away',
-      pdmData: pdm('f1'),
+      pdmData: pdm('f1', { filePath: 'old/part.sldprt' }),
       movedToRelativePath: 'new/part.sldprt',
     })
 
@@ -171,8 +177,11 @@ describe('pending_move pairing', () => {
     expect(bucket(report, 'pending_move').sample[0]).toMatchObject({
       relativePath: 'new/part.sldprt',
       movedToRelativePath: 'new/part.sldprt',
+      serverRelativePath: 'old/part.sldprt',
       fileId: 'f1',
     })
+    expect(report.pendingMoveItems).toHaveLength(1)
+    expect(report.pendingMoveItems[0].serverRelativePath).toBe('old/part.sldprt')
   })
 
   it('counts a pair where only the stub is present, keyed on the stub', () => {
@@ -188,17 +197,22 @@ describe('pending_move pairing', () => {
     expect(bucket(report, 'pending_move').sample[0]).toMatchObject({
       relativePath: 'old/part.sldprt',
       movedToRelativePath: 'new/part.sldprt',
+      serverRelativePath: 'old/part.sldprt',
       fileId: 'f1',
     })
   })
 
   it('counts a pair where only the moved row is present (no stub), with no destination', () => {
-    const movedRow = row('new/part.sldprt', { diffStatus: 'moved', pdmData: pdm('f1') })
+    const movedRow = row('new/part.sldprt', {
+      diffStatus: 'moved',
+      pdmData: pdm('f1', { filePath: 'old/part.sldprt' }),
+    })
 
     const report = analyze([movedRow])
 
     expect(bucket(report, 'pending_move').count).toBe(1)
     expect(bucket(report, 'pending_move').sample[0].movedToRelativePath).toBeUndefined()
+    expect(bucket(report, 'pending_move').sample[0].serverRelativePath).toBe('old/part.sldprt')
   })
 
   it('does not double count when both halves of several pairs are present', () => {
@@ -227,6 +241,7 @@ describe('blocked_checkout demotes the three repairable buckets', () => {
     const report = analyze([movedRow])
 
     expect(bucket(report, 'pending_move').count).toBe(0)
+    expect(report.pendingMoveItems).toEqual([])
     expect(bucket(report, 'blocked_checkout').count).toBe(1)
     expect(bucket(report, 'blocked_checkout').sample[0]).toMatchObject({
       heldByUserId: OTHER,
@@ -382,6 +397,25 @@ describe('sample cap', () => {
 
     expect(bucket(report, 'local_only').count).toBe(total)
     expect(bucket(report, 'local_only').sample).toHaveLength(ALIGNMENT_SAMPLE_LIMIT)
+  })
+
+  it('keeps pendingMoveItems uncapped while the pending_move sample stays capped', () => {
+    const total = ALIGNMENT_SAMPLE_LIMIT + 10
+    const files = Array.from({ length: total }, (_, i) =>
+      row(`new/${i}.sldprt`, {
+        diffStatus: 'moved',
+        pdmData: pdm(`f${i}`, { filePath: `old/${i}.sldprt` }),
+      }),
+    )
+
+    const report = analyze(files)
+
+    expect(bucket(report, 'pending_move').count).toBe(total)
+    expect(bucket(report, 'pending_move').sample).toHaveLength(ALIGNMENT_SAMPLE_LIMIT)
+    expect(report.pendingMoveItems).toHaveLength(total)
+    expect(report.pendingMoveItems.every((item) => item.serverRelativePath?.startsWith('old/'))).toBe(
+      true,
+    )
   })
 })
 

@@ -71,6 +71,11 @@ export interface PreflightInput {
   serverFiles: ServerFile[]
   /** The acting user. A row this user holds is not blocked — `move_file` allows it. */
   userId: string
+  /**
+   * When set, only these `files.id`s are considered. Omitted is vault-wide. An empty array
+   * considers none — the caller asked for a selection and named nothing.
+   */
+  fileIds?: string[]
 }
 
 /** Windows spells the same path several ways; every comparison here goes through this. */
@@ -89,7 +94,8 @@ function holderNameOf(profile: CheckoutUserProfile | null): string | null {
  * the command idempotent. A row already reconciled keeps its stale `moved` badge until the next
  * load, and selecting on the badge alone would offer to write it a second time.
  */
-function findCandidates(files: LocalFile[]): Candidate[] {
+function findCandidates(files: LocalFile[], fileIds?: string[]): Candidate[] {
+  const allowed = fileIds === undefined ? null : new Set(fileIds)
   const candidates: Candidate[] = []
 
   for (const file of files) {
@@ -99,6 +105,7 @@ function findCandidates(files: LocalFile[]): Candidate[] {
     const fileId = file.pdmData?.id
     const serverPath = file.pdmData?.file_path
     if (!fileId || !serverPath) continue
+    if (allowed && !allowed.has(fileId)) continue
     if (normalizePath(serverPath) === normalizePath(file.relativePath)) continue
 
     candidates.push({
@@ -131,6 +138,7 @@ export function classifyMovedFiles({
   files,
   serverFiles,
   userId,
+  fileIds,
 }: PreflightInput): ReconcilePreflight {
   const byPath = new Map<string, LocalFile[]>()
   for (const file of files) {
@@ -150,7 +158,7 @@ export function classifyMovedFiles({
   const blocked: BlockedTarget[] = []
   const skipped: SkippedTarget[] = []
 
-  for (const { file, target } of findCandidates(files)) {
+  for (const { file, target } of findCandidates(files, fileIds)) {
     const holderId = file.pdmData?.checked_out_by
     if (holderId && holderId !== userId) {
       blocked.push({

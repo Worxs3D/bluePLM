@@ -28,20 +28,26 @@ import { applyAlignment } from '@/lib/realign/applyAlignment'
 import type {
   AlignmentBucket,
   AlignmentBucketId,
+  AlignmentItem,
   AlignmentOutcome,
   AlignmentPlan,
   AlignmentStepId,
+  PendingMoveAction,
 } from '@/types/realign'
 
+import { PendingMovesDecisionList } from './PendingMovesDecisionList'
 import {
   bucketKeyFragment,
   computeSampleDisplay,
   defaultAlignmentPlan,
+  defaultPendingMoveActions,
   groupBucketsByDisposition,
   hasAnyRepairSelected,
+  mergePendingMoveActions,
   otherHeldCount,
   pluralSuffix,
   REPAIRABLE_BUCKET_TO_PLAN_KEY,
+  setAllPendingMoveActions,
 } from './RealignDialog.utils'
 
 interface RealignDialogProps {
@@ -80,17 +86,12 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
   const pendingCommandConfirm = usePDMStore((state) => state.pendingCommandConfirm)
 
   const [plan, setPlan] = useState<AlignmentPlan>(defaultAlignmentPlan)
+  const [pendingMoveActions, setPendingMoveActions] = useState<Record<string, PendingMoveAction>>(
+    {},
+  )
   const [isRunning, setIsRunning] = useState(false)
   const [outcome, setOutcome] = useState<AlignmentOutcome | null>(null)
   const [isInformationalExpanded, setIsInformationalExpanded] = useState(false)
-
-  // Every open is a fresh review: reset the plan and drop any result left over from last time.
-  useEffect(() => {
-    if (!isOpen) return
-    setPlan(defaultAlignmentPlan())
-    setOutcome(null)
-    setIsInformationalExpanded(false)
-  }, [isOpen])
 
   // `analyzeAlignment` is pure and synchronous, so recomputing it on every render is cheap —
   // that is what lets the dialog show the vault's new state right after `applyAlignment` runs,
@@ -105,6 +106,20 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
       }),
     [files, serverFiles, activeVaultId, userId],
   )
+
+  // Every open is a fresh review: reset the plan and drop any result left over from last time.
+  useEffect(() => {
+    if (!isOpen) return
+    setPlan(defaultAlignmentPlan())
+    setPendingMoveActions(defaultPendingMoveActions(report.pendingMoveItems))
+    setOutcome(null)
+    setIsInformationalExpanded(false)
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    setPendingMoveActions((prev) => mergePendingMoveActions(prev, report.pendingMoveItems))
+  }, [isOpen, report.pendingMoveItems])
 
   if (!isOpen) return null
 
@@ -135,27 +150,30 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
     setIsRunning(true)
     setOutcome(null)
     try {
-      const result = await applyAlignment(plan, {
-        vaultId: activeVaultId,
-        files,
-        serverFileCount: serverFiles.length,
-        isOperationRunning,
-        operationQueueLength,
-        // `discard-orphaned` and `get-latest` do update `files` directly, so the `report`
-        // `useMemo` above does pick up their results on its own. But `adopt-server-paths`
-        // (resolvePendingMoves) only patches the row it renamed — it does not remove the
-        // separate `moved_away` stub row that already sits at the destination path, so
-        // without a real reload the dialog (and the file browser) would show both the
-        // fixed file and a stale stub at the same path until something else reloads.
-        // Every other caller of `adopt-server-paths` (`ResolveMovedFilesDialog`, the
-        // `FileTree` context menu, the terminal command) passes a real `onRefresh` that
-        // ultimately calls `useLoadFiles`'s `refreshCurrentFolder` for exactly this reason.
-        // This dialog has no such reference this deep under Settings, so it goes through
-        // the store bridge `requestFilesReload` instead — see its doc comment in
-        // `stores/types.ts`. `applyAlignment` calls this once, after every step, matching
-        // the "single refresh at the end" requirement.
-        onRefresh: () => usePDMStore.getState().requestFilesReload(),
-      })
+      const result = await applyAlignment(
+        { ...plan, pendingMoveActions },
+        {
+          vaultId: activeVaultId,
+          files,
+          serverFileCount: serverFiles.length,
+          isOperationRunning,
+          operationQueueLength,
+          // `discard-orphaned` and `get-latest` do update `files` directly, so the `report`
+          // `useMemo` above does pick up their results on its own. But `adopt-server-paths`
+          // (resolvePendingMoves) only patches the row it renamed — it does not remove the
+          // separate `moved_away` stub row that already sits at the destination path, so
+          // without a real reload the dialog (and the file browser) would show both the
+          // fixed file and a stale stub at the same path until something else reloads.
+          // Every other caller of `adopt-server-paths` (`ResolveMovedFilesDialog`, the
+          // `FileTree` context menu, the terminal command) passes a real `onRefresh` that
+          // ultimately calls `useLoadFiles`'s `refreshCurrentFolder` for exactly this reason.
+          // This dialog has no such reference this deep under Settings, so it goes through
+          // the store bridge `requestFilesReload` instead — see its doc comment in
+          // `stores/types.ts`. `applyAlignment` calls this once, after every step, matching
+          // the "single refresh at the end" requirement.
+          onRefresh: () => usePDMStore.getState().requestFilesReload(),
+        },
+      )
       setOutcome(result)
     } catch (error) {
       log.error('[RealignDialog]', 'applyAlignment threw unexpectedly', { error })
@@ -171,7 +189,7 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
       onClick={handleClose}
     >
       <div
-        className="bg-plm-bg-light border border-plm-border rounded-lg shadow-2xl w-[680px] max-h-[85vh] overflow-auto"
+        className="bg-plm-bg-light border border-plm-border rounded-lg shadow-2xl w-[760px] max-h-[85vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -202,8 +220,16 @@ export function RealignDialog({ isOpen, onClose }: RealignDialogProps) {
             buckets={groups.repairable}
             plan={plan}
             isRunning={isRunning}
+            pendingMoveItems={report.pendingMoveItems}
+            pendingMoveActions={pendingMoveActions}
             onToggle={toggleRepairable}
             onToggleSyncIndex={toggleSyncIndex}
+            onPendingMoveAction={(fileId, action) =>
+              setPendingMoveActions((prev) => ({ ...prev, [fileId]: action }))
+            }
+            onSetAllPendingMoves={(action) =>
+              setPendingMoveActions(setAllPendingMoveActions(report.pendingMoveItems, action))
+            }
           />
 
           <NeedsDecisionGroup
@@ -280,16 +306,24 @@ interface RepairableGroupProps {
   buckets: AlignmentBucket[]
   plan: AlignmentPlan
   isRunning: boolean
+  pendingMoveItems: AlignmentItem[]
+  pendingMoveActions: Record<string, PendingMoveAction>
   onToggle: (bucketId: AlignmentBucketId) => void
   onToggleSyncIndex: () => void
+  onPendingMoveAction: (fileId: string, action: PendingMoveAction) => void
+  onSetAllPendingMoves: (action: PendingMoveAction) => void
 }
 
 function RepairableGroup({
   buckets,
   plan,
   isRunning,
+  pendingMoveItems,
+  pendingMoveActions,
   onToggle,
   onToggleSyncIndex,
+  onPendingMoveAction,
+  onSetAllPendingMoves,
 }: RepairableGroupProps) {
   return (
     <div>
@@ -301,30 +335,43 @@ function RepairableGroup({
           const planKey = REPAIRABLE_BUCKET_TO_PLAN_KEY[bucket.id]
           const fragment = bucketKeyFragment(bucket.id)
           const checked = planKey ? plan[planKey] : false
+          const isPendingMove = bucket.id === 'pending_move'
+
           return (
-            <label
+            <div
               key={bucket.id}
-              className="flex items-start gap-3 p-3 rounded border border-plm-border bg-plm-bg cursor-pointer"
+              className="p-3 rounded border border-plm-border bg-plm-bg"
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => onToggle(bucket.id)}
-                disabled={isRunning}
-                className="mt-0.5 accent-plm-accent"
-              />
-              <span className="text-plm-accent mt-0.5">{REPAIRABLE_ICON[bucket.id]}</span>
-              <div className="flex-1">
-                <div className="text-sm text-plm-fg">
-                  {t(`realign.${fragment}.label${pluralSuffix(bucket.count)}`, {
-                    count: bucket.count,
-                  })}
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(bucket.id)}
+                  disabled={isRunning}
+                  className="mt-0.5 accent-plm-accent"
+                />
+                <span className="text-plm-accent mt-0.5">{REPAIRABLE_ICON[bucket.id]}</span>
+                <div className="flex-1">
+                  <div className="text-sm text-plm-fg">
+                    {t(`realign.${fragment}.label${pluralSuffix(bucket.count)}`, {
+                      count: bucket.count,
+                    })}
+                  </div>
+                  <div className="text-xs text-plm-fg-muted mt-0.5">
+                    {t(`realign.${fragment}.description`)}
+                  </div>
                 </div>
-                <div className="text-xs text-plm-fg-muted mt-0.5">
-                  {t(`realign.${fragment}.description`)}
-                </div>
-              </div>
-            </label>
+              </label>
+              {isPendingMove && pendingMoveItems.length > 0 && (
+                <PendingMovesDecisionList
+                  items={pendingMoveItems}
+                  actions={pendingMoveActions}
+                  disabled={isRunning || !checked}
+                  onActionChange={onPendingMoveAction}
+                  onSetAll={onSetAllPendingMoves}
+                />
+              )}
+            </div>
           )
         })}
 

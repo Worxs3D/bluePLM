@@ -14,13 +14,17 @@ import { ALIGNMENT_SAMPLE_LIMIT } from '@/types/realign'
 import {
   bucketKeyFragment,
   computeSampleDisplay,
+  countPendingMoveActions,
   defaultAlignmentPlan,
+  defaultPendingMoveActions,
   groupBucketsByDisposition,
   hasAnyRepairSelected,
+  mergePendingMoveActions,
   otherHeldCount,
   pluralSuffix,
   REALIGN_DISPLAY_SAMPLE_LIMIT,
   REPAIRABLE_BUCKET_TO_PLAN_KEY,
+  setAllPendingMoveActions,
 } from './RealignDialog.utils'
 
 const ALL_BUCKET_IDS: AlignmentBucketId[] = [
@@ -273,5 +277,37 @@ describe('computeSampleDisplay — count vs. sample rendering', () => {
 
     expect(shown).toHaveLength(1)
     expect(moreCount).toBe(1)
+  })
+})
+
+describe('pending-move per-file actions', () => {
+  const items: AlignmentItem[] = [
+    { id: 'pending_move:a', relativePath: 'new/a.sldprt', fileName: 'a.sldprt', fileId: 'id-a', bucket: 'pending_move' },
+    { id: 'pending_move:b', relativePath: 'new/b.sldprt', fileName: 'b.sldprt', fileId: 'id-b', bucket: 'pending_move' },
+    { id: 'pending_move:none', relativePath: 'new/none.sldprt', fileName: 'none.sldprt', fileId: null, bucket: 'pending_move' },
+  ]
+
+  it('defaults every named file to adopt and skips rows without a fileId', () => {
+    expect(defaultPendingMoveActions(items)).toEqual({ 'id-a': 'adopt', 'id-b': 'adopt' })
+  })
+
+  it('keeps existing choices and defaults only new ids', () => {
+    const merged = mergePendingMoveActions({ 'id-a': 'reconcile', 'id-gone': 'reconcile' }, items)
+
+    expect(merged).toEqual({ 'id-a': 'reconcile', 'id-b': 'adopt' })
+  })
+
+  it('sets every named file to the same action', () => {
+    expect(setAllPendingMoveActions(items, 'reconcile')).toEqual({
+      'id-a': 'reconcile',
+      'id-b': 'reconcile',
+    })
+  })
+
+  it('counts adopt vs reconcile without treating missing ids as either', () => {
+    expect(countPendingMoveActions({ 'id-a': 'adopt', 'id-b': 'reconcile', 'id-c': 'adopt' })).toEqual({
+      adopt: 2,
+      reconcile: 1,
+    })
   })
 })

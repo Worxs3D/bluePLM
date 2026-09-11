@@ -88,6 +88,11 @@ export interface AdoptPreflightInput {
   files: LocalFile[]
   /** The acting user. A row this user holds is not "held by somebody else". */
   userId: string
+  /**
+   * When set, only these `files.id`s are considered. Omitted is vault-wide. An empty array
+   * considers none — the caller asked for a selection and named nothing.
+   */
+  fileIds?: string[]
 }
 
 /** Windows spells the same path several ways; every comparison here goes through this. */
@@ -110,7 +115,8 @@ interface Candidate {
  * the command idempotent. A row an earlier run already adopted keeps its stale `moved` badge
  * until the next load, and selecting on the badge alone would offer to rename it a second time.
  */
-function findCandidates(files: LocalFile[]): Candidate[] {
+function findCandidates(files: LocalFile[], fileIds?: string[]): Candidate[] {
+  const allowed = fileIds === undefined ? null : new Set(fileIds)
   const candidates: Candidate[] = []
 
   for (const file of files) {
@@ -120,6 +126,7 @@ function findCandidates(files: LocalFile[]): Candidate[] {
     const fileId = file.pdmData?.id
     const serverPath = file.pdmData?.file_path
     if (!fileId || !serverPath) continue
+    if (allowed && !allowed.has(fileId)) continue
     if (normalizePath(serverPath) === normalizePath(file.relativePath)) continue
 
     const serverName = file.pdmData?.file_name?.trim() || serverPath.split('/').pop() || file.name
@@ -150,6 +157,7 @@ function findCandidates(files: LocalFile[]): Candidate[] {
 export function classifyAdoptTargets({
   files,
   userId,
+  fileIds,
 }: AdoptPreflightInput): AdoptServerPathsPreflight {
   const byPath = new Map<string, LocalFile[]>()
   for (const file of files) {
@@ -164,7 +172,7 @@ export function classifyAdoptTargets({
   const blocked: BlockedAdoptTarget[] = []
   const skipped: SkippedAdoptTarget[] = []
 
-  for (const { file, target } of findCandidates(files)) {
+  for (const { file, target } of findCandidates(files, fileIds)) {
     const holderId = file.pdmData?.checked_out_by
     if (holderId && holderId !== userId) {
       blocked.push({

@@ -156,7 +156,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
   aliases: ['reconcile-moves'],
   usage: 'reconcile-moved-paths [--apply] [--skip-checked-out]',
 
-  validate(_params, ctx) {
+  validate(params, ctx) {
     if (ctx.isOfflineMode) {
       return t('reconcileMovedPaths.offline')
     }
@@ -177,6 +177,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       files: ctx.files,
       serverFiles: ctx.serverFiles,
       userId: ctx.user.id,
+      fileIds: params.fileIds,
     })
 
     if (preflight.total === 0) {
@@ -186,7 +187,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
     return null
   },
 
-  async execute({ apply, skipCheckedOut }, ctx): Promise<CommandResult> {
+  async execute({ apply, skipCheckedOut, fileIds }, ctx): Promise<CommandResult> {
     const user = ctx.user!
     const startedAt = Date.now()
 
@@ -194,6 +195,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       files: ctx.files,
       serverFiles: ctx.serverFiles,
       userId: user.id,
+      fileIds,
     })
 
     logReconcile('info', 'Pre-flight complete', {
@@ -204,6 +206,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       holders: preflight.holders.length,
       apply: apply === true,
       skipCheckedOut: skipCheckedOut === true,
+      fileIds: fileIds?.length,
     })
 
     // The default. A caller that has not asked for the write path in as many words gets the report.

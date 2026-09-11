@@ -51,6 +51,8 @@ export interface AlignmentItem {
   bucket: AlignmentBucketId
   /** Only on `pending_move`: vault-relative path where the content actually is. */
   movedToRelativePath?: string
+  /** Only on `pending_move`: path the vault still records for this file. */
+  serverRelativePath?: string
   /** Only on `blocked_checkout`: display name of the holder, already resolved. */
   heldBy?: string
   heldByUserId?: string
@@ -80,9 +82,17 @@ export interface VaultAlignmentReport {
   inSyncCount: number
   /** Always contains every AlignmentBucketId, including empty ones, in display order. */
   buckets: AlignmentBucket[]
+  /**
+   * Every `pending_move` item, uncapped. The matching bucket's `sample` is still limited to
+   * `ALIGNMENT_SAMPLE_LIMIT` for compact display elsewhere; per-file keep-server / keep-local
+   * decisions must see the whole set, so they read this list and never `sample`.
+   */
+  pendingMoveItems: AlignmentItem[]
   /** True when every `repairable` bucket is empty. */
   isAligned: boolean
 }
+
+export type PendingMoveAction = 'adopt' | 'reconcile'
 
 /** What the user ticked before pressing the button. */
 export interface AlignmentPlan {
@@ -90,9 +100,19 @@ export interface AlignmentPlan {
   recycleOrphans: boolean
   pullOutdated: boolean
   rebuildSyncIndex: boolean
+  /**
+   * Per-file keep-server (`adopt`) / keep-local (`reconcile`) choices, keyed by `files.id`.
+   * Omitted means adopt every pending move (legacy callers and an all-server default).
+   * Present means only these ids — an empty object is "include the bucket but name nothing".
+   */
+  pendingMoveActions?: Record<string, PendingMoveAction>
 }
 
-export type AlignmentStepId = keyof AlignmentPlan
+export type AlignmentStepId =
+  | 'resolvePendingMoves'
+  | 'recycleOrphans'
+  | 'pullOutdated'
+  | 'rebuildSyncIndex'
 
 export interface AlignmentStepResult {
   step: AlignmentStepId

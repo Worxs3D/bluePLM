@@ -6,6 +6,7 @@ import type {
   AlignmentItem,
   AlignmentPlan,
   AlignmentStepId,
+  PendingMoveAction,
 } from '@/types/realign'
 
 /** Display sample rows are capped further than `ALIGNMENT_SAMPLE_LIMIT` for a compact dialog. */
@@ -97,4 +98,51 @@ export function computeSampleDisplay(
  */
 export function otherHeldCount(bucket: AlignmentBucket): number {
   return bucket.count - bucket.selfHeldCount
+}
+
+/** Default every named pending move to keep-server (`adopt`). Rows without a `files.id` cannot be acted on. */
+export function defaultPendingMoveActions(
+  items: AlignmentItem[],
+): Record<string, PendingMoveAction> {
+  return setAllPendingMoveActions(items, 'adopt')
+}
+
+/**
+ * Keep any choice the user already made for an id that is still pending; new ids default to
+ * adopt. Dropped ids (resolved, or no longer in the report) are not carried forward.
+ */
+export function mergePendingMoveActions(
+  previous: Record<string, PendingMoveAction>,
+  items: AlignmentItem[],
+): Record<string, PendingMoveAction> {
+  const next: Record<string, PendingMoveAction> = {}
+  for (const item of items) {
+    if (!item.fileId) continue
+    next[item.fileId] = previous[item.fileId] ?? 'adopt'
+  }
+  return next
+}
+
+export function setAllPendingMoveActions(
+  items: AlignmentItem[],
+  action: PendingMoveAction,
+): Record<string, PendingMoveAction> {
+  const actions: Record<string, PendingMoveAction> = {}
+  for (const item of items) {
+    if (item.fileId) actions[item.fileId] = action
+  }
+  return actions
+}
+
+export function countPendingMoveActions(actions: Record<string, PendingMoveAction>): {
+  adopt: number
+  reconcile: number
+} {
+  let adopt = 0
+  let reconcile = 0
+  for (const action of Object.values(actions)) {
+    if (action === 'adopt') adopt += 1
+    else reconcile += 1
+  }
+  return { adopt, reconcile }
 }
