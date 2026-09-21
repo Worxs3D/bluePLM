@@ -94,7 +94,7 @@ function remotePath(value: string): string {
 function serverBundleRoot(): string {
   const root = app.isPackaged
     ? path.join(process.resourcesPath, 'blueplm-mdb-server')
-    : path.resolve(app.getAppPath(), 'blueplm-community-php')
+    : path.resolve(app.getAppPath(), 'blueplm-mdb-backend')
   return root
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "blue-plm",
-  "version": "4.4.3-CB1.14",
+  "version": "4.4.3-CB1.15",
   "description": "Open-source Product Lifecycle Management",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -111,7 +111,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "bluerobotics",
+      "owner": "Worxs3D",
       "repo": "bluePLM"
     },
     "win": {
@@ -126,7 +126,7 @@
       "icon": "assets/icon.ico",
       "extraResources": [
         {
-          "from": "blueplm-community-php",
+          "from": "blueplm-mdb-backend",
           "to": "blueplm-mdb-server",
           "filter": [
             "src/**/*",
