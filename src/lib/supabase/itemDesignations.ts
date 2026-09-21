@@ -1,4 +1,13 @@
 import { getSupabaseClient } from './client'
+import {
+  createCommunityItemDesignation,
+  deleteCommunityItemDesignation,
+  getCommunityItemDesignationAssignments,
+  getCommunityItemDesignations,
+  isCommunityConfigured,
+  setCommunityItemDesignationAssignment,
+  updateCommunityItemDesignation,
+} from '@/lib/community'
 
 import { log } from '@/lib/logger'
 import type { ItemDesignation } from '@/types/item'
@@ -26,6 +35,12 @@ function toDesignation(row: ItemDesignationRow): ItemDesignation {
 
 /** Load the org's configurable designation list (seeded with defaults). */
 export async function getItemDesignations(orgId: string): Promise<ItemDesignation[]> {
+  if (isCommunityConfigured()) {
+    try { return (await getCommunityItemDesignations()).map(toDesignation) } catch (error) {
+      log.error('[ItemDesignations]', 'Failed to load Community item designations', { error })
+      return []
+    }
+  }
   const supabase = getSupabaseClient() as unknown as RpcClient
   try {
     const { data, error } = await supabase.rpc('get_item_designations', { p_org_id: orgId })
@@ -44,6 +59,12 @@ export async function upsertItemDesignation(
   id?: string | null,
   sortOrder?: number | null,
 ): Promise<ItemDesignation> {
+  if (isCommunityConfigured()) {
+    const row = id
+      ? await updateCommunityItemDesignation(id, name, sortOrder)
+      : await createCommunityItemDesignation(name, sortOrder)
+    return toDesignation(row)
+  }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { data, error } = await supabase.rpc('upsert_item_designation', {
     p_org_id: orgId,
@@ -57,6 +78,7 @@ export async function upsertItemDesignation(
 
 /** Delete a designation from the org list. */
 export async function deleteItemDesignation(orgId: string, id: string): Promise<void> {
+  if (isCommunityConfigured()) return deleteCommunityItemDesignation(id)
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { error } = await supabase.rpc('delete_item_designation', {
     p_org_id: orgId,
@@ -70,6 +92,15 @@ export async function getItemDesignationAssignments(
   orgId: string,
   vaultId: string,
 ): Promise<Map<string, string>> {
+  if (isCommunityConfigured()) {
+    const result = new Map<string, string>()
+    try {
+      for (const row of await getCommunityItemDesignationAssignments(vaultId)) result.set(row.part_number, row.designation_id)
+    } catch (error) {
+      log.error('[ItemDesignations]', 'Failed to load Community designation assignments', { error })
+    }
+    return result
+  }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const result = new Map<string, string>()
   try {
@@ -97,6 +128,7 @@ export async function setItemDesignationAssignment(
   partNumber: string,
   designationId: string | null,
 ): Promise<void> {
+  if (isCommunityConfigured()) return setCommunityItemDesignationAssignment(vaultId, partNumber, designationId)
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { error } = await supabase.rpc('set_item_designation_assignment', {
     p_org_id: orgId,

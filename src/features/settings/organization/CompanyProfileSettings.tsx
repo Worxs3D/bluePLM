@@ -18,6 +18,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { getCommunityOrganizationAddresses, getCommunityOrganizationProfile, isCommunityConfigured, updateCommunityOrganizationProfile } from '@/lib/community'
 import { supabase } from '@/lib/supabase'
 
 interface CompanyProfile {
@@ -102,6 +103,11 @@ export function CompanyProfileSettings() {
     const loadProfile = async () => {
       setLoading(true)
       try {
+        if (isCommunityConfigured()) {
+          const data = await getCommunityOrganizationProfile()
+          setProfile({ logo_url: null, logo_storage_path: data?.logo_storage_path ?? null, phone: data?.phone ?? null, website: data?.website ?? null, contact_email: data?.contact_email ?? null })
+          return
+        }
         const { data, error } = await supabase
           .from('organizations')
           .select('logo_url, logo_storage_path, phone, website, contact_email')
@@ -154,6 +160,12 @@ export function CompanyProfileSettings() {
     const loadAddresses = async () => {
       setLoadingAddresses(true)
       try {
+        if (isCommunityConfigured()) {
+          const addresses = await getCommunityOrganizationAddresses()
+          setBillingAddresses(addresses.filter((address) => address.address_type === 'billing') as OrgAddress[])
+          setShippingAddresses(addresses.filter((address) => address.address_type === 'shipping') as OrgAddress[])
+          return
+        }
         const { data, error } = await supabase
           .from('organization_addresses')
           .select('*')
@@ -314,6 +326,11 @@ export function CompanyProfileSettings() {
     setSaving(true)
     savingRef.current = true
     try {
+      if (isCommunityConfigured()) {
+        await updateCommunityOrganizationProfile({ phone: profile.phone || null, website: profile.website || null, contactEmail: profile.contact_email || null })
+        addToast('success', 'Company profile saved')
+        return
+      }
       // Use RPC function (direct updates not allowed due to RLS)
       const { error } = await (supabase.rpc as any)('update_org_branding', { // TODO: type this
         p_org_id: organization.id,

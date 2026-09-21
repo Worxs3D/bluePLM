@@ -4,6 +4,13 @@ import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePatt
 
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { getSupabaseClient } from '../client'
+import {
+  getCommunityTrash,
+  isCommunityConfigured,
+  permanentlyDeleteCommunityFile,
+  restoreCommunityFile,
+  trashCommunityFile,
+} from '@/lib/community'
 
 // ============================================
 // Soft Delete / Restore Operations
@@ -38,6 +45,14 @@ export async function softDeleteFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      await trashCommunityFile(fileId)
+      return { success: true, file: { id: fileId } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get current file to validate
@@ -135,6 +150,14 @@ export async function restoreFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      await restoreCommunityFile(fileId)
+      return { success: true, file: { id: fileId } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get current file to validate
@@ -249,6 +272,14 @@ export async function permanentlyDeleteFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      await permanentlyDeleteCommunityFile(fileId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get current file to validate
@@ -355,6 +386,33 @@ export async function getDeletedFiles(
     folderPath?: string // Get deleted files that were in this folder
   },
 ): Promise<{ files: any[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const files = await getCommunityTrash(options?.vaultId)
+      const normalizedFolder = options?.folderPath?.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      return {
+        files: files
+          .filter((file) => !normalizedFolder || file.canonicalPath.startsWith(`${normalizedFolder}/`))
+          .map((file) => ({
+            id: file.id,
+            org_id: orgId,
+            vault_id: file.vaultId,
+            file_path: file.canonicalPath,
+            file_name: file.fileName,
+            version: file.currentRevision,
+            state: file.state,
+            content_hash: file.contentHash,
+            file_size: file.sizeBytes,
+            deleted_at: file.deletedAt,
+            deleted_by: file.deletedBy,
+            updated_at: file.updatedAt,
+            deleted_by_user: file.deletedByName ? { full_name: file.deletedByName } : null,
+          })),
+      }
+    } catch (error) {
+      return { files: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   try {
@@ -440,6 +498,10 @@ export async function getDeletedFilesCount(
   orgId: string,
   vaultId?: string,
 ): Promise<{ count: number; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { return { count: (await getCommunityTrash(vaultId)).length } }
+    catch (error) { return { count: 0, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   try {
@@ -480,6 +542,17 @@ export async function emptyTrash(
   userId: string,
   vaultId?: string,
 ): Promise<{ success: boolean; deleted: number; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const files = await getCommunityTrash(vaultId)
+      const result = await permanentlyDeleteFiles(files.map((file) => file.id), userId)
+      return result.success
+        ? { success: true, deleted: result.deleted }
+        : { success: false, deleted: result.deleted, error: result.errors[0] }
+    } catch (error) {
+      return { success: false, deleted: 0, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Fetch ALL trashed file IDs using pagination (Supabase default limit is 1000)

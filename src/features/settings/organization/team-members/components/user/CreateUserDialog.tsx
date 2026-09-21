@@ -5,6 +5,12 @@ import { UserPlus, Users, Shield, Database, Mail, Loader2, UserCheck } from 'luc
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
+import {
+  addCommunityTeamMember,
+  createCommunityUser,
+  isCommunityConfigured,
+  setCommunityUserVaultAccess,
+} from '@/lib/community'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { TeamWithDetails, WorkflowRoleBasic } from '../../types'
 
@@ -45,6 +51,7 @@ export function CreateUserDialog({
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
+  const [initialPassword, setInitialPassword] = useState('')
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
   const [selectedVaultIds, setSelectedVaultIds] = useState<string[]>([])
   const [selectedWorkflowRoleIds, setSelectedWorkflowRoleIds] = useState<string[]>([])
@@ -59,6 +66,34 @@ export function CreateUserDialog({
 
     setIsSaving(true)
     try {
+      if (isCommunityConfigured()) {
+        if (fullName.trim().length < 2) {
+          addToast('error', 'Enter the user\'s full name')
+          return
+        }
+        if (initialPassword.length < 12) {
+          addToast('error', 'The initial password must have at least 12 characters')
+          return
+        }
+        const created = await createCommunityUser({
+          email: email.toLowerCase().trim(),
+          displayName: fullName.trim(),
+          password: initialPassword,
+          role: 'member',
+        })
+        await Promise.all(selectedTeamIds.map((teamId) => addCommunityTeamMember(teamId, created.id)))
+        // Community vault access is opt-in. Preserve the original UI's "all"
+        // default by granting every available vault when none was selected.
+        await setCommunityUserVaultAccess(
+          created.id,
+          selectedVaultIds.length > 0 ? selectedVaultIds : vaults.map((vault) => vault.id),
+        )
+        addToast('success', `Created account for ${created.displayName}`)
+        onCreated()
+        onClose()
+        return
+      }
+
       // If we have API URL and want to send invite, use API endpoint
       if (sendInviteEmail && apiUrl) {
         // Get current session token
@@ -246,6 +281,21 @@ export function CreateUserDialog({
               className="w-full px-3 py-2 bg-plm-bg border border-plm-border rounded-lg text-plm-fg placeholder:text-plm-fg-dim focus:outline-none focus:border-plm-accent"
             />
           </div>
+
+          {isCommunityConfigured() && (
+            <div>
+              <label className="block text-sm text-plm-fg-muted mb-1.5">Initial Password *</label>
+              <input
+                type="password"
+                value={initialPassword}
+                onChange={(e) => setInitialPassword(e.target.value)}
+                placeholder="At least 12 characters"
+                autoComplete="new-password"
+                className="w-full px-3 py-2 bg-plm-bg border border-plm-border rounded-lg text-plm-fg placeholder:text-plm-fg-dim focus:outline-none focus:border-plm-accent"
+              />
+              <p className="text-xs text-plm-fg-dim mt-1">Share this password with the user through an approved channel.</p>
+            </div>
+          )}
 
           {/* Teams */}
           {teams.length > 0 && (
@@ -492,7 +542,7 @@ export function CreateUserDialog({
           </button>
           <button
             onClick={handleCreate}
-            disabled={isSaving || !email || !isValidEmail}
+            disabled={isSaving || !email || !isValidEmail || (isCommunityConfigured() && (fullName.trim().length < 2 || initialPassword.length < 12))}
             className="btn btn-primary flex items-center gap-2"
           >
             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}

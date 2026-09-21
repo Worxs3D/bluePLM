@@ -1,7 +1,15 @@
 import { getSupabaseClient } from '../client'
+import { getCommunityFileReferences } from '@/lib/community'
 import { log } from '@/lib/logger'
 import { folderPrefixLikePattern } from '@/lib/utils/likePattern'
 import { hashCheckoutIdentifier, type CheckoutUserProfile } from '@/types/pdm'
+import {
+  getCommunityFileRevisions,
+  getCommunityFiles,
+  getCommunityVaults,
+  isCommunityConfigured,
+  type CommunityFile,
+} from '@/lib/community'
 
 // ============================================
 // Files - Read Operations
@@ -20,6 +28,45 @@ export interface CheckedOutUsersResult {
 
 const checkedOutUsersInFlight = new Map<string, Promise<CheckedOutUsersResult>>()
 
+function communityFileToPdm(file: CommunityFile, vaultId: string) {
+  const extension = file.fileName.includes('.') ? `.${file.fileName.split('.').pop()}`.toLowerCase() : null
+  return {
+    id: file.id,
+    org_id: '',
+    vault_id: vaultId,
+    file_path: file.canonicalPath,
+    file_name: file.fileName,
+    extension,
+    file_type: null,
+    part_number: null,
+    description: null,
+    revision: String(file.currentRevision),
+    version: file.currentRevision,
+    content_hash: file.contentHash,
+    storage_relative_path: file.storageRelativePath,
+    _communityStorageRelativePath: file.storageRelativePath,
+    file_size: file.sizeBytes,
+    state: file.state,
+    workflow_state_id: file.workflowStateId ?? null,
+    checked_out_by: file.checkedOutByUserId,
+    checked_out_at: file.checkoutExpiresAt,
+    checked_out_file_path: file.checkedOutByUserId ? file.canonicalPath : null,
+    checked_out_file_name: file.checkedOutByUserId ? file.fileName : null,
+    checked_out_user: file.checkedOutByUserId
+      ? { id: file.checkedOutByUserId, email: '', full_name: file.checkedOutBy, avatar_url: null }
+      : null,
+    custom_properties: null,
+    created_at: file.createdAt,
+    updated_at: file.updatedAt,
+  }
+}
+
+async function communityFilesForVaults(vaultId?: string) {
+  const vaults = vaultId ? (await getCommunityVaults()).filter((vault) => vault.id === vaultId) : await getCommunityVaults()
+  const files = (await Promise.all(vaults.map(async (vault) => (await getCommunityFiles(vault.id)).map((file) => communityFileToPdm(file, vault.id))))).flat()
+  return files
+}
+
 /**
  * Get files with full metadata including user info (slower, use for single file or small sets)
  */
@@ -35,6 +82,24 @@ export async function getFiles(
     workflow_state_ids?: string[]
   },
 ) {
+  if (isCommunityConfigured()) {
+    try {
+      let files = await communityFilesForVaults(options?.vaultId)
+      if (options?.folder) {
+        const prefix = `${options.folder.replace(/[\\/]$/, '')}/`.toLowerCase()
+        files = files.filter((file) => file.file_path.toLowerCase().startsWith(prefix))
+      }
+      if (options?.state?.length) files = files.filter((file) => options.state!.includes(file.state))
+      if (options?.search) {
+        const search = options.search.toLowerCase()
+        files = files.filter((file) => file.file_path.toLowerCase().includes(search) || file.file_name.toLowerCase().includes(search))
+      }
+      if (options?.checkedOutByMe) files = files.filter((file) => file.checked_out_by === options.checkedOutByMe)
+      return { files, error: null }
+    } catch (error) {
+      return { files: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   let query = client
     .from('files')
@@ -96,6 +161,10 @@ export interface LightweightFile {
   revision: string | null
   version: number
   content_hash: string | null
+  /** Immutable Community network-vault object path, when Community is active. */
+  storage_relative_path?: string | null
+  /** Explicit alias retained for Community download and rollback commands. */
+  _communityStorageRelativePath?: string
   file_size: number | null
   state: string | null
   checked_out_by: string | null
@@ -130,6 +199,24 @@ export async function getFilesLightweight(
   orgId: string,
   vaultId?: string,
 ): Promise<{ files: LightweightFile[] | null; error: any }> {
+  if (isCommunityConfigured()) {
+    try {
+      const files = await communityFilesForVaults(vaultId)
+      return { files: files.map((file) => ({
+        id: file.id, file_path: file.file_path, file_name: file.file_name, extension: file.extension,
+        file_type: file.file_type, part_number: file.part_number, description: file.description,
+        revision: file.revision, version: file.version, content_hash: file.content_hash,
+        storage_relative_path: file.storage_relative_path,
+        _communityStorageRelativePath: file._communityStorageRelativePath,
+        file_size: file.file_size, state: file.state, checked_out_by: file.checked_out_by,
+        checked_out_at: file.checked_out_at, updated_at: file.updated_at,
+        custom_properties: file.custom_properties, checked_out_file_path: file.checked_out_file_path,
+        checked_out_file_name: file.checked_out_file_name,
+      })), error: null }
+    } catch (error) {
+      return { files: null, error }
+    }
+  }
   const logFn =
     typeof window !== 'undefined' && (window as any).electronAPI?.log // TODO: type this
       ? (level: string, msg: string, data?: any) =>
@@ -178,6 +265,43 @@ export async function getFilesDelta(
   vaultId: string,
   since: string,
 ): Promise<{ files: DeltaFile[] | null; error: any }> {
+  if (isCommunityConfigured()) {
+    try {
+      const watermark = new Date(since).getTime()
+      const files = await communityFilesForVaults(vaultId)
+      return {
+        files: files
+          .filter((file) => Number.isNaN(watermark) || new Date(file.updated_at).getTime() > watermark)
+          .map((file) => ({
+            id: file.id,
+            file_path: file.file_path,
+            file_name: file.file_name,
+            extension: file.extension,
+            file_type: file.file_type,
+            part_number: file.part_number,
+            description: file.description,
+            revision: file.revision,
+            version: file.version,
+            content_hash: file.content_hash,
+            storage_relative_path: file.storage_relative_path,
+            _communityStorageRelativePath: file._communityStorageRelativePath,
+            file_size: file.file_size,
+            state: file.state,
+            checked_out_by: file.checked_out_by,
+            checked_out_at: file.checked_out_at,
+            updated_at: file.updated_at,
+            custom_properties: file.custom_properties,
+            checked_out_file_path: file.checked_out_file_path,
+            checked_out_file_name: file.checked_out_file_name,
+            deleted_at: null,
+            is_deleted: false,
+          })),
+        error: null,
+      }
+    } catch (error) {
+      return { files: null, error }
+    }
+  }
   const logFn =
     typeof window !== 'undefined' && (window as any).electronAPI?.log // TODO: type this
       ? (level: string, msg: string, data?: any) =>
@@ -226,6 +350,13 @@ export async function getVaultFilesCount(
   orgId: string,
   vaultId: string,
 ): Promise<{ count: number | null; error: unknown }> {
+  if (isCommunityConfigured()) {
+    try {
+      return { count: (await communityFilesForVaults(vaultId)).length, error: null }
+    } catch (error) {
+      return { count: null, error }
+    }
+  }
   const logFn =
     typeof window !== 'undefined' && (window as any).electronAPI?.log // TODO: type this
       ? (level: string, msg: string, data?: any) => // TODO: type this
@@ -405,6 +536,14 @@ export async function getUserBasicInfo(
 }
 
 export async function getFile(fileId: string) {
+  if (isCommunityConfigured()) {
+    try {
+      const files = await communityFilesForVaults()
+      return { file: files.find((file) => file.id === fileId) ?? null, error: null }
+    } catch (error) {
+      return { file: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   const { data, error } = await client
     .from('files')
@@ -441,6 +580,14 @@ export async function getFile(fileId: string) {
  * and types are regenerated.
  */
 export async function getFileByPath(vaultId: string, filePath: string) {
+  if (isCommunityConfigured()) {
+    try {
+      const files = await communityFilesForVaults(vaultId)
+      return { file: files.find((file) => file.file_path.localeCompare(filePath, undefined, { sensitivity: 'accent' }) === 0) ?? null, error: null }
+    } catch (error) {
+      return { file: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   const { data, error } = await (client.rpc as any)('get_active_file_by_path', {
     // TODO: type this
@@ -456,6 +603,27 @@ export async function getFileByPath(vaultId: string, filePath: string) {
 // ============================================
 
 export async function getFileVersions(fileId: string) {
+  if (isCommunityConfigured()) {
+    try {
+      const versions = (await getCommunityFileRevisions(fileId)).map((revision) => ({
+        id: revision.id,
+        file_id: fileId,
+        version: revision.revisionNumber,
+        revision: String(revision.revisionNumber),
+        content_hash: revision.contentHash,
+        _communityStorageRelativePath: revision.storageRelativePath,
+        file_size: revision.sizeBytes,
+        comment: revision.comment,
+        workflow_state_id: null,
+        created_at: revision.createdAt,
+        created_by: revision.checkedInBy,
+        created_by_user: { email: '', full_name: revision.checkedInBy },
+      }))
+      return { versions, error: null }
+    } catch (error) {
+      return { versions: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   const { data, error } = await client
     .from('file_versions')
@@ -476,6 +644,9 @@ export async function getFileVersions(fileId: string) {
 // ============================================
 
 export async function getWhereUsed(fileId: string) {
+  if (isCommunityConfigured()) {
+    try { return { references: (await getCommunityFileReferences(fileId, 'where-used')) as any, error: null } } catch (error) { return { references: null, error: error as Error } }
+  }
   const client = getSupabaseClient()
   const { data, error } = await client
     .from('file_references')
@@ -493,6 +664,9 @@ export async function getWhereUsed(fileId: string) {
 }
 
 export async function getContains(fileId: string) {
+  if (isCommunityConfigured()) {
+    try { return { references: (await getCommunityFileReferences(fileId, 'contains')) as any, error: null } } catch (error) { return { references: null, error: error as Error } }
+  }
   const client = getSupabaseClient()
   const { data, error } = await client
     .from('file_references')

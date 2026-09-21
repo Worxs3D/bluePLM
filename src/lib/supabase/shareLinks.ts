@@ -2,6 +2,7 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 
 import { getSupabaseClient } from './client'
+import { createCommunityShareLink, isCommunityConfigured } from '@/lib/community'
 
 export interface ShareLinkOptions {
   expiresInDays?: number
@@ -73,6 +74,14 @@ export async function createShareLink(
   link: { id: string; token: string; expiresAt: string | null; downloadUrl: string } | null
   error?: string
 }> {
+  if (isCommunityConfigured()) {
+    try {
+      const link = await createCommunityShareLink(fileId, Math.min(options?.expiresInDays ?? DEFAULT_EXPIRY_DAYS, MAX_EXPIRY_DAYS))
+      return { link: { id: link.id, token: link.token, expiresAt: link.expiresAt, downloadUrl: link.downloadUrl } }
+    } catch (error) {
+      return { link: null, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data: fileData, error: fileError } = await client

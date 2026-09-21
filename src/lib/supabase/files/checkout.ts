@@ -3,6 +3,13 @@ import { buildConfigurationMapPayload } from '@/lib/metadata/configurationMaps'
 
 import { getSupabaseClient } from '../client'
 import { getCurrentUserEmail } from '../auth'
+import type { Database } from '@/types/supabase'
+import {
+  cancelCommunityCheckout,
+  checkinCommunityFile,
+  checkoutCommunityFile,
+  isCommunityConfigured,
+} from '@/lib/community'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
@@ -103,8 +110,18 @@ export async function checkoutFile(
     // Pre-computed values to avoid redundant IPC calls in batch operations
     machineId?: string
     machineName?: string
+    clientWorkingPath?: string
+    vaultId?: string
   },
 ): Promise<{ success: boolean; file?: CheckoutSnapshotFields; error?: string | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      await checkoutCommunityFile(fileId, options?.clientWorkingPath || '', options?.vaultId)
+      return { success: true, file: undefined, error: null }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Use pre-computed values if provided, otherwise fetch (for single-file calls)
@@ -175,6 +192,8 @@ export async function checkinFile(
     // Performance optimizations for batch operations:
     machineId?: string // Pre-fetched machine ID to avoid N IPC calls for N files
     skipMachineMismatchCheck?: boolean // Skip the SELECT query for batch operations
+    /** Immutable network-vault revision staged by the Electron Community workflow. */
+    communityStorageRelativePath?: string
   },
 ): Promise<{
   success: boolean
@@ -185,6 +204,38 @@ export async function checkinFile(
   inspectionChanged?: boolean
   machineMismatchWarning?: string | null
 }> {
+  if (isCommunityConfigured()) {
+    try {
+      if (!options?.communityStorageRelativePath) {
+        await cancelCommunityCheckout(fileId)
+        return { success: true, file: { id: fileId, checked_out_by: null, checked_out_at: null }, contentChanged: false, metadataChanged: false, inspectionChanged: false, machineMismatchWarning: null }
+      }
+      const result = await checkinCommunityFile(fileId, {
+        storageRelativePath: options.communityStorageRelativePath,
+        contentHash: options.newContentHash,
+        sizeBytes: options.newFileSize,
+        comment: options.comment,
+      })
+      return {
+        success: true,
+        file: {
+          id: fileId,
+          version: result.revision,
+          revision: String(result.revision),
+          content_hash: options.newContentHash ?? null,
+          file_size: options.newFileSize ?? null,
+          checked_out_by: null,
+          checked_out_at: null,
+        },
+        contentChanged: true,
+        metadataChanged: false,
+        inspectionChanged: false,
+        machineMismatchWarning: null,
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Machine mismatch check is optional for batch operations (significant perf savings)
@@ -325,7 +376,7 @@ export async function syncSolidWorksFileMetadata(
   }
 
   // Build update data
-  const updateData: Record<string, any> = {
+  const updateData: Database['public']['Tables']['files']['Update'] = {
     updated_at: new Date().toISOString(),
     updated_by: userId,
   }
@@ -340,7 +391,10 @@ export async function syncSolidWorksFileMetadata(
     updateData.revision = metadata.revision
   }
   if (metadata.custom_properties !== undefined) {
-    updateData.custom_properties = metadata.custom_properties
+    // Metadata originates from the SolidWorks property bridge. Its public type
+    // permits unknown values, while the database column accepts JSON only.
+    // The bridge serializes this payload before it crosses the IPC boundary.
+    updateData.custom_properties = metadata.custom_properties as Database['public']['Tables']['files']['Update']['custom_properties']
   }
 
   // Check if file is checked out by current user
@@ -430,6 +484,14 @@ export async function syncSolidWorksFileMetadata(
 }
 
 export async function undoCheckout(fileId: string, userId: string) {
+  if (isCommunityConfigured()) {
+    try {
+      await cancelCommunityCheckout(fileId)
+      return { success: true, error: null }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Verify the user has the file checked out (or is admin)

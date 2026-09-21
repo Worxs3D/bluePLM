@@ -2,6 +2,13 @@ import { getSupabaseClient } from './client'
 
 import { log } from '@/lib/logger'
 import type { ItemImage } from '@/types/item'
+import { getCommunityItemImages, getCommunityVault, getCommunityVaults, isCommunityConfigured, resetCommunityItemImage, setCommunityItemImage } from '@/lib/community'
+import {
+  googleDriveFileIdFromStoragePath,
+  googleDriveRevisionStoragePath,
+  requireGoogleDriveVaultToken,
+} from '@/lib/googleDriveVault'
+import { buildFullPath } from '@/lib/utils/path'
 
 const VAULT_BUCKET = 'vault'
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 // 1 year (matches avatar/logo uploads)
@@ -53,6 +60,30 @@ function toItemImage(row: ItemImageRow, imageUrl: string | null): ItemImage {
  * with no override row use the default SolidWorks preview and are absent here.
  */
 export async function getItemImages(orgId: string): Promise<Map<string, ItemImage>> {
+  if (isCommunityConfigured()) {
+    const result = new Map<string, ItemImage>()
+    try {
+      const rows = await getCommunityItemImages()
+      await Promise.all(rows.map(async (row) => {
+        let imageUrl: string | null = null
+        if (row.imageType === 'image' && row.storageRelativePath) {
+          const vault = await getCommunityVault(row.vaultId)
+          if (vault.storageProvider === 'network' && vault.networkRoot && window.electronAPI) {
+            const read = await window.electronAPI.readFile(buildFullPath(vault.networkRoot, row.storageRelativePath))
+            if (read.success && read.data) imageUrl = `data:image/*;base64,${read.data}`
+          } else if (vault.storageProvider === 'google_drive' && window.electronAPI) {
+            const fileId = googleDriveFileIdFromStoragePath(row.storageRelativePath)
+            if (fileId) {
+              const read = await window.electronAPI.readSmallGoogleDriveFile(fileId, requireGoogleDriveVaultToken())
+              if (read.success && read.data) imageUrl = `data:image/*;base64,${read.data}`
+            }
+          }
+        }
+        result.set(row.partNumber, { partNumber: row.partNumber, type: row.imageType, iconName: row.iconName, iconColor: row.iconColor, imageUrl, storagePath: row.storageRelativePath })
+      }))
+    } catch (error) { log.error('[ItemImages]', 'Failed to load Community item images', { error }) }
+    return result
+  }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const result = new Map<string, ItemImage>()
   try {
@@ -82,7 +113,14 @@ export async function setItemIcon(
   partNumber: string,
   iconName: string,
   iconColor?: string | null,
+  vaultId?: string,
 ): Promise<ItemImage> {
+  if (isCommunityConfigured()) {
+    const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
+    if (!vault) throw new Error('Select a vault before assigning an item icon.')
+    const row = await setCommunityItemImage(partNumber, { vaultId: vault.id, imageType: 'icon', iconName, iconColor: iconColor ?? null, storageRelativePath: null })
+    return { partNumber: row.partNumber, type: row.imageType, iconName: row.iconName, iconColor: row.iconColor, imageUrl: null, storagePath: null }
+  }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { data, error } = await supabase.rpc('upsert_item_image', {
     p_org_id: orgId,
@@ -101,12 +139,51 @@ export async function uploadItemImage(
   orgId: string,
   partNumber: string,
   file: File,
+  vaultId?: string,
 ): Promise<ItemImage> {
   if (!file.type.startsWith('image/')) {
     throw new Error('Please choose an image file')
   }
   if (file.size > MAX_IMAGE_BYTES) {
     throw new Error('Image must be 2 MB or smaller')
+  }
+
+  if (isCommunityConfigured()) {
+    const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
+    if (!vault) throw new Error('Select a vault before uploading an item image.')
+    if (!window.electronAPI) throw new Error('Item image upload requires the BluePLM desktop client.')
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+    let storagePath: string
+    let imageUrl: string
+    if (vault.storageProvider === 'network') {
+      if (!vault.networkRoot) throw new Error('The Community network vault root is missing.')
+      storagePath = `.blueplm/assets/item-images/${sanitizePartNumber(partNumber)}-${crypto.randomUUID()}.${ext}`
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      // Avoid spreading a multi-megabyte image into one function call: Chromium
+      // otherwise throws before the image reaches the network vault.
+      let binary = ''
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+      const base64 = btoa(binary)
+      const written = await window.electronAPI.writeFile(buildFullPath(vault.networkRoot, storagePath), base64)
+      if (!written.success) throw new Error(written.error || 'Failed to write item image to vault.')
+      imageUrl = `data:${file.type || 'image/png'};base64,${base64}`
+    } else {
+      if (!vault.googleDriveFolderId) throw new Error('The Google Drive vault folder is missing.')
+      const sourcePath = window.electronAPI.getPathForFile(file)
+      if (!sourcePath) throw new Error('The selected item image is not available as a local file.')
+      const uploaded = await window.electronAPI.uploadGoogleDriveFile({
+        sourcePath,
+        parentFolderId: vault.googleDriveFolderId,
+        fileName: `item-image-${sanitizePartNumber(partNumber)}-${crypto.randomUUID()}.${ext}`,
+        accessToken: requireGoogleDriveVaultToken(),
+      })
+      if (!uploaded.success || !uploaded.fileId) throw new Error(uploaded.error || 'Failed to upload item image to Google Drive.')
+      storagePath = googleDriveRevisionStoragePath(uploaded.fileId)
+      const read = await window.electronAPI.readSmallGoogleDriveFile(uploaded.fileId, requireGoogleDriveVaultToken())
+      imageUrl = read.success && read.data ? `data:${file.type || 'image/png'};base64,${read.data}` : ''
+    }
+    const row = await setCommunityItemImage(partNumber, { vaultId: vault.id, imageType: 'image', iconName: null, iconColor: null, storageRelativePath: storagePath })
+    return { partNumber: row.partNumber, type: row.imageType, iconName: null, iconColor: null, imageUrl, storagePath }
   }
 
   const supabase = getSupabaseClient()
@@ -135,6 +212,7 @@ export async function uploadItemImage(
 
 /** Remove an item's override, reverting to the default SolidWorks preview. */
 export async function resetItemImage(orgId: string, partNumber: string): Promise<void> {
+  if (isCommunityConfigured()) { await resetCommunityItemImage(partNumber); return }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { error } = await supabase.rpc('reset_item_image', {
     p_org_id: orgId,

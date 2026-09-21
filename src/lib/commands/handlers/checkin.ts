@@ -18,7 +18,7 @@
  */
 
 import type { Command, CheckinParams, CommandResult } from '../types'
-import { getSyncedFilesFromSelection } from '../types'
+import { buildFullPath, getSyncedFilesFromSelection } from '../types'
 import { ProgressTracker } from '../executor'
 import {
   checkinFile,
@@ -51,6 +51,11 @@ import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { swRefsToFileReferences } from '../../solidworks/referenceRows'
 import type { SWServiceReference } from '../../solidworks/types'
+import { getCommunityVault, isCommunityConfigured } from '@/lib/community'
+import {
+  googleDriveRevisionStoragePath,
+  requireGoogleDriveVaultToken,
+} from '@/lib/googleDriveVault'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
@@ -146,7 +151,8 @@ const UPLOAD_RETRY_BASE_DELAY_MS = 1000
 async function uploadFileContentToStorage(
   orgId: string,
   hash: string,
-  base64Content: string,
+  filePath: string,
+  expectedSize: number,
 ): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient()
   const dirPath = `${orgId}/${hash.substring(0, 2)}`
@@ -171,28 +177,23 @@ async function uploadFileContentToStorage(
       return { success: true }
     }
 
-    // Convert base64 to blob
-    const binaryString = atob(base64Content)
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
-    }
-    const blob = new Blob([bytes])
-    const expectedSize = bytes.length
-
     // Upload with retry
     let lastError: string | undefined
     for (let attempt = 1; attempt <= UPLOAD_MAX_RETRIES; attempt++) {
-      const { error: uploadError } = await client.storage.from('vault').upload(storagePath, blob, {
-        contentType: 'application/octet-stream',
-        upsert: false,
-      })
+      const { data: signedUpload, error: signedUploadError } = await client.storage
+        .from('vault')
+        .createSignedUploadUrl(storagePath)
+      const streamed =
+        !signedUploadError && signedUpload?.signedUrl
+          ? await window.electronAPI?.uploadSignedUrl(filePath, signedUpload.signedUrl, 'application/octet-stream')
+          : undefined
+      const uploadError = signedUploadError?.message || streamed?.error
 
-      if (uploadError) {
-        if (uploadError.message.includes('already exists')) {
+      if (uploadError || !streamed?.success) {
+        if (uploadError?.includes('already exists')) {
           break // Content-addressable dedup -- this is fine
         }
-        lastError = uploadError.message
+        lastError = uploadError || 'The streamed storage upload did not complete.'
         if (isRetryableError(lastError) && attempt < UPLOAD_MAX_RETRIES) {
           const delayMs = getBackoffDelay(attempt, UPLOAD_RETRY_BASE_DELAY_MS)
           log.warn(
@@ -1265,6 +1266,7 @@ export const checkinCommand: Command<CheckinParams> = {
         // custom_properties travels with it and checkinFile sends the complete configuration
         // maps. Sending pending alone is what used to erase the rest of them.
         const metadataToUse = file.pendingMetadata
+        let communityStorageRelativePath: string | undefined
 
         if (fileHash) {
           // Check if content actually changed from what's in storage
@@ -1273,6 +1275,60 @@ export const checkinCommand: Command<CheckinParams> = {
           // Upload new content to storage if hash changed
           // This ensures the file blob exists before updating the database
           if (contentChanged && orgId) {
+            if (isCommunityConfigured()) {
+              try {
+                const vaultId = file.pdmData?.vault_id
+                if (!vaultId || !file.pdmData?.id) {
+                  return { success: false, error: `${file.name}: Community vault metadata is incomplete.` }
+                }
+                const vault = await getCommunityVault(vaultId)
+                if (vault.storageProvider === 'network') {
+                  if (!vault.networkRoot) {
+                    return { success: false, error: `${file.name}: Network vault root is missing.` }
+                  }
+                  // Match BluePLM's Supabase model: every check-in is an immutable,
+                  // content-addressed object. file_revisions points to this object;
+                  // the user-facing canonical path remains independent of history.
+                  communityStorageRelativePath = `.blueplm/objects/${fileHash.slice(0, 2).toLowerCase()}/${fileHash.toLowerCase()}`
+                  const stagedPath = buildFullPath(vault.networkRoot, communityStorageRelativePath)
+                  const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
+                  if (!staged?.success) {
+                    return { success: false, error: `${file.name}: Failed to stage Community revision - ${staged?.error || 'unknown copy error'}` }
+                  }
+                  const stagedHash = await window.electronAPI?.hashFile(stagedPath)
+                  if (!stagedHash?.success || !stagedHash.hash) {
+                    return { success: false, error: `${file.name}: Failed to verify staged Community revision - ${stagedHash?.error || 'unknown hash error'}` }
+                  }
+                  if (stagedHash.hash !== fileHash) {
+                    return { success: false, error: `${file.name}: Staged Community revision hash does not match the local file.` }
+                  }
+                  fileSize = stagedHash.size ?? fileSize
+                  logCheckin('info', 'Staged immutable Community revision', {
+                    operationId, fileName: file.name, stagedPath, hash: fileHash.substring(0, 12),
+                  })
+                } else {
+                  if (!vault.googleDriveFolderId) {
+                    return { success: false, error: `${file.name}: Google Drive vault folder is missing.` }
+                  }
+                  const uploaded = await window.electronAPI?.uploadGoogleDriveFile({
+                    sourcePath: file.path,
+                    parentFolderId: vault.googleDriveFolderId,
+                    fileName: `${fileHash}-${file.name}`,
+                    accessToken: requireGoogleDriveVaultToken(),
+                  })
+                  if (!uploaded?.success || !uploaded.fileId) {
+                    return { success: false, error: `${file.name}: ${uploaded?.error || 'Failed to upload immutable Google Drive revision.'}` }
+                  }
+                  communityStorageRelativePath = googleDriveRevisionStoragePath(uploaded.fileId)
+                  fileSize = uploaded.size ?? fileSize
+                  logCheckin('info', 'Uploaded immutable Google Drive revision', {
+                    operationId, fileName: file.name, hash: fileHash.substring(0, 12),
+                  })
+                }
+              } catch (error) {
+                return { success: false, error: `${file.name}: ${error instanceof Error ? error.message : String(error)}` }
+              }
+            } else {
             logCheckin('debug', 'Content changed, uploading to storage', {
               operationId,
               fileName: file.name,
@@ -1282,7 +1338,17 @@ export const checkinCommand: Command<CheckinParams> = {
 
             // Read file content for upload
             const readFileStart = performance.now()
-            const readResult = await window.electronAPI?.readFile(file.path)
+            // Keep file bytes in the main process. The compatibility-shaped value
+            // below avoids a renderer base64 allocation; uploadFileContentToStorage
+            // streams directly from file.path.
+            const readResult = {
+              success: true,
+              data: '',
+              hash: fileHash,
+              size: fileSize,
+              locked: false,
+              error: undefined as string | undefined,
+            }
             recordSubstepTiming('readFile', performance.now() - readFileStart)
             if (!readResult?.success || readResult.data === undefined) {
               const errorDetail = readResult?.locked
@@ -1314,7 +1380,12 @@ export const checkinCommand: Command<CheckinParams> = {
 
             // Upload to storage
             const uploadStart = performance.now()
-            const uploadResult = await uploadFileContentToStorage(orgId, fileHash, readResult.data)
+            const uploadResult = await uploadFileContentToStorage(
+              orgId,
+              fileHash,
+              file.path,
+              fileSize ?? file.size,
+            )
             recordSubstepTiming('upload', performance.now() - uploadStart)
             if (!uploadResult.success) {
               logCheckin('error', 'Failed to upload file to storage', {
@@ -1335,6 +1406,7 @@ export const checkinCommand: Command<CheckinParams> = {
               hash: fileHash.substring(0, 12),
               size: fileSize,
             })
+            }
           }
 
           logCheckin('debug', 'Hash computed, checking in', {
@@ -1416,6 +1488,7 @@ export const checkinCommand: Command<CheckinParams> = {
             comment: file.pendingCheckinNote,
             machineId,
             skipMachineMismatchCheck: true,
+            communityStorageRelativePath,
           })
           recordSubstepTiming('checkinAPI', performance.now() - checkinAPIStart)
 

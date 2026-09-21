@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './client'
+import { getCommunityItemDefinition, getCommunityItemWorkflowStages, isCommunityConfigured, updateCommunityItemDefinition } from '@/lib/community'
 
 import { log } from '@/lib/logger'
 import type { Json } from '@/types/supabase'
@@ -24,6 +25,12 @@ function normalizeDefinition(raw: unknown): ItemDefinitionSettings {
 export async function getItemDefinitionSettings(
   orgId: string,
 ): Promise<ItemDefinitionSettings> {
+  if (isCommunityConfigured()) {
+    try { return normalizeDefinition(await getCommunityItemDefinition()) } catch (error) {
+      log.error('[ItemDefinition]', 'Failed to load Community settings', { error })
+      return { ...DEFAULT_ITEM_DEFINITION }
+    }
+  }
   const supabase = getSupabaseClient()
   try {
     const { data, error } = await supabase.rpc('get_item_definition_settings', {
@@ -42,6 +49,12 @@ export async function updateItemDefinitionSettings(
   orgId: string,
   settings: ItemDefinitionSettings,
 ): Promise<{ error: Error | null }> {
+  if (isCommunityConfigured()) {
+    try { await updateCommunityItemDefinition(settings); return { error: null } } catch (error) {
+      log.error('[ItemDefinition]', 'Failed to save Community settings', { error })
+      return { error: error as Error }
+    }
+  }
   const supabase = getSupabaseClient()
   try {
     const { error } = await supabase.rpc('update_item_definition_settings', {
@@ -58,6 +71,12 @@ export async function updateItemDefinitionSettings(
 
 // Load all workflow stages for the org (across all workflow templates)
 export async function getOrgWorkflowStages(orgId: string): Promise<ItemWorkflowStage[]> {
+  if (isCommunityConfigured()) {
+    try { return await getCommunityItemWorkflowStages() } catch (error) {
+      log.error('[ItemDefinition]', 'Failed to load Community workflow stages', { error })
+      return []
+    }
+  }
   const supabase = getSupabaseClient()
   try {
     const { data, error } = await supabase

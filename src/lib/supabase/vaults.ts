@@ -1,4 +1,12 @@
 import { getSupabaseClient } from './client'
+import {
+  getCommunityOrgVaultAccess,
+  getCommunityPrincipal,
+  getCommunityUserVaultAccess,
+  getCommunityVaults,
+  isCommunityConfigured,
+  setCommunityUserVaultAccess,
+} from '@/lib/community'
 
 // ============================================
 // Vault Access Management (Admin only)
@@ -11,6 +19,21 @@ import { getSupabaseClient } from './client'
 export async function getUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.role !== 'owner' && principal.role !== 'admin')
+        return { vaultIds: [], error: 'Administrator role required.' }
+      const accessMap = await getCommunityOrgVaultAccess()
+      return {
+        vaultIds: Object.entries(accessMap)
+          .filter(([, users]) => users.includes(userId))
+          .map(([vaultId]) => vaultId),
+      }
+    } catch (error) {
+      return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client.from('vault_access').select('vault_id').eq('user_id', userId)
@@ -30,6 +53,16 @@ export async function getOrgVaultAccess(orgId: string): Promise<{
   accessMap: Record<string, string[]>
   error?: string
 }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.organizationId !== orgId)
+        return { accessMap: {}, error: 'Organization is outside the active session.' }
+      return { accessMap: await getCommunityOrgVaultAccess() }
+    } catch (error) {
+      return { accessMap: {}, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get all vaults for the org
@@ -78,6 +111,16 @@ export async function grantVaultAccess(
   userId: string,
   grantedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const access = await getUserVaultAccess(userId)
+      if (access.error) return { success: false, error: access.error }
+      await setCommunityUserVaultAccess(userId, [...new Set([...access.vaultIds, vaultId])])
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client.from('vault_access').insert({
@@ -104,6 +147,19 @@ export async function revokeVaultAccess(
   vaultId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const access = await getUserVaultAccess(userId)
+      if (access.error) return { success: false, error: access.error }
+      await setCommunityUserVaultAccess(
+        userId,
+        access.vaultIds.filter((id) => id !== vaultId),
+      )
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client
@@ -129,6 +185,17 @@ export async function setUserVaultAccess(
   grantedBy: string,
   orgId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.organizationId !== orgId)
+        return { success: false, error: 'Organization is outside the active session.' }
+      await setCommunityUserVaultAccess(userId, vaultIds)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get all vaults for the org to only remove access for vaults in this org
@@ -209,6 +276,13 @@ export async function checkVaultAccess(
 export async function getEffectiveUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      return { vaultIds: await getCommunityUserVaultAccess(userId) }
+    } catch (error) {
+      return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client.rpc('get_user_vault_access', { p_user_id: userId })
@@ -239,9 +313,36 @@ export async function getAccessibleVaults(
     description: string | null
     is_default: boolean | null
     created_at: string | null
+    networkRoot?: string | null
+    storageProvider?: 'network' | 'google_drive'
+    googleDriveFolderId?: string | null
   }>
   error?: string
 }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.userId !== userId || principal.organizationId !== orgId) {
+        return { vaults: [], error: 'User is outside the active organization.' }
+      }
+      const vaults = await getCommunityVaults()
+      return {
+        vaults: vaults.map((vault) => ({
+          id: vault.id,
+          name: vault.name,
+          slug: vault.id,
+          description: vault.networkRoot,
+          is_default: false,
+          created_at: vault.createdAt,
+          networkRoot: vault.networkRoot,
+          storageProvider: vault.storageProvider,
+          googleDriveFolderId: vault.googleDriveFolderId,
+        })),
+      }
+    } catch (error) {
+      return { vaults: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get all vaults for the org first

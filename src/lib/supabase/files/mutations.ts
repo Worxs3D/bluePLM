@@ -1,8 +1,19 @@
 import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePattern'
 
 import { getSupabaseClient } from '../client'
+import {
+  executeCommunityWorkflowTransition,
+  getCommunityAvailableTransitions,
+  getCommunityFileWorkflow,
+  isCommunityConfigured,
+  moveCommunityFile,
+  moveCommunityFilePathPrefix,
+  syncCommunityFileReferences,
+  updateCommunityFileState,
+} from '@/lib/community'
 import { getCurrentUser, getCurrentUserEmail } from '../auth'
 import { withRetry } from '../../network'
+import type { Database } from '@/types/supabase'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
@@ -272,7 +283,7 @@ export async function syncFile(
   extension: string,
   fileSize: number,
   contentHash: string,
-  base64Content: string,
+  base64Content: string | undefined,
   metadata?: {
     partNumber?: string | null
     description?: string | null
@@ -280,7 +291,17 @@ export async function syncFile(
     customProperties?: Record<string, string | number | null>
   },
   copiedFromFileId?: string,
+  localFilePath?: string,
 ) {
+  if (isCommunityConfigured()) {
+    // The Community adapter stores immutable revisions in the configured
+    // network vault. It must not fall through to Supabase Storage while that
+    // native transfer path is unavailable.
+    return {
+      file: null,
+      error: new Error('Community check-in is not available in this client build. Use the Community vault import/check-in workflow.'),
+    }
+  }
   const client = getSupabaseClient()
 
   // Debug: Log sync attempt
@@ -335,36 +356,42 @@ export async function syncFile(
     }
 
     if (!existingFile || existingFile.length === 0) {
-      // Convert base64 to blob
-      logFn('debug', '[syncFile] Uploading to storage', { filePath, size: base64Content.length })
-      const binaryString = atob(base64Content)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-      const blob = new Blob([bytes])
-
-      // Upload to storage
       const uploadStart = performance.now()
       try {
-        const uploadResult = await client.storage.from('vault').upload(storagePath, blob, {
-          contentType: 'application/octet-stream',
-          upsert: false,
-        })
-
-        storageUploadMs = Math.round(performance.now() - uploadStart)
-
-        if (uploadResult.error && !uploadResult.error.message.includes('already exists')) {
-          logFn('error', '[syncFile] Storage upload failed', {
-            filePath,
-            error: uploadResult.error.message,
-            durationMs: storageUploadMs,
+        let sizeBytes: number
+        if (localFilePath) {
+          logFn('debug', '[syncFile] Streaming local file to storage', { filePath, size: fileSize })
+          const { data: signedUpload, error: signedUploadError } = await client.storage
+            .from('vault')
+            .createSignedUploadUrl(storagePath)
+          if (signedUploadError || !signedUpload?.signedUrl) {
+            throw signedUploadError || new Error('Could not create a signed storage upload URL.')
+          }
+          const streamed = await window.electronAPI?.uploadSignedUrl(
+            localFilePath,
+            signedUpload.signedUrl,
+            'application/octet-stream',
+          )
+          if (!streamed?.success) throw new Error(streamed?.error || 'The streamed storage upload did not complete.')
+          sizeBytes = fileSize
+        } else {
+          if (base64Content === undefined) throw new Error('No local file path or upload content was provided.')
+          // Compatibility for non-Electron callers. Normal desktop sync always uses
+          // the streamed branch above and never creates a base64 payload.
+          const binaryString = atob(base64Content)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i)
+          const uploadResult = await client.storage.from('vault').upload(storagePath, new Blob([bytes]), {
+            contentType: 'application/octet-stream',
+            upsert: false,
           })
-          throw uploadResult.error
+          if (uploadResult.error && !uploadResult.error.message.includes('already exists')) {
+            throw uploadResult.error
+          }
+          sizeBytes = bytes.length
         }
 
-        // Compute upload speed from actual binary size
-        const sizeBytes = binaryString.length
+        storageUploadMs = Math.round(performance.now() - uploadStart)
         uploadSpeedKBps =
           storageUploadMs > 0 ? Math.round(sizeBytes / 1024 / (storageUploadMs / 1000)) : null
 
@@ -436,7 +463,7 @@ export async function syncFile(
       })
 
       // Build update payload - only include metadata fields if provided
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: Database['public']['Tables']['files']['Update'] = {
         content_hash: contentHash,
         file_size: fileSize,
         version: existingFile.version + 1,
@@ -870,6 +897,47 @@ export async function updateFileMetadata(
     workflow_state_id?: string
   },
 ): Promise<{ success: boolean; file?: any; error?: string | null; requiresReview?: boolean }> {
+  if (isCommunityConfigured()) {
+    if (updates.workflow_state_id) {
+      return { success: false, error: 'Direct workflow-state updates are not supported. Execute an available workflow transition instead.' }
+    }
+    if (!updates.state) return { success: true, file: { id: fileId }, error: null }
+    try {
+      const assignment = await getCommunityFileWorkflow(fileId)
+      if (!assignment) {
+        const file = await updateCommunityFileState(fileId, updates.state)
+        return { success: true, file, error: null }
+      }
+      const stateForWorkflowName = (name: unknown) => {
+        const normalized = typeof name === 'string' ? name.toLowerCase() : ''
+        if (normalized.includes('release') || normalized.includes('approved')) return 'released'
+        if (normalized.includes('obsolete') || normalized.includes('archive')) return 'obsolete'
+        if (normalized.includes('review') || normalized.includes('approval')) return 'in_review'
+        if (normalized.includes('track')) return 'not_tracked'
+        return 'wip'
+      }
+      if (stateForWorkflowName(assignment.current_state_name) === updates.state) {
+        return { success: true, file: { id: fileId, state: updates.state }, error: null }
+      }
+      const transitions = await getCommunityAvailableTransitions(fileId)
+      const transition = transitions.find((candidate) =>
+        stateForWorkflowName(candidate.to_state_name) === updates.state && typeof candidate.transition_id === 'string',
+      )
+      if (!transition || typeof transition.transition_id !== 'string') {
+        return { success: false, error: `No permitted workflow transition reaches ${updates.state}.` }
+      }
+      const result = await executeCommunityWorkflowTransition(fileId, transition.transition_id)
+      if (!result.success) return { success: false, error: result.error_message ?? 'Workflow transition failed.' }
+      if (result.requires_review) return { success: true, requiresReview: true, error: null }
+      return {
+        success: true,
+        file: { id: fileId, state: updates.state, workflow_state_id: result.new_state_id },
+        error: null,
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get current file to validate and log changes
@@ -916,7 +984,7 @@ export async function updateFileMetadata(
   }
 
   // Prepare update data - state changes do NOT increment version
-  const updateData: Record<string, any> = {
+  const updateData: Database['public']['Tables']['files']['Update'] = {
     updated_at: new Date().toISOString(),
     updated_by: userId,
     workflow_state_id: updates.workflow_state_id,
@@ -961,6 +1029,15 @@ export async function updateFilePath(
   fileId: string,
   newPath: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
+  if (isCommunityConfigured()) {
+    const newFileName = newPath.split('/').pop() || newPath.split('\\').pop() || newPath
+    try {
+      await moveCommunityFile(fileId, newPath, newFileName)
+      return { success: true, file: { id: fileId, file_path: newPath, file_name: newFileName } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Extract filename from path
@@ -1063,6 +1140,18 @@ export async function updateFolderPath(
   newFolderPath: string,
   vaultId?: string,
 ): Promise<{ success: boolean; updated: number; total: number; errors: string[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    if (!vaultId) {
+      return { success: false, updated: 0, total: 0, errors: ['A Community vault is required to move folder contents.'] }
+    }
+    try {
+      const result = await moveCommunityFilePathPrefix(vaultId, oldFolderPath.replace(/\/+$/, ''), newFolderPath.replace(/\/+$/, ''))
+      return { success: true, updated: result.updated, total: result.total, errors: [] }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { success: false, updated: 0, total: 0, errors: [message], error: message }
+    }
+  }
   const client = getSupabaseClient()
 
   oldFolderPath = oldFolderPath.replace(/\/+$/, '')
@@ -1127,7 +1216,7 @@ export interface SkippedReferenceReason {
   /** Original path from SolidWorks */
   swPath: string
   /** Reason the reference was skipped */
-  reason: 'no_match' | 'file_not_synced' | 'ambiguous_filename'
+  reason: 'no_match' | 'file_not_synced' | 'ambiguous_filename' | 'self_reference'
   /** Additional details about the skip */
   details?: string
 }
@@ -1211,6 +1300,13 @@ export async function upsertFileReferences(
   references: SWReference[],
   vaultRootPath?: string,
 ): Promise<UpsertReferencesResult> {
+  if (isCommunityConfigured()) {
+    try {
+      return await syncCommunityFileReferences(parentFileId, references, vaultRootPath)
+    } catch (error) {
+      return { success: false, inserted: 0, updated: 0, deleted: 0, skipped: 0, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const logFn =

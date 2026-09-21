@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../client'
 import { CONCURRENT_OPERATIONS, processWithConcurrency } from '../../concurrency'
+import { isCommunityConfigured, moveCommunityFile } from '@/lib/community'
 
 // ============================================
 // File Move Operations
@@ -25,6 +26,14 @@ export async function moveFileOnServer(
   newFilePath: string,
   newFileName?: string,
 ): Promise<{ success: boolean; file?: unknown; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      await moveCommunityFile(fileId, newFilePath, newFileName)
+      return { success: true, file: { id: fileId, file_path: newFilePath, file_name: newFileName } }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Use atomic RPC to prevent race conditions and ensure proper validation

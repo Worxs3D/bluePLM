@@ -1,4 +1,13 @@
 import { getSupabaseClient } from './client'
+import {
+  createCommunityAnnotation,
+  deleteCommunityAnnotation,
+  getCommunityAnnotations,
+  isCommunityConfigured,
+  resolveCommunityAnnotation,
+  unresolveCommunityAnnotation,
+  updateCommunityAnnotation,
+} from '@/lib/community'
 import { log } from '@/lib/logger'
 import type { AnnotationType, AnnotationPosition, FileAnnotation } from '@/types/database'
 
@@ -107,6 +116,16 @@ export async function getFileAnnotations(
   fileId: string,
   version?: number,
 ): Promise<{ annotations: FileAnnotation[]; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      const rows = await getCommunityAnnotations(fileId, version)
+      return { annotations: buildThreadTree(rows.map((row) => toFileAnnotation(row as unknown as FileCommentRow))), error: null }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch annotations.'
+      log.error('[Annotations]', 'Failed to fetch Community annotations', { error: message, fileId })
+      return { annotations: [], error: message }
+    }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: new columns not yet in auto-generated types (see note at top)
@@ -163,6 +182,14 @@ export async function getFileAnnotations(
 export async function getAnnotationCount(
   fileId: string,
 ): Promise<{ count: number; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      const annotations = await getCommunityAnnotations(fileId)
+      return { count: annotations.filter((annotation) => !annotation.resolved && annotation.parent_id === null).length, error: null }
+    } catch (error) {
+      return { count: 0, error: error instanceof Error ? error.message : 'Failed to count annotations.' }
+    }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: resolved/parent_id not yet in auto-generated types (see note at top)
@@ -208,6 +235,21 @@ export interface CreateAnnotationParams {
 export async function createAnnotation(
   params: CreateAnnotationParams,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      const annotation = await createCommunityAnnotation(params.fileId, {
+        comment: params.comment,
+        pageNumber: params.pageNumber ?? null,
+        position: params.position ?? null,
+        annotationType: params.annotationType,
+        parentId: params.parentId ?? null,
+        fileVersion: params.fileVersion ?? null,
+      })
+      return { annotation: toFileAnnotation(annotation as unknown as FileCommentRow), error: null }
+    } catch (error) {
+      return { annotation: null, error: error instanceof Error ? error.message : 'Failed to create annotation.' }
+    }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: new columns not yet in auto-generated types (see note at top)
@@ -269,6 +311,10 @@ export async function updateAnnotation(
   annotationId: string,
   comment: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try { return { annotation: toFileAnnotation(await updateCommunityAnnotation(annotationId, comment) as unknown as FileCommentRow), error: null } }
+    catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to update annotation.' } }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: edited_at not yet in auto-generated types (see note at top)
@@ -323,6 +369,10 @@ export async function updateAnnotation(
 export async function deleteAnnotation(
   annotationId: string,
 ): Promise<{ success: boolean; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try { await deleteCommunityAnnotation(annotationId); return { success: true, error: null } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Failed to delete annotation.' } }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client.from('file_comments').delete().eq('id', annotationId)
@@ -354,6 +404,10 @@ export async function resolveAnnotation(
   annotationId: string,
   userId: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try { return { annotation: toFileAnnotation(await resolveCommunityAnnotation(annotationId) as unknown as FileCommentRow), error: null } }
+    catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to resolve annotation.' } }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: resolve columns not yet in auto-generated types (see note at top)
@@ -409,6 +463,10 @@ export async function resolveAnnotation(
 export async function unresolveAnnotation(
   annotationId: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
+  if (isCommunityConfigured()) {
+    try { return { annotation: toFileAnnotation(await unresolveCommunityAnnotation(annotationId) as unknown as FileCommentRow), error: null } }
+    catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to unresolve annotation.' } }
+  }
   const client = getSupabaseClient()
 
   // Type assertion needed: resolve columns not yet in auto-generated types (see note at top)

@@ -1,4 +1,10 @@
 import { getSupabaseClient } from './client'
+import {
+  getCommunityTeams,
+  getCommunityUserTeams,
+  isCommunityConfigured,
+  removeCommunityUser,
+} from '@/lib/community'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
 import { mergeModuleOrder } from '../../types/modules'
@@ -51,6 +57,14 @@ export async function removeUserFromOrg(
   targetUserId: string,
   _adminOrgId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      await removeCommunityUser(targetUserId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   // Get target user's email for the RPC call
@@ -144,6 +158,13 @@ export async function getUserTeams(
   teams: Array<{ id: string; name: string; color: string; icon: string }> | null
   error?: string
 }> {
+  if (isCommunityConfigured()) {
+    try {
+      return { teams: await getCommunityUserTeams(userId) }
+    } catch (error) {
+      return { teams: null, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -176,6 +197,7 @@ export async function getUserTeams(
 export async function getUserWorkflowRoles(
   userId: string,
 ): Promise<{ roleIds: string[]; error?: string }> {
+  if (isCommunityConfigured()) return { roleIds: [] }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -203,6 +225,8 @@ export async function getUserPermissions(
   if (userRole === 'admin') {
     return { permissions: { __admin__: ['view', 'create', 'edit', 'delete', 'admin'] } }
   }
+
+  if (isCommunityConfigured()) return { permissions: {} }
 
   const client = getSupabaseClient()
 
@@ -526,6 +550,25 @@ export async function removeTeamReviewer(
  * Get all teams in an organization
  */
 export async function getOrgTeams(orgId: string): Promise<{ teams: any[] | null; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const teams = await getCommunityTeams()
+      return {
+        teams: teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          color: team.color,
+          icon: team.icon,
+          created_at: team.createdAt,
+          member_count: team.memberCount,
+          permissions_count: 0,
+          vault_count: team.vaultCount,
+        })),
+      }
+    } catch (error) {
+      return { teams: null, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client

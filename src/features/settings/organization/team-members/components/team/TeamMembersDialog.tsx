@@ -5,6 +5,12 @@ import * as LucideIcons from 'lucide-react'
 import { Users, UserPlus, Search, Plus, X, Loader2 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
+import {
+  addCommunityTeamMember,
+  getCommunityTeamMembers,
+  isCommunityConfigured,
+  removeCommunityTeamMember,
+} from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { insertTeamMember } from '../../hooks/supabaseHelpers'
@@ -43,6 +49,26 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
   const loadMembers = async () => {
     setIsLoading(true)
     try {
+      if (isCommunityConfigured()) {
+        const communityMembers = await getCommunityTeamMembers(team.id)
+        setMembers(communityMembers.map((member) => ({
+          id: `${team.id}:${member.userId}`,
+          team_id: team.id,
+          user_id: member.userId,
+          is_team_admin: false,
+          added_at: member.addedAt,
+          added_by: null,
+          user: {
+            id: member.userId,
+            email: member.email,
+            full_name: member.displayName,
+            avatar_url: null,
+            custom_avatar_url: null,
+            role: member.role === 'member' ? 'engineer' : 'admin',
+          },
+        })))
+        return
+      }
       const { data, error } = await supabase
         .from('team_members')
         .select(
@@ -97,6 +123,12 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
 
     setIsAdding(true)
     try {
+      if (isCommunityConfigured()) {
+        await addCommunityTeamMember(team.id, userToAdd.id)
+        addToast('success', `Added ${userToAdd.full_name || userToAdd.email} to team`)
+        loadMembers()
+        return
+      }
       const { error } = await insertTeamMember({
         team_id: team.id,
         user_id: userToAdd.id,
@@ -116,6 +148,12 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
 
   const removeMember = async (member: TeamMember) => {
     try {
+      if (isCommunityConfigured()) {
+        await removeCommunityTeamMember(team.id, member.user_id)
+        addToast('success', `Removed ${member.user?.full_name || member.user?.email} from team`)
+        loadMembers()
+        return
+      }
       const { error } = await supabase.from('team_members').delete().eq('id', member.id)
       if (error) throw error
 

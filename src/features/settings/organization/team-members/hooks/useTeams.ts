@@ -26,6 +26,16 @@
  */
 import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import {
+  createCommunityTeam,
+  deleteCommunityTeam,
+  getCommunityTeamVaultAccess,
+  getCommunityTeams,
+  isCommunityConfigured,
+  setCommunityDefaultNewUserTeam,
+  setCommunityTeamVaultAccess,
+  updateCommunityTeam,
+} from '@/lib/community'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { TeamWithDetails, TeamFormData } from '../types'
@@ -56,6 +66,29 @@ export function useTeams(orgId: string | null) {
 
     setTeamsLoading(true)
     try {
+      if (isCommunityConfigured()) {
+        const communityTeams = await getCommunityTeams()
+        const teamsWithDetails = await Promise.all(communityTeams.map(async (team) => ({
+          id: team.id,
+          org_id: orgId,
+          name: team.name,
+          description: null,
+          color: team.color,
+          icon: team.icon,
+          parent_team_id: null,
+          created_at: team.createdAt,
+          created_by: null,
+          updated_at: null,
+          updated_by: null,
+          is_default: false,
+          is_system: false,
+          member_count: team.memberCount,
+          permissions_count: 0,
+          vault_access: await getCommunityTeamVaultAccess(team.id),
+        })))
+        setTeams(teamsWithDetails)
+        return
+      }
       const { data: teamsData, error } = await supabase
         .from('teams')
         .select(
@@ -93,6 +126,17 @@ export function useTeams(orgId: string | null) {
       if (!orgId || !user || !formData.name.trim()) return false
 
       try {
+        if (isCommunityConfigured()) {
+          const created = await createCommunityTeam({
+            name: formData.name.trim(), color: formData.color, icon: formData.icon,
+          })
+          if (copyFromTeamId) {
+            await setCommunityTeamVaultAccess(created.id, await getCommunityTeamVaultAccess(copyFromTeamId))
+          }
+          addToast('success', `Team "${formData.name}" created${copyFromTeamId ? ' with its vault access copied' : ''}`)
+          await loadTeams()
+          return true
+        }
         const { data, error } = await insertTeam({
           org_id: orgId,
           name: formData.name.trim(),
@@ -173,6 +217,14 @@ export function useTeams(orgId: string | null) {
       if (!user || !formData.name.trim()) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await updateCommunityTeam(teamId, {
+            name: formData.name.trim(), color: formData.color, icon: formData.icon,
+          })
+          addToast('success', `Team "${formData.name}" updated`)
+          await loadTeams()
+          return true
+        }
         const { error } = await updateTeamDb(teamId, {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
@@ -207,6 +259,12 @@ export function useTeams(orgId: string | null) {
       if (!team) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await deleteCommunityTeam(teamId)
+          addToast('success', `Team "${team.name}" deleted`)
+          await loadTeams()
+          return true
+        }
         const { error } = await supabase.from('teams').delete().eq('id', teamId)
 
         if (error) throw error
@@ -239,6 +297,16 @@ export function useTeams(orgId: string | null) {
       organization: T,
     ): Promise<boolean> => {
       try {
+        if (isCommunityConfigured()) {
+          await setCommunityDefaultNewUserTeam(teamId)
+          setOrganization({
+            ...organization,
+            default_new_user_team_id: teamId,
+          })
+          const teamName = teamId ? teams.find((team) => team.id === teamId)?.name : 'None'
+          addToast('success', `Default team set to "${teamName}"`)
+          return true
+        }
         const { error } = await updateOrganization(organizationId, {
           default_new_user_team_id: teamId,
         })

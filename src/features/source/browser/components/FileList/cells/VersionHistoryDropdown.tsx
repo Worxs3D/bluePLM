@@ -27,6 +27,9 @@ import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/supabase'
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
+import { getCommunityVault, isCommunityConfigured } from '@/lib/community'
+import { googleDriveFileIdFromStoragePath, requireGoogleDriveVaultToken } from '@/lib/googleDriveVault'
+import { buildFullPath } from '@/lib/utils/path'
 
 interface VersionEntry {
   id: string
@@ -173,23 +176,57 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
         // Use relativePath to match file watcher format (relative paths with forward slashes)
         addExpectedFileChanges([file.relativePath])
 
-        const { url: downloadUrl, error: urlError } = await getDownloadUrl(
-          organization.id,
-          result.targetVersionRecord.content_hash,
-        )
-
-        if (urlError || !downloadUrl) {
-          addToast(
-            'warning',
-            `${actionLabel} to v${targetVersion} - but could not get download URL: ${urlError}`,
+        if (isCommunityConfigured()) {
+          const vaultId = file.pdmData.vault_id
+          const storageRelativePath = result.targetVersionRecord.storageRelativePath
+            ?? result.targetVersionRecord._communityStorageRelativePath
+          if (!vaultId || typeof storageRelativePath !== 'string') {
+            addToast('warning', `${actionLabel} to v${targetVersion} - revision storage metadata is incomplete.`)
+          } else {
+            const vault = await getCommunityVault(vaultId)
+            if (vault.storageProvider === 'network') {
+              if (!vault.networkRoot) {
+                addToast('warning', `${actionLabel} to v${targetVersion} - the Community network vault root is missing.`)
+              } else if (window.electronAPI) {
+                const copyResult = await window.electronAPI.copyFile(
+                  buildFullPath(vault.networkRoot, storageRelativePath),
+                  file.path,
+                )
+                if (!copyResult.success) addToast('warning', `${actionLabel} to v${targetVersion} - but could not restore the revision: ${copyResult.error}`)
+              }
+            } else {
+              const fileId = googleDriveFileIdFromStoragePath(storageRelativePath)
+              if (!fileId) {
+                addToast('warning', `${actionLabel} to v${targetVersion} - the Google Drive revision pointer is invalid.`)
+              } else if (window.electronAPI) {
+                const downloaded = await window.electronAPI.downloadGoogleDriveFile({
+                  fileId,
+                  targetPath: file.path,
+                  accessToken: requireGoogleDriveVaultToken(),
+                })
+                if (!downloaded.success) addToast('warning', `${actionLabel} to v${targetVersion} - but could not restore the revision: ${downloaded.error}`)
+              }
+            }
+          }
+        } else {
+          const { url: downloadUrl, error: urlError } = await getDownloadUrl(
+            organization.id,
+            result.targetVersionRecord.content_hash,
           )
-        } else if (window.electronAPI) {
-          const writeResult = await window.electronAPI.downloadUrl(downloadUrl, file.path)
-          if (!writeResult.success) {
+
+          if (urlError || !downloadUrl) {
             addToast(
               'warning',
-              `${actionLabel} to v${targetVersion} - but could not write file: ${writeResult.error}`,
+              `${actionLabel} to v${targetVersion} - but could not get download URL: ${urlError}`,
             )
+          } else if (window.electronAPI) {
+            const writeResult = await window.electronAPI.downloadUrl(downloadUrl, file.path)
+            if (!writeResult.success) {
+              addToast(
+                'warning',
+                `${actionLabel} to v${targetVersion} - but could not write file: ${writeResult.error}`,
+              )
+            }
           }
         }
 

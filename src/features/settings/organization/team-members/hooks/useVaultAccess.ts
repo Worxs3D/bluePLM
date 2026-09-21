@@ -10,6 +10,15 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 import { supabase, getOrgVaultAccess, setUserVaultAccess } from '@/lib/supabase'
+import {
+  getCommunityTeamVaultAccess,
+  getCommunityTeams,
+  getCommunityOrgVaultAccess,
+  getCommunityVaults,
+  isCommunityConfigured,
+  setCommunityUserVaultAccess,
+  setCommunityTeamVaultAccess,
+} from '@/lib/community'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgVault } from '@/stores/types'
@@ -42,6 +51,21 @@ export function useVaultAccess(orgId: string | null) {
 
     setOrgVaultsLoading(true)
     try {
+      if (isCommunityConfigured()) {
+        const communityVaults = await getCommunityVaults()
+        setOrgVaults(
+          communityVaults.map((vault) => ({
+            id: vault.id,
+            name: vault.name,
+            slug: vault.id,
+            description: vault.networkRoot,
+            storage_bucket: 'network-vault',
+            is_default: false,
+            created_at: vault.createdAt,
+          })),
+        )
+        return
+      }
       const { data, error } = await supabase
         .from('vaults')
         .select('*')
@@ -60,6 +84,15 @@ export function useVaultAccess(orgId: string | null) {
   const loadVaultAccess = useCallback(async () => {
     if (!orgId) return
 
+    if (isCommunityConfigured()) {
+      try {
+        setVaultAccessMap(await getCommunityOrgVaultAccess())
+      } catch (error) {
+        log.error('[VaultAccess]', 'Failed to load Community vault access', { error })
+      }
+      return
+    }
+
     const { accessMap, error } = await getOrgVaultAccess(orgId)
     if (error) {
       log.error('[VaultAccess]', 'Failed to load vault access', { error })
@@ -72,6 +105,14 @@ export function useVaultAccess(orgId: string | null) {
     if (!orgId) return
 
     try {
+      if (isCommunityConfigured()) {
+        const teams = await getCommunityTeams()
+        const entries = await Promise.all(
+          teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
+        )
+        setTeamVaultAccessMap(Object.fromEntries(entries))
+        return
+      }
       const { data, error } = await supabase.from('team_vault_access').select('team_id, vault_id')
 
       if (error) throw error
@@ -101,6 +142,12 @@ export function useVaultAccess(orgId: string | null) {
       if (!user || !orgId) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await setCommunityUserVaultAccess(userId, vaultIds)
+          addToast('success', `Updated vault access for ${userName || 'user'}`)
+          await loadVaultAccess()
+          return true
+        }
         const result = await setUserVaultAccess(userId, vaultIds, user.id, orgId)
 
         if (result.success) {
@@ -125,6 +172,15 @@ export function useVaultAccess(orgId: string | null) {
       if (!user) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await setCommunityTeamVaultAccess(teamId, vaultIds)
+          setTeamVaultAccessMap({
+            ...teamVaultAccessMap,
+            [teamId]: vaultIds,
+          })
+          addToast('success', `Updated vault access for ${teamName || 'team'}`)
+          return true
+        }
         // Delete existing access
         await supabase.from('team_vault_access').delete().eq('team_id', teamId)
 
@@ -147,7 +203,7 @@ export function useVaultAccess(orgId: string | null) {
 
         addToast('success', `Updated vault access for ${teamName || 'team'}`)
         return true
-      } catch (error) {
+      } catch (_error) {
         addToast('error', 'Failed to update vault access')
         return false
       }

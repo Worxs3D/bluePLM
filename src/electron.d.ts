@@ -344,9 +344,55 @@ declare global {
       setWorkingDir: (path: string) => Promise<PathResult>
       createWorkingDir: (path: string) => Promise<PathResult>
       clearWorkingDir: () => Promise<{ success: boolean }>
+      saveNetworkVaultCredential: (request: {
+        networkRoot: string
+        username: string
+        password: string
+      }) => Promise<{ success: boolean; target?: string; error?: string }>
+      uploadGoogleDriveFile: (request: {
+        sourcePath: string
+        parentFolderId: string
+        fileName: string
+        accessToken: string
+      }) => Promise<{ success: boolean; fileId?: string; size?: number; error?: string }>
+      downloadGoogleDriveFile: (request: {
+        fileId: string
+        targetPath: string
+        accessToken: string
+      }) => Promise<{ success: boolean; size?: number; error?: string }>
+      readSmallGoogleDriveFile: (
+        fileId: string,
+        accessToken: string,
+      ) => Promise<{ success: boolean; size?: number; data?: string; error?: string }>
+      provisionMdb: (request: {
+        publicUrl: string
+        ftpUrl: string
+        ftpRemotePath: string
+        ftpUsername: string
+        ftpPassword: string
+        databaseHost: string
+        databasePort: number
+        databaseName: string
+        databaseUser: string
+        databasePassword: string
+        sessionSecret?: string
+        bootstrapToken?: string
+        maintenanceToken?: string
+        documentRootConfirmed: boolean
+      }) => Promise<{
+        success: boolean
+        setupUrl?: string
+        generatedSecrets?: { sessionSecret: string; bootstrapToken: string; maintenanceToken: string }
+        error?: string
+      }>
 
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>
+      uploadSignedUrl: (
+        path: string,
+        uploadUrl: string,
+        contentType?: string,
+      ) => Promise<{ success: boolean; statusCode?: number; error?: string }>
       checkFileLock: (
         path: string,
         options?: { forRead?: boolean },
@@ -521,6 +567,7 @@ declare global {
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
       selectFolder: () => Promise<FolderSelectResult>
+      selectDirectory: () => Promise<FolderSelectResult>
       showSaveDialog: (
         defaultName: string,
         filters?: Array<{ name: string; extensions: string[] }>,
@@ -1503,6 +1550,9 @@ declare global {
       // Deep Link handling
       onDeepLinkInstall: (
         callback: (data: { extensionId: string; version?: string; timestamp: number }) => void,
+      ) => () => void
+      onDeepLinkShare: (
+        callback: (data: { token: string; timestamp: number }) => void,
       ) => () => void
       acknowledgeDeepLink: (
         extensionId: string,
