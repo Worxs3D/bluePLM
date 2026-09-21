@@ -26,6 +26,14 @@
  */
 import { useCallback, useEffect } from 'react'
 import { supabase, removeUserFromOrg } from '@/lib/supabase'
+import {
+  addCommunityTeamMember,
+  getCommunityUserTeams,
+  getCommunityUsers,
+  isCommunityConfigured,
+  removeCommunityUser,
+  removeCommunityTeamMember,
+} from '@/lib/community'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../types'
@@ -55,6 +63,23 @@ export function useMembers(orgId: string | null) {
 
     setMembersLoading(true)
     try {
+      if (isCommunityConfigured()) {
+        const communityUsers = await getCommunityUsers()
+        const membersWithTeams: OrgUser[] = await Promise.all(communityUsers.map(async (communityUser) => ({
+          id: communityUser.id,
+          email: communityUser.email,
+          full_name: communityUser.displayName,
+          avatar_url: null,
+          custom_avatar_url: null,
+          job_title: null,
+          role: communityUser.role === 'member' ? 'engineer' : 'admin',
+          last_sign_in: null,
+          last_online: null,
+          teams: await getCommunityUserTeams(communityUser.id),
+        })))
+        setMembers(membersWithTeams)
+        return
+      }
       const { data: usersData, error } = await supabase
         .from('users')
         .select(
@@ -142,6 +167,12 @@ export function useMembers(orgId: string | null) {
       if (!member) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await removeCommunityUser(memberId)
+          addToast('success', `Removed ${member.full_name || member.email} from organization`)
+          removeMemberFromStore(memberId)
+          return true
+        }
         const result = await removeUserFromOrg(memberId, orgId)
         if (result.success) {
           addToast('success', `Removed ${member.full_name || member.email} from organization`)
@@ -165,6 +196,12 @@ export function useMembers(orgId: string | null) {
       if (!member) return false
 
       try {
+        if (isCommunityConfigured()) {
+          await removeCommunityTeamMember(teamId, memberId)
+          addToast('success', `Removed ${member.full_name || member.email} from ${teamName}`)
+          await loadMembers()
+          return true
+        }
         const { error } = await supabase
           .from('team_members')
           .delete()
@@ -187,6 +224,12 @@ export function useMembers(orgId: string | null) {
   const toggleTeam = useCallback(
     async (memberId: string, teamId: string, isAdding: boolean): Promise<boolean> => {
       try {
+        if (isCommunityConfigured()) {
+          if (isAdding) await addCommunityTeamMember(teamId, memberId)
+          else await removeCommunityTeamMember(teamId, memberId)
+          await loadMembers()
+          return true
+        }
         if (isAdding) {
           const { error } = await insertTeamMember({
             team_id: teamId,
@@ -231,6 +274,14 @@ export function useMembers(orgId: string | null) {
 
         // Teams to remove (in currentTeamIds but not in teamIds)
         const toRemove = currentTeamIds.filter((id) => !teamIds.includes(id))
+
+        if (isCommunityConfigured()) {
+          for (const teamId of toRemove) await removeCommunityTeamMember(teamId, memberId)
+          for (const teamId of toAdd) await addCommunityTeamMember(teamId, memberId)
+          addToast('success', `Updated teams${userName ? ` for ${userName}` : ''}`)
+          await loadMembers()
+          return true
+        }
 
         // Remove from teams
         for (const teamId of toRemove) {

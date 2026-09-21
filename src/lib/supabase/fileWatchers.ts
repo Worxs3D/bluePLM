@@ -1,4 +1,12 @@
 import { getSupabaseClient } from './client'
+import {
+  getCommunityCheckoutOwner,
+  getCommunityWatchedFiles,
+  isCommunityConfigured,
+  isWatchingCommunityFile,
+  unwatchCommunityFile,
+  watchCommunityFile,
+} from '@/lib/community'
 
 /**
  * Get the user who has a file checked out (with their info)
@@ -9,6 +17,10 @@ export async function getCheckedOutByUser(
   user: { id: string; email: string; full_name: string | null; avatar_url: string | null } | null
   error?: string
 }> {
+  if (isCommunityConfigured()) {
+    try { return { user: await getCommunityCheckoutOwner(fileId) } }
+    catch (error) { return { user: null, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data: file, error: fileError } = await client
@@ -52,6 +64,10 @@ export async function watchFile(
     notifyOnReview?: boolean
   },
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await watchCommunityFile(fileId, options ?? {}); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client.from('file_watchers').upsert(
@@ -83,6 +99,10 @@ export async function unwatchFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await unwatchCommunityFile(fileId); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client
@@ -105,6 +125,10 @@ export async function isWatchingFile(
   fileId: string,
   userId: string,
 ): Promise<{ watching: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { return { watching: await isWatchingCommunityFile(fileId) } }
+    catch (error) { return { watching: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -125,6 +149,25 @@ export async function isWatchingFile(
  * Get all files a user is watching
  */
 export async function getWatchedFiles(userId: string): Promise<{ files: any[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const watchers = await getCommunityWatchedFiles()
+      return {
+        files: watchers.map((watcher) => ({
+          ...watcher,
+          file: {
+            id: watcher.file_id,
+            file_name: watcher.file_name,
+            file_path: watcher.file_path,
+            state: watcher.state,
+            version: watcher.version,
+          },
+        })),
+      }
+    } catch (error) {
+      return { files: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client

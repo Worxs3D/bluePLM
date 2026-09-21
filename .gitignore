@@ -51,3 +51,15 @@ supabase/.temp/
 # a single question during an investigation; durable tooling carries no prefix.
 # The convention predates this rule and was being kept by hand.
 harness/**/_*
+
+# Local project-memory and Graphify views may contain workstation-specific
+# context. They are retained locally but are not part of the public fork.
+graphify-out/
+docs/project-memory/
+docs/chatgpt-project-import-*.md
+docs/graphify-inventory-*.md
+
+# Rebuilt locally from native/src by the release scripts.
+edrawings-preview-host/
+resources/bin/win32/edrawings-preview-host/
+resources/bin/win32/edrawings_preview.node

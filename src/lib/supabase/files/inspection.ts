@@ -11,6 +11,16 @@
  * increments the parent file version (and snapshots the rows) when it changes.
  */
 import { getSupabaseClient } from '../client'
+import {
+  createCommunityInspectionMethod,
+  deleteCommunityInspectionMethod,
+  getCommunityInspectionMethods,
+  getCommunityInspectionRows,
+  getCommunityInspectionRowsForRevision,
+  isCommunityConfigured,
+  saveCommunityInspectionRows,
+  updateCommunityInspectionMethod,
+} from '@/lib/community'
 
 import type {
   InspectionCharacteristic,
@@ -71,6 +81,10 @@ export async function getInspectionRows(
   error?: string
   notInstalled?: boolean
 }> {
+  if (isCommunityConfigured()) {
+    try { return { success: true, rows: await getCommunityInspectionRows(fileId) as InspectionCharacteristic[] } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -101,6 +115,10 @@ export async function getInspectionRowsForVersion(
   error?: string
   notInstalled?: boolean
 }> {
+  if (isCommunityConfigured()) {
+    try { return { success: true, rows: await getCommunityInspectionRowsForRevision(fileVersionId) as InspectionCharacteristicVersion[] } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -132,6 +150,10 @@ export async function saveInspectionRows(
   userId: string,
   rows: InspectionRowInput[],
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await saveCommunityInspectionRows(fileId, rows); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   // Verify checkout ownership (defense-in-depth; UI also gates this)
@@ -198,6 +220,10 @@ export interface InspectionMethodOption {
 export async function getInspectionMethods(
   orgId: string,
 ): Promise<{ success: boolean; methods?: InspectionMethodOption[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { return { success: true, methods: await getCommunityInspectionMethods() } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -231,6 +257,10 @@ export async function addInspectionMethod(
   const trimmed = name.trim()
   if (!trimmed) return { success: false, error: 'Method name is required' }
 
+  if (isCommunityConfigured()) {
+    try { return { success: true, method: await createCommunityInspectionMethod(trimmed) } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -256,6 +286,10 @@ export async function updateInspectionMethod(
   const trimmed = name.trim()
   if (!trimmed) return { success: false, error: 'Method name is required' }
 
+  if (isCommunityConfigured()) {
+    try { await updateCommunityInspectionMethod(id, trimmed); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client
@@ -276,6 +310,10 @@ export async function deleteInspectionMethod(
   orgId: string,
   id: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await deleteCommunityInspectionMethod(id); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
 
   const { error } = await client

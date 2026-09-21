@@ -1,12 +1,14 @@
 {
   "name": "blue-plm",
-  "version": "4.4.3",
+  "version": "4.4.3-CB1.14",
   "description": "Open-source Product Lifecycle Management",
   "main": "dist-electron/main.js",
   "scripts": {
     "predev": "node scripts/copy-extension-host.js",
     "dev": "vite",
-    "build": "npm run typecheck && vite build && node scripts/copy-extension-host.js && electron-builder",
+    "build": "npm run typecheck && npm run build:edrawings-preview && npm run build:edrawings-preview-host && vite build && node scripts/copy-extension-host.js && npm run build-sw-service && electron-builder",
+    "build:edrawings-preview": "node scripts/build-edrawings-preview.js",
+    "build:edrawings-preview-host": "node scripts/build-edrawings-preview-host.js",
     "preview": "vite preview",
     "electron:dev": "vite",
     "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
@@ -123,6 +125,15 @@
       ],
       "icon": "assets/icon.ico",
       "extraResources": [
+        {
+          "from": "blueplm-community-php",
+          "to": "blueplm-mdb-server",
+          "filter": [
+            "src/**/*",
+            "public/**/*",
+            "migrations/**/*"
+          ]
+        },
         {
           "from": "resources/bin/win32",
           "to": "bin",

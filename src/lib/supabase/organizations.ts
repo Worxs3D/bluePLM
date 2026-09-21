@@ -2,6 +2,12 @@ import { getSupabaseClient, authLog, getCurrentConfigValues } from './client'
 import { getCurrentAccessToken } from './auth'
 import { recordMetric } from '@/lib/performanceMetrics'
 import type { Organization } from '@/types/pdm'
+import {
+  getCommunityOrganization,
+  getCommunityPrincipal,
+  getCommunityUsers,
+  isCommunityConfigured,
+} from '@/lib/community'
 
 // ============================================
 // User & Organization
@@ -21,6 +27,26 @@ export async function getUserProfile(
   userId: string,
   options?: { maxRetries?: number },
 ): Promise<{ profile: UserProfileResult | null; error: Error | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.userId !== userId) return { profile: null, error: new Error('User is outside the active session.') }
+      return {
+        profile: {
+          id: principal.userId,
+          email: principal.email,
+          role: principal.role === 'member' ? 'engineer' : 'admin',
+          org_id: principal.organizationId,
+          full_name: principal.displayName,
+          avatar_url: null,
+          custom_avatar_url: null,
+        },
+        error: null,
+      }
+    } catch (error) {
+      return { profile: null, error: error as Error }
+    }
+  }
   authLog('debug', 'getUserProfile called', {
     userId: userId?.substring(0, 8) + '...',
     hasToken: !!getCurrentAccessToken(),
@@ -84,6 +110,15 @@ export async function getUserProfile(
 }
 
 export async function getOrganization(orgId: string) {
+  if (isCommunityConfigured()) {
+    try {
+      const organization = await getCommunityOrganization()
+      if (organization.id !== orgId) return { org: null, error: new Error('Organization not found') }
+      return { org: organization, error: null }
+    } catch (error) {
+      return { org: null, error: error as Error }
+    }
+  }
   // Use raw fetch - Supabase client methods hang
   try {
     const config = getCurrentConfigValues()
@@ -125,6 +160,9 @@ const DEFAULT_AUTH_PROVIDERS: AuthProviders = {
 // Used by the sign-in screen to determine which sign-in methods to show
 // If orgSlug is provided, fetches by slug. Otherwise, fetches from the first/only org in the database.
 export async function getOrgAuthProviders(orgSlug?: string): Promise<AuthProviders | null> {
+  if (isCommunityConfigured()) {
+    return { users: { google: false, email: true, phone: false }, suppliers: { google: false, email: false, phone: false } }
+  }
   try {
     const config = getCurrentConfigValues()
     const url = config?.url || import.meta.env.VITE_SUPABASE_URL
@@ -345,6 +383,37 @@ export async function linkUserToOrganization(
   userEmail: string,
   cachedOrgId?: string | null,
 ): Promise<{ org: Organization | null; error: Error | string | null }> {
+  if (isCommunityConfigured()) {
+    try {
+      const [principal, organization] = await Promise.all([getCommunityPrincipal(), getCommunityOrganization()])
+      if (principal.userId !== userId || principal.email !== userEmail || (cachedOrgId && cachedOrgId !== organization.id)) {
+        return { org: null, error: new Error('Community session does not match the requested organization.') }
+      }
+      return {
+        org: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          email_domains: [],
+          revision_scheme: 'numeric',
+          settings: {
+            require_checkout: true,
+            auto_increment_part_numbers: false,
+            part_number_prefix: '',
+            part_number_digits: 4,
+            allowed_extensions: [],
+            require_description: false,
+            require_approval_for_release: false,
+            max_file_size_mb: 1024,
+          },
+          created_at: organization.createdAt,
+        } as Organization,
+        error: null,
+      }
+    } catch (error) {
+      return { org: null, error: error as Error }
+    }
+  }
   const startTime = performance.now()
   authLog('info', 'linkUserToOrganization called', {
     userId: userId?.substring(0, 8) + '...',
@@ -629,6 +698,24 @@ export async function linkUserToOrganization(
  * Get all users in an organization (for selecting reviewers)
  */
 export async function getOrgUsers(orgId: string): Promise<{ users: any[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      if (principal.organizationId !== orgId) return { users: [], error: 'Organization not found' }
+      const users = await getCommunityUsers()
+      return {
+        users: users.map((user) => ({
+          id: user.id,
+          email: user.email,
+          full_name: user.displayName,
+          avatar_url: null,
+          role: user.role === 'member' ? 'engineer' : 'admin',
+        })),
+      }
+    } catch (error) {
+      return { users: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
 
   const { data, error } = await client

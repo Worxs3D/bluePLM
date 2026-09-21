@@ -4,6 +4,7 @@ import { BadgeCheck, CheckCircle } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
+import { isCommunityConfigured } from '@/lib/community'
 import type { TransitionLineStyle } from '@/types/workflow'
 
 import type { EditTransitionDialogProps, WorkflowRoleBasic } from '../types'
@@ -38,6 +39,15 @@ export function EditTransitionDialog({ transition, onClose, onSave }: EditTransi
   useEffect(() => {
     const loadRoles = async () => {
       if (!organization) return
+      if (isCommunityConfigured()) {
+        setWorkflowRoles([
+          { id: 'admin', name: 'Administrators', color: '#DC2626', icon: 'shield' },
+          { id: 'engineer', name: 'Engineers', color: '#2563EB', icon: 'wrench' },
+          { id: 'viewer', name: 'Viewers', color: '#64748B', icon: 'eye' },
+        ])
+        setLoadingRoles(false)
+        return
+      }
       try {
         const { data, error } = await supabase
           .from('workflow_roles')

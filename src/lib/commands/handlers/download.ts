@@ -15,12 +15,39 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
+import { getCommunityVault, isCommunityConfigured, type CommunityVault } from '@/lib/community'
+import { googleDriveFileIdFromStoragePath, requireGoogleDriveVaultToken } from '@/lib/googleDriveVault'
 
 // Number of retry attempts for failed downloads
 const MAX_RETRY_ATTEMPTS = 3
 
 // Delay between retries (exponential backoff: 1s, 2s, 4s)
 const RETRY_BASE_DELAY_MS = 1000
+
+/**
+ * Community file rows loaded from older local caches used the database field
+ * name while freshly loaded rows carry the explicit Community alias.
+ */
+export function resolveCommunityStorageRelativePath(pdmData: unknown): string | null {
+  const metadata = pdmData as Record<string, unknown> | null | undefined
+  if (typeof metadata?._communityStorageRelativePath === 'string' && metadata._communityStorageRelativePath.trim() !== '') {
+    return metadata._communityStorageRelativePath
+  }
+  if (typeof metadata?.storage_relative_path === 'string' && metadata.storage_relative_path.trim() !== '') {
+    return metadata.storage_relative_path
+  }
+
+  // CB1.0 installations cached a few Community rows before the storage path
+  // field was persisted. Immutable objects are content-addressed, so a valid
+  // SHA-256 hash is sufficient to recover the exact vault location.
+  const contentHash = typeof metadata?.content_hash === 'string'
+    ? metadata.content_hash
+    : typeof metadata?.contentHash === 'string' ? metadata.contentHash : ''
+  const normalizedHash = contentHash.trim().toLowerCase()
+  return /^[a-f0-9]{64}$/.test(normalizedHash)
+    ? `.blueplm/objects/${normalizedHash.slice(0, 2)}/${normalizedHash}`
+    : null
+}
 
 /** A folder that now exists locally is no longer server-only. Matches a full load. */
 const FOLDER_NOW_LOCAL: Partial<LocalFile> = {
@@ -141,6 +168,16 @@ export const downloadCommand: Command<DownloadParams> = {
     const organization = ctx.organization!
     const vaultPath = ctx.vaultPath!
     const operationId = `download-${Date.now()}`
+    const communityMode = isCommunityConfigured()
+    let communityVault: CommunityVault | null = null
+    if (communityMode) {
+      try {
+        if (!ctx.activeVaultId) return { success: false, message: 'No Community vault selected.', total: 0, succeeded: 0, failed: 0 }
+        communityVault = await getCommunityVault(ctx.activeVaultId)
+      } catch (error) {
+        return { success: false, message: error instanceof Error ? error.message : String(error), total: 0, succeeded: 0, failed: 0 }
+      }
+    }
 
     // Get cloud-only files from selection (for tracker initialization)
     const cloudFilesForTracker = getCloudOnlyFilesFromSelection(ctx.files, files)
@@ -361,46 +398,62 @@ export const downloadCommand: Command<DownloadParams> = {
           }
         }
 
-        // Get signed URL
-        logDownload('debug', 'Getting signed URL', {
-          operationId,
-          fileName: file.name,
-          orgId: organization.id,
-          hash: file.pdmData.content_hash?.substring(0, 12),
-          attempt,
-        })
-
-        const { url, error: urlError } = await getDownloadUrl(
-          organization.id,
-          file.pdmData.content_hash,
-        )
-        if (urlError || !url) {
-          logDownload('error', 'Failed to get download URL', {
-            operationId,
-            ...fileCtx,
-            urlError,
-            orgId: organization.id,
-            hash: file.pdmData.content_hash?.substring(0, 16),
-          })
-          return {
-            success: false,
-            error: `${file.name}: ${urlError || 'Failed to get download URL - file may not exist in cloud storage'}`,
+        let downloadResult: { success: boolean; error?: string; size?: number; hash?: string } | undefined
+        if (communityMode) {
+          const storagePath = resolveCommunityStorageRelativePath(file.pdmData)
+          if (typeof storagePath !== 'string' || !communityVault) {
+            return { success: false, error: `${file.name}: Community storage path is missing.` }
           }
+          if (communityVault.storageProvider === 'network') {
+            if (!communityVault.networkRoot) {
+              return { success: false, error: `${file.name}: Community network vault root is missing.` }
+            }
+            const sourcePath = buildFullPath(communityVault.networkRoot, storagePath)
+            logDownload('debug', 'Copying current Community revision from network vault', {
+              operationId, ...fileCtx, sourcePath, destPath: fullPath, attempt,
+            })
+            const copied = await window.electronAPI?.copyFile(sourcePath, fullPath)
+            if (!copied?.success) {
+              downloadResult = { success: false, error: copied?.error || 'Failed to copy the Community revision.' }
+            } else {
+              const hashResult = await window.electronAPI?.hashFile(fullPath)
+              downloadResult = hashResult?.success
+                ? { success: hashResult.hash === file.pdmData.content_hash, hash: hashResult.hash, size: hashResult.size, error: hashResult.hash === file.pdmData.content_hash ? undefined : 'Copied file hash does not match the registered revision.' }
+                : { success: false, error: hashResult?.error || 'Failed to verify copied revision.' }
+            }
+          } else {
+            const fileId = googleDriveFileIdFromStoragePath(storagePath)
+            if (!fileId) {
+              return { success: false, error: `${file.name}: This revision has no Google Drive file pointer.` }
+            }
+            logDownload('debug', 'Streaming current Community revision from Google Drive', {
+              operationId, ...fileCtx, destPath: fullPath, attempt,
+            })
+            const downloaded = await window.electronAPI?.downloadGoogleDriveFile({
+              fileId,
+              targetPath: fullPath,
+              accessToken: requireGoogleDriveVaultToken(),
+            })
+            if (!downloaded?.success) {
+              downloadResult = { success: false, error: downloaded?.error || 'Failed to download the Google Drive revision.' }
+            } else {
+              const hashResult = await window.electronAPI?.hashFile(fullPath)
+              downloadResult = hashResult?.success
+                ? { success: hashResult.hash === file.pdmData.content_hash, hash: hashResult.hash, size: hashResult.size, error: hashResult.hash === file.pdmData.content_hash ? undefined : 'Google Drive file hash does not match the registered revision.' }
+                : { success: false, error: hashResult?.error || 'Failed to verify downloaded Google Drive revision.' }
+            }
+          }
+        } else {
+          logDownload('debug', 'Getting signed URL', {
+            operationId, fileName: file.name, orgId: organization.id,
+            hash: file.pdmData.content_hash?.substring(0, 12), attempt,
+          })
+          const { url, error: urlError } = await getDownloadUrl(organization.id, file.pdmData.content_hash)
+          if (urlError || !url) {
+            return { success: false, error: `${file.name}: ${urlError || 'Failed to get download URL - file may not exist in cloud storage'}` }
+          }
+          downloadResult = await window.electronAPI?.downloadUrl(url, fullPath, file.pdmData.content_hash)
         }
-
-        // Download file
-        logDownload('debug', 'Starting file download', {
-          operationId,
-          fileName: file.name,
-          destPath: fullPath,
-          attempt,
-        })
-
-        const downloadResult = await window.electronAPI?.downloadUrl(
-          url,
-          fullPath,
-          file.pdmData.content_hash,
-        )
         if (!downloadResult?.success) {
           const errorMsg = downloadResult?.error || 'Unknown error writing to disk'
 

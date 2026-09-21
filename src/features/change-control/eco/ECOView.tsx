@@ -18,6 +18,7 @@ import {
 import { usePDMStore } from '@/stores/pdmStore'
 import type { ECO } from '@/stores/types'
 import { getSupabaseClient } from '@/lib/supabase'
+import { addCommunityFileToEco, createCommunityEco, getCommunityEcoFiles, getCommunityEcos, isCommunityConfigured, removeCommunityFileFromEco, updateCommunityEcoStatus } from '@/lib/community'
 import { formatDistanceToNow } from 'date-fns'
 
 // ECO status types
@@ -118,6 +119,7 @@ export function ECOView() {
       setECOsLoading(true)
 
       try {
+        if (isCommunityConfigured()) { setECOs(await getCommunityEcos() as ECO[]); return }
         const client = getSupabaseClient()
 
         // Fetch ECOs with file count
@@ -201,6 +203,7 @@ export function ECOView() {
     setLoadingFiles(ecoId)
 
     try {
+      if (isCommunityConfigured()) { const files=await getCommunityEcoFiles(ecoId); setEcoFiles((prev)=>({...prev,[ecoId]:files})); return }
       const client = getSupabaseClient()
       const { data, error } = await client
         .from('file_ecos')
@@ -278,6 +281,7 @@ export function ECOView() {
     setIsCreating(true)
 
     try {
+      if (isCommunityConfigured()) { const data=await createCommunityEco({ecoNumber:newEcoNumber.trim(),title:newEcoTitle.trim()||null,description:newEcoDescription.trim()||null}); setECOs([data as ECO,...ecos]); setNewEcoNumber('');setNewEcoTitle('');setNewEcoDescription('');setShowCreateModal(false);addToast('success',`ECO ${data.eco_number} created`);return }
       const client = getSupabaseClient()
       const { data, error } = await client
         .from('ecos')
@@ -333,8 +337,6 @@ export function ECOView() {
     setIsTagging(true)
 
     try {
-      const client = getSupabaseClient()
-
       // Get file IDs for selected paths
       const fileIds: string[] = []
       for (const path of selectedFiles) {
@@ -350,6 +352,9 @@ export function ECOView() {
         return
       }
 
+      if (isCommunityConfigured()) { await Promise.all(fileIds.map((fileId)=>addCommunityFileToEco(fileId,tagEcoId))); const eco=ecos.find((e)=>e.id===tagEcoId);if(eco)updateECO(tagEcoId,{file_count:(eco.file_count||0)+fileIds.length});setEcoFiles((prev)=>{const {[tagEcoId]:_,...rest}=prev;return rest});setShowTagModal(false);setTagEcoId(null);addToast('success',`Tagged ${fileIds.length} file(s) with ECO`);return }
+
+      const client = getSupabaseClient()
       // Insert file-ECO associations
       const insertData = fileIds.map((fileId) => ({
         file_id: fileId,
@@ -394,6 +399,7 @@ export function ECOView() {
   // Remove file from ECO
   const handleRemoveFileFromECO = async (fileEcoId: string, ecoId: string) => {
     try {
+      if (isCommunityConfigured()) { const file=ecoFiles[ecoId]?.find((entry)=>entry.id===fileEcoId);if(!file)throw new Error('ECO file mapping not found.');await removeCommunityFileFromEco(file.file_id,ecoId);setEcoFiles((prev)=>({...prev,[ecoId]:prev[ecoId]?.filter((fe)=>fe.id!==fileEcoId)||[]}));const eco=ecos.find((e)=>e.id===ecoId);if(eco)updateECO(ecoId,{file_count:Math.max(0,(eco.file_count||0)-1)});addToast('success','File removed from ECO');return }
       const client = getSupabaseClient()
       const { error } = await client.from('file_ecos').delete().eq('id', fileEcoId)
 
@@ -426,6 +432,7 @@ export function ECOView() {
     if (!user) return
 
     try {
+      if (isCommunityConfigured()) { await updateCommunityEcoStatus(ecoId,newStatus);updateECO(ecoId,{status:newStatus});addToast('success',`ECO status updated to ${STATUS_CONFIG[newStatus].label}`);return }
       const client = getSupabaseClient()
       const { error } = await client
         .from('ecos')

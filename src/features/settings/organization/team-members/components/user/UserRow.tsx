@@ -32,6 +32,7 @@ export function UserRow({
   onRemoveFromTeam,
   onVaultAccess,
   onPermissions,
+  onManageCredentials,
   onViewNetPermissions,
   onSimulatePermissions,
   isSimulating,
@@ -854,6 +855,19 @@ export function UserRow({
                   >
                     <Shield size={14} />
                     Individual Permissions
+                  </button>
+                )}
+
+                {onManageCredentials && canManage && (
+                  <button
+                    onClick={() => {
+                      onManageCredentials()
+                      setActionDropdownOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-plm-fg hover:bg-plm-highlight transition-colors"
+                  >
+                    <Lock size={14} />
+                    Edit Community account
                   </button>
                 )}
 

@@ -12,9 +12,10 @@ import { TabWindow, isTabWindowMode, parseTabWindowParams } from '@/components/l
 import { AppShell } from '@/components/layout'
 import { executeTerminalCommand } from '@/lib/commands/parser'
 import { logUserAction, logExplorer } from '@/lib/userActionLogger'
-import { checkSchemaCompatibility } from '@/lib/schemaVersion'
+import { checkSchemaCompatibility, shouldCheckSupabaseSchema } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
+import { isCommunityConfigured } from '@/lib/community'
 import { clearSwReferencesCache } from '@/lib/solidworks'
 import { syncDrawingReferencesInBackground } from '@/lib/solidworks/drawingReferenceSync'
 import { hashCheckoutIdentifier } from '@/types/pdm'
@@ -373,7 +374,12 @@ export function App() {
   // Check schema compatibility after organization loads
   useEffect(() => {
     const checkSchema = async () => {
-      if (!organization?.id || isOfflineMode || schemaCheckDoneRef.current) return
+      if (
+        !organization?.id ||
+        isOfflineMode ||
+        schemaCheckDoneRef.current ||
+        !shouldCheckSupabaseSchema(isCommunityConfigured())
+      ) return
 
       schemaCheckDoneRef.current = true
 

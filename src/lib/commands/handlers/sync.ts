@@ -10,10 +10,11 @@
  */
 
 import type { Command, LocalFile, SyncParams, CommandResult } from '../types'
-import { getUnsyncedFilesFromSelection } from '../types'
+import { buildFullPath, getUnsyncedFilesFromSelection } from '../types'
 import { ProgressTracker } from '../executor'
-import { syncFile, upsertFileReferences } from '../../supabase'
+import { getFiles, syncFile, upsertFileReferences } from '../../supabase'
 import type { SWReference } from '../../supabase/files/mutations'
+import type { PDMFile } from '../../../types/pdm'
 import { usePDMStore } from '../../../stores/pdmStore'
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { resolveFileMetadata, resolveTabNumber } from '@/lib/metadata/overlay'
@@ -21,6 +22,16 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
+import {
+  communityObjectStoragePath,
+  getCommunityVault,
+  importCommunityFile,
+  isCommunityConfigured,
+} from '@/lib/community'
+import {
+  googleDriveRevisionStoragePath,
+  requireGoogleDriveVaultToken,
+} from '@/lib/googleDriveVault'
 
 // Helper to check if file is a SolidWorks temp lock file (~$filename.sldxxx)
 function isSolidworksTempFile(name: string): boolean {
@@ -413,16 +424,21 @@ export const syncCommand: Command<SyncParams> = {
       CONCURRENT_OPERATIONS,
       async (file) => {
         try {
-          const readResult = await window.electronAPI?.readFile(file.path)
+          // Never pass file bytes through Electron IPC. A base64 payload crosses V8's
+          // string ceiling at roughly 384 MiB and terminates the renderer before it can
+          // report a normal operation error. The hash IPC streams in 64 KiB chunks.
+          const hashResult = await window.electronAPI?.hashFile(file.path)
 
           // Allow empty files (data can be empty string, but hash should always exist)
-          if (!readResult?.success || readResult.data === undefined || !readResult.hash) {
-            const errorDetail = readResult?.locked
+          if (!hashResult?.success || !hashResult.hash) {
+            const errorDetail = hashResult?.success
               ? `${file.name}: File is locked by another process \u2014 save your work and try again`
               : `Failed to read ${file.name}`
             progress.update()
             return { success: false, error: errorDetail }
           }
+
+          const contentHash = hashResult.hash
 
           // Use the overlay: the user's pre-assigned values, then existing server data.
           // NOTE: Auto-extraction from SW files removed for performance
@@ -436,28 +452,90 @@ export const syncCommand: Command<SyncParams> = {
             customProperties: undefined,
           }
 
-          const { error, file: syncedFile } = await syncFile(
-            organization.id,
-            activeVaultId,
-            user.id,
-            file.relativePath,
-            file.name,
-            file.extension,
-            file.size,
-            readResult.hash,
-            readResult.data,
-            metadata,
-            file.copiedFromFileId,
-          )
+          let syncError: unknown = null
+          let syncedFile: PDMFile | null = null
 
-          if (error || !syncedFile) {
+          if (isCommunityConfigured()) {
+            try {
+              const vault = await getCommunityVault(activeVaultId)
+              const canonicalPath = file.relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
+              let storageRelativePath: string
+              let verifiedSize: number
+              if (vault.storageProvider === 'network') {
+                if (!vault.networkRoot) throw new Error('Network vault root is missing.')
+                storageRelativePath = communityObjectStoragePath(contentHash)
+                const stagedPath = buildFullPath(vault.networkRoot, storageRelativePath)
+                const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
+                if (!staged?.success) {
+                  throw new Error(`Failed to stage immutable revision: ${staged?.error || 'unknown copy error'}`)
+                }
+                const stagedHash = await window.electronAPI?.hashFile(stagedPath)
+                if (!stagedHash?.success || stagedHash.hash !== contentHash) {
+                  throw new Error(stagedHash?.error || 'Staged revision hash does not match the local file.')
+                }
+                verifiedSize = stagedHash.size ?? file.size
+              } else {
+                if (!vault.googleDriveFolderId) throw new Error('Google Drive vault folder is missing.')
+                const uploaded = await window.electronAPI?.uploadGoogleDriveFile({
+                  sourcePath: file.path,
+                  parentFolderId: vault.googleDriveFolderId,
+                  fileName: `${contentHash}-${file.name}`,
+                  accessToken: requireGoogleDriveVaultToken(),
+                })
+                if (!uploaded?.success || !uploaded.fileId) {
+                  throw new Error(uploaded?.error || 'Failed to upload immutable Google Drive revision.')
+                }
+                storageRelativePath = googleDriveRevisionStoragePath(uploaded.fileId)
+                verifiedSize = uploaded.size ?? file.size
+              }
+
+              const imported = await importCommunityFile({
+                vaultId: activeVaultId,
+                canonicalPath,
+                storageRelativePath,
+                fileName: file.name,
+                contentHash,
+                sizeBytes: verifiedSize,
+              })
+              const { files: serverFiles, error } = await getFiles(organization.id, { vaultId: activeVaultId })
+              if (error || !serverFiles) throw error || new Error('Community import was accepted but its file record could not be read.')
+
+              const serverFile = serverFiles.find((candidate) => candidate.file_path === canonicalPath)
+              if (!serverFile) throw new Error('Community import was accepted but its file record was not returned.')
+              if (!imported.created && serverFile.content_hash !== contentHash) {
+                throw new Error('A Community file already exists at this path with different content. Download and check out that file instead of importing over it.')
+              }
+              syncedFile = serverFile as PDMFile
+            } catch (error) {
+              syncError = error
+            }
+          } else {
+            const result = await syncFile(
+              organization.id,
+              activeVaultId,
+              user.id,
+              file.relativePath,
+              file.name,
+              file.extension,
+              file.size,
+              contentHash,
+              undefined,
+              metadata,
+              file.copiedFromFileId,
+              file.path,
+            )
+            syncError = result.error
+            syncedFile = result.file as PDMFile | null
+          }
+
+          if (syncError || !syncedFile) {
             progress.update()
             const errorMsg =
-              error instanceof Error
-                ? error.message
-                : typeof error === 'object' && error !== null
-                  ? (error as { message?: string }).message || String(error)
-                  : String(error || '')
+              syncError instanceof Error
+                ? syncError.message
+                : typeof syncError === 'object' && syncError !== null
+                  ? (syncError as { message?: string }).message || String(syncError)
+                  : String(syncError || '')
             return { success: false, error: translateSyncError(errorMsg, file.name) }
           }
 
@@ -468,7 +546,7 @@ export const syncCommand: Command<SyncParams> = {
             path: file.path,
             updates: {
               pdmData: syncedFile,
-              localHash: readResult.hash,
+              localHash: contentHash,
               localVersion: typedSyncedFileVersion.version, // Track the new version after sync
               diffStatus: undefined,
               pendingMetadata: undefined,

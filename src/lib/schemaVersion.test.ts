@@ -3,7 +3,11 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { EXPECTED_SCHEMA_VERSION, VERSION_DESCRIPTIONS } from './schemaVersion'
+import {
+  EXPECTED_SCHEMA_VERSION,
+  shouldCheckSupabaseSchema,
+  VERSION_DESCRIPTIONS,
+} from './schemaVersion'
 
 // schema_release_description() is what lands in schema_version.description when a
 // database is stamped, and VERSION_DESCRIPTIONS is what the app shows for the
@@ -59,5 +63,11 @@ describe('schema_release_description() parity', () => {
       const tail = normalize(text).slice(-120)
       expect(sqlText.includes(tail), `ends with the text of release ${version}`).toBe(false)
     }
+  })
+})
+
+describe('backend-specific schema checks', () => {
+  it('does not query the Supabase schema ledger for a Community backend', () => {
+    expect(shouldCheckSupabaseSchema(true)).toBe(false)
   })
 })

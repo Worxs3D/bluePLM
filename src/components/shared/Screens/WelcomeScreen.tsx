@@ -36,6 +36,7 @@ import {
   type AuthProviders,
 } from '@/lib/supabase'
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
+import { isCommunityConfigured, signInCommunity } from '@/lib/community'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
 import { logClick, logAuth } from '@/lib/userActionLogger'
@@ -156,6 +157,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // Fetch org auth providers on mount and when user signs out (for pre-login sign-in method visibility)
   // We refetch when user becomes null to ensure we have fresh settings after sign-out
   useEffect(() => {
+    if (isCommunityConfigured()) return
     // Only fetch when showing sign-in screen (user is null and not in offline mode)
     if (user || isOfflineMode) return
 
@@ -755,6 +757,23 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     setOfflineMode(true)
   }
 
+  const handleCommunitySignIn = async () => {
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError('Enter your email address and password.')
+      return
+    }
+
+    setIsSigningIn(true)
+    setAuthError(null)
+    try {
+      await signInCommunity(authEmail.trim(), authPassword)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not sign in to the MariaDB (MDB) backend.')
+    } finally {
+      setIsSigningIn(false)
+    }
+  }
+
   const handleConnectVault = async (vault: Vault) => {
     logClick('Connect vault button', { vaultName: vault.name, vaultId: vault.id })
     log.info('[WelcomeScreen]', 'Connect vault clicked', {
@@ -991,6 +1010,54 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // ============================================
   // CONNECTING SCREEN (shown after sign-in while loading organization)
   // ============================================
+  if (isCommunityConfigured() && !user && !isOfflineMode && !isAuthConnecting) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-plm-bg overflow-auto">
+        <form
+          className="w-full max-w-md p-8 space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleCommunitySignIn()
+          }}
+        >
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold text-plm-fg">BluePLM</h1>
+            <p className="text-plm-fg-muted">Sign in to the configured MariaDB backend.</p>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">Email</span>
+            <input
+              autoComplete="email"
+              type="email"
+              value={authEmail}
+              onChange={(event) => setAuthEmail(event.target.value)}
+              className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">Password</span>
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={authPassword}
+              onChange={(event) => setAuthPassword(event.target.value)}
+              className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+            />
+          </label>
+          {authError && <p className="text-sm text-red-400">{authError}</p>}
+          <button type="submit" disabled={isSigningIn} className="w-full btn btn-primary btn-lg justify-center">
+            {isSigningIn ? <><Loader2 size={20} className="animate-spin" />Signing in…</> : 'Sign in'}
+          </button>
+          {onChangeOrg && (
+            <button type="button" onClick={() => void onChangeOrg()} className="w-full text-sm text-plm-fg-muted hover:text-plm-fg">
+              Change backend
+            </button>
+          )}
+        </form>
+      </div>
+    )
+  }
+
   if (isAuthConnecting) {
     const handleCancelConnecting = async () => {
       log.info('[WelcomeScreen]', 'User cancelled connecting - signing out')

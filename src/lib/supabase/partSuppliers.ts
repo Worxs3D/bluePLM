@@ -2,6 +2,47 @@
 import { supabase } from './client'
 import { log } from '../logger'
 import type { PartSupplier } from '@/stores/types'
+import type { Database } from '@/types/supabase'
+import {
+  createCommunityPartSupplier,
+  getCommunityPartSuppliers,
+  isCommunityConfigured,
+  removeCommunityPartSupplier,
+  setCommunityPreferredPartSupplier,
+  updateCommunityPartSupplier,
+} from '@/lib/community'
+
+type PartSupplierInput = {
+  supplier_part_number?: string | null
+  supplier_description?: string | null
+  supplier_url?: string | null
+  unit_price?: number | null
+  currency?: string
+  price_unit?: string
+  price_breaks?: Array<{ qty: number; price: number }> | null
+  min_order_qty?: number | null
+  order_multiple?: number | null
+  lead_time_days?: number | null
+  is_preferred?: boolean
+  notes?: string | null
+}
+
+function toCommunityInput(data: PartSupplierInput) {
+  return {
+    supplierPartNumber: data.supplier_part_number,
+    supplierDescription: data.supplier_description,
+    supplierUrl: data.supplier_url,
+    unitPrice: data.unit_price,
+    currency: data.currency,
+    priceUnit: data.price_unit,
+    priceBreaks: data.price_breaks,
+    minOrderQty: data.min_order_qty,
+    orderMultiple: data.order_multiple,
+    leadTimeDays: data.lead_time_days,
+    isPreferred: data.is_preferred,
+    notes: data.notes,
+  }
+}
 
 /**
  * Get all suppliers (vendors) for a specific file/item
@@ -10,6 +51,9 @@ export async function getPartSuppliers(
   fileId: string,
 ): Promise<{ data: PartSupplier[] | null; error: string | null }> {
   try {
+    if (isCommunityConfigured()) {
+      return { data: (await getCommunityPartSuppliers(fileId)) as PartSupplier[], error: null }
+    }
     const { data, error } = await supabase
       .from('part_suppliers')
       .select(
@@ -82,23 +126,13 @@ export async function addPartSupplier(
   orgId: string,
   fileId: string,
   supplierId: string,
-  data: {
-    supplier_part_number?: string | null
-    supplier_description?: string | null
-    supplier_url?: string | null
-    unit_price?: number | null
-    currency?: string
-    price_unit?: string
-    price_breaks?: Array<{ qty: number; price: number }> | null
-    min_order_qty?: number | null
-    order_multiple?: number | null
-    lead_time_days?: number | null
-    is_preferred?: boolean
-    notes?: string | null
-  },
+  data: PartSupplierInput,
   userId: string,
 ): Promise<{ data: PartSupplier | null; error: string | null }> {
   try {
+    if (isCommunityConfigured()) {
+      return { data: (await createCommunityPartSupplier(fileId, supplierId, toCommunityInput(data))) as PartSupplier, error: null }
+    }
     const { data: result, error } = await supabase
       .from('part_suppliers')
       .insert({
@@ -186,24 +220,15 @@ export async function addPartSupplier(
  */
 export async function updatePartSupplier(
   partSupplierId: string,
-  data: {
-    supplier_part_number?: string | null
-    supplier_description?: string | null
-    supplier_url?: string | null
-    unit_price?: number | null
-    currency?: string
-    price_unit?: string
-    price_breaks?: Array<{ qty: number; price: number }> | null
-    min_order_qty?: number | null
-    order_multiple?: number | null
-    lead_time_days?: number | null
-    is_preferred?: boolean
-    notes?: string | null
-  },
+  data: PartSupplierInput,
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const updateData: Record<string, unknown> = {
+    if (isCommunityConfigured()) {
+      await updateCommunityPartSupplier(partSupplierId, toCommunityInput(data))
+      return { success: true, error: null }
+    }
+    const updateData: Database['public']['Tables']['part_suppliers']['Update'] = {
       updated_by: userId,
       updated_at: new Date().toISOString(),
     }
@@ -253,6 +278,10 @@ export async function setPreferredPartSupplier(
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    if (isCommunityConfigured()) {
+      await setCommunityPreferredPartSupplier(fileId, partSupplierId)
+      return { success: true, error: null }
+    }
     // First, clear preferred status on all suppliers for this file
     const { error: clearError } = await supabase
       .from('part_suppliers')
@@ -298,6 +327,10 @@ export async function removePartSupplier(
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    if (isCommunityConfigured()) {
+      await removeCommunityPartSupplier(partSupplierId)
+      return { success: true, error: null }
+    }
     const { error } = await supabase
       .from('part_suppliers')
       .update({
@@ -326,6 +359,10 @@ export async function deletePartSupplier(
   partSupplierId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    if (isCommunityConfigured()) {
+      await removeCommunityPartSupplier(partSupplierId)
+      return { success: true, error: null }
+    }
     const { error } = await supabase.from('part_suppliers').delete().eq('id', partSupplierId)
 
     if (error) {

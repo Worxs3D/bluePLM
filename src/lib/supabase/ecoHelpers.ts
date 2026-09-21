@@ -1,9 +1,11 @@
 import { getSupabaseClient } from './client'
+import { addCommunityFileToEco, getCommunityActiveEcos, getCommunityFileEcos, isCommunityConfigured, removeCommunityFileFromEco } from '@/lib/community'
 
 /**
  * Get active ECOs for an organization (for selection)
  */
 export async function getActiveECOs(orgId: string): Promise<{ ecos: any[]; error?: string }> {
+  if (isCommunityConfigured()) { try { return { ecos: await getCommunityActiveEcos() } } catch (error) { return { ecos: [], error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -37,6 +39,7 @@ export async function addFileToECO(
   userId: string,
   notes?: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) { try { await addCommunityFileToEco(fileId, ecoId, notes); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { error } = await client.from('file_ecos').insert({
@@ -63,6 +66,7 @@ export async function removeFileFromECO(
   fileId: string,
   ecoId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) { try { await removeCommunityFileFromEco(fileId, ecoId); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { error } = await client
@@ -82,6 +86,7 @@ export async function removeFileFromECO(
  * Get ECOs that a file belongs to
  */
 export async function getFileECOs(fileId: string): Promise<{ ecos: any[]; error?: string }> {
+  if (isCommunityConfigured()) { try { return { ecos: await getCommunityFileEcos(fileId) } } catch (error) { return { ecos: [], error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { data, error } = await client

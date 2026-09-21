@@ -8,6 +8,13 @@
 import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePattern'
 
 import { getSupabaseClient } from '../client'
+import {
+  deleteCommunityFolder,
+  getCommunityFolders,
+  isCommunityConfigured,
+  syncCommunityFolder,
+  updateCommunityFolder,
+} from '@/lib/community'
 
 // ============================================
 // Types
@@ -102,6 +109,19 @@ export async function syncFolder(
   userId: string,
   folderPath: string,
 ): Promise<{ folder: FolderRecord | null; error: any }> {
+  if (isCommunityConfigured()) {
+    try {
+      const normalizedPath = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      const parts = normalizedPath.split('/')
+      let folder: FolderRecord | null = null
+      for (let index = 1; index <= parts.length; index += 1) {
+        folder = await syncCommunityFolder(vaultId, parts.slice(0, index).join('/')) as FolderRecord
+      }
+      return { folder, error: null }
+    } catch (error) {
+      return { folder: null, error }
+    }
+  }
   const client = getSupabaseClient()
   const logFn = getLogFn()
 
@@ -217,6 +237,10 @@ async function syncSingleFolder(
 export async function getVaultFolders(
   vaultId: string,
 ): Promise<{ folders: FolderRecord[]; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { return { folders: await getCommunityFolders(vaultId) as FolderRecord[] } }
+    catch (error) { return { folders: [], error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
   const logFn = getLogFn()
 
@@ -259,6 +283,10 @@ export async function updateFolderServerPath(
   folderId: string,
   newPath: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await updateCommunityFolder(folderId, newPath); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
   const logFn = getLogFn()
 
@@ -359,6 +387,10 @@ export async function deleteFolderOnServer(
   folderId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try { await deleteCommunityFolder(folderId); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
+  }
   const client = getSupabaseClient()
   const logFn = getLogFn()
 
@@ -441,6 +473,17 @@ export async function deleteFolderByPath(
   folderPath: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCommunityConfigured()) {
+    try {
+      const normalizedPath = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      const folder = (await getCommunityFolders(vaultId)).find((candidate) => candidate.folder_path.toLowerCase() === normalizedPath.toLowerCase())
+      if (!folder) return { success: true }
+      await deleteCommunityFolder(folder.id)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const client = getSupabaseClient()
   const logFn = getLogFn()
 

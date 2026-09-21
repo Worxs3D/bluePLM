@@ -145,6 +145,22 @@ export function registerDialogHandlers(
     return { success: false, canceled: true }
   })
 
+  // Select a directory path without scanning it. This is used for archive/NAS roots,
+  // where recursively enumerating a large network share would block the installer.
+  ipcMain.handle('dialog:select-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Select Archive or NAS Folder',
+      properties: ['openDirectory'],
+    })
+
+    restoreMainWindowFocus()
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      return { success: true, folderPath: result.filePaths[0] }
+    }
+    return { success: false, canceled: true }
+  })
+
   // Save file dialog
   ipcMain.handle(
     'dialog:save-file',
@@ -198,6 +214,7 @@ export function unregisterDialogHandlers(): void {
   const handlers = [
     'dialog:select-files',
     'dialog:select-folder',
+    'dialog:select-directory',
     'dialog:save-file',
     'dialog:save-text-file',
   ]

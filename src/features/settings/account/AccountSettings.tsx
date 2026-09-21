@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore, ThemeMode, Language } from '@/stores/pdmStore'
-import { signOut, getSupabaseClient, endRemoteSession } from '@/lib/supabase'
+import { signOut, getActiveSessions, endRemoteSession } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { getMachineId } from '@/lib/backup'
 import { useTranslation } from '@/lib/i18n'
@@ -160,22 +160,8 @@ export function AccountSettings() {
         const machineId = await getMachineId()
         setCurrentMachineId(machineId)
 
-        // Fetch all sessions for this user (active within last 5 minutes)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
-        const client = getSupabaseClient()
-
-        const { data, error } = await client
-          .from('user_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .gte('last_seen', fiveMinutesAgo)
-          .order('last_seen', { ascending: false })
-
-        if (!error && data) {
-          // Cast to UserSession[] - Supabase types may be out of sync with actual schema
-          setSessions(data as unknown as UserSession[])
-        }
+        const { sessions, error } = await getActiveSessions(user.id)
+        if (!error) setSessions(sessions)
       } catch (error) {
         log.error('[Account]', 'Error loading sessions', { error: error })
       } finally {

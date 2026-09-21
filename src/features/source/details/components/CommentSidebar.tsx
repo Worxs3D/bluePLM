@@ -27,6 +27,7 @@ import {
   resolveAnnotation,
   unresolveAnnotation,
 } from '@/lib/supabase/annotations'
+import { isCommunityConfigured } from '@/lib/community'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { CommentThread } from './CommentThread'
 import { CommentInput } from './CommentInput'
@@ -137,6 +138,20 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
   // ── Supabase Realtime subscription ──────────────────────────────────────
   useEffect(() => {
     if (!fileId) return
+
+    if (isCommunityConfigured()) {
+      let cancelled = false
+      const refresh = () => {
+        void getFileAnnotations(fileId, fileVersion).then((result) => {
+          if (!cancelled && !result.error) setAnnotations(result.annotations)
+        })
+      }
+      const intervalId = window.setInterval(refresh, 10_000)
+      return () => {
+        cancelled = true
+        window.clearInterval(intervalId)
+      }
+    }
 
     let channel: ReturnType<ReturnType<typeof getSupabaseClient>['channel']> | null = null
 

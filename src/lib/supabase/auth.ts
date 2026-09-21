@@ -1,4 +1,11 @@
 import { getSupabaseClient, authLog, getCurrentConfigValues, setSessionResolver } from './client'
+import {
+  communityAccessToken,
+  getCommunityPrincipal,
+  isCommunityConfigured,
+  signInCommunity,
+  signOutCommunity,
+} from '@/lib/community'
 
 // Store the current access token (set by setupSessionListener)
 let currentAccessToken: string | null = null
@@ -8,6 +15,7 @@ export function setCurrentAccessToken(token: string | null) {
 }
 
 export function getCurrentAccessToken(): string | null {
+  if (isCommunityConfigured()) return communityAccessToken()
   return currentAccessToken
 }
 
@@ -26,6 +34,9 @@ export function clearCachedUserEmail() {
 // ============================================
 
 export async function signInWithGoogle() {
+  if (isCommunityConfigured()) {
+    return { data: null, error: new Error('Google sign-in is not configured for the Community backend.') }
+  }
   const client = getSupabaseClient()
 
   // In Electron (both dev and production), use system browser OAuth flow
@@ -147,6 +158,20 @@ export async function signInWithGoogle() {
 // ============================================
 
 export async function signInWithEmail(email: string, password: string) {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await signInCommunity(email, password)
+      const user = {
+        id: principal.userId,
+        email: principal.email,
+        created_at: new Date().toISOString(),
+        user_metadata: { full_name: principal.displayName, name: principal.displayName },
+      }
+      return { data: { user, session: { access_token: communityAccessToken(), user } }, error: null }
+    } catch (error) {
+      return { data: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   authLog('info', 'signInWithEmail called', { email })
 
@@ -170,6 +195,9 @@ export async function signInWithEmail(email: string, password: string) {
 }
 
 export async function signUpWithEmail(email: string, password: string, fullName?: string) {
+  if (isCommunityConfigured()) {
+    return { data: null, error: new Error('Community accounts are created by an organization administrator.') }
+  }
   const client = getSupabaseClient()
   authLog('info', 'signUpWithEmail called', { email, hasName: !!fullName })
 
@@ -205,6 +233,9 @@ export async function signUpWithEmail(email: string, password: string, fullName?
 // ============================================
 
 export async function signInWithPhone(phone: string) {
+  if (isCommunityConfigured()) {
+    return { data: null, error: new Error('Phone sign-in is not configured for the Community backend.') }
+  }
   const client = getSupabaseClient()
   authLog('info', 'signInWithPhone called - sending OTP', { phone: phone.substring(0, 6) + '...' })
 
@@ -231,6 +262,9 @@ export async function signInWithPhone(phone: string) {
 }
 
 export async function verifyPhoneOTP(phone: string, token: string) {
+  if (isCommunityConfigured()) {
+    return { data: null, error: new Error('Phone sign-in is not configured for the Community backend.') }
+  }
   const client = getSupabaseClient()
   authLog('info', 'verifyPhoneOTP called', { phone: phone.substring(0, 6) + '...' })
 
@@ -352,6 +386,11 @@ export async function getSupplierContact(authUserId: string) {
 }
 
 export async function signOut() {
+  if (isCommunityConfigured()) {
+    clearCachedUserEmail()
+    signOutCommunity()
+    return { error: null }
+  }
   const client = getSupabaseClient()
 
   // Get current user to end their session
@@ -377,6 +416,22 @@ export async function signOut() {
 }
 
 export async function getCurrentUser() {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      return {
+        user: {
+          id: principal.userId,
+          email: principal.email,
+          created_at: new Date().toISOString(),
+          user_metadata: { full_name: principal.displayName, name: principal.displayName },
+        },
+        error: null,
+      }
+    } catch (error) {
+      return { user: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   const {
     data: { user },
@@ -386,6 +441,25 @@ export async function getCurrentUser() {
 }
 
 export async function getCurrentSession() {
+  if (isCommunityConfigured()) {
+    try {
+      const principal = await getCommunityPrincipal()
+      return {
+        session: {
+          access_token: communityAccessToken(),
+          user: {
+            id: principal.userId,
+            email: principal.email,
+            created_at: new Date().toISOString(),
+            user_metadata: { full_name: principal.displayName, name: principal.displayName },
+          },
+        },
+        error: null,
+      }
+    } catch (error) {
+      return { session: null, error: error as Error }
+    }
+  }
   const client = getSupabaseClient()
   const {
     data: { session },
