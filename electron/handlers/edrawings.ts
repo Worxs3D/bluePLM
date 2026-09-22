@@ -10,7 +10,10 @@ const PROGRAM_FILES = ['C:\\Program Files', 'C:\\Program Files (x86)']
 const EXECUTABLE_NAMES = ['eDrawings.exe', 'EModelViewer.exe']
 
 function candidatesIn(directory: string): string[] {
-  return EXECUTABLE_NAMES.map((name) => path.join(directory, name))
+  // These are Windows installation locations even when this pure discovery
+  // function is exercised by the cross-platform test suite. Do not let the
+  // host platform rewrite their separators.
+  return EXECUTABLE_NAMES.map((name) => path.win32.join(directory, name))
 }
 
 /**
@@ -34,17 +37,17 @@ export function findEDrawingsExecutable(
 ): string | null {
   const directories = [
     ...PROGRAM_FILES.flatMap((programFiles) => [
-      path.join(programFiles, 'SOLIDWORKS Corp', 'eDrawings'),
-      path.join(programFiles, 'eDrawings'),
-      path.join(programFiles, 'SOLIDWORKS Corp', 'SOLIDWORKS', 'eDrawings'),
+      path.win32.join(programFiles, 'SOLIDWORKS Corp', 'eDrawings'),
+      path.win32.join(programFiles, 'eDrawings'),
+      path.win32.join(programFiles, 'SOLIDWORKS Corp', 'SOLIDWORKS', 'eDrawings'),
     ]),
   ]
 
   for (const programFiles of PROGRAM_FILES) {
-    const commonFiles = path.join(programFiles, 'Common Files')
+    const commonFiles = path.win32.join(programFiles, 'Common Files')
     for (const entry of dependencies.listDirectories(commonFiles)) {
       if (/^edrawings(?:\d{4})?$/i.test(entry)) {
-        directories.push(path.join(commonFiles, entry))
+        directories.push(path.win32.join(commonFiles, entry))
       }
     }
   }
