@@ -12,6 +12,14 @@ export const fr: TranslationDict = {
     differentComputer: 'ordinateur différent',
     otherComputer: 'un autre PC',
   },
+  fileReadonly: {
+    blocked: 'Ce fichier est en lecture seule sur le disque, donc rien n’a été écrit.',
+    unknown: 'Impossible de savoir si ce fichier est en lecture seule, donc rien n’a été écrit.',
+    stillCheckedOut: 'Récupéré, mais toujours en lecture seule sur le disque : {{names}}',
+    madeWritable: '{{count}} fichier(s) étaient déjà récupérés et sont maintenant modifiables.',
+    solidWorksStillReadonly:
+      'Récupéré et modifiable sur le disque, mais SolidWorks a encore le fichier ouvert en lecture seule. Dans SolidWorks : Edition → Lecture seule, ou fermez et rouvrez le fichier.',
+  },
   common: {
     save: 'Enregistrer',
     cancel: 'Annuler',

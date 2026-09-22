@@ -905,17 +905,9 @@ namespace BluePLM.SolidWorksService
         
         private void LogDecodeError(int error)
         {
-            var errMsg = error switch
-            {
-                1 => "swDmDocumentOpenErrorFail - Generic failure (file locked or license issue?)",
-                2 => "swDmDocumentOpenErrorFileNotFound",
-                3 => "swDmDocumentOpenErrorFileReadOnly",
-                4 => "swDmDocumentOpenErrorNonNativeFileType",
-                5 => "swDmDocumentOpenErrorFileAlreadyOpened - File is open in another application",
-                6 => "swDmDocumentOpenErrorFutureVersion - File from newer SolidWorks version",
-                _ => $"Unknown error code: {error}"
-            };
-            LogDebug($"OpenDocument: Error - {errMsg}");
+            // DescribeOpenError is the interop's SwDmDocumentOpenError, not a hand-shifted table.
+            // The old table called code 4 "not a native file"; that code is file-read-only.
+            LogDebug($"OpenDocument: Error - {DescribeOpenError(error)} (code {error})");
         }
 
         private int GetDocumentTypeValue(string filePath)

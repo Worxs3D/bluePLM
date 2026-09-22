@@ -481,6 +481,27 @@ describe('a group that carries properties but names no address', () => {
     ])
     expect(result.outcome).toBe('partial')
   })
+
+  it('is a failure when nothing landed, even if a scopeless write also failed', async () => {
+    install({ writeSucceeds: false })
+
+    const result = await writeMetadataWithVerification({
+      path: PATH,
+      groups: [
+        {
+          properties: { Number: 'BR-1', 'Base Item Number': 'BR-1' },
+          intents: [{ address: { scope: 'file', field: 'part_number' }, expected: 'BR-1' }],
+        },
+        { configuration: 'Default', properties: { Number: 'BR-1' }, intents: [] },
+      ],
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(result.addresses).toHaveLength(1)
+    expect(result.addresses[0].state).toBe('failed')
+    expect(result.unrecordedFailures).toHaveLength(1)
+    expect(result.readBackMs).toBeNull()
+  })
 })
 
 describe('rounding many verdicts into one outcome', () => {

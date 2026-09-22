@@ -1060,10 +1060,8 @@ namespace BluePLM.SolidWorksService
         }
 
         /// <summary>
-        /// Decoded from SwDmDocumentOpenError as the interop actually defines it. The table in
-        /// DocumentManagerAPI.DescribeOpenError is shifted from code 2 onward, so it reports a
-        /// read-only file as "not a native SolidWorks file" and a missing license as "file is open
-        /// in another application".
+        /// Decoded from SwDmDocumentOpenError as the interop actually defines it. The service log
+        /// uses DocumentManagerAPI.DescribeOpenError, which names the same codes: 4 is file-read-only.
         /// </summary>
         private static string DescribeOpenError(int error) => error switch
         {

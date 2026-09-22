@@ -205,13 +205,12 @@ export function summarizeOutcome(addresses: readonly VerifiedAddress[]): Metadat
  * The outcome, once a failure no address speaks for is taken into account.
  *
  * A write that failed is not a write that succeeded, whether or not the group it belonged to
- * named an address. With addresses present the honest answer is `partial` - something landed and
- * something did not - and with none it is simply `failed`.
+ * named an address. `partial` requires something to have landed: a verified or unverified
+ * address, with a failure beside it. When nothing landed, the outcome is `failed`, including
+ * when a scope that named no address also refused the write.
  *
- * A `whole-document` plan that missed configurations is `partial` for the same reason: what landed
- * landed, and the document does not agree. `partial` rather than `failed` because the distinction
- * is real and callers act on it - and `partial` is already the value every caller treats as "not
- * done", which is the property that matters.
+ * A `whole-document` plan that missed configurations is `partial` when the addresses it did
+ * write landed. What landed landed, and the document does not agree.
  */
 function roundOutcome(
   addresses: readonly VerifiedAddress[],
@@ -221,7 +220,10 @@ function roundOutcome(
   if (unrecordedFailures.length === 0 && unaddressedConfigurations.length === 0) {
     return summarizeOutcome(addresses)
   }
-  return addresses.length === 0 ? 'failed' : 'partial'
+  const landed = addresses.some(
+    (entry) => entry.state === 'verified' || entry.state === 'unverified',
+  )
+  return landed ? 'partial' : 'failed'
 }
 
 /**

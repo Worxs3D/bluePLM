@@ -20,6 +20,14 @@ export const en: TranslationDict = {
     differentComputer: 'different computer',
     otherComputer: 'other computer',
   },
+  fileReadonly: {
+    blocked: 'This file is read-only on disk, so nothing was written.',
+    unknown: 'Could not tell whether this file is read-only, so nothing was written.',
+    stillCheckedOut: 'Checked out, but still read-only on disk: {{names}}',
+    madeWritable: '{{count}} file(s) were already checked out and are now writable.',
+    solidWorksStillReadonly:
+      'Checked out and writable on disk, but SolidWorks still has the file open as read-only. In SolidWorks, use Edit → Read-Only Mode, or close and reopen the file.',
+  },
   // Item Browser expandable sections
   itemBrowser: {
     designation: 'Designation',

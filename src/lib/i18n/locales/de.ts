@@ -12,6 +12,15 @@ export const de: TranslationDict = {
     differentComputer: 'anderer Computer',
     otherComputer: 'anderer PC',
   },
+  fileReadonly: {
+    blocked: 'Diese Datei ist auf dem Datenträger schreibgeschützt, daher wurde nichts geschrieben.',
+    unknown:
+      'Es ließ sich nicht feststellen, ob diese Datei schreibgeschützt ist, daher wurde nichts geschrieben.',
+    stillCheckedOut: 'Ausgecheckt, aber auf dem Datenträger weiterhin schreibgeschützt: {{names}}',
+    madeWritable: '{{count}} Datei(en) waren bereits ausgecheckt und sind jetzt beschreibbar.',
+    solidWorksStillReadonly:
+      'Ausgecheckt und auf dem Datenträger beschreibbar, aber SolidWorks hat die Datei noch schreibgeschützt geöffnet. In SolidWorks: Bearbeiten → Schreibgeschützt, oder die Datei schließen und erneut öffnen.',
+  },
   common: {
     save: 'Speichern',
     cancel: 'Abbrechen',

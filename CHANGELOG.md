@@ -4,6 +4,29 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.4-beta.1] - 2026-09-22
+
+Renderer and SolidWorks service — no schema change, no API change.
+
+### Fixed
+
+- **Checking a file out now confirms it is actually writable on disk.** Checkout used to
+  treat the server row as success and only log a warning when Windows left the read-only
+  attribute set, so a later write (a first BR number, any metadata save) failed against a
+  file the app had just called checked out. Checkout now clears the attribute, reads it
+  back, tries once more if it is still set, and names the files that stayed read-only.
+  Files you already have checked out are repaired the same way, without a second server
+  checkout. A file that stays read-only is not counted as a successful checkout, and the
+  server checkout is not undone. If the disk is clear but SolidWorks still has the file
+  open as read-only, checkout says so and points at Edit → Read-Only Mode.
+- **A read-only file is refused before a serial number is issued or metadata is written.**
+  Generating an item number and saving metadata both stop when the file is still
+  read-only, so the org counter is not incremented for a write that cannot land.
+- **A metadata write that verifies nothing is reported as failed.** A config-only follow-up
+  that also failed used to turn a write with zero verified addresses into "partial."
+- **Document Manager open error 4 is logged as read-only.** The service log used to call
+  that code a non-native file. SolidWorks service 1.21.1.
+
 ## [4.4.3] - 2026-09-11
 
 Renderer-only release — no schema change, no API change.

@@ -26,6 +26,7 @@ import { useCallback } from 'react'
 
 import { getEffectiveExportSettings } from '@/features/settings/system'
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { readDocumentConfigurations } from '@/lib/metadata/configurationRead'
@@ -356,6 +357,8 @@ export function useConfigHandlers(deps: ConfigHandlersDeps): UseConfigHandlersRe
         })
         return
       }
+
+      if (await stopIfFileNotWritable(file.path, edit)) return
 
       const swStatus = usePDMStore.getState().integrations.solidworks.status
       if (swStatus !== 'online' && swStatus !== 'partial') {

@@ -12,6 +12,14 @@ export const es: TranslationDict = {
     differentComputer: 'ordenador diferente',
     otherComputer: 'otro PC',
   },
+  fileReadonly: {
+    blocked: 'Este archivo es de solo lectura en el disco, así que no se escribió nada.',
+    unknown: 'No se pudo saber si este archivo es de solo lectura, así que no se escribió nada.',
+    stillCheckedOut: 'Extraído, pero sigue siendo de solo lectura en el disco: {{names}}',
+    madeWritable: '{{count}} archivo(s) ya estaban extraídos y ahora se pueden modificar.',
+    solidWorksStillReadonly:
+      'Extraído y modificable en el disco, pero SolidWorks sigue teniendo el archivo abierto como solo lectura. En SolidWorks: Edición → Solo lectura, o cierre y vuelva a abrir el archivo.',
+  },
   common: {
     save: 'Guardar',
     cancel: 'Cancelar',

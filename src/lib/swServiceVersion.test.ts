@@ -23,7 +23,7 @@ describe('a feature floor is not the app floor', () => {
   })
 
   it('accepts a service that has the command', () => {
-    expect(checkSwServiceFeature('1.21.0', '1.21.0').status).toBe('current')
+    expect(checkSwServiceFeature(EXPECTED_SW_SERVICE_VERSION, '1.21.0').status).toBe('current')
   })
 
   it('lets a service past the floor still be reported as behind the app', () => {

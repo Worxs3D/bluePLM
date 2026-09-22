@@ -21,6 +21,7 @@ import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
 import { formatFileSize } from '@/lib/utils'
 import { getNextSerialNumber } from '@/lib/serialization'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { resolveDescription, resolvePartNumber, resolveRevision } from '@/lib/metadata/overlay'
 import { VersionHistoryDropdown } from '../FileList/cells/VersionHistoryDropdown'
 
@@ -195,6 +196,8 @@ function EditableField({
   // Handle generate serial number (for item number field)
   const handleGenerateSerial = async () => {
     if (!organization?.id || fieldId !== 'itemNumber') return
+
+    if (await stopIfFileNotWritable(file.path)) return
 
     setIsGenerating(true)
     try {

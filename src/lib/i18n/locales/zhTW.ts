@@ -12,6 +12,14 @@ export const zhTW: TranslationDict = {
     differentComputer: '不同電腦',
     otherComputer: '其他電腦',
   },
+  fileReadonly: {
+    blocked: '此檔案在磁碟上為唯讀，因此沒有寫入任何內容。',
+    unknown: '無法確認此檔案是否為唯讀，因此沒有寫入任何內容。',
+    stillCheckedOut: '已簽出，但在磁碟上仍為唯讀：{{names}}',
+    madeWritable: '{{count}} 個檔案先前已簽出，現在可以寫入。',
+    solidWorksStillReadonly:
+      '已簽出且磁碟上可寫，但 SOLIDWORKS 仍以唯讀方式開啟該檔案。在 SOLIDWORKS 中：編輯 → 唯讀模式，或關閉後重新開啟該檔案。',
+  },
   common: {
     save: '儲存',
     cancel: '取消',

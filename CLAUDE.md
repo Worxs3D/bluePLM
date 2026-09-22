@@ -7,7 +7,14 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
-Nothing in flight. 4.4.3 shipped (renderer only — no schema change, no API change): downloading
+4.4.4-beta.1 (renderer and SolidWorks service — no schema change, no API change): checkout
+now confirms the Windows read-only bit is actually clear, retries once, and names files that
+stay read-only, including files the current user already has checked out. A read-only file
+is refused before a serial number is issued or metadata is written, a write that verifies
+nothing is reported as failed, and Document Manager open error 4 is logged as read-only
+(service 1.21.1). The server checkout is not undone, and an issued serial is not rolled back.
+
+4.4.3 shipped (renderer only — no schema change, no API change): downloading
 a server-only folder no longer prefix-prunes that folder's files and cached server rows out of
 the store. The incremental download updates used to match nothing (`matchCount: 0` in the doris
 Burn Wire Release log), the folder vanished, and a file-pane Refresh rematerialized the files

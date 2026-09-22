@@ -14,6 +14,7 @@ import { Sparkles, Loader2, Check, ArrowLeft, Box } from 'lucide-react'
 import { useFilePaneContext, useFilePaneHandlers } from '../../../context'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getNextSerialNumber, previewNextSerialNumber } from '@/lib/serialization'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { resolvePartNumber, resolvedText } from '@/lib/metadata/overlay'
 import { MetadataWriteStateMarker } from '@/components/MetadataWriteStateMarker'
 import { useCellSlowHighlight } from '../../../hooks/useCellSlowHighlight'
@@ -160,6 +161,8 @@ export function ItemNumberCell({ file }: CellRendererBaseProps): React.ReactNode
     // No longer require file to be synced - BR numbers can be generated for local files
     // The org counter increments atomically, so there won't be conflicts when multiple users
     // generate numbers for their local files before syncing
+
+    if (await stopIfFileNotWritable(file.path)) return
 
     try {
       // Generate the serial number first (no spinner yet - this is fast)

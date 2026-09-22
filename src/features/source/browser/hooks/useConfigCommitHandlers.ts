@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { reportMetadataWrite } from '@/lib/metadata/reportMetadataWrite'
@@ -273,6 +274,8 @@ export function useConfigCommitHandlers(
         }
         let configurationsWritten = 0
         let configurationFailures = 0
+
+        if (await stopIfFileNotWritable(currentFile.path)) return
 
         for (const configuration of dirtyConfigNames) {
           const latestFile =

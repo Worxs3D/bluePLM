@@ -12,6 +12,14 @@ export const zhCN: TranslationDict = {
     differentComputer: '不同电脑',
     otherComputer: '其他电脑',
   },
+  fileReadonly: {
+    blocked: '此文件在磁盘上为只读，因此没有写入任何内容。',
+    unknown: '无法确认此文件是否为只读，因此没有写入任何内容。',
+    stillCheckedOut: '已签出，但在磁盘上仍为只读：{{names}}',
+    madeWritable: '{{count}} 个文件此前已签出，现在可以写入。',
+    solidWorksStillReadonly:
+      '已签出且磁盘上可写，但 SolidWorks 仍以只读方式打开该文件。在 SolidWorks 中：编辑 → 只读模式，或关闭后重新打开该文件。',
+  },
   common: {
     save: '保存',
     cancel: '取消',

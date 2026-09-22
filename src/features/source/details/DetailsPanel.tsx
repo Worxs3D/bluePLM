@@ -11,6 +11,7 @@ import { formatFileSize } from '@/lib/utils'
 import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/DraggableTab'
 import { format } from 'date-fns'
 import { getNextSerialNumber } from '@/lib/serialization'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import {
   resolveDescription,
   resolveFileMetadata,
@@ -395,6 +396,8 @@ export function DetailsPanel() {
       )
       if (!writable) return
 
+      if (await stopIfFileNotWritable(targetFile.path, edit)) return
+
       const watcherKey = targetFile.relativePath
       let watcherSuppressed = false
       // If this write is still pending after a moment, it likely triggered a cold
@@ -640,6 +643,8 @@ export function DetailsPanel() {
     }
 
     if (!file) return
+
+    if (await stopIfFileNotWritable(file.path)) return
 
     // No longer require file to be synced - BR numbers can be generated for local files
     // The org counter increments atomically, so there won't be conflicts when multiple users

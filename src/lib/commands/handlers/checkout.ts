@@ -19,9 +19,11 @@ import {
 import { updateInodes } from '../../cache/localSyncIndex'
 import type { LocalFile } from '../../../stores/pdmStore'
 import { usePDMStore } from '../../../stores/pdmStore'
+import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
+import { makeFilesWritable } from '../../files/localReadonly'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
@@ -44,6 +46,52 @@ const normalizePath = (p: string) => p.toLowerCase().replace(/\\/g, '/')
  */
 const FLUSH_INTERVAL = 25 // Flush every 25 files
 const FLUSH_TIME_MS = 500 // Flush at least every 500ms
+const READONLY_NAMES_SHOWN = 8
+
+function formatReadonlyNames(files: readonly LocalFile[]): string {
+  const names = files.map((file) => file.name)
+  const shown = names.slice(0, READONLY_NAMES_SHOWN)
+  const extra = names.length - shown.length
+  return extra > 0 ? `${shown.join(', ')} +${extra}` : shown.join(', ')
+}
+
+/** Paths that are still not writable after one clear and one retry. */
+async function filesStillReadOnly(files: readonly LocalFile[]): Promise<LocalFile[]> {
+  const stillPaths = new Set(await makeFilesWritable(files.map((file) => file.path)))
+  return files.filter((file) => stillPaths.has(file.path))
+}
+
+/**
+ * After the disk attribute is clear, an open SolidWorks document can still be read-only.
+ * Returns how many open documents refused the change.
+ */
+async function reopenWritableInSolidWorks(files: readonly LocalFile[]): Promise<number> {
+  if (files.length === 0) return 0
+  let failures = 0
+  try {
+    const openDocsResult = await window.electronAPI?.solidworks?.getOpenDocuments?.({
+      includeComponents: true,
+    })
+    if (!openDocsResult?.success || !openDocsResult.data?.solidWorksRunning) return 0
+    const openPaths = new Set(
+      (openDocsResult.data.documents ?? [])
+        .map((doc) => (doc.filePath ? normalizePath(doc.filePath) : null))
+        .filter((filePath): filePath is string => Boolean(filePath)),
+    )
+    for (const file of files) {
+      if (!SW_EXTENSIONS.includes(file.extension.toLowerCase())) continue
+      if (!openPaths.has(normalizePath(file.path))) continue
+      const docResult = await window.electronAPI?.solidworks?.setDocumentReadOnly?.(file.path, false)
+      if (!docResult?.success) failures++
+    }
+  } catch (error) {
+    logCheckout('warn', 'Failed to update open SolidWorks documents after clearing read-only', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return 1
+  }
+  return failures
+}
 
 // Note: Metadata extraction on checkout was removed.
 // Metadata sync is now an explicit user action via "Sync Metadata" command.
@@ -93,11 +141,13 @@ export const checkoutCommand: Command<CheckoutParams> = {
       return 'No files selected'
     }
 
-    // Get synced files that can be checked out
+    // Get synced files that can be checked out. A file this user already holds is not a
+    // second server checkout, but the read-only bit may still be set, and that is repaired.
     const syncedFiles = getSyncedFilesFromSelection(ctx.files, files)
     const checkoutable = syncedFiles.filter((f) => !f.pdmData?.checked_out_by)
+    const heldByMe = syncedFiles.filter((f) => f.pdmData?.checked_out_by === ctx.user?.id)
 
-    if (checkoutable.length === 0) {
+    if (checkoutable.length === 0 && heldByMe.length === 0) {
       // Check if all are already checked out
       if (syncedFiles.length > 0 && syncedFiles.every((f) => f.pdmData?.checked_out_by)) {
         return 'All files are already checked out'
@@ -117,12 +167,17 @@ export const checkoutCommand: Command<CheckoutParams> = {
     const filesToCheckoutForTracker = syncedFilesForTracker.filter(
       (f) => !f.pdmData?.checked_out_by,
     )
+    const filesToRepairForTracker = syncedFilesForTracker.filter(
+      (f) => f.pdmData?.checked_out_by === user.id,
+    )
+    const trackedFiles =
+      filesToCheckoutForTracker.length > 0 ? filesToCheckoutForTracker : filesToRepairForTracker
 
     // Initialize file operation tracker for DevTools monitoring
     const tracker = FileOperationTracker.start(
       'checkout',
-      filesToCheckoutForTracker.length,
-      filesToCheckoutForTracker.map((f) => f.relativePath),
+      trackedFiles.length,
+      trackedFiles.map((f) => f.relativePath),
     )
 
     logCheckout('info', 'Starting checkout operation', {
@@ -176,15 +231,17 @@ export const checkoutCommand: Command<CheckoutParams> = {
     // Get files that can be checked out
     const syncedFiles = getSyncedFilesFromSelection(ctx.files, files)
     const filesToCheckout = syncedFiles.filter((f) => !f.pdmData?.checked_out_by)
+    const filesHeldByMe = syncedFiles.filter((f) => f.pdmData?.checked_out_by === user.id)
 
     logCheckout('debug', 'Filtered files for checkout', {
       operationId,
       syncedCount: syncedFiles.length,
       checkoutableCount: filesToCheckout.length,
       alreadyCheckedOut: syncedFiles.filter((f) => f.pdmData?.checked_out_by).length,
+      heldByMe: filesHeldByMe.length,
     })
 
-    if (filesToCheckout.length === 0) {
+    if (filesToCheckout.length === 0 && filesHeldByMe.length === 0) {
       logCheckout('info', 'No files to check out', { operationId })
       tracker.endOperation('completed')
       return {
@@ -193,6 +250,40 @@ export const checkoutCommand: Command<CheckoutParams> = {
         total: 0,
         succeeded: 0,
         failed: 0,
+      }
+    }
+
+    if (filesToCheckout.length === 0) {
+      const stillReadonly = await filesStillReadOnly(filesHeldByMe)
+      const stillPaths = new Set(stillReadonly.map((file) => file.path))
+      const writable = filesHeldByMe.filter((file) => !stillPaths.has(file.path))
+      const swFailures = await reopenWritableInSolidWorks(writable)
+      if (stillReadonly.length > 0) {
+        ctx.addToast(
+          'error',
+          t('fileReadonly.stillCheckedOut', { names: formatReadonlyNames(stillReadonly) }),
+        )
+      } else {
+        ctx.addToast('success', t('fileReadonly.madeWritable', { count: writable.length }))
+      }
+      if (stillReadonly.length === 0 && swFailures > 0) {
+        ctx.addToast('warning', t('fileReadonly.solidWorksStillReadonly'))
+      }
+      const repairFailed = stillReadonly.length > 0
+      tracker.endOperation(repairFailed ? 'failed' : 'completed')
+      logCheckout(repairFailed ? 'warn' : 'info', 'Repaired read-only attribute on held checkouts', {
+        operationId,
+        total: filesHeldByMe.length,
+        stillReadonly: stillReadonly.length,
+      })
+      return {
+        success: !repairFailed,
+        message: repairFailed
+          ? t('fileReadonly.stillCheckedOut', { names: formatReadonlyNames(stillReadonly) })
+          : t('fileReadonly.madeWritable', { count: writable.length }),
+        total: filesHeldByMe.length,
+        succeeded: writable.length,
+        failed: stillReadonly.length,
       }
     }
 
@@ -223,9 +314,6 @@ export const checkoutCommand: Command<CheckoutParams> = {
       path: string
       updates: Parameters<typeof ctx.updateFileInStore>[1]
     }> = []
-
-    // Collect paths for batch setReadonly call (performance: 1 IPC call instead of N)
-    const pathsToMakeWritable: string[] = []
 
     // Track flush position and timing for incremental store updates
     let lastFlushIndex = 0
@@ -362,10 +450,6 @@ export const checkoutCommand: Command<CheckoutParams> = {
         recordSubstepTiming('checkoutAPI', performance.now() - checkoutAPIStart)
 
         if (result.success) {
-          // Collect path for batch setReadonly call (done after all files processed)
-          // This reduces N IPC calls to 1, significantly improving performance
-          pathsToMakeWritable.push(file.path)
-
           // If SolidWorks file is open, also change document read-only state
           // This allows checking out files without closing SolidWorks!
           // OPTIMIZATION: Only call setDocumentReadOnly for files that are actually open
@@ -626,42 +710,48 @@ export const checkoutCommand: Command<CheckoutParams> = {
     // Combine results from both phases
     const results = [...nonSwResults, ...swResults]
 
-    // ========================================
-    // BATCH SETREADONLY: Make all files writable in one IPC call
-    // This reduces N IPC calls to 1, significantly improving performance
-    // ========================================
-    if (pathsToMakeWritable.length > 0) {
+    // Server checkout is already recorded. The read-only bit is a separate step, read back
+    // after the clear, with one retry. Files this user already holds are included so a
+    // previous clear that did not stick gets another chance.
+    const serverSucceeded: LocalFile[] = []
+    for (let i = 0; i < results.length; i++) {
+      if (!results[i].success) continue
+      const file = i < nonSwFiles.length ? nonSwFiles[i] : swFiles[i - nonSwFiles.length]
+      serverSucceeded.push(file)
+    }
+    const heldNotInBatch = filesHeldByMe.filter(
+      (file) => !serverSucceeded.some((done) => done.path === file.path),
+    )
+    const attributeFiles = [...serverSucceeded, ...heldNotInBatch]
+    let stillReadonly: LocalFile[] = []
+    if (attributeFiles.length > 0) {
       const setWritableStepId = tracker.startStep('Set files writable (batch)', {
-        fileCount: pathsToMakeWritable.length,
+        fileCount: attributeFiles.length,
       })
       const setWritableStart = performance.now()
-      const batchFiles = pathsToMakeWritable.map((path) => ({ path, readonly: false }))
-      const batchResult = await window.electronAPI?.setReadonlyBatch(batchFiles)
-      const setWritableDuration = performance.now() - setWritableStart
-
-      if (batchResult?.success === false || batchResult?.results?.some((r) => !r.success)) {
-        const failedCount = batchResult?.results?.filter((r) => !r.success).length ?? 0
-        tracker.endStep(setWritableStepId, 'completed', {
-          failed: failedCount,
-          durationMs: Math.round(setWritableDuration),
-        })
-        logCheckout('warn', 'Some files failed to clear read-only flag', {
+      stillReadonly = await filesStillReadOnly(attributeFiles)
+      const setWritableDuration = Math.round(performance.now() - setWritableStart)
+      tracker.endStep(setWritableStepId, 'completed', {
+        failed: stillReadonly.length,
+        durationMs: setWritableDuration,
+      })
+      if (stillReadonly.length > 0) {
+        logCheckout('warn', 'Some files stayed read-only after checkout', {
           operationId,
-          totalFiles: pathsToMakeWritable.length,
-          failedCount,
-          durationMs: Math.round(setWritableDuration),
+          totalFiles: attributeFiles.length,
+          failedCount: stillReadonly.length,
+          durationMs: setWritableDuration,
+          files: stillReadonly.map((file) => file.name),
         })
       } else {
-        tracker.endStep(setWritableStepId, 'completed', {
-          durationMs: Math.round(setWritableDuration),
-        })
-        logCheckout('debug', 'Batch setReadonly complete', {
+        logCheckout('debug', 'Read-only attribute cleared', {
           operationId,
-          fileCount: pathsToMakeWritable.length,
-          durationMs: Math.round(setWritableDuration),
+          fileCount: attributeFiles.length,
+          durationMs: setWritableDuration,
         })
       }
     }
+    const stillReadonlyPaths = new Set(stillReadonly.map((file) => file.path))
 
     // ========================================
     // ATOMIC FINAL CLEANUP: Update remaining files AND clear processing state in ONE store update
@@ -720,51 +810,70 @@ export const checkoutCommand: Command<CheckoutParams> = {
       }
     }
 
-    // Count results
+    // Count results. A server checkout whose file stayed read-only is not a success.
+    let serverFailed = 0
     for (const result of results) {
       if (result.success) succeeded++
       else {
+        serverFailed++
         failed++
         if (result.error) errors.push(result.error)
       }
     }
+    for (const file of serverSucceeded) {
+      if (!stillReadonlyPaths.has(file.path)) continue
+      succeeded--
+      failed++
+    }
 
     const { duration } = progress.finish()
+    const operationFailed = failed > 0 || stillReadonly.length > 0
 
     // Log final result
-    logCheckout(failed > 0 ? 'warn' : 'info', 'Checkout operation complete', {
+    logCheckout(operationFailed ? 'warn' : 'info', 'Checkout operation complete', {
       operationId,
       total,
       succeeded,
       failed,
       duration,
       errors: errors.length > 0 ? errors : undefined,
+      stillReadonly: stillReadonly.length,
     })
 
-    // Show result
-    if (failed > 0) {
-      // Show first error in toast for visibility
+    // Show result. The success toast is only for files that are writable.
+    if (serverFailed > 0) {
       const firstError = errors[0] || 'Unknown error'
       const moreText = errors.length > 1 ? ` (+${errors.length - 1} more)` : ''
       ctx.addToast('error', `Checkout failed: ${firstError}${moreText}`)
-    } else {
+    }
+    if (stillReadonly.length > 0) {
+      ctx.addToast(
+        'error',
+        t('fileReadonly.stillCheckedOut', { names: formatReadonlyNames(stillReadonly) }),
+      )
+    }
+    if (succeeded > 0 && serverFailed === 0) {
       ctx.addToast('success', `Checked out ${succeeded} file${succeeded > 1 ? 's' : ''}`)
     }
 
-    // Warn if SW files were checked out but read-only state couldn't be updated in SolidWorks
-    const swSucceeded = swFiles.filter((_, i) => swResults[i]?.success).length
-    if (swSucceeded > 0 && (swComUnavailable || swReadOnlyFailCount > 0)) {
-      ctx.addToast(
-        'warning',
-        'Files checked out and writable on disk, but SolidWorks still shows read-only. In SolidWorks: Edit menu \u2192 toggle Read-Only Mode, or close and reopen the file.',
-      )
+    // The SolidWorks document can stay read-only after the disk bit is clear. Say that only
+    // for a file whose disk attribute actually cleared, so the toast does not claim a
+    // read-only file is writable.
+    const anySwDiskWritable = swFiles.some(
+      (file, index) => swResults[index]?.success && !stillReadonlyPaths.has(file.path),
+    )
+    if (anySwDiskWritable && (swComUnavailable || swReadOnlyFailCount > 0)) {
+      ctx.addToast('warning', t('fileReadonly.solidWorksStillReadonly'))
     }
 
     // Complete operation tracking
-    tracker.endOperation(failed === 0 ? 'completed' : 'failed', failed > 0 ? errors[0] : undefined)
+    tracker.endOperation(
+      operationFailed ? 'failed' : 'completed',
+      operationFailed ? errors[0] : undefined,
+    )
 
     return {
-      success: failed === 0,
+      success: !operationFailed,
       message:
         failed > 0
           ? `Checked out ${succeeded}/${total} files`

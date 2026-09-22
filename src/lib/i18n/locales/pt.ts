@@ -12,6 +12,14 @@ export const pt: TranslationDict = {
     differentComputer: 'computador diferente',
     otherComputer: 'outro PC',
   },
+  fileReadonly: {
+    blocked: 'Este ficheiro é só de leitura no disco, por isso nada foi escrito.',
+    unknown: 'Não foi possível saber se este ficheiro é só de leitura, por isso nada foi escrito.',
+    stillCheckedOut: 'Em checkout, mas continua só de leitura no disco: {{names}}',
+    madeWritable: '{{count}} ficheiro(s) já estavam em checkout e agora podem ser gravados.',
+    solidWorksStillReadonly:
+      'Em checkout e gravável no disco, mas o SolidWorks ainda tem o ficheiro aberto como só de leitura. No SolidWorks: Editar → Só de leitura, ou feche e volte a abrir o ficheiro.',
+  },
   common: {
     save: 'Guardar',
     cancel: 'Cancelar',
