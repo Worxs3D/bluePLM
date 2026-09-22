@@ -54,6 +54,15 @@ jobs:
       - name: Build macOS package
         run: npm run build -- --publish never
 
+      - name: Upload macOS test packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-test-packages
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+
   # Non-blocking on purpose. `npm run lint` is red with a backlog of pre-existing errors, and a
   # blocking lint job would fail on its first run and be switched off before anyone fixed them.
   # This reports the count so it can be driven down, and starts blocking once it reaches zero.
