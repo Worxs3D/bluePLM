@@ -10,10 +10,22 @@ Drive folder as the physical, immutable revision store. The MariaDB/PHP backend
 always stores the metadata, access rules, revision history, and the pointer to
 the physical revision.
 
+## macOS client profile
+
+A Mac client can connect to an existing BluePLM MDB server over HTTPS and use a
+Google Drive Shared Drive vault. The desktop package also contains the guided
+PHP/MariaDB deployment bundle; macOS uses its native `curl` command for the
+optional FTP/FTPS deployment step.
+
+The Google Drive vault workflow is **not yet production-tested**. Use a
+separate database and Shared Drive before storing production CAD data.
+Network/NAS vault credentials, SolidWorks, Document Manager, and eDrawings
+remain Windows-specific features.
+
 ## Recommended model
 
 Create a Shared Drive owned by the organization. Add each authorized BluePLM
-user to that Drive using normal Google Workspace membership. Each Windows
+user to that Drive using normal Google Workspace membership. Each desktop
 client signs in with its own Google account; BluePLM does not distribute a
 central Google password or refresh token.
 

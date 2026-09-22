@@ -169,6 +169,15 @@
       "icon": "assets/icon.png",
       "extraResources": [
         {
+          "from": "blueplm-mdb-backend",
+          "to": "blueplm-mdb-server",
+          "filter": [
+            "src/**/*",
+            "public/**/*",
+            "migrations/**/*"
+          ]
+        },
+        {
           "from": "resources/bin/darwin-${arch}",
           "to": "bin",
           "filter": [
@@ -181,6 +190,15 @@
       "target": "AppImage",
       "icon": "assets/icon.png",
       "extraResources": [
+        {
+          "from": "blueplm-mdb-backend",
+          "to": "blueplm-mdb-server",
+          "filter": [
+            "src/**/*",
+            "public/**/*",
+            "migrations/**/*"
+          ]
+        },
         {
           "from": "resources/bin/linux",
           "to": "bin",

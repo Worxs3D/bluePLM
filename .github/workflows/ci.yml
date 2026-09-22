@@ -26,6 +26,34 @@ jobs:
   verify:
     uses: ./.github/workflows/verify.yml
 
+  # The release workflow has always produced macOS artifacts, but pull requests
+  # previously exercised only Linux. Build the universal Mac package here so a
+  # platform-specific resource or desktop integration cannot first fail after a
+  # tag has been created.
+  macos-package:
+    name: Package macOS client
+    needs: verify
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download universal restic binaries
+        run: npm run download-restic -- --current
+
+      - name: Build macOS package
+        run: npm run build -- --publish never
+
   # Non-blocking on purpose. `npm run lint` is red with a backlog of pre-existing errors, and a
   # blocking lint job would fail on its first run and be switched off before anyone fixed them.
   # This reports the count so it can be driven down, and starts blocking once it reaches zero.

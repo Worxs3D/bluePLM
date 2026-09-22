@@ -5,7 +5,7 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))
 
-import { resolveSecrets, type MdbProvisionRequest } from './mdbInstaller'
+import { mdbProvisioningCurl, resolveSecrets, type MdbProvisionRequest } from './mdbInstaller'
 
 const request: MdbProvisionRequest = {
   publicUrl: 'https://blueplm.example.test', ftpUrl: 'ftps://ftp.example.test', ftpRemotePath: 'blueplm-mdb',
@@ -28,5 +28,16 @@ describe('MDB installer secrets', () => {
   it('keeps a complete administrator-supplied secret set', () => {
     const supplied = { sessionSecret: 'a'.repeat(32), bootstrapToken: 'b'.repeat(32), maintenanceToken: 'c'.repeat(32) }
     expect(resolveSecrets({ ...request, ...supplied })).toEqual({ secrets: supplied })
+  })
+})
+
+describe('MDB installer platform commands', () => {
+  it('uses the native curl command on macOS and Linux', () => {
+    expect(mdbProvisioningCurl('darwin')).toBe('curl')
+    expect(mdbProvisioningCurl('linux')).toBe('curl')
+  })
+
+  it('uses the Windows curl executable on Windows', () => {
+    expect(mdbProvisioningCurl('win32')).toBe('curl.exe')
   })
 })

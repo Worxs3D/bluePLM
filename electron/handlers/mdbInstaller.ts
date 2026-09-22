@@ -112,6 +112,15 @@ function curlConfig(username: string, password: string): string {
   return `user = "${escaped}"\n`
 }
 
+/**
+ * Windows ships curl as curl.exe, while macOS and Linux expose the same
+ * command without the extension. Keeping this decision here keeps MDB
+ * provisioning independent from the desktop platform.
+ */
+export function mdbProvisioningCurl(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'curl.exe' : 'curl'
+}
+
 async function upload(ftp: URL, destination: string, localFile: string, username: string, password: string): Promise<void> {
   const target = new URL(ftp)
   const explicitFtps = ftp.protocol === 'ftps:' && (ftp.port === '' || ftp.port === '21')
@@ -121,7 +130,7 @@ async function upload(ftp: URL, destination: string, localFile: string, username
   if (explicitFtps) args.push('--ftp-ssl-reqd')
   args.push('--config', '-', '--upload-file', localFile, target.toString())
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('curl.exe', args, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] })
+    const child = spawn(mdbProvisioningCurl(), args, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] })
     let stderr = ''
     child.stderr.on('data', (chunk) => { stderr += String(chunk) })
     child.once('error', () => reject(new Error('FTP upload could not start.')))

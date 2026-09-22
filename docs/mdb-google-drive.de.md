@@ -10,11 +10,23 @@ einem Windows-Netzwerk-Vault oder in einem Google-Workspace-Shared-Drive-Ordner
 ablegen. Das MariaDB/PHP-Backend bleibt dabei immer zuständig für Metadaten,
 Berechtigungen, Versionshistorie und den Verweis auf die physische Revision.
 
+## macOS-Client
+
+Ein Mac-Client kann sich mit einem vorhandenen BluePLM-MDB-Server per HTTPS
+verbinden und einen Google-Drive-Shared-Drive-Vault verwenden. Das Desktop-
+Paket enthält außerdem die geführte PHP/MariaDB-Bereitstellung; für den
+optionalen FTP-/FTPS-Upload verwendet macOS sein systemeigenes `curl`.
+
+Der Google-Drive-Vault-Workflow ist **noch nicht produktiv getestet**. Vor
+produktiven CAD-Daten immer eine getrennte Datenbank und einen Test-Shared-Drive
+verwenden. Netzwerk-/NAS-Zugangsdaten, SolidWorks, Document Manager und
+eDrawings bleiben Windows-spezifisch.
+
 ## Empfohlenes Modell
 
 Die Organisation erstellt einen eigenen Shared Drive und nimmt dort alle
 berechtigten BluePLM-Anwender über die normale Google-Workspace-Mitgliedschaft
-auf. Jeder Windows-Client meldet sich mit seinem eigenen Google-Konto an.
+auf. Jeder Desktop-Client meldet sich mit seinem eigenen Google-Konto an.
 BluePLM verteilt weder ein zentrales Google-Passwort noch ein Refresh-Token.
 
 Pro Vault wird genau ein Speicheranbieter verwendet. So bleibt eine
