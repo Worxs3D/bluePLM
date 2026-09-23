@@ -868,7 +868,7 @@ export function VaultsSettings() {
                 <label className="text-sm text-plm-fg-muted">Storage provider</label>
                 <select
                   value={newVaultStorageProvider}
-                  onChange={(event) =>
+                  onChange={() =>
                     setNewVaultStorageProvider('network')
                   }
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
