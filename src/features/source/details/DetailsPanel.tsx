@@ -835,11 +835,11 @@ export function DetailsPanel() {
             <>
               {/* Preview tab for SolidWorks files */}
               {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
-                {cadPreviewMode === 'edrawings-embedded' ? (
+                cadPreviewMode === 'edrawings-embedded' ? (
                   <EDrawingsEmbeddedPreview fileName={file.name} filePath={file.path} onOpenExternal={handleOpenInEDrawings} />
                 ) : (
                   <SWDatacardPanel file={file} />
-                )}
+                )
               )}
 
               {detailsPanelTab === 'properties' &&
