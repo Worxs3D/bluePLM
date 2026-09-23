@@ -349,21 +349,6 @@ declare global {
         username: string
         password: string
       }) => Promise<{ success: boolean; target?: string; error?: string }>
-      uploadGoogleDriveFile: (request: {
-        sourcePath: string
-        parentFolderId: string
-        fileName: string
-        accessToken: string
-      }) => Promise<{ success: boolean; fileId?: string; size?: number; error?: string }>
-      downloadGoogleDriveFile: (request: {
-        fileId: string
-        targetPath: string
-        accessToken: string
-      }) => Promise<{ success: boolean; size?: number; error?: string }>
-      readSmallGoogleDriveFile: (
-        fileId: string,
-        accessToken: string,
-      ) => Promise<{ success: boolean; size?: number; data?: string; error?: string }>
       provisionMdb: (request: {
         publicUrl: string
         ftpUrl: string

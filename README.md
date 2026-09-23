@@ -35,11 +35,9 @@ See the [Admin Setup Guide](https://docs.blueplm.io/admin-setup) for step-by-ste
 ### BluePLM MDB fork
 
 This fork adds a guided PHP/MariaDB backend option alongside the upstream
-Supabase option. The MDB backend supports either a Windows network vault or a
-Google Workspace Shared Drive vault per BluePLM vault. Google Drive support is
-**not production-tested yet**; start with a separate database and test Shared
-Drive. Read the [English guide](docs/mdb-google-drive.md) or
-[German guide](docs/mdb-google-drive.de.md) before enabling it.
+Supabase option. The MDB integration supports a Windows network vault for
+archive files. Google Drive is intentionally deferred from this upstream
+integration until it has been validated separately.
 
 ## Building from Source
 

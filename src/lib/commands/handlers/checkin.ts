@@ -52,10 +52,6 @@ import { FileOperationTracker } from '../../fileOperationTracker'
 import { swRefsToFileReferences } from '../../solidworks/referenceRows'
 import type { SWServiceReference } from '../../solidworks/types'
 import { getCommunityVault, isCommunityConfigured } from '@/lib/community'
-import {
-  googleDriveRevisionStoragePath,
-  requireGoogleDriveVaultToken,
-} from '@/lib/googleDriveVault'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
@@ -1307,23 +1303,7 @@ export const checkinCommand: Command<CheckinParams> = {
                     operationId, fileName: file.name, stagedPath, hash: fileHash.substring(0, 12),
                   })
                 } else {
-                  if (!vault.googleDriveFolderId) {
-                    return { success: false, error: `${file.name}: Google Drive vault folder is missing.` }
-                  }
-                  const uploaded = await window.electronAPI?.uploadGoogleDriveFile({
-                    sourcePath: file.path,
-                    parentFolderId: vault.googleDriveFolderId,
-                    fileName: `${fileHash}-${file.name}`,
-                    accessToken: requireGoogleDriveVaultToken(),
-                  })
-                  if (!uploaded?.success || !uploaded.fileId) {
-                    return { success: false, error: `${file.name}: ${uploaded?.error || 'Failed to upload immutable Google Drive revision.'}` }
-                  }
-                  communityStorageRelativePath = googleDriveRevisionStoragePath(uploaded.fileId)
-                  fileSize = uploaded.size ?? fileSize
-                  logCheckin('info', 'Uploaded immutable Google Drive revision', {
-                    operationId, fileName: file.name, hash: fileHash.substring(0, 12),
-                  })
+                  return { success: false, error: `${file.name}: MDB supports Network Vault storage only.` }
                 }
               } catch (error) {
                 return { success: false, error: `${file.name}: ${error instanceof Error ? error.message : String(error)}` }

@@ -82,10 +82,6 @@ import {
   type ArchiveHandlerDependencies,
 } from './archive'
 import { registerNetworkVaultHandlers, unregisterNetworkVaultHandlers } from './networkVault'
-import {
-  registerGoogleDriveStorageHandlers,
-  unregisterGoogleDriveStorageHandlers,
-} from './googleDriveStorage'
 import { registerMdbInstallerHandlers, unregisterMdbInstallerHandlers } from './mdbInstaller'
 import {
   initThumbnailStore,
@@ -248,7 +244,6 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerDeepLinkHandlers(mainWindow, deepLinkHandlerDeps)
   registerArchiveHandlers(mainWindow, archiveHandlerDeps)
   registerNetworkVaultHandlers()
-  registerGoogleDriveStorageHandlers()
   registerMdbInstallerHandlers()
 
   // Thumbnails are served over a custom scheme rather than IPC, so they are set
@@ -285,7 +280,6 @@ export function unregisterAllHandlers(): void {
   unregisterDeepLinkHandlers()
   unregisterArchiveHandlers()
   unregisterNetworkVaultHandlers()
-  unregisterGoogleDriveStorageHandlers()
   unregisterMdbInstallerHandlers()
   unregisterThumbnailProtocol()
   unregisterThumbnailIpcHandlers()

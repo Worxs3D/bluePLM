@@ -686,30 +686,13 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
               <p className="text-plm-fg-muted">Choose whether to connect to an existing installation or set up a new one.</p>
             </div>
             <div className="space-y-4">
-              <aside className="rounded-xl border border-plm-border bg-plm-bg-light p-4">
-                <h2 className="font-semibold text-plm-fg">Optional hosting recommendation</h2>
-                <p className="mt-2 text-sm text-plm-fg">
-                  Need PHP/MariaDB web hosting?{' '}
-                  <a
-                    className="inline-flex items-center gap-1 text-plm-accent hover:underline"
-                    href="https://all-inkl.com/PAC5A8BC16A32D0"
-                    target="_blank"
-                    rel="sponsored noopener noreferrer"
-                  >
-                    ALL-INKL.COM <ExternalLink size={14} aria-hidden="true" />
-                  </a>
-                </p>
-                <p className="mt-2 text-xs text-plm-fg-muted">
-                  Affiliate link: BluePLM MDB works with any suitable PHP/MariaDB host; choosing this provider is optional.
-                </p>
-              </aside>
               <button onClick={() => { setError(null); setMode('mariadb-existing') }} className="w-full p-5 bg-plm-bg-light border border-plm-border rounded-xl hover:border-plm-accent text-left">
                 <h2 className="font-semibold text-plm-fg">Connect to an existing MDB server</h2>
                 <p className="text-sm text-plm-fg-muted mt-1">Enter only the public HTTPS address. FTP, database credentials, and secrets are not needed.</p>
               </button>
               <button onClick={() => { setError(null); setMode('mariadb-install') }} className="w-full p-5 bg-plm-bg-light border border-plm-accent/50 rounded-xl hover:border-plm-accent text-left">
                 <h2 className="font-semibold text-plm-fg">Set up a new MDB server</h2>
-                <p className="text-sm text-plm-fg-muted mt-1">Guided FTP/FTPS deployment, private server secrets, schema migration, then company, owner, NAS vault, and optional authenticator setup.</p>
+                <p className="text-sm text-plm-fg-muted mt-1">Guided FTPS deployment, private server secrets, schema migration, then company, owner, network vault, and optional authenticator setup.</p>
               </button>
             </div>
           </div>

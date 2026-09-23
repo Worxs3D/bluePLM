@@ -16,7 +16,6 @@ import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
 import { getCommunityVault, isCommunityConfigured, type CommunityVault } from '@/lib/community'
-import { googleDriveFileIdFromStoragePath, requireGoogleDriveVaultToken } from '@/lib/googleDriveVault'
 
 // Number of retry attempts for failed downloads
 const MAX_RETRY_ATTEMPTS = 3
@@ -422,26 +421,7 @@ export const downloadCommand: Command<DownloadParams> = {
                 : { success: false, error: hashResult?.error || 'Failed to verify copied revision.' }
             }
           } else {
-            const fileId = googleDriveFileIdFromStoragePath(storagePath)
-            if (!fileId) {
-              return { success: false, error: `${file.name}: This revision has no Google Drive file pointer.` }
-            }
-            logDownload('debug', 'Streaming current Community revision from Google Drive', {
-              operationId, ...fileCtx, destPath: fullPath, attempt,
-            })
-            const downloaded = await window.electronAPI?.downloadGoogleDriveFile({
-              fileId,
-              targetPath: fullPath,
-              accessToken: requireGoogleDriveVaultToken(),
-            })
-            if (!downloaded?.success) {
-              downloadResult = { success: false, error: downloaded?.error || 'Failed to download the Google Drive revision.' }
-            } else {
-              const hashResult = await window.electronAPI?.hashFile(fullPath)
-              downloadResult = hashResult?.success
-                ? { success: hashResult.hash === file.pdmData.content_hash, hash: hashResult.hash, size: hashResult.size, error: hashResult.hash === file.pdmData.content_hash ? undefined : 'Google Drive file hash does not match the registered revision.' }
-                : { success: false, error: hashResult?.error || 'Failed to verify downloaded Google Drive revision.' }
-            }
+            downloadResult = { success: false, error: `${file.name}: MDB supports Network Vault storage only.` }
           }
         } else {
           logDownload('debug', 'Getting signed URL', {

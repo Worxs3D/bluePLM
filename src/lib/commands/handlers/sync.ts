@@ -28,10 +28,6 @@ import {
   importCommunityFile,
   isCommunityConfigured,
 } from '@/lib/community'
-import {
-  googleDriveRevisionStoragePath,
-  requireGoogleDriveVaultToken,
-} from '@/lib/googleDriveVault'
 
 // Helper to check if file is a SolidWorks temp lock file (~$filename.sldxxx)
 function isSolidworksTempFile(name: string): boolean {
@@ -475,18 +471,7 @@ export const syncCommand: Command<SyncParams> = {
                 }
                 verifiedSize = stagedHash.size ?? file.size
               } else {
-                if (!vault.googleDriveFolderId) throw new Error('Google Drive vault folder is missing.')
-                const uploaded = await window.electronAPI?.uploadGoogleDriveFile({
-                  sourcePath: file.path,
-                  parentFolderId: vault.googleDriveFolderId,
-                  fileName: `${contentHash}-${file.name}`,
-                  accessToken: requireGoogleDriveVaultToken(),
-                })
-                if (!uploaded?.success || !uploaded.fileId) {
-                  throw new Error(uploaded?.error || 'Failed to upload immutable Google Drive revision.')
-                }
-                storageRelativePath = googleDriveRevisionStoragePath(uploaded.fileId)
-                verifiedSize = uploaded.size ?? file.size
+                throw new Error('MDB supports Network Vault storage only.')
               }
 
               const imported = await importCommunityFile({

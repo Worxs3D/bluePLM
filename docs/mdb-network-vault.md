@@ -1,0 +1,31 @@
+# BluePLM MDB Network Vault
+
+This change adds the opt-in MariaDB/PHP backend path while leaving the existing
+Supabase path unchanged. File contents remain in the client-configured network
+vault; MariaDB stores metadata, revisions, permissions, and authentication data.
+
+## Reviewable server dependency
+
+The PHP server is kept as the `blueplm-community-php` submodule and is pinned by
+the gitlink in this branch. The pinned commit is `3a859f11e3472ea179c6623bbd8763e5d7647613`.
+It contains the MDB API, migrations, setup endpoint, and administration endpoints
+used by the client installer. CI and release checkout jobs use recursive submodule
+checkout so the packaged server bundle is reproducible.
+
+No environment files, credentials, database dumps, or installed dependency
+directories are included in this repository. The installer creates the private
+`.env` on the operator's machine and transfers it only over FTPS.
+
+## Network Vault
+
+The client stores the UNC vault path as configuration and can save Windows SMB
+credentials through the native `net use` prompt. The password is supplied over
+stdin and never placed in a process argument, log, or project file. Existing
+connections are not disconnected; incompatible credentials cause the operation to
+fail with a controlled error.
+
+## Installer transport
+
+The MDB installer accepts `ftps://` only. TLS certificate and hostname checks use
+curl defaults and cannot be disabled by the installer. Plain FTP is rejected
+before any file or credential is sent.

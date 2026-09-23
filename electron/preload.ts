@@ -308,22 +308,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     password: string
   }) => ipcRenderer.invoke('network-vault:save-credential', request),
 
-  // Large Google Drive vault revisions are transferred in the Electron main
-  // process so CAD files never have to be buffered by Chromium.
-  uploadGoogleDriveFile: (request: {
-    sourcePath: string
-    parentFolderId: string
-    fileName: string
-    accessToken: string
-  }) => ipcRenderer.invoke('google-drive-storage:upload', request),
-  downloadGoogleDriveFile: (request: {
-    fileId: string
-    targetPath: string
-    accessToken: string
-  }) => ipcRenderer.invoke('google-drive-storage:download', request),
-  readSmallGoogleDriveFile: (fileId: string, accessToken: string) =>
-    ipcRenderer.invoke('google-drive-storage:read-small', fileId, accessToken),
-
   provisionMdb: (request: {
     publicUrl: string
     ftpUrl: string
@@ -1270,22 +1254,6 @@ declare global {
         username: string
         password: string
       }) => Promise<{ success: boolean; target?: string; error?: string }>
-      uploadGoogleDriveFile: (request: {
-        sourcePath: string
-        parentFolderId: string
-        fileName: string
-        accessToken: string
-      }) => Promise<{ success: boolean; fileId?: string; size?: number; error?: string }>
-      downloadGoogleDriveFile: (request: {
-        fileId: string
-        targetPath: string
-        accessToken: string
-      }) => Promise<{ success: boolean; size?: number; error?: string }>
-      readSmallGoogleDriveFile: (
-        fileId: string,
-        accessToken: string,
-      ) => Promise<{ success: boolean; size?: number; data?: string; error?: string }>
-
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>
       uploadSignedUrl: (

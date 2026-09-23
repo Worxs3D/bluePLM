@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { spawn } from 'node:child_process'
 import { ipcMain } from 'electron'
-
-const execFileAsync = promisify(execFile)
 
 export interface NetworkVaultCredentialRequest {
   networkRoot: string
@@ -71,14 +68,29 @@ async function saveNetworkVaultCredential(
   }
 
   try {
-    // `execFile` avoids a command shell. Do not log either the error object or
-    // the argument list: cmdkey receives the password as an argument and its
-    // value must never reach application logs or the renderer response.
-    await execFileAsync(
-      'cmdkey.exe',
-      [`/add:${target}`, `/user:${request.username.trim()}`, `/pass:${request.password}`],
-      { windowsHide: true, timeout: 15_000 },
-    )
+    // `net use` reads the password from stdin, so it never appears in the
+    // process command line. It also leaves existing connections untouched;
+    // Windows returns an error if the server already has incompatible creds.
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        'net.exe',
+        [request.networkRoot.trim().replaceAll('/', '\\'), `/user:${request.username.trim()}`, '*', '/persistent:yes'],
+        { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] },
+      )
+      const timer = setTimeout(() => {
+        child.kill()
+        reject(new Error('timeout'))
+      }, 15_000)
+      child.once('error', () => {
+        clearTimeout(timer)
+        reject(new Error('start'))
+      })
+      child.once('exit', (code) => {
+        clearTimeout(timer)
+        code === 0 ? resolve() : reject(new Error('credentials'))
+      })
+      child.stdin.end(`${request.password}\r\n`)
+    })
     return { success: true, target }
   } catch {
     return {

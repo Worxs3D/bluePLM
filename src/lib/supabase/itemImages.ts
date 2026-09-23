@@ -3,11 +3,6 @@ import { getSupabaseClient } from './client'
 import { log } from '@/lib/logger'
 import type { ItemImage } from '@/types/item'
 import { getCommunityItemImages, getCommunityVault, getCommunityVaults, isCommunityConfigured, resetCommunityItemImage, setCommunityItemImage } from '@/lib/community'
-import {
-  googleDriveFileIdFromStoragePath,
-  googleDriveRevisionStoragePath,
-  requireGoogleDriveVaultToken,
-} from '@/lib/googleDriveVault'
 import { buildFullPath } from '@/lib/utils/path'
 
 const VAULT_BUCKET = 'vault'
@@ -71,12 +66,6 @@ export async function getItemImages(orgId: string): Promise<Map<string, ItemImag
           if (vault.storageProvider === 'network' && vault.networkRoot && window.electronAPI) {
             const read = await window.electronAPI.readFile(buildFullPath(vault.networkRoot, row.storageRelativePath))
             if (read.success && read.data) imageUrl = `data:image/*;base64,${read.data}`
-          } else if (vault.storageProvider === 'google_drive' && window.electronAPI) {
-            const fileId = googleDriveFileIdFromStoragePath(row.storageRelativePath)
-            if (fileId) {
-              const read = await window.electronAPI.readSmallGoogleDriveFile(fileId, requireGoogleDriveVaultToken())
-              if (read.success && read.data) imageUrl = `data:image/*;base64,${read.data}`
-            }
           }
         }
         result.set(row.partNumber, { partNumber: row.partNumber, type: row.imageType, iconName: row.iconName, iconColor: row.iconColor, imageUrl, storagePath: row.storageRelativePath })
@@ -168,19 +157,7 @@ export async function uploadItemImage(
       if (!written.success) throw new Error(written.error || 'Failed to write item image to vault.')
       imageUrl = `data:${file.type || 'image/png'};base64,${base64}`
     } else {
-      if (!vault.googleDriveFolderId) throw new Error('The Google Drive vault folder is missing.')
-      const sourcePath = window.electronAPI.getPathForFile(file)
-      if (!sourcePath) throw new Error('The selected item image is not available as a local file.')
-      const uploaded = await window.electronAPI.uploadGoogleDriveFile({
-        sourcePath,
-        parentFolderId: vault.googleDriveFolderId,
-        fileName: `item-image-${sanitizePartNumber(partNumber)}-${crypto.randomUUID()}.${ext}`,
-        accessToken: requireGoogleDriveVaultToken(),
-      })
-      if (!uploaded.success || !uploaded.fileId) throw new Error(uploaded.error || 'Failed to upload item image to Google Drive.')
-      storagePath = googleDriveRevisionStoragePath(uploaded.fileId)
-      const read = await window.electronAPI.readSmallGoogleDriveFile(uploaded.fileId, requireGoogleDriveVaultToken())
-      imageUrl = read.success && read.data ? `data:${file.type || 'image/png'};base64,${read.data}` : ''
+      throw new Error('MDB supports Network Vault storage only.')
     }
     const row = await setCommunityItemImage(partNumber, { vaultId: vault.id, imageType: 'image', iconName: null, iconColor: null, storageRelativePath: storagePath })
     return { partNumber: row.partNumber, type: row.imageType, iconName: null, iconColor: null, imageUrl, storagePath }

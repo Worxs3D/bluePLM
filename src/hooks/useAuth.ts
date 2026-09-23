@@ -232,6 +232,12 @@ export function useAuth() {
             getCommunityOrganization(),
           ])
           if (!active || epoch !== hydrationEpoch) return
+          const mappedRole = principal.role === 'member'
+            ? 'engineer'
+            : principal.role === 'owner' || principal.role === 'admin'
+              ? 'admin'
+              : null
+          if (!mappedRole || !principal.createdAt) throw new Error('Community principal has an invalid role or creation date')
           const { boundary } = advanceSession('SIGNED_IN', principal.userId)
           setCurrentAccessToken(communityAccessToken())
           setUser({
@@ -242,9 +248,9 @@ export function useAuth() {
             custom_avatar_url: null,
             job_title: null,
             org_id: principal.organizationId,
-            role: principal.role === 'member' ? 'engineer' : 'admin',
-            created_at: new Date().toISOString(),
-            last_sign_in: new Date().toISOString(),
+            role: mappedRole,
+            created_at: principal.createdAt,
+            last_sign_in: null,
           })
           setOrganization({
             id: organization.id,

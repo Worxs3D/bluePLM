@@ -22,6 +22,7 @@ export interface CommunityPrincipal {
   email: string
   displayName: string
   role: 'owner' | 'admin' | 'member'
+  createdAt: string
 }
 
 export interface CommunityOrganization {
@@ -46,8 +47,7 @@ export interface CommunityVault {
   id: string
   name: string
   networkRoot: string | null
-  storageProvider: 'network' | 'google_drive'
-  googleDriveFolderId: string | null
+  storageProvider: 'network'
   createdAt: string
 }
 
@@ -425,9 +425,8 @@ export async function getCommunityVaults(): Promise<CommunityVault[]> {
 
 export async function createCommunityVault(payload: {
   name: string
-  storageProvider: 'network' | 'google_drive'
+  storageProvider: 'network'
   networkRoot?: string
-  googleDriveFolderId?: string
 }): Promise<CommunityVault> {
   return request<CommunityVault>('/vaults', { method: 'POST', body: JSON.stringify(payload) })
 }
