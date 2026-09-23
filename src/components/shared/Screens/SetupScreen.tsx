@@ -682,17 +682,17 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
             <button onClick={() => setMode('select')} className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors">← {t('common.back')}</button>
             <div className="text-center mb-8">
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-plm-accent/20 flex items-center justify-center"><Server size={32} className="text-plm-accent" /></div>
-              <h1 className="text-2xl font-bold text-plm-fg mb-2">BluePLM MariaDB (MDB)</h1>
-              <p className="text-plm-fg-muted">Choose whether to connect to an existing installation or set up a new one.</p>
+              <h1 className="text-2xl font-bold text-plm-fg mb-2">{t('mdbSetup.title')}</h1>
+              <p className="text-plm-fg-muted">{t('mdbSetup.chooseConnection')}</p>
             </div>
             <div className="space-y-4">
               <button onClick={() => { setError(null); setMode('mariadb-existing') }} className="w-full p-5 bg-plm-bg-light border border-plm-border rounded-xl hover:border-plm-accent text-left">
-                <h2 className="font-semibold text-plm-fg">Connect to an existing MDB server</h2>
-                <p className="text-sm text-plm-fg-muted mt-1">Enter only the public HTTPS address. FTP, database credentials, and secrets are not needed.</p>
+                <h2 className="font-semibold text-plm-fg">{t('mdbSetup.existing')}</h2>
+                <p className="text-sm text-plm-fg-muted mt-1">{t('mdbSetup.existingHelp')}</p>
               </button>
               <button onClick={() => { setError(null); setMode('mariadb-install') }} className="w-full p-5 bg-plm-bg-light border border-plm-accent/50 rounded-xl hover:border-plm-accent text-left">
-                <h2 className="font-semibold text-plm-fg">Set up a new MDB server</h2>
-                <p className="text-sm text-plm-fg-muted mt-1">Guided FTPS deployment, private server secrets, schema migration, then company, owner, network vault, and optional authenticator setup.</p>
+                <h2 className="font-semibold text-plm-fg">{t('mdbSetup.install')}</h2>
+                <p className="text-sm text-plm-fg-muted mt-1">{t('mdbSetup.installHelp')}</p>
               </button>
             </div>
           </div>
@@ -714,12 +714,12 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-plm-accent/20 flex items-center justify-center">
                 <Server size={32} className="text-plm-accent" />
               </div>
-              <h1 className="text-2xl font-bold text-plm-fg mb-2">Connect to an existing BluePLM MDB server</h1>
-              <p className="text-plm-fg-muted">Enter the HTTPS address supplied by your administrator.</p>
+              <h1 className="text-2xl font-bold text-plm-fg mb-2">{t('mdbSetup.existing')}</h1>
+              <p className="text-plm-fg-muted">{t('mdbSetup.existingHelp')}</p>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-plm-fg-muted mb-1.5">Backend URL</label>
+                <label className="block text-sm text-plm-fg-muted mb-1.5">{t('mdbSetup.backendUrl')}</label>
                 <input
                   type="url"
                   value={mariadbServerUrl}
@@ -735,7 +735,7 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                 </div>
               )}
               <button onClick={() => void handleMariadbSetup()} disabled={isValidating || !mariadbServerUrl} className="w-full btn btn-primary btn-lg justify-center mt-6">
-                {isValidating ? <><Loader2 size={20} className="animate-spin" />{t('common.connecting')}</> : <>Connect to MariaDB (MDB)</>}
+                {isValidating ? <><Loader2 size={20} className="animate-spin" />{t('common.connecting')}</> : <>{t('mdbSetup.connect')}</>}
               </button>
             </div>
           </div>

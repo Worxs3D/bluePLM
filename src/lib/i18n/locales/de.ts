@@ -2,6 +2,29 @@ import type { TranslationDict } from '../types'
 
 // German translations
 export const de: TranslationDict = {
+  mdbSetup: {
+    title: 'BluePLM MDB',
+    chooseConnection: 'Wähle eine bestehende Installation oder richte einen neuen Server ein.',
+    existing: 'Mit bestehendem MDB-Server verbinden',
+    existingHelp: 'Gib nur die öffentliche HTTPS-Adresse ein. FTP-, Datenbank- und Secret-Daten werden nicht benötigt.',
+    install: 'Neuen MDB-Server einrichten',
+    installHelp: 'Geführte FTPS-Bereitstellung mit privaten Secrets, Schema, Firma, Eigentümer, Netzwerk-Tresor und optionalem Authenticator.',
+    backendUrl: 'Backend-URL',
+    publicUrl: 'Öffentliche HTTPS-URL',
+    connect: 'Mit MariaDB (MDB) verbinden',
+    deployed: 'MDB-Server bereitgestellt',
+    deployedHelp: 'Serverpaket und private Konfiguration wurden hochgeladen; das Schema wurde migriert.',
+    openSetup: 'Servereinrichtung öffnen',
+    completed: 'Servereinrichtung abgeschlossen — BluePLM verbinden',
+    newServer: 'Neuen BluePLM-MDB-Server einrichten',
+    hosting: 'Hosting vorbereiten',
+    addressAndFtp: 'Öffentliche Adresse und FTP/FTPS',
+    database: 'MariaDB-Verbindung für den PHP-Server',
+    secrets: 'Secrets der Ersteinrichtung',
+    networkVault: 'Archiv-/NAS-Tresorpfad',
+    browse: 'Ordner auswählen…',
+    storeSecrets: 'Generierte Secrets jetzt speichern',
+  },
   checkoutDisplay: {
     you: 'Du',
     loadingOwner: 'Checkout-Besitzer wird geladen',

@@ -35,6 +35,7 @@ import {
   removeCommunityTeamMember,
 } from '@/lib/community'
 import { log } from '@/lib/logger'
+import { mapMdbRole } from '@/lib/backendAdapter'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../types'
 import {
@@ -72,7 +73,7 @@ export function useMembers(orgId: string | null) {
           avatar_url: null,
           custom_avatar_url: null,
           job_title: null,
-          role: communityUser.role === 'member' ? 'engineer' : 'admin',
+          role: mapMdbRole(communityUser.role) ?? 'viewer',
           last_sign_in: null,
           last_online: null,
           teams: await getCommunityUserTeams(communityUser.id),

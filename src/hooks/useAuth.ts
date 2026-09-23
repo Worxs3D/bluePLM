@@ -17,6 +17,7 @@ import {
 import { logUserAction } from '@/lib/userActionLogger'
 import { clearConfig } from '@/lib/supabaseConfig'
 import { clearBackendProfile } from '@/lib/backend'
+import { mapMdbRole } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
 import {
@@ -232,11 +233,7 @@ export function useAuth() {
             getCommunityOrganization(),
           ])
           if (!active || epoch !== hydrationEpoch) return
-          const mappedRole = principal.role === 'member'
-            ? 'engineer'
-            : principal.role === 'owner' || principal.role === 'admin'
-              ? 'admin'
-              : null
+          const mappedRole = mapMdbRole(principal.role)
           if (!mappedRole || !principal.createdAt) throw new Error('Community principal has an invalid role or creation date')
           const { boundary } = advanceSession('SIGNED_IN', principal.userId)
           setCurrentAccessToken(communityAccessToken())

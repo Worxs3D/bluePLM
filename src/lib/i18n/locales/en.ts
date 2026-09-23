@@ -2,6 +2,29 @@ import type { TranslationDict } from '../types'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
+  mdbSetup: {
+    title: 'BluePLM MDB',
+    chooseConnection: 'Choose whether to connect to an existing installation or set up a new one.',
+    existing: 'Connect to an existing MDB server',
+    existingHelp: 'Enter only the public HTTPS address. FTP, database credentials, and secrets are not needed.',
+    install: 'Set up a new MDB server',
+    installHelp: 'Guided FTPS deployment, private server secrets, schema migration, company, owner, network vault, and optional authenticator setup.',
+    backendUrl: 'Backend URL',
+    publicUrl: 'Public HTTPS URL',
+    connect: 'Connect to MariaDB (MDB)',
+    deployed: 'MDB server deployed',
+    deployedHelp: 'The server package and private configuration were uploaded and the schema migration completed.',
+    openSetup: 'Open server setup',
+    completed: 'I completed server setup — connect BluePLM',
+    newServer: 'Set up a new BluePLM MDB server',
+    hosting: 'Hosting preparation',
+    addressAndFtp: 'Public address and FTP/FTPS',
+    database: 'MariaDB connection for the PHP server',
+    secrets: 'First-install secrets',
+    networkVault: 'Archive/NAS vault path',
+    browse: 'Browse folders…',
+    storeSecrets: 'Store these generated secrets now',
+  },
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',
   },
