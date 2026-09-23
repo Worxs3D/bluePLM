@@ -28,7 +28,6 @@ import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/sup
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
 import { getCommunityVault, isCommunityConfigured } from '@/lib/community'
-import { googleDriveFileIdFromStoragePath, requireGoogleDriveVaultToken } from '@/lib/googleDriveVault'
 import { buildFullPath } from '@/lib/utils/path'
 
 interface VersionEntry {
@@ -193,18 +192,6 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
                   file.path,
                 )
                 if (!copyResult.success) addToast('warning', `${actionLabel} to v${targetVersion} - but could not restore the revision: ${copyResult.error}`)
-              }
-            } else {
-              const fileId = googleDriveFileIdFromStoragePath(storageRelativePath)
-              if (!fileId) {
-                addToast('warning', `${actionLabel} to v${targetVersion} - the Google Drive revision pointer is invalid.`)
-              } else if (window.electronAPI) {
-                const downloaded = await window.electronAPI.downloadGoogleDriveFile({
-                  fileId,
-                  targetPath: file.path,
-                  accessToken: requireGoogleDriveVaultToken(),
-                })
-                if (!downloaded.success) addToast('warning', `${actionLabel} to v${targetVersion} - but could not restore the revision: ${downloaded.error}`)
               }
             }
           }

@@ -314,8 +314,7 @@ export async function getAccessibleVaults(
     is_default: boolean | null
     created_at: string | null
     networkRoot?: string | null
-    storageProvider?: 'network' | 'google_drive'
-    googleDriveFolderId?: string | null
+    storageProvider?: 'network'
   }>
   error?: string
 }> {
@@ -336,7 +335,6 @@ export async function getAccessibleVaults(
           created_at: vault.createdAt,
           networkRoot: vault.networkRoot,
           storageProvider: vault.storageProvider,
-          googleDriveFolderId: vault.googleDriveFolderId,
         })),
       }
     } catch (error) {

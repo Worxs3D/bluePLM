@@ -52,9 +52,8 @@ interface Vault {
   storage_bucket?: string // Only used when creating vaults, not needed for display
   is_default: boolean
   created_at: string
-  storageProvider?: 'network' | 'google_drive'
+  storageProvider?: 'network'
   networkRoot?: string | null
-  googleDriveFolderId?: string | null
 }
 
 export function VaultsSettings() {
@@ -96,9 +95,7 @@ export function VaultsSettings() {
   const [isCreatingVault, setIsCreatingVault] = useState(false)
   const [newVaultName, setNewVaultName] = useState('')
   const [newVaultDescription, setNewVaultDescription] = useState('')
-  const [newVaultStorageProvider, setNewVaultStorageProvider] = useState<
-    'network' | 'google_drive'
-  >('network')
+  const [newVaultStorageProvider, setNewVaultStorageProvider] = useState<'network'>('network')
   const [newVaultStorageRoot, setNewVaultStorageRoot] = useState('')
   const [newVaultNetworkUsername, setNewVaultNetworkUsername] = useState('')
   const [newVaultNetworkPassword, setNewVaultNetworkPassword] = useState('')
@@ -256,24 +253,18 @@ export function VaultsSettings() {
         }
         const vault = await createCommunityVault({
           name,
-          storageProvider: newVaultStorageProvider,
-          ...(newVaultStorageProvider === 'network'
-            ? { networkRoot }
-            : { googleDriveFolderId: newVaultStorageRoot.trim() }),
+          storageProvider: 'network',
+          networkRoot,
         })
         const mappedVault: Vault = {
           id: vault.id,
           name: vault.name,
           slug: vault.id,
-          description:
-            vault.storageProvider === 'network'
-              ? vault.networkRoot
-              : `Google Drive: ${vault.googleDriveFolderId}`,
+          description: vault.networkRoot,
           is_default: false,
           created_at: vault.createdAt ?? new Date().toISOString(),
           storageProvider: vault.storageProvider,
           networkRoot: vault.networkRoot,
-          googleDriveFolderId: vault.googleDriveFolderId,
         }
         addToast('success', `Vault "${name}" created`)
         setOrgVaults([...orgVaults, mappedVault])
@@ -878,38 +869,29 @@ export function VaultsSettings() {
                 <select
                   value={newVaultStorageProvider}
                   onChange={(event) =>
-                    setNewVaultStorageProvider(event.target.value as 'network' | 'google_drive')
+                    setNewVaultStorageProvider('network')
                   }
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                 >
                   <option value="network">Network vault</option>
-                  <option value="google_drive">Google Drive</option>
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm text-plm-fg-muted">
-                  {newVaultStorageProvider === 'network'
-                    ? 'Network root path'
-                    : 'Google Drive folder ID'}
+                  Network root path
                 </label>
                 <input
                   type="text"
                   value={newVaultStorageRoot}
                   onChange={(event) => setNewVaultStorageRoot(event.target.value)}
-                  placeholder={
-                    newVaultStorageProvider === 'network'
-                      ? '\\\\server\\BluePLM-Vault'
-                      : 'Shared Drive root folder ID'
-                  }
+                  placeholder="\\\\server\\BluePLM-Vault"
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                 />
                 <p className="text-xs text-plm-fg-muted">
-                  {newVaultStorageProvider === 'network'
-                    ? 'BluePLM stores immutable revisions under .blueplm/objects in this vault.'
-                    : 'The folder must be shared with every authorized BluePLM user. Google OAuth is configured separately.'}
+                  BluePLM stores immutable revisions under .blueplm/objects in this vault.
                 </p>
               </div>
-              {newVaultStorageProvider === 'network' && platform === 'win32' && (
+              {platform === 'win32' && (
                 <div className="space-y-2 rounded-lg border border-plm-border p-3">
                   <div>
                     <label className="text-sm text-plm-fg-muted">
