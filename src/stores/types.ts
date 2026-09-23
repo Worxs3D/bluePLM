@@ -665,7 +665,7 @@ export interface UISlice {
 
 export interface SettingsSlice {
   // State - Preview & Topbar
-  cadPreviewMode: 'thumbnail' | 'edrawings'
+  cadPreviewMode: 'thumbnail' | 'edrawings' | 'edrawings-embedded'
   topbarConfig: {
     showFps: boolean
     showZoom: boolean
