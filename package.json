@@ -124,7 +124,7 @@
       "icon": "assets/icon.ico",
       "extraResources": [
         {
-          "from": "blueplm-community-php",
+          "from": "blueplm-mdb-php",
           "to": "blueplm-mdb-server",
           "filter": [
             "src/**/*",

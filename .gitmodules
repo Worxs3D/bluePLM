@@ -1,4 +1,4 @@
-[submodule "blueplm-community-php"]
-	path = blueplm-community-php
+[submodule "blueplm-mdb-php"]
+	path = blueplm-mdb-php
 	url = https://github.com/Worxs3D/blueplm-community-php.git
 	branch = main
