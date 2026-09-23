@@ -2,7 +2,12 @@ import { Check, Eye, EyeOff, Key, Loader2, X } from 'lucide-react'
 import { useSolidWorksSettings } from '../hooks'
 import { LicenseManagerSection } from '../LicenseManager'
 
-export function LicensesTab() {
+interface LicensesTabProps {
+  /** The assignment manager still has no MariaDB (MDB) backend adapter. */
+  showLicenseManager?: boolean
+}
+
+export function LicensesTab({ showLicenseManager = true }: LicensesTabProps) {
   const {
     organization,
     isAdmin,
@@ -144,7 +149,7 @@ export function LicensesTab() {
       </div>
 
       {/* SOLIDWORKS Licenses (Organization-wide) */}
-      <LicenseManagerSection />
+      {showLicenseManager && <LicenseManagerSection />}
     </div>
   )
 }
