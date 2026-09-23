@@ -772,7 +772,7 @@ export interface SettingsSlice {
   testFolderName: string // Name of the temporary test folder inside vault root (default "0 - Tests")
 
   // Actions - Preview & Topbar
-  setCadPreviewMode: (mode: 'thumbnail' | 'edrawings') => void
+  setCadPreviewMode: (mode: 'thumbnail' | 'edrawings' | 'edrawings-embedded') => void
   setTopbarConfig: (config: Partial<SettingsSlice['topbarConfig']>) => void
 
   // Actions - SolidWorks

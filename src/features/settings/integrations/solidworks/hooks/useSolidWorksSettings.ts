@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
-import { isCommunityConfigured, setCommunityDocumentManagerLicense } from '@/lib/community'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 
 // Supabase v2 type inference incomplete for SolidWorks settings
@@ -286,27 +285,6 @@ export function useSolidWorksSettings() {
       const newKey = dmLicenseKeyInput || null
       logInfo(`newKey: ${newKey ? `${newKey.length} chars` : 'null'}`)
 
-      // The MariaDB (MDB) backend owns this one integration setting directly;
-      // it must never reach the inactive Supabase client.
-      if (isCommunityConfigured()) {
-        await setCommunityDocumentManagerLicense(newKey)
-        const newSettings = { ...(organization.settings || {}), solidworks_dm_license_key: newKey || undefined }
-        setOrganization({ ...organization, settings: newSettings })
-        await window.electronAPI?.solidworks?.setAutoStartConfig({
-          autoStartEnabled: autoStartSolidworksService,
-          integrationEnabled: solidworksIntegrationEnabled,
-          dmLicenseKey: newKey || '',
-          verboseLogging: solidworksServiceVerboseLogging,
-          swProgId: solidworksProgId,
-        })
-        const result = newKey && status.running
-          ? await window.electronAPI?.solidworks?.startService(newKey)
-          : undefined
-        if (result?.success) serviceControl.checkStatus()
-        addToast('success', newKey ? 'Document Manager license key saved and applied' : 'Document Manager license key cleared')
-        return
-      }
-
       // Fetch current settings from database first to avoid overwriting other fields
       logInfo('Fetching current org settings...')
       const { data: currentOrg, error: fetchError } = await db
@@ -393,29 +371,12 @@ export function useSolidWorksSettings() {
     } finally {
       setIsSavingLicenseKey(false)
     }
-  }, [organization, dmLicenseKeyInput, status.running, setOrganization, addToast, serviceControl, autoStartSolidworksService, solidworksIntegrationEnabled, solidworksServiceVerboseLogging, solidworksProgId])
+  }, [organization, dmLicenseKeyInput, status.running, setOrganization, addToast, serviceControl])
 
   const handleClearLicenseKey = useCallback(async () => {
     if (!organization) return
     setIsSavingLicenseKey(true)
     try {
-      if (isCommunityConfigured()) {
-        await setCommunityDocumentManagerLicense(null)
-        const newSettings = { ...(organization.settings || {}), solidworks_dm_license_key: undefined }
-        setOrganization({ ...organization, settings: newSettings })
-        setDmLicenseKeyInput('')
-        await window.electronAPI?.solidworks?.setAutoStartConfig({
-          autoStartEnabled: autoStartSolidworksService,
-          integrationEnabled: solidworksIntegrationEnabled,
-          dmLicenseKey: '',
-          verboseLogging: solidworksServiceVerboseLogging,
-          swProgId: solidworksProgId,
-        })
-        if (status.running) await window.electronAPI?.solidworks?.forceRestart('')
-        addToast('success', 'Document Manager license key cleared')
-        return
-      }
-
       // Fetch current settings from database first to avoid overwriting other fields
       const { data: currentOrg } = await db
         .from('organizations')
@@ -454,7 +415,7 @@ export function useSolidWorksSettings() {
     } finally {
       setIsSavingLicenseKey(false)
     }
-  }, [organization, setOrganization, addToast, autoStartSolidworksService, solidworksIntegrationEnabled, solidworksServiceVerboseLogging, solidworksProgId, status.running])
+  }, [organization, setOrganization, addToast])
 
   // ============================================
   // Template Folder Handlers
