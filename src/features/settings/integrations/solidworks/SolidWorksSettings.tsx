@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { Activity, FolderOpen, Key, Loader2, ScanSearch, Settings } from 'lucide-react'
 
+import { isBackendActive } from '@/lib/backend'
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -44,13 +45,16 @@ export function SolidWorksSettings() {
   const visibleTabs = tabs().filter((tab) => !tab.adminOnly || isAdmin)
   // A demoted admin must not be left on a tab that has just disappeared.
   const currentTab: TabId = visibleTabs.some((tab) => tab.id === activeTab) ? activeTab : 'service'
+  const isCommunityBackend = isBackendActive('community')
+  // The Document Manager key is supported by both backends. Only the separate
+  // SOLIDWORKS license-assignment manager remains Supabase-specific.
 
   const renderTabContent = () => {
     switch (currentTab) {
       case 'service':
         return <ServiceTab />
       case 'licenses':
-        return <LicensesTab />
+        return <LicensesTab showLicenseManager={!isCommunityBackend} />
       case 'templates':
         return <TemplatesTab />
       case 'settings':
