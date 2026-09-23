@@ -326,14 +326,9 @@ namespace BluePLM.SolidWorksService.Tests
             var full = Path.Combine(_layout.Root, AdversarialLayout.GenuineFileName);
             var shortened = AdversarialLayout.ShortNameOf(full);
 
-            if (shortened.IndexOf('~') < 0)
-            {
-                // 8.3 aliases are disabled on many modern NTFS volumes. This
-                // scenario cannot be exercised there; it is not a product
-                // regression. Other short-name shaped inputs are still tested
-                // below, and a volume with aliases executes the assertions.
-                return;
-            }
+            Assert.True(
+                shortened.IndexOf('~') >= 0,
+                $"This volume did not generate an 8.3 name for {full}, so the test cannot exercise anything.");
 
             Assert.False(RegressionFixtureGuard.IsInside(shortened, _layout.Root), "a short name for the candidate");
             Assert.False(RegressionFixtureGuard.IsInside(full, AdversarialLayout.ShortNameOf(_layout.Root)), "a short name for the root");

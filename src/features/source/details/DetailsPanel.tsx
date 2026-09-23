@@ -38,7 +38,6 @@ import { VendorsTab } from './VendorsTab'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
 import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
 import { CommentSidebar } from './components/CommentSidebar'
-import { EDrawingsEmbeddedPreview } from './components/EDrawingsEmbeddedPreview'
 import {
   FileBox,
   Layers,
@@ -835,17 +834,7 @@ export function DetailsPanel() {
             <>
               {/* Preview tab for SolidWorks files */}
               {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
-                cadPreviewMode === 'edrawings-embedded' ? (
-                  <div className="h-full min-h-[18rem] flex flex-col">
-                    <EDrawingsEmbeddedPreview
-                      fileName={file.name}
-                      filePath={file.path}
-                      onOpenExternal={handleOpenInEDrawings}
-                    />
-                  </div>
-                ) : (
-                  <SWDatacardPanel file={file} />
-                )
+                <SWDatacardPanel file={file} />
               )}
 
               {detailsPanelTab === 'properties' &&
@@ -1102,13 +1091,7 @@ export function DetailsPanel() {
                   ) : isCADFile ? (
                     // CAD file - show thumbnail or eDrawings based on setting
                     <div className="w-full h-full flex flex-col">
-                      {cadPreviewMode === 'edrawings-embedded' ? (
-                        <EDrawingsEmbeddedPreview
-                          fileName={file.name}
-                          filePath={file.path}
-                          onOpenExternal={handleOpenInEDrawings}
-                        />
-                      ) : cadPreviewMode === 'edrawings' ? (
+                      {cadPreviewMode === 'edrawings' ? (
                         // eDrawings mode - just show button to open externally
                         eDrawingsStatus.installed ? (
                           <div className="flex-1 flex flex-col items-center justify-center">

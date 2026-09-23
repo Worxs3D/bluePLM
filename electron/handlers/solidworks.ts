@@ -24,7 +24,6 @@ import {
   type SwServiceResult,
 } from './solidworksErrors'
 import type { ExtractedImage, ThumbnailTier } from './thumbnails/types'
-import { findEDrawingsExecutable } from './edrawings'
 import { classifySwProcess, planSwClose, type SwProcessVerdict } from './swProcess/classify'
 import {
   proveSwLaunch,
@@ -97,93 +96,6 @@ const SYNTHESIZED_BUSY_GRACE_MS = 5_000
 // ============================================
 
 let mainWindow: BrowserWindow | null = null
-
-interface NativeEDrawingsPreview {
-  attachToWindow(handle: Buffer): boolean
-  loadFile(filePath: string, executablePath: string): boolean
-  setBounds(x: number, y: number, width: number, height: number): boolean
-  show(): boolean
-  hide(): boolean
-  destroy(): boolean
-  isLoaded(): boolean
-  lastError(): string
-}
-
-interface NativeEDrawingsModule {
-  EDrawingsPreview: new () => NativeEDrawingsPreview
-}
-
-let nativeEDrawingsModule: NativeEDrawingsModule | null | undefined
-let embeddedEDrawingsPreview: NativeEDrawingsPreview | null = null
-
-/**
- * Loads the optional Windows module only when the user has selected embedded
- * preview. A missing or incompatible binary is intentionally a normal fallback
- * to the external eDrawings integration.
- */
-function getNativeEDrawingsModule(): NativeEDrawingsModule | null {
-  if (nativeEDrawingsModule !== undefined) return nativeEDrawingsModule
-  if (process.platform !== 'win32') {
-    nativeEDrawingsModule = null
-    return null
-  }
-
-  const candidates = [
-    path.join(process.resourcesPath, 'bin', 'edrawings_preview.node'),
-    path.join(process.cwd(), 'resources', 'bin', 'win32', 'edrawings_preview.node'),
-    path.join(process.cwd(), 'native', 'build', 'Release', 'edrawings_preview.node'),
-  ]
-
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue
-    try {
-      const loaded = require(candidate) as NativeEDrawingsModule
-      if (typeof loaded.EDrawingsPreview === 'function') {
-        nativeEDrawingsModule = loaded
-        return loaded
-      }
-    } catch (error) {
-      logWarn('[eDrawings] Optional embedded preview module could not be loaded', {
-        candidate,
-        error: String(error),
-      })
-    }
-  }
-
-  nativeEDrawingsModule = null
-  return null
-}
-
-/**
- * Resolve the bundled STA/OLE host rather than launching eDrawings.exe. The
- * host is deliberately separate from the optional N-API module so Windows
- * Forms can supply the COM control with its required message loop.
- */
-function findEDrawingsPreviewHost(): string | null {
-  const executableName = 'BluePLM.EDrawingsPreviewHost.exe'
-  const candidates = [
-    path.join(process.resourcesPath, 'bin', 'edrawings-preview-host', executableName),
-    path.join(process.cwd(), 'resources', 'bin', 'win32', 'edrawings-preview-host', executableName),
-    path.join(
-      process.cwd(),
-      'edrawings-preview-host',
-      'publish',
-      'win-x64',
-      executableName,
-    ),
-  ]
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
-}
-
-function destroyEmbeddedEDrawingsPreview(): void {
-  try {
-    embeddedEDrawingsPreview?.destroy()
-  } catch (error) {
-    logWarn('[eDrawings] Failed to close embedded preview', { error: String(error) })
-  }
-  embeddedEDrawingsPreview = null
-}
 
 /**
  * Who asked for a reference read.
@@ -3701,18 +3613,41 @@ export function registerSolidWorksHandlers(
 
   // eDrawings handlers
   ipcMain.handle('edrawings:check-installed', async () => {
-    const eDrawingsPath = findEDrawingsExecutable()
-    return { installed: eDrawingsPath !== null, path: eDrawingsPath }
+    const paths = [
+      'C:\\Program Files\\SOLIDWORKS Corp\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files (x86)\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\eDrawings\\eDrawings.exe',
+    ]
+
+    for (const ePath of paths) {
+      if (fs.existsSync(ePath)) {
+        return { installed: true, path: ePath }
+      }
+    }
+
+    return { installed: false, path: null }
   })
 
   ipcMain.handle('edrawings:native-available', () => {
-    return Boolean(
-      findEDrawingsExecutable() && findEDrawingsPreviewHost() && getNativeEDrawingsModule(),
-    )
+    return false // Native module not available in refactored version
   })
 
   ipcMain.handle('edrawings:open-file', async (_, filePath: string) => {
-    const eDrawingsPath = findEDrawingsExecutable()
+    const eDrawingsPaths = [
+      'C:\\Program Files\\SOLIDWORKS Corp\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files (x86)\\eDrawings\\eDrawings.exe',
+      'C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\eDrawings\\eDrawings.exe',
+    ]
+
+    let eDrawingsPath: string | null = null
+    for (const ePath of eDrawingsPaths) {
+      if (fs.existsSync(ePath)) {
+        eDrawingsPath = ePath
+        break
+      }
+    }
 
     if (!eDrawingsPath) {
       try {
@@ -3740,64 +3675,32 @@ export function registerSolidWorksHandlers(
     return Array.from(handle)
   })
 
+  // Placeholder handlers for eDrawings preview (native module not loaded)
   ipcMain.handle('edrawings:create-preview', () => {
-    const nativeModule = getNativeEDrawingsModule()
-    if (!nativeModule) return { success: false, error: 'Optional Windows preview module is unavailable' }
-    destroyEmbeddedEDrawingsPreview()
-    embeddedEDrawingsPreview = new nativeModule.EDrawingsPreview()
-    return { success: true }
+    return { success: false, error: 'Native module not available' }
   })
 
   ipcMain.handle('edrawings:attach-preview', () => {
-    if (!embeddedEDrawingsPreview || !mainWindow) return { success: false, error: 'Preview not created' }
-    try {
-      const attached = embeddedEDrawingsPreview.attachToWindow(mainWindow.getNativeWindowHandle())
-      return attached
-        ? { success: true }
-        : { success: false, error: embeddedEDrawingsPreview.lastError() || 'Could not attach preview to the BluePLM window' }
-    } catch (error) {
-      return { success: false, error: String(error) }
-    }
+    return { success: false, error: 'Preview not created' }
   })
 
-  ipcMain.handle('edrawings:load-file', async (_, filePath: string) => {
-    const executable = findEDrawingsExecutable()
-    const previewHost = findEDrawingsPreviewHost()
-    if (!embeddedEDrawingsPreview) return { success: false, error: 'Preview not attached' }
-    if (!executable) return { success: false, error: 'eDrawings is not installed' }
-    if (!previewHost) return { success: false, error: 'The eDrawings preview host is unavailable' }
-    if (typeof filePath !== 'string' || !fs.existsSync(filePath)) {
-      return { success: false, error: 'The preview file is not available locally' }
-    }
-    try {
-      const loaded = embeddedEDrawingsPreview.loadFile(filePath, previewHost)
-      return loaded
-        ? { success: true }
-        : { success: false, error: embeddedEDrawingsPreview.lastError() || 'eDrawings could not host this file' }
-    } catch (error) {
-      return { success: false, error: String(error) }
-    }
+  ipcMain.handle('edrawings:load-file', async () => {
+    return { success: false, error: 'Preview not attached' }
   })
 
-  ipcMain.handle('edrawings:set-bounds', async (_, x: number, y: number, width: number, height: number) => {
-    if (!embeddedEDrawingsPreview || ![x, y, width, height].every(Number.isFinite)) return { success: false }
-    try {
-      return { success: embeddedEDrawingsPreview.setBounds(Math.round(x), Math.round(y), Math.round(width), Math.round(height)) }
-    } catch {
-      return { success: false }
-    }
+  ipcMain.handle('edrawings:set-bounds', async () => {
+    return { success: false }
   })
 
   ipcMain.handle('edrawings:show-preview', () => {
-    return { success: embeddedEDrawingsPreview?.show() ?? false }
+    return { success: false }
   })
 
   ipcMain.handle('edrawings:hide-preview', () => {
-    return { success: embeddedEDrawingsPreview?.hide() ?? false }
+    return { success: false }
   })
 
   ipcMain.handle('edrawings:destroy-preview', () => {
-    destroyEmbeddedEDrawingsPreview()
     return { success: true }
   })
 
@@ -4006,7 +3909,6 @@ export async function cleanupSolidWorksService(): Promise<void> {
   log('[SolidWorks] [CLEANUP] APP QUIT - CLEANUP STARTED')
   log('[SolidWorks] =======================================')
   logServiceState('App quit cleanup')
-  destroyEmbeddedEDrawingsPreview()
 
   // Stop the watchdog
   stopOrphanWatchdog()

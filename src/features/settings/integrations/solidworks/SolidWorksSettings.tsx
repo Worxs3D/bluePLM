@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Activity, Key, FolderOpen, Settings } from 'lucide-react'
-import { isBackendActive } from '@/lib/backend'
 import { ServiceTab, LicensesTab, TemplatesTab, SettingsTab } from './tabs'
 
 type TabId = 'service' | 'licenses' | 'templates' | 'settings'
@@ -11,7 +10,7 @@ interface Tab {
   icon: typeof Activity
 }
 
-const allTabs: Tab[] = [
+const tabs: Tab[] = [
   { id: 'service', label: 'Service', icon: Activity },
   { id: 'licenses', label: 'Licenses', icon: Key },
   { id: 'templates', label: 'Templates', icon: FolderOpen },
@@ -20,17 +19,13 @@ const allTabs: Tab[] = [
 
 export function SolidWorksSettings() {
   const [activeTab, setActiveTab] = useState<TabId>('service')
-  const isCommunityBackend = isBackendActive('community')
-  // The Document Manager key is supported by both backends. Only the separate
-  // SOLIDWORKS license-assignment manager remains Supabase-specific.
-  const tabs = allTabs
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'service':
         return <ServiceTab />
       case 'licenses':
-        return <LicensesTab showLicenseManager={!isCommunityBackend} />
+        return <LicensesTab />
       case 'templates':
         return <TemplatesTab />
       case 'settings':

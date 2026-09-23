@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Image,
   ExternalLink,
@@ -14,7 +14,6 @@ import {
   Check,
   ChevronDown,
   Cpu,
-  Box,
 } from 'lucide-react'
 
 import { useTranslation } from '@/lib/i18n'
@@ -24,7 +23,6 @@ import { useSolidWorksSettings } from '../hooks'
 export function SettingsTab() {
   const { t } = useTranslation()
   const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false)
-  const [embeddedPreviewAvailable, setEmbeddedPreviewAvailable] = useState(false)
   const {
     cadPreviewMode,
     setCadPreviewMode,
@@ -49,14 +47,6 @@ export function SettingsTab() {
     handleToggleModelRevision,
     isAdmin,
   } = useSolidWorksSettings()
-
-  useEffect(() => {
-    const api = window.electronAPI
-    if (!api) return
-    void api.isEDrawingsNativeAvailable()
-      .then(setEmbeddedPreviewAvailable)
-      .catch(() => setEmbeddedPreviewAvailable(false))
-  }, [])
 
   return (
     <div className="space-y-6">
@@ -98,29 +88,6 @@ export function SettingsTab() {
             <div className="text-left">
               <div className="text-base font-medium">eDrawings (External)</div>
               <div className="text-sm opacity-70">Open files in external eDrawings application</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setCadPreviewMode('edrawings-embedded')}
-            disabled={!embeddedPreviewAvailable}
-            className={`w-full flex items-center gap-4 p-4 rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              cadPreviewMode === 'edrawings-embedded'
-                ? 'bg-plm-accent/10 border-plm-accent text-plm-fg'
-                : 'bg-plm-bg border-plm-border text-plm-fg-muted hover:border-plm-fg-muted'
-            }`}
-          >
-            <Box
-              size={24}
-              className={cadPreviewMode === 'edrawings-embedded' ? 'text-plm-accent' : ''}
-            />
-            <div className="text-left">
-              <div className="text-base font-medium">eDrawings 3D Preview (Windows, optional)</div>
-              <div className="text-sm opacity-70">
-                {embeddedPreviewAvailable
-                  ? 'Interactive 3D viewer inside BluePLM. Experimental Windows feature.'
-                  : 'Requires Windows, installed eDrawings, and the optional preview module.'}
-              </div>
             </div>
           </button>
         </div>
