@@ -117,8 +117,8 @@ private:
             L" --mode " + configuredHostMode() +
             L" --embedding " + configuredEmbeddingMode() +
             L" --parent " + std::to_wstring(reinterpret_cast<uintptr_t>(m_host)) +
-            L" --bounds " + std::to_wstring(m_x) + L" " + std::to_wstring(m_y) + L" " +
-            std::to_wstring(m_width) + L" " + std::to_wstring(m_height);
+            L" --x " + std::to_wstring(m_x) + L" --y " + std::to_wstring(m_y) +
+            L" --width " + std::to_wstring(m_width) + L" --height " + std::to_wstring(m_height);
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process{};
