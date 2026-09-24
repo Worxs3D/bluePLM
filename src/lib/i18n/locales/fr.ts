@@ -2,6 +2,19 @@ import type { TranslationDict } from '../types'
 
 // French translations
 export const fr: TranslationDict = {
+  solidworksSettings: {
+    previewMode: 'Mode aperçu',
+    embeddedThumbnail: 'Miniature intégrée',
+    embeddedThumbnailDescription:
+      'Extraire et afficher l’image d’aperçu du fichier SolidWorks',
+    externalEDrawings: 'eDrawings (externe)',
+    externalEDrawingsDescription: 'Ouvrir les fichiers dans l’application eDrawings externe',
+    embeddedEDrawings: 'Aperçu 3D eDrawings (Windows, optionnel)',
+    embeddedEDrawingsAvailable:
+      'Visionneuse 3D interactive dans BluePLM. Fonction Windows expérimentale.',
+    embeddedEDrawingsUnavailable:
+      'Nécessite Windows, eDrawings installé et le module d’aperçu optionnel.',
+  },
   checkoutDisplay: {
     you: 'Vous',
     loadingOwner: 'Chargement du propriétaire du checkout',

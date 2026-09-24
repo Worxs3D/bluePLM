@@ -63,7 +63,7 @@ export function SettingsTab() {
       {/* Preview Mode */}
       <div className="space-y-3">
         <label className="text-sm text-plm-fg-muted uppercase tracking-wide font-medium">
-          Preview Mode
+          {t('solidworksSettings.previewMode')}
         </label>
         <div className="space-y-2">
           <button
@@ -76,9 +76,11 @@ export function SettingsTab() {
           >
             <Image size={24} className={cadPreviewMode === 'thumbnail' ? 'text-plm-accent' : ''} />
             <div className="text-left">
-              <div className="text-base font-medium">Embedded Thumbnail</div>
+              <div className="text-base font-medium">
+                {t('solidworksSettings.embeddedThumbnail')}
+              </div>
               <div className="text-sm opacity-70">
-                Extract and show preview image from SolidWorks file
+                {t('solidworksSettings.embeddedThumbnailDescription')}
               </div>
             </div>
           </button>
@@ -96,8 +98,12 @@ export function SettingsTab() {
               className={cadPreviewMode === 'edrawings' ? 'text-plm-accent' : ''}
             />
             <div className="text-left">
-              <div className="text-base font-medium">eDrawings (External)</div>
-              <div className="text-sm opacity-70">Open files in external eDrawings application</div>
+              <div className="text-base font-medium">
+                {t('solidworksSettings.externalEDrawings')}
+              </div>
+              <div className="text-sm opacity-70">
+                {t('solidworksSettings.externalEDrawingsDescription')}
+              </div>
             </div>
           </button>
 
@@ -115,11 +121,13 @@ export function SettingsTab() {
               className={cadPreviewMode === 'edrawings-embedded' ? 'text-plm-accent' : ''}
             />
             <div className="text-left">
-              <div className="text-base font-medium">eDrawings 3D Preview (Windows, optional)</div>
+              <div className="text-base font-medium">
+                {t('solidworksSettings.embeddedEDrawings')}
+              </div>
               <div className="text-sm opacity-70">
                 {embeddedPreviewAvailable
-                  ? 'Interactive 3D viewer inside BluePLM. Experimental Windows feature.'
-                  : 'Requires Windows, installed eDrawings, and the optional preview module.'}
+                  ? t('solidworksSettings.embeddedEDrawingsAvailable')
+                  : t('solidworksSettings.embeddedEDrawingsUnavailable')}
               </div>
             </div>
           </button>

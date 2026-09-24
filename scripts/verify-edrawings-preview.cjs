@@ -31,11 +31,15 @@ function findCadFile(directory) {
 
 app.whenReady().then(async () => {
   checkpoint('app-ready')
-  const sample = findCadFile('C:\\BluePLM')
+  const requestedSample = process.env.BLUEPLM_PREVIEW_TEST_FILE
+  const sample = requestedSample || findCadFile('C:\\BluePLM')
   if (!sample) throw new Error('No local CAD sample found below C:\\BluePLM.')
+  if (!fs.existsSync(sample)) throw new Error(`CAD sample does not exist: ${sample}`)
 
   const window = new BrowserWindow({
-    show: process.env.BLUEPLM_SHOW_PREVIEW_TEST === '1',
+    show:
+      process.env.BLUEPLM_SHOW_PREVIEW_TEST === '1' ||
+      process.env.BLUEPLM_PREVIEW_TEST_MINIMIZE === '1',
     width: 960,
     height: 640,
   })
@@ -70,22 +74,83 @@ app.whenReady().then(async () => {
   }
   checkpoint('after-load-and-show')
 
-  const durationMs = Number.parseInt(process.env.BLUEPLM_PREVIEW_TEST_DURATION_MS ?? '12000', 10)
-  setTimeout(() => {
+  const durationMs = Number.parseInt(process.env.BLUEPLM_PREVIEW_TEST_DURATION_MS ?? '60000', 10)
+  const timeoutMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 60000
+  const deadline = Date.now() + timeoutMs
+  const finish = (rendered, visual, suspiciousWhiteDialog, lifecycle) => {
     checkpoint('before-visual-sample')
-    const visual = preview.getVisualState()
-    // A valid eDrawings viewport includes its grey scene background and model.
-    // A near-completely black capture is the exact regression the user sees.
-    const rendered = visual.available && (visual.brightRatio > 0.1 || visual.luminanceVariance > 30)
-    const result = { loaded: preview.isLoaded(), rendered, visual, error: preview.lastError() }
+    const result = {
+      sample,
+      loaded: preview.isLoaded(),
+      rendered,
+      suspiciousWhiteDialog,
+      visual,
+      lifecycle,
+      error: preview.lastError(),
+    }
     fs.writeFileSync(resultPath, JSON.stringify(result))
     checkpoint('result-written')
     preview.destroy()
     window.destroy()
     console.log(JSON.stringify(result))
-    app.exitCode = rendered ? 0 : 1
-    app.quit()
-  }, Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 6000)
+    app.exit(rendered ? 0 : 1)
+  }
+  const isRenderedVisual = (visual) => {
+    const suspiciousWhiteDialog = visual.brightRatio > 0.9 && visual.luminanceVariance < 1000
+    return {
+      suspiciousWhiteDialog,
+      rendered:
+        visual.available &&
+        !suspiciousWhiteDialog &&
+        (visual.brightRatio > 0.1 || visual.luminanceVariance > 30),
+    }
+  }
+  const verifyMinimizeLifecycle = (visual, suspiciousWhiteDialog) => {
+    const before = preview.getWindowState()
+    // Mirror the production owner lifecycle.  Win32 owned windows do not
+    // reliably inherit Electron's minimize state across processes, so BluePLM
+    // deliberately drives visibility on the owner events.
+    window.on('minimize', () => preview.hide())
+    window.on('restore', () => preview.show())
+    window.once('minimize', () => {
+      setTimeout(() => {
+        const minimized = preview.getWindowState()
+        const hiddenWithOwner = minimized.exists && minimized.visible === false
+        window.once('restore', () => {
+          setTimeout(() => {
+            const restored = preview.getWindowState()
+            const restoredWithOwner = restored.exists && restored.visible === true
+            finish(hiddenWithOwner && restoredWithOwner, visual, suspiciousWhiteDialog, {
+              before,
+              minimized,
+              restored,
+              hiddenWithOwner,
+              restoredWithOwner,
+            })
+          }, 750)
+        })
+        window.restore()
+      }, 750)
+    })
+    window.minimize()
+  }
+  const sampleVisualState = () => {
+    const visual = preview.getVisualState()
+    // A valid eDrawings viewport includes its grey scene background and model.
+    // A near-uniform white capture is the .NET error/loading surface that the
+    // former one-shot check incorrectly accepted as a successful preview.
+    const { suspiciousWhiteDialog, rendered } = isRenderedVisual(visual)
+    if (rendered || Date.now() >= deadline) {
+      if (rendered && process.env.BLUEPLM_PREVIEW_TEST_MINIMIZE === '1') {
+        verifyMinimizeLifecycle(visual, suspiciousWhiteDialog)
+        return
+      }
+      finish(rendered, visual, suspiciousWhiteDialog, undefined)
+      return
+    }
+    setTimeout(sampleVisualState, 2000)
+  }
+  setTimeout(sampleVisualState, 2000)
 }).catch((error) => {
   console.error(error.stack || String(error))
   app.exitCode = 1

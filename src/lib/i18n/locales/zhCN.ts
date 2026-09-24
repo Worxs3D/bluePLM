@@ -2,6 +2,17 @@ import type { TranslationDict } from '../types'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
+  solidworksSettings: {
+    previewMode: '预览模式',
+    embeddedThumbnail: '嵌入式缩略图',
+    embeddedThumbnailDescription: '从 SolidWorks 文件中提取并显示预览图像',
+    externalEDrawings: 'eDrawings（外部）',
+    externalEDrawingsDescription: '在外部 eDrawings 应用程序中打开文件',
+    embeddedEDrawings: 'eDrawings 3D 预览（Windows，可选）',
+    embeddedEDrawingsAvailable: 'BluePLM 内的交互式 3D 查看器。Windows 实验性功能。',
+    embeddedEDrawingsUnavailable:
+      '需要 Windows、已安装的 eDrawings 和可选的预览模块。',
+  },
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在加载签出者',
