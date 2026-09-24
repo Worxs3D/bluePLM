@@ -14,6 +14,11 @@ export const pt: TranslationDict = {
       'Visualizador 3D interativo dentro do BluePLM. Funcionalidade experimental do Windows.',
     embeddedEDrawingsUnavailable:
       'Requer Windows, eDrawings instalado e o módulo de pré-visualização opcional.',
+    previewStarting: 'A iniciar a pré-visualização incorporada do eDrawings…',
+    previewStartFailed: 'Não foi possível iniciar a pré-visualização incorporada do eDrawings.',
+    previewUnavailable:
+      'A pré-visualização opcional do eDrawings para Windows não está disponível neste computador.',
+    openInEDrawings: 'Abrir no eDrawings',
   },
   checkoutDisplay: {
     you: 'Você',

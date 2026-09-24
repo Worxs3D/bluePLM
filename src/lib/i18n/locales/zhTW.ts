@@ -12,6 +12,10 @@ export const zhTW: TranslationDict = {
     embeddedEDrawingsAvailable: 'BluePLM 內的互動式 3D 檢視器。Windows 實驗性功能。',
     embeddedEDrawingsUnavailable:
       '需要 Windows、已安裝的 eDrawings 和可選的預覽模組。',
+    previewStarting: '正在啟動內嵌 eDrawings 預覽…',
+    previewStartFailed: '無法啟動內嵌 eDrawings 預覽。',
+    previewUnavailable: '此電腦無法使用選用的 Windows eDrawings 預覽。',
+    openInEDrawings: '在 eDrawings 中開啟',
   },
   checkoutDisplay: {
     you: '你',

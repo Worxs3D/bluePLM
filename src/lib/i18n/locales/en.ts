@@ -14,6 +14,11 @@ export const en: TranslationDict = {
       'Interactive 3D viewer inside BluePLM. Experimental Windows feature.',
     embeddedEDrawingsUnavailable:
       'Requires Windows, installed eDrawings, and the optional preview module.',
+    previewStarting: 'Starting embedded eDrawings preview…',
+    previewStartFailed: 'The embedded eDrawings preview could not be started.',
+    previewUnavailable:
+      'The optional Windows eDrawings preview is unavailable on this computer.',
+    openInEDrawings: 'Open in eDrawings',
   },
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',

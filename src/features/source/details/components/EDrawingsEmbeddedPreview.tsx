@@ -1,5 +1,7 @@
 import { ExternalLink, FileBox, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from '@/lib/i18n'
+import { log } from '@/lib/logger'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
 
@@ -19,9 +21,9 @@ export function EDrawingsEmbeddedPreview({
   filePath,
   onOpenExternal,
 }: EDrawingsEmbeddedPreviewProps) {
+  const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<PreviewState>('loading')
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
@@ -54,7 +56,10 @@ export function EDrawingsEmbeddedPreview({
       const loaded = attached.success ? await api.loadEDrawingsFile(filePath) : attached
       if (disposed) return
       if (!loaded.success) {
-        setError(loaded.error ?? 'The embedded eDrawings preview could not be started.')
+        log.error('[EDrawingsPreview]', 'Failed to load embedded preview', {
+          error: loaded.error,
+          filePath,
+        })
         setState('error')
         void destroy()
         return
@@ -68,7 +73,14 @@ export function EDrawingsEmbeddedPreview({
       setState('ready')
     }
 
-    void start()
+    void start().catch((error) => {
+      log.error('[EDrawingsPreview]', 'Failed to start embedded preview', {
+        error: error instanceof Error ? error.message : String(error),
+        filePath,
+      })
+      if (!disposed) setState('error')
+      void destroy()
+    })
     return () => {
       disposed = true
       observer?.disconnect()
@@ -82,7 +94,7 @@ export function EDrawingsEmbeddedPreview({
       {state === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-plm-fg-muted gap-3">
           <Loader2 className="animate-spin" size={28} />
-          <span className="text-sm">Starting embedded eDrawings preview…</span>
+          <span className="text-sm">{t('solidworksSettings.previewStarting')}</span>
         </div>
       )}
       {state !== 'loading' && state !== 'ready' && (
@@ -91,12 +103,12 @@ export function EDrawingsEmbeddedPreview({
           <div className="text-sm font-medium">{fileName}</div>
           <p className="text-xs text-plm-fg-muted mt-2 max-w-sm">
             {state === 'unavailable'
-              ? 'The optional Windows eDrawings preview is unavailable on this computer.'
-              : error}
+              ? t('solidworksSettings.previewUnavailable')
+              : t('solidworksSettings.previewStartFailed')}
           </p>
           <button onClick={onOpenExternal} className="btn btn-secondary gap-2 mt-4">
             <ExternalLink size={16} />
-            Open in eDrawings
+            {t('solidworksSettings.openInEDrawings')}
           </button>
         </div>
       )}
