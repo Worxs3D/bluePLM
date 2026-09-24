@@ -14,6 +14,11 @@ export const fr: TranslationDict = {
       'Visionneuse 3D interactive dans BluePLM. Fonction Windows expérimentale.',
     embeddedEDrawingsUnavailable:
       'Nécessite Windows, eDrawings installé et le module d’aperçu optionnel.',
+    previewStarting: 'Démarrage de l’aperçu eDrawings intégré…',
+    previewStartFailed: 'Impossible de démarrer l’aperçu eDrawings intégré.',
+    previewUnavailable:
+      'L’aperçu eDrawings optionnel pour Windows n’est pas disponible sur cet ordinateur.',
+    openInEDrawings: 'Ouvrir dans eDrawings',
   },
   checkoutDisplay: {
     you: 'Vous',
