@@ -14,6 +14,7 @@ import { executeTerminalCommand } from '@/lib/commands/parser'
 import { logUserAction, logExplorer } from '@/lib/userActionLogger'
 import { checkSchemaCompatibility, shouldCheckSupabaseSchema } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
+import { shouldRunVaultLoad } from './vaultLoadPolicy'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
 import { isBackendConfigured } from '@/lib/community'
 import { clearSwReferencesCache } from '@/lib/solidworks'
@@ -128,12 +129,7 @@ export function App() {
   const onboardingComplete = usePDMStore((s) => s.onboardingComplete)
 
   // Auth hook - handles authentication state and Supabase initialization
-  const {
-    supabaseReady,
-    handleSupabaseConfigured,
-    handleChangeOrg,
-    sessionGeneration,
-  } = useAuth()
+  const { supabaseReady, handleSupabaseConfigured, handleChangeOrg, sessionGeneration } = useAuth()
 
   // Vault management hook - now gets setSettingsTab from store internally
   const { handleOpenVault, lastLoadKey } = useVaultManagement()
@@ -159,6 +155,7 @@ export function App() {
     isVaultConnected,
     connectedVaults,
     activeVaultId,
+    filesLoaded,
     statusMessage: _statusMessage,
     toggleSidebar,
     toggleDetailsPanel,
@@ -312,7 +309,8 @@ export function App() {
         !user ||
         connectedVaults.length === 0 ||
         isBackendConfigured('community')
-      ) return
+      )
+        return
 
       log.debug('[VaultValidation]', 'Checking connected vaults', { count: connectedVaults.length })
 
@@ -388,7 +386,8 @@ export function App() {
         isOfflineMode ||
         schemaCheckDoneRef.current ||
         !shouldCheckSupabaseSchema(isBackendConfigured('community'))
-      ) return
+      )
+        return
 
       schemaCheckDoneRef.current = true
 
@@ -852,7 +851,7 @@ export function App() {
 
     log.debug('[LoadEffect]', 'Checking loadKey', { loadKey, lastLoadKey: lastLoadKey.current })
 
-    if (lastLoadKey.current === loadKey) {
+    if (!shouldRunVaultLoad({ filesLoaded, loadKey, lastLoadKey: lastLoadKey.current })) {
       log.debug('[LoadEffect]', 'Skipping - same loadKey')
       // Note: Don't call setIsLoading(false) here - it interferes with folder refresh spinner
       // The loading state is managed by the operation that set it (loadFiles, refreshCurrentFolder, etc.)
@@ -875,6 +874,7 @@ export function App() {
     user,
     organization,
     currentVaultId,
+    filesLoaded,
     sessionGeneration,
     loadFiles,
     setIsLoading,
@@ -916,4 +916,3 @@ export function App() {
     />
   )
 }
-

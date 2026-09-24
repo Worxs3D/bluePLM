@@ -20,6 +20,7 @@ import {
   setCommunityTeamVaultAccess,
 } from '@/lib/community'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgVault } from '@/stores/types'
 import { type TeamVaultAccessJoin, castQueryResult, insertTeamVaultAccess } from './supabaseHelpers'
@@ -144,14 +145,20 @@ export function useVaultAccess(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           await setCommunityUserVaultAccess(userId, vaultIds)
-          addToast('success', `Updated vault access for ${userName || 'user'}`)
+          addToast(
+            'success',
+            t('mdbSetup.userVaultAccessUpdated', { name: userName || t('mdbSetup.userLabel') }),
+          )
           await loadVaultAccess()
           return true
         }
         const result = await setUserVaultAccess(userId, vaultIds, user.id, orgId)
 
         if (result.success) {
-          addToast('success', `Updated vault access for ${userName || 'user'}`)
+          addToast(
+            'success',
+            t('mdbSetup.userVaultAccessUpdated', { name: userName || t('mdbSetup.userLabel') }),
+          )
           // Reload vault access to get updated map
           await loadVaultAccess()
           return true
@@ -178,7 +185,10 @@ export function useVaultAccess(orgId: string | null) {
             ...teamVaultAccessMap,
             [teamId]: vaultIds,
           })
-          addToast('success', `Updated vault access for ${teamName || 'team'}`)
+          addToast(
+            'success',
+            t('mdbSetup.teamVaultAccessUpdated', { name: teamName || t('mdbSetup.teamLabel') }),
+          )
           return true
         }
         // Delete existing access
@@ -201,10 +211,13 @@ export function useVaultAccess(orgId: string | null) {
           [teamId]: vaultIds,
         })
 
-        addToast('success', `Updated vault access for ${teamName || 'team'}`)
+        addToast(
+          'success',
+          t('mdbSetup.teamVaultAccessUpdated', { name: teamName || t('mdbSetup.teamLabel') }),
+        )
         return true
       } catch (_error) {
-        addToast('error', 'Failed to update vault access')
+        addToast('error', t('mdbSetup.vaultAccessUpdateFailed'))
         return false
       }
     },

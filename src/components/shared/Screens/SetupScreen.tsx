@@ -269,29 +269,29 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
 
   const handleMdbNetworkRootBrowse = async () => {
     if (!window.electronAPI?.selectDirectory) {
-      setError('The native folder picker is unavailable in this build.')
+      setError(t('mdbSetup.folderPickerUnavailable'))
       return
     }
     try {
-      const result = await window.electronAPI.selectDirectory()
+      const result = await window.electronAPI.selectDirectory(t('mdbSetup.selectNetworkFolder'))
       if (result.success && result.folderPath) setMdbNetworkRoot(result.folderPath)
     } catch (pickerError) {
       setError(
-        pickerError instanceof Error ? pickerError.message : 'Could not open the folder picker.',
+        pickerError instanceof Error ? pickerError.message : t('mdbSetup.folderPickerFailed'),
       )
     }
   }
 
   const handleMariadbSetup = async (serverUrl = mariadbServerUrl) => {
     if (!serverUrl.trim()) {
-      setError('Please enter the BluePLM MariaDB (MDB) backend URL.')
+      setError(t('mdbSetup.backendUrlRequired'))
       return
     }
     setIsValidating(true)
     setError(null)
     const result = await validateCommunityConfig(serverUrl.trim())
     if (!result.valid) {
-      setError(result.error || 'Could not connect to the MariaDB (MDB) backend.')
+      setError(result.error || t('mdbSetup.backendConnectionFailed'))
       setIsValidating(false)
       return
     }
@@ -302,9 +302,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       onConfigured()
     } catch (setupError) {
       setError(
-        setupError instanceof Error
-          ? setupError.message
-          : 'Could not save the backend configuration.',
+        setupError instanceof Error ? setupError.message : t('mdbSetup.backendConfigSaveFailed'),
       )
       setIsValidating(false)
     }
@@ -507,7 +505,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-plm-fg text-lg">
-                        {t('mdbSetup.title')} Backend
+                        {t('mdbSetup.backendTitle')}
                       </h3>
                       <ChevronRight
                         size={20}
@@ -530,7 +528,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-plm-fg text-lg">
-                        Supabase — {t('setup.imAdmin')}
+                        {t('mdbSetup.supabaseAdmin')}
                       </h3>
                       <ChevronRight
                         size={20}
@@ -553,7 +551,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-plm-fg text-lg">
-                        Supabase — {t('setup.haveCode')}
+                        {t('mdbSetup.supabaseMember')}
                       </h3>
                       <ChevronRight
                         size={20}

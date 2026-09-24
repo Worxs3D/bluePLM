@@ -12,6 +12,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
 import { isBackendConfigured, resolveCommunityShareLink } from '@/lib/community'
 import { buildFullPath } from '@/lib/utils/path'
+import { t } from '@/lib/i18n'
 
 /**
  * Hook to listen for deep link install events and navigate appropriately.
@@ -72,13 +73,28 @@ export function useDeepLinkInstall(): void {
     const api = window.electronAPI
     if (!api?.onDeepLinkShare) return
     return api.onDeepLinkShare(async ({ token }) => {
-      if (!isBackendConfigured('community')) { addToast('warning', 'This internal share link requires a Community backend connection.'); return }
+      if (!isBackendConfigured('community')) {
+        addToast('warning', t('mdbSetup.shareRequiresMdb'))
+        return
+      }
       try {
         const { file } = await resolveCommunityShareLink(token)
-        if (file.vaultId !== activeVaultId || !vaultPath) { addToast('info', `Shared file: ${file.fileName}. Connect its vault to open it.`); return }
+        if (file.vaultId !== activeVaultId || !vaultPath) {
+          addToast('info', t('mdbSetup.sharedFileConnectVault', { name: file.fileName }))
+          return
+        }
         const opened = await api.openFile(buildFullPath(vaultPath, file.canonicalPath))
-        if (!opened.success) addToast('error', opened.error || `Could not open ${file.fileName}.`)
-      } catch (error) { addToast('error', error instanceof Error ? error.message : 'Could not resolve shared file.') }
+        if (!opened.success)
+          addToast(
+            'error',
+            opened.error || t('mdbSetup.sharedFileOpenFailed', { name: file.fileName }),
+          )
+      } catch (error) {
+        addToast(
+          'error',
+          error instanceof Error ? error.message : t('mdbSetup.sharedFileResolveFailed'),
+        )
+      }
     })
   }, [activeVaultId, vaultPath, addToast])
 }

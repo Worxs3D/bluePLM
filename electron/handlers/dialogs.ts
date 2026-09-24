@@ -147,9 +147,13 @@ export function registerDialogHandlers(
 
   // Select a directory path without scanning it. This is used for archive/NAS roots,
   // where recursively enumerating a large network share would block the installer.
-  ipcMain.handle('dialog:select-directory', async () => {
+  ipcMain.handle('dialog:select-directory', async (_event, requestedTitle?: unknown) => {
+    const title =
+      typeof requestedTitle === 'string' && requestedTitle.trim() && !/[\r\n]/.test(requestedTitle)
+        ? requestedTitle.trim().slice(0, 160)
+        : 'BluePLM'
     const result = await dialog.showOpenDialog(mainWindow!, {
-      title: 'Select Archive or NAS Folder',
+      title,
       properties: ['openDirectory'],
     })
 

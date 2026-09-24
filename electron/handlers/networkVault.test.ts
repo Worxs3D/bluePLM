@@ -4,7 +4,7 @@ import { credentialTargetForNetworkRoot } from './networkVault'
 describe('credentialTargetForNetworkRoot', () => {
   it.each([
     ['\\\\fileserver\\BluePLM', 'fileserver'],
-    [' \\\\nas.worxs3d.local\\vault\\engineering ', 'nas.worxs3d.local'],
+    [' \\\\nas.example.local\\vault\\engineering ', 'nas.example.local'],
   ])('derives the SMB server from %s', (networkRoot, expected) => {
     expect(credentialTargetForNetworkRoot(networkRoot)).toBe(expected)
   })

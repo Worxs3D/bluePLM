@@ -4,9 +4,9 @@ import {
   getCommunityPrincipal,
   getCommunityUserVaultAccess,
   getCommunityVaults,
-  isBackendConfigured,
   setCommunityUserVaultAccess,
 } from '@/lib/community'
+import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
 // Vault Access Management (Admin only)
@@ -19,30 +19,37 @@ import {
 export async function getUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const principal = await getCommunityPrincipal()
-      if (principal.role !== 'owner' && principal.role !== 'admin')
-        return { vaultIds: [], error: 'Administrator role required.' }
-      const accessMap = await getCommunityOrgVaultAccess()
-      return {
-        vaultIds: Object.entries(accessMap)
-          .filter(([, users]) => users.includes(userId))
-          .map(([vaultId]) => vaultId),
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const principal = await getCommunityPrincipal()
+        if (principal.role !== 'owner' && principal.role !== 'admin')
+          return { vaultIds: [], error: 'Administrator role required.' }
+        const accessMap = await getCommunityOrgVaultAccess()
+        return {
+          vaultIds: Object.entries(accessMap)
+            .filter(([, users]) => users.includes(userId))
+            .map(([vaultId]) => vaultId),
+        }
+      } catch (error) {
+        return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
       }
-    } catch (error) {
-      return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await client.from('vault_access').select('vault_id').eq('user_id', userId)
+      const { data, error } = await client
+        .from('vault_access')
+        .select('vault_id')
+        .eq('user_id', userId)
 
-  if (error) {
-    return { vaultIds: [], error: error.message }
-  }
+      if (error) {
+        return { vaultIds: [], error: error.message }
+      }
 
-  return { vaultIds: data?.map((r) => r.vault_id) || [] }
+      return { vaultIds: data?.map((r) => r.vault_id) || [] }
+    },
+  })
 }
 
 /**
@@ -53,54 +60,58 @@ export async function getOrgVaultAccess(orgId: string): Promise<{
   accessMap: Record<string, string[]>
   error?: string
 }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const principal = await getCommunityPrincipal()
-      if (principal.organizationId !== orgId)
-        return { accessMap: {}, error: 'Organization is outside the active session.' }
-      return { accessMap: await getCommunityOrgVaultAccess() }
-    } catch (error) {
-      return { accessMap: {}, error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const principal = await getCommunityPrincipal()
+        if (principal.organizationId !== orgId)
+          return { accessMap: {}, error: 'Organization is outside the active session.' }
+        return { accessMap: await getCommunityOrgVaultAccess() }
+      } catch (error) {
+        return { accessMap: {}, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  // Get all vaults for the org
-  const { data: vaults, error: vaultsError } = await client
-    .from('vaults')
-    .select('id')
-    .eq('org_id', orgId)
+      // Get all vaults for the org
+      const { data: vaults, error: vaultsError } = await client
+        .from('vaults')
+        .select('id')
+        .eq('org_id', orgId)
 
-  if (vaultsError) {
-    return { accessMap: {}, error: vaultsError.message }
-  }
+      if (vaultsError) {
+        return { accessMap: {}, error: vaultsError.message }
+      }
 
-  const vaultIds = vaults?.map((v) => v.id) || []
+      const vaultIds = vaults?.map((v) => v.id) || []
 
-  if (vaultIds.length === 0) {
-    return { accessMap: {} }
-  }
+      if (vaultIds.length === 0) {
+        return { accessMap: {} }
+      }
 
-  // Get access records for all vaults
-  const { data, error } = await client
-    .from('vault_access')
-    .select('vault_id, user_id')
-    .in('vault_id', vaultIds)
+      // Get access records for all vaults
+      const { data, error } = await client
+        .from('vault_access')
+        .select('vault_id, user_id')
+        .in('vault_id', vaultIds)
 
-  if (error) {
-    return { accessMap: {}, error: error.message }
-  }
+      if (error) {
+        return { accessMap: {}, error: error.message }
+      }
 
-  // Build the map
-  const accessMap: Record<string, string[]> = {}
-  for (const record of data || []) {
-    if (!accessMap[record.vault_id]) {
-      accessMap[record.vault_id] = []
-    }
-    accessMap[record.vault_id].push(record.user_id)
-  }
+      // Build the map
+      const accessMap: Record<string, string[]> = {}
+      for (const record of data || []) {
+        if (!accessMap[record.vault_id]) {
+          accessMap[record.vault_id] = []
+        }
+        accessMap[record.vault_id].push(record.user_id)
+      }
 
-  return { accessMap }
+      return { accessMap }
+    },
+  })
 }
 
 /**
@@ -111,33 +122,37 @@ export async function grantVaultAccess(
   userId: string,
   grantedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const access = await getUserVaultAccess(userId)
-      if (access.error) return { success: false, error: access.error }
-      await setCommunityUserVaultAccess(userId, [...new Set([...access.vaultIds, vaultId])])
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const access = await getUserVaultAccess(userId)
+        if (access.error) return { success: false, error: access.error }
+        await setCommunityUserVaultAccess(userId, [...new Set([...access.vaultIds, vaultId])])
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { error } = await client.from('vault_access').insert({
-    vault_id: vaultId,
-    user_id: userId,
-    granted_by: grantedBy,
+      const { error } = await client.from('vault_access').insert({
+        vault_id: vaultId,
+        user_id: userId,
+        granted_by: grantedBy,
+      })
+
+      if (error) {
+        // Ignore duplicate key errors (user already has access)
+        if (error.code === '23505') {
+          return { success: true }
+        }
+        return { success: false, error: error.message }
+      }
+
+      return { success: true }
+    },
   })
-
-  if (error) {
-    // Ignore duplicate key errors (user already has access)
-    if (error.code === '23505') {
-      return { success: true }
-    }
-    return { success: false, error: error.message }
-  }
-
-  return { success: true }
 }
 
 /**
@@ -147,32 +162,36 @@ export async function revokeVaultAccess(
   vaultId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const access = await getUserVaultAccess(userId)
-      if (access.error) return { success: false, error: access.error }
-      await setCommunityUserVaultAccess(
-        userId,
-        access.vaultIds.filter((id) => id !== vaultId),
-      )
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const access = await getUserVaultAccess(userId)
+        if (access.error) return { success: false, error: access.error }
+        await setCommunityUserVaultAccess(
+          userId,
+          access.vaultIds.filter((id) => id !== vaultId),
+        )
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
+
+      const { error } = await client
+        .from('vault_access')
+        .delete()
+        .eq('vault_id', vaultId)
+        .eq('user_id', userId)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
       return { success: true }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
-
-  const { error } = await client
-    .from('vault_access')
-    .delete()
-    .eq('vault_id', vaultId)
-    .eq('user_id', userId)
-
-  if (error) {
-    return { success: false, error: error.message }
-  }
-
-  return { success: true }
+    },
+  })
 }
 
 /**
@@ -185,60 +204,64 @@ export async function setUserVaultAccess(
   grantedBy: string,
   orgId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const principal = await getCommunityPrincipal()
-      if (principal.organizationId !== orgId)
-        return { success: false, error: 'Organization is outside the active session.' }
-      await setCommunityUserVaultAccess(userId, vaultIds)
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const principal = await getCommunityPrincipal()
+        if (principal.organizationId !== orgId)
+          return { success: false, error: 'Organization is outside the active session.' }
+        await setCommunityUserVaultAccess(userId, vaultIds)
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
+
+      // Get all vaults for the org to only remove access for vaults in this org
+      const { data: orgVaults, error: vaultsError } = await client
+        .from('vaults')
+        .select('id')
+        .eq('org_id', orgId)
+
+      if (vaultsError) {
+        return { success: false, error: vaultsError.message }
+      }
+
+      const orgVaultIds = orgVaults?.map((v) => v.id) || []
+
+      // Delete existing access for vaults in this org
+      if (orgVaultIds.length > 0) {
+        const { error: deleteError } = await client
+          .from('vault_access')
+          .delete()
+          .eq('user_id', userId)
+          .in('vault_id', orgVaultIds)
+
+        if (deleteError) {
+          return { success: false, error: deleteError.message }
+        }
+      }
+
+      // Insert new access records
+      if (vaultIds.length > 0) {
+        const records = vaultIds.map((vaultId) => ({
+          vault_id: vaultId,
+          user_id: userId,
+          granted_by: grantedBy,
+        }))
+
+        const { error: insertError } = await client.from('vault_access').insert(records)
+
+        if (insertError) {
+          return { success: false, error: insertError.message }
+        }
+      }
+
       return { success: true }
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
-
-  // Get all vaults for the org to only remove access for vaults in this org
-  const { data: orgVaults, error: vaultsError } = await client
-    .from('vaults')
-    .select('id')
-    .eq('org_id', orgId)
-
-  if (vaultsError) {
-    return { success: false, error: vaultsError.message }
-  }
-
-  const orgVaultIds = orgVaults?.map((v) => v.id) || []
-
-  // Delete existing access for vaults in this org
-  if (orgVaultIds.length > 0) {
-    const { error: deleteError } = await client
-      .from('vault_access')
-      .delete()
-      .eq('user_id', userId)
-      .in('vault_id', orgVaultIds)
-
-    if (deleteError) {
-      return { success: false, error: deleteError.message }
-    }
-  }
-
-  // Insert new access records
-  if (vaultIds.length > 0) {
-    const records = vaultIds.map((vaultId) => ({
-      vault_id: vaultId,
-      user_id: userId,
-      granted_by: grantedBy,
-    }))
-
-    const { error: insertError } = await client.from('vault_access').insert(records)
-
-    if (insertError) {
-      return { success: false, error: insertError.message }
-    }
-  }
-
-  return { success: true }
+    },
+  })
 }
 
 /**
@@ -276,22 +299,26 @@ export async function checkVaultAccess(
 export async function getEffectiveUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
-  if (isBackendConfigured('community')) {
-    try {
-      return { vaultIds: await getCommunityUserVaultAccess(userId) }
-    } catch (error) {
-      return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        return { vaultIds: await getCommunityUserVaultAccess(userId) }
+      } catch (error) {
+        return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await client.rpc('get_user_vault_access', { p_user_id: userId })
+      const { data, error } = await client.rpc('get_user_vault_access', { p_user_id: userId })
 
-  if (error) {
-    return { vaultIds: [], error: error.message }
-  }
+      if (error) {
+        return { vaultIds: [], error: error.message }
+      }
 
-  return { vaultIds: data?.map((r: { vault_id: string }) => r.vault_id) || [] }
+      return { vaultIds: data?.map((r: { vault_id: string }) => r.vault_id) || [] }
+    },
+  })
 }
 
 /**
@@ -318,68 +345,72 @@ export async function getAccessibleVaults(
   }>
   error?: string
 }> {
-  if (isBackendConfigured('community')) {
-    try {
-      const principal = await getCommunityPrincipal()
-      if (principal.userId !== userId || principal.organizationId !== orgId) {
-        return { vaults: [], error: 'User is outside the active organization.' }
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const principal = await getCommunityPrincipal()
+        if (principal.userId !== userId || principal.organizationId !== orgId) {
+          return { vaults: [], error: 'User is outside the active organization.' }
+        }
+        const vaults = await getCommunityVaults()
+        return {
+          vaults: vaults.map((vault) => ({
+            id: vault.id,
+            name: vault.name,
+            slug: vault.id,
+            description: vault.networkRoot,
+            is_default: false,
+            created_at: vault.createdAt,
+            networkRoot: vault.networkRoot,
+            storageProvider: vault.storageProvider,
+          })),
+        }
+      } catch (error) {
+        return { vaults: [], error: error instanceof Error ? error.message : String(error) }
       }
-      const vaults = await getCommunityVaults()
-      return {
-        vaults: vaults.map((vault) => ({
-          id: vault.id,
-          name: vault.name,
-          slug: vault.id,
-          description: vault.networkRoot,
-          is_default: false,
-          created_at: vault.createdAt,
-          networkRoot: vault.networkRoot,
-          storageProvider: vault.storageProvider,
-        })),
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
+
+      // Get all vaults for the org first
+      const { data: allVaults, error: vaultsError } = await client
+        .from('vaults')
+        .select('id, name, slug, description, is_default, created_at')
+        .eq('org_id', orgId)
+        .order('is_default', { ascending: false })
+        .order('name')
+
+      if (vaultsError) {
+        return { vaults: [], error: vaultsError.message }
       }
-    } catch (error) {
-      return { vaults: [], error: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const client = getSupabaseClient()
 
-  // Get all vaults for the org first
-  const { data: allVaults, error: vaultsError } = await client
-    .from('vaults')
-    .select('id, name, slug, description, is_default, created_at')
-    .eq('org_id', orgId)
-    .order('is_default', { ascending: false })
-    .order('name')
+      if (!allVaults || allVaults.length === 0) {
+        return { vaults: [] }
+      }
 
-  if (vaultsError) {
-    return { vaults: [], error: vaultsError.message }
-  }
+      // Admins always see all vaults
+      if (userRole === 'admin') {
+        return { vaults: allVaults }
+      }
 
-  if (!allVaults || allVaults.length === 0) {
-    return { vaults: [] }
-  }
+      // Get user's effective vault access (from teams + individual)
+      const { vaultIds: accessibleVaultIds, error: accessError } =
+        await getEffectiveUserVaultAccess(userId)
 
-  // Admins always see all vaults
-  if (userRole === 'admin') {
-    return { vaults: allVaults }
-  }
+      if (accessError) {
+        return { vaults: [], error: accessError }
+      }
 
-  // Get user's effective vault access (from teams + individual)
-  const { vaultIds: accessibleVaultIds, error: accessError } =
-    await getEffectiveUserVaultAccess(userId)
+      // Opt-in model: no grants means no accessible vaults
+      if (accessibleVaultIds.length === 0) {
+        return { vaults: [] }
+      }
 
-  if (accessError) {
-    return { vaults: [], error: accessError }
-  }
+      // Filter vaults to only those the user has access to
+      const accessibleVaultIdSet = new Set(accessibleVaultIds)
+      const filteredVaults = allVaults.filter((v) => accessibleVaultIdSet.has(v.id))
 
-  // Opt-in model: no grants means no accessible vaults
-  if (accessibleVaultIds.length === 0) {
-    return { vaults: [] }
-  }
-
-  // Filter vaults to only those the user has access to
-  const accessibleVaultIdSet = new Set(accessibleVaultIds)
-  const filteredVaults = allVaults.filter((v) => accessibleVaultIdSet.has(v.id))
-
-  return { vaults: filteredVaults }
+      return { vaults: filteredVaults }
+    },
+  })
 }

@@ -604,7 +604,7 @@ declare global {
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
       selectFolder: () => Promise<FolderSelectResult>
-      selectDirectory: () => Promise<FolderSelectResult>
+      selectDirectory: (title?: string) => Promise<FolderSelectResult>
       showSaveDialog: (
         defaultName: string,
         filters?: Array<{ name: string; extensions: string[] }>,

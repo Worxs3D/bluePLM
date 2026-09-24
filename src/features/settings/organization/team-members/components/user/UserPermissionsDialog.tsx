@@ -13,6 +13,7 @@ import {
   setCommunityUserPermissions,
 } from '@/lib/community'
 import type { OrgUser, Vault } from '../../types'
+import { t } from '@/lib/i18n'
 import type { PermissionAction } from '@/types/permissions'
 
 // Types for Supabase query results
@@ -61,15 +62,17 @@ export function UserPermissionsDialog({
       }
       try {
         if (isBackendConfigured('community')) {
-          setVaults((await getCommunityVaults()).map((vault) => ({
-            id: vault.id,
-            name: vault.name,
-            slug: vault.id,
-            description: vault.networkRoot,
-            storage_bucket: 'network-vault',
-            is_default: false,
-            created_at: vault.createdAt,
-          })))
+          setVaults(
+            (await getCommunityVaults()).map((vault) => ({
+              id: vault.id,
+              name: vault.name,
+              slug: vault.id,
+              description: vault.networkRoot,
+              storage_bucket: 'network-vault',
+              is_default: false,
+              created_at: vault.createdAt,
+            })),
+          )
           return
         }
         const { data, error } = await supabase
@@ -141,9 +144,13 @@ export function UserPermissionsDialog({
       if (isBackendConfigured('community')) {
         await setCommunityUserPermissions(user.id, selectedVaultId, permissions)
         const vaultName = selectedVaultId
-          ? vaults.find((vault) => vault.id === selectedVaultId)?.name || 'selected vault'
-          : 'all vaults'
-        addToast('success', `Permissions saved for ${user.full_name || user.email} on ${vaultName}`)
+          ? vaults.find((vault) => vault.id === selectedVaultId)?.name ||
+            t('mdbSetup.selectedVault')
+          : t('mdbSetup.allVaultsLabel')
+        addToast(
+          'success',
+          t('mdbSetup.permissionsSaved', { name: user.full_name || user.email, vault: vaultName }),
+        )
         onClose()
         return
       }
@@ -177,13 +184,16 @@ export function UserPermissionsDialog({
       }
 
       const vaultName = selectedVaultId
-        ? vaults.find((v) => v.id === selectedVaultId)?.name || 'selected vault'
-        : 'all vaults'
-      addToast('success', `Permissions saved for ${user.full_name || user.email} on ${vaultName}`)
+        ? vaults.find((v) => v.id === selectedVaultId)?.name || t('mdbSetup.selectedVault')
+        : t('mdbSetup.allVaultsLabel')
+      addToast(
+        'success',
+        t('mdbSetup.permissionsSaved', { name: user.full_name || user.email, vault: vaultName }),
+      )
       onClose()
     } catch (error) {
       log.error('[UserPermissions]', 'Failed to save permissions', { error: error })
-      addToast('error', 'Failed to save permissions')
+      addToast('error', t('mdbSetup.permissionsSaveFailed'))
     } finally {
       setIsSaving(false)
     }

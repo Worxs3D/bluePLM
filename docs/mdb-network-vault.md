@@ -7,7 +7,8 @@ vault; MariaDB stores metadata, revisions, permissions, and authentication data.
 ## Reviewable server dependency
 
 The PHP server is kept as the `blueplm-mdb-php` submodule and is pinned by
-the gitlink in this branch. The pinned commit is `3a859f11e3472ea179c6623bbd8763e5d7647613`.
+the gitlink in this branch. The pinned commit is `ffc9310a519233aa2c7bf0dd2b0527c03a3296cd`
+from the public `codex/mdb-network-vault` branch.
 It contains the MDB API, migrations, setup endpoint, and administration endpoints
 used by the client installer. CI and release checkout jobs use recursive submodule
 checkout so the packaged server bundle is reproducible.

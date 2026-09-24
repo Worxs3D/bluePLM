@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { activateBackend, clearBackendProfile } from './backend'
-import { activeBackendSupports, mapMdbRole } from './backendAdapter'
+import { activeBackendSupports, mapMdbRole, routeBackend } from './backendAdapter'
 
 const storage = new Map<string, string>()
 vi.stubGlobal('localStorage', {
@@ -30,8 +30,21 @@ describe('backend capabilities', () => {
   })
 
   it('maps MDB viewer and guest accounts to the least-privileged client role', () => {
+    expect(mapMdbRole('owner')).toBe('admin')
+    expect(mapMdbRole('admin')).toBe('admin')
+    expect(mapMdbRole('member')).toBe('engineer')
     expect(mapMdbRole('viewer')).toBe('viewer')
     expect(mapMdbRole('guest')).toBe('viewer')
     expect(mapMdbRole('unexpected')).toBeNull()
+  })
+
+  it('executes only the selected backend implementation', () => {
+    const mdb = vi.fn(() => 'mdb')
+    const supabase = vi.fn(() => 'supabase')
+    activateBackend('community')
+
+    expect(routeBackend({ mdb, supabase })).toBe('mdb')
+    expect(mdb).toHaveBeenCalledOnce()
+    expect(supabase).not.toHaveBeenCalled()
   })
 })

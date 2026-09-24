@@ -23,8 +23,17 @@ import {
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient, getFileVersions } from '@/lib/supabase'
-import { createCommunityDeviation, getCommunityDeviationFiles, getCommunityDeviations, isBackendConfigured, removeCommunityDeviationFile, setCommunityDeviationFiles, updateCommunityDeviationStatus } from '@/lib/community'
+import {
+  createCommunityDeviation,
+  getCommunityDeviationFiles,
+  getCommunityDeviations,
+  isBackendConfigured,
+  removeCommunityDeviationFile,
+  setCommunityDeviationFiles,
+  updateCommunityDeviationStatus,
+} from '@/lib/community'
 import type { Database } from '@/types/supabase'
+import { t } from '@/lib/i18n'
 import { formatDistanceToNow, format } from 'date-fns'
 
 // Deviation status types
@@ -86,7 +95,9 @@ interface DroppedFile {
   currentRevision: string
 }
 
-function communityDeviationToView(deviation: import('@/lib/community').CommunityDeviation): Deviation {
+function communityDeviationToView(
+  deviation: import('@/lib/community').CommunityDeviation,
+): Deviation {
   return {
     ...deviation,
     created_by_name: deviation.created_by_name ?? undefined,
@@ -380,10 +391,21 @@ export function DeviationsView() {
 
     try {
       if (isBackendConfigured('community')) {
-        const data = await createCommunityDeviation({ deviationNumber: newDeviationNumber.trim(), title: newDeviationTitle.trim(), description: newDeviationDescription.trim() || null, deviationType: newDeviationType || null, expirationDate: newExpirationDate || null })
+        const data = await createCommunityDeviation({
+          deviationNumber: newDeviationNumber.trim(),
+          title: newDeviationTitle.trim(),
+          description: newDeviationDescription.trim() || null,
+          deviationType: newDeviationType || null,
+          expirationDate: newExpirationDate || null,
+        })
         setDeviations((prev) => [communityDeviationToView(data), ...prev])
-        setNewDeviationNumber(''); setNewDeviationTitle(''); setNewDeviationDescription(''); setNewDeviationType(''); setNewExpirationDate(''); setShowCreateModal(false)
-        addToast('success', `Deviation ${data.deviation_number} created`)
+        setNewDeviationNumber('')
+        setNewDeviationTitle('')
+        setNewDeviationDescription('')
+        setNewDeviationType('')
+        setNewExpirationDate('')
+        setShowCreateModal(false)
+        addToast('success', t('mdbSetup.deviationCreated', { number: data.deviation_number }))
         return
       }
       const client = getSupabaseClient()
@@ -478,12 +500,39 @@ export function DeviationsView() {
       }
 
       if (isBackendConfigured('community')) {
-        await setCommunityDeviationFiles(tagDeviationId, fileData.map((file) => ({ fileId: file.id, fileVersion: tagSpecificVersion ? file.version : null, fileRevision: tagSpecificVersion ? file.revision : null, notes: tagNotes.trim() || null })), partNumbers)
+        await setCommunityDeviationFiles(
+          tagDeviationId,
+          fileData.map((file) => ({
+            fileId: file.id,
+            fileVersion: tagSpecificVersion ? file.version : null,
+            fileRevision: tagSpecificVersion ? file.revision : null,
+            notes: tagNotes.trim() || null,
+          })),
+          partNumbers,
+        )
         const dev = deviations.find((d) => d.id === tagDeviationId)
-        setDeviations((prev) => prev.map((d) => d.id === tagDeviationId ? { ...d, file_count: (d.file_count || 0) + fileData.length, affected_part_numbers: [...new Set([...(dev?.affected_part_numbers || []), ...partNumbers])] } : d))
-        setDeviationFiles((prev) => { const { [tagDeviationId]: _, ...rest } = prev; return rest })
-        setShowTagModal(false); setTagDeviationId(null); setTagNotes(''); setTagSpecificVersion(false)
-        addToast('success', `Tagged ${fileData.length} file(s) with deviation`)
+        setDeviations((prev) =>
+          prev.map((d) =>
+            d.id === tagDeviationId
+              ? {
+                  ...d,
+                  file_count: (d.file_count || 0) + fileData.length,
+                  affected_part_numbers: [
+                    ...new Set([...(dev?.affected_part_numbers || []), ...partNumbers]),
+                  ],
+                }
+              : d,
+          ),
+        )
+        setDeviationFiles((prev) => {
+          const { [tagDeviationId]: _, ...rest } = prev
+          return rest
+        })
+        setShowTagModal(false)
+        setTagDeviationId(null)
+        setTagNotes('')
+        setTagSpecificVersion(false)
+        addToast('success', t('mdbSetup.deviationTagged', { count: fileData.length }))
         return
       }
 
@@ -564,9 +613,16 @@ export function DeviationsView() {
     try {
       if (isBackendConfigured('community')) {
         await removeCommunityDeviationFile(fileDeviationId)
-        setDeviationFiles((prev) => ({ ...prev, [deviationId]: prev[deviationId]?.filter((fd) => fd.id !== fileDeviationId) || [] }))
-        setDeviations((prev) => prev.map((d) => d.id === deviationId ? { ...d, file_count: Math.max(0, (d.file_count || 0) - 1) } : d))
-        addToast('success', 'File removed from deviation')
+        setDeviationFiles((prev) => ({
+          ...prev,
+          [deviationId]: prev[deviationId]?.filter((fd) => fd.id !== fileDeviationId) || [],
+        }))
+        setDeviations((prev) =>
+          prev.map((d) =>
+            d.id === deviationId ? { ...d, file_count: Math.max(0, (d.file_count || 0) - 1) } : d,
+          ),
+        )
+        addToast('success', t('mdbSetup.deviationFileRemoved'))
         return
       }
       const client = getSupabaseClient()
@@ -717,11 +773,40 @@ export function DeviationsView() {
       })
 
       if (isBackendConfigured('community')) {
-        await setCommunityDeviationFiles(dropDeviationId, insertData.map((file) => ({ fileId: file.file_id, fileVersion: file.file_version, fileRevision: file.file_revision, notes: file.notes })), partNumbers)
-        setDeviations((prev) => prev.map((d) => d.id === dropDeviationId ? { ...d, file_count: (d.file_count || 0) + droppedFiles.length, affected_part_numbers: [...new Set([...(d.affected_part_numbers || []), ...partNumbers])] } : d))
-        setDeviationFiles((prev) => { const { [dropDeviationId]: _, ...rest } = prev; return rest })
-        setShowDropModal(false); setDropDeviationId(null); setDroppedFiles([]); setFileVersions({}); setSelectedVersions({}); setDropNotes('')
-        addToast('success', `Added ${droppedFiles.length} file(s) to deviation`)
+        await setCommunityDeviationFiles(
+          dropDeviationId,
+          insertData.map((file) => ({
+            fileId: file.file_id,
+            fileVersion: file.file_version,
+            fileRevision: file.file_revision,
+            notes: file.notes,
+          })),
+          partNumbers,
+        )
+        setDeviations((prev) =>
+          prev.map((d) =>
+            d.id === dropDeviationId
+              ? {
+                  ...d,
+                  file_count: (d.file_count || 0) + droppedFiles.length,
+                  affected_part_numbers: [
+                    ...new Set([...(d.affected_part_numbers || []), ...partNumbers]),
+                  ],
+                }
+              : d,
+          ),
+        )
+        setDeviationFiles((prev) => {
+          const { [dropDeviationId]: _, ...rest } = prev
+          return rest
+        })
+        setShowDropModal(false)
+        setDropDeviationId(null)
+        setDroppedFiles([])
+        setFileVersions({})
+        setSelectedVersions({})
+        setDropNotes('')
+        addToast('success', t('mdbSetup.deviationFilesAdded', { count: droppedFiles.length }))
         return
       }
 
@@ -794,8 +879,27 @@ export function DeviationsView() {
     try {
       if (isBackendConfigured('community')) {
         await updateCommunityDeviationStatus(deviationId, newStatus)
-        setDeviations((prev) => prev.map((d) => d.id === deviationId ? { ...d, status: newStatus, ...(newStatus === 'approved' ? { approved_by: user.id, approved_at: new Date().toISOString(), approved_by_name: user.full_name } : {}) } : d))
-        addToast('success', `Deviation status updated to ${STATUS_CONFIG[newStatus].label}`)
+        setDeviations((prev) =>
+          prev.map((d) =>
+            d.id === deviationId
+              ? {
+                  ...d,
+                  status: newStatus,
+                  ...(newStatus === 'approved'
+                    ? {
+                        approved_by: user.id,
+                        approved_at: new Date().toISOString(),
+                        approved_by_name: user.full_name,
+                      }
+                    : {}),
+                }
+              : d,
+          ),
+        )
+        addToast(
+          'success',
+          t('mdbSetup.deviationStatusUpdated', { status: STATUS_CONFIG[newStatus].label }),
+        )
         return
       }
       const client = getSupabaseClient()
@@ -1134,7 +1238,8 @@ export function DeviationsView() {
                                 <File size={12} className="text-plm-fg-muted flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
                                   <div className="text-xs truncate">
-                                    {(fileDev.file as any)?.file_name || 'Unknown file'} // TODO: type this
+                                    {(fileDev.file as any)?.file_name || 'Unknown file'} // TODO:
+                                    type this
                                   </div>
                                   <div className="flex items-center gap-2 text-xs text-plm-fg-muted">
                                     {(fileDev.file as any)?.part_number && ( // TODO: type this

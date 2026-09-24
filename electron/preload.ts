@@ -451,7 +451,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialogs
   selectFiles: () => ipcRenderer.invoke('dialog:select-files'),
   selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
-  selectDirectory: () => ipcRenderer.invoke('dialog:select-directory'),
+  selectDirectory: (title?: string) => ipcRenderer.invoke('dialog:select-directory', title),
   showSaveDialog: (defaultName: string, filters?: Array<{ name: string; extensions: string[] }>) =>
     ipcRenderer.invoke('dialog:save-file', defaultName, filters),
   saveTextFileWithDialog: (
@@ -1393,7 +1393,7 @@ declare global {
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
       selectFolder: () => Promise<FolderSelectResult>
-      selectDirectory: () => Promise<FolderSelectResult>
+      selectDirectory: (title?: string) => Promise<FolderSelectResult>
       showSaveDialog: (defaultName: string) => Promise<SaveDialogResult>
       saveTextFileWithDialog: (
         defaultName: string,

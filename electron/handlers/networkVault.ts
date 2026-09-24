@@ -74,7 +74,12 @@ async function saveNetworkVaultCredential(
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
         'net.exe',
-        [request.networkRoot.trim().replaceAll('/', '\\'), `/user:${request.username.trim()}`, '*', '/persistent:yes'],
+        [
+          request.networkRoot.trim().replaceAll('/', '\\'),
+          `/user:${request.username.trim()}`,
+          '*',
+          '/persistent:yes',
+        ],
         { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] },
       )
       const timer = setTimeout(() => {
@@ -87,7 +92,11 @@ async function saveNetworkVaultCredential(
       })
       child.once('exit', (code) => {
         clearTimeout(timer)
-        code === 0 ? resolve() : reject(new Error('credentials'))
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error('credentials'))
+        }
       })
       child.stdin.end(`${request.password}\r\n`)
     })

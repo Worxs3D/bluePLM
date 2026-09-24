@@ -37,6 +37,7 @@ import {
   updateCommunityTeam,
 } from '@/lib/community'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { TeamWithDetails, TeamFormData } from '../types'
 import {
@@ -68,24 +69,26 @@ export function useTeams(orgId: string | null) {
     try {
       if (isBackendConfigured('community')) {
         const communityTeams = await getCommunityTeams()
-        const teamsWithDetails = await Promise.all(communityTeams.map(async (team) => ({
-          id: team.id,
-          org_id: orgId,
-          name: team.name,
-          description: null,
-          color: team.color,
-          icon: team.icon,
-          parent_team_id: null,
-          created_at: team.createdAt,
-          created_by: null,
-          updated_at: null,
-          updated_by: null,
-          is_default: false,
-          is_system: false,
-          member_count: team.memberCount,
-          permissions_count: 0,
-          vault_access: await getCommunityTeamVaultAccess(team.id),
-        })))
+        const teamsWithDetails = await Promise.all(
+          communityTeams.map(async (team) => ({
+            id: team.id,
+            org_id: orgId,
+            name: team.name,
+            description: null,
+            color: team.color,
+            icon: team.icon,
+            parent_team_id: null,
+            created_at: team.createdAt,
+            created_by: null,
+            updated_at: null,
+            updated_by: null,
+            is_default: false,
+            is_system: false,
+            member_count: team.memberCount,
+            permissions_count: 0,
+            vault_access: await getCommunityTeamVaultAccess(team.id),
+          })),
+        )
         setTeams(teamsWithDetails)
         return
       }
@@ -128,12 +131,22 @@ export function useTeams(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           const created = await createCommunityTeam({
-            name: formData.name.trim(), color: formData.color, icon: formData.icon,
+            name: formData.name.trim(),
+            color: formData.color,
+            icon: formData.icon,
           })
           if (copyFromTeamId) {
-            await setCommunityTeamVaultAccess(created.id, await getCommunityTeamVaultAccess(copyFromTeamId))
+            await setCommunityTeamVaultAccess(
+              created.id,
+              await getCommunityTeamVaultAccess(copyFromTeamId),
+            )
           }
-          addToast('success', `Team "${formData.name}" created${copyFromTeamId ? ' with its vault access copied' : ''}`)
+          addToast(
+            'success',
+            copyFromTeamId
+              ? t('mdbSetup.teamCreatedWithVaultAccess', { name: formData.name })
+              : t('mdbSetup.teamCreated', { name: formData.name }),
+          )
           await loadTeams()
           return true
         }
@@ -219,9 +232,11 @@ export function useTeams(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           await updateCommunityTeam(teamId, {
-            name: formData.name.trim(), color: formData.color, icon: formData.icon,
+            name: formData.name.trim(),
+            color: formData.color,
+            icon: formData.icon,
           })
-          addToast('success', `Team "${formData.name}" updated`)
+          addToast('success', t('mdbSetup.teamUpdated', { name: formData.name }))
           await loadTeams()
           return true
         }
@@ -261,7 +276,7 @@ export function useTeams(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           await deleteCommunityTeam(teamId)
-          addToast('success', `Team "${team.name}" deleted`)
+          addToast('success', t('mdbSetup.teamDeleted', { name: team.name }))
           await loadTeams()
           return true
         }
@@ -303,8 +318,13 @@ export function useTeams(orgId: string | null) {
             ...organization,
             default_new_user_team_id: teamId,
           })
-          const teamName = teamId ? teams.find((team) => team.id === teamId)?.name : 'None'
-          addToast('success', `Default team set to "${teamName}"`)
+          const teamName = teamId
+            ? teams.find((team) => team.id === teamId)?.name
+            : t('mdbSetup.noTeam')
+          addToast(
+            'success',
+            t('mdbSetup.defaultTeamSet', { name: teamName || t('mdbSetup.noTeam') }),
+          )
           return true
         }
         const { error } = await updateOrganization(organizationId, {

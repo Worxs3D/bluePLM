@@ -32,6 +32,8 @@ import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialo
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { RealignSection } from './realign'
 import { createCommunityVault, isBackendConfigured } from '@/lib/community'
+import { clearVaultCache } from '@/lib/cache/vaultFileCache'
+import { useTranslation } from '@/lib/i18n'
 
 // Build vault path based on platform
 function buildVaultPath(platform: string, vaultSlug: string): string {
@@ -57,6 +59,7 @@ interface Vault {
 }
 
 export function VaultsSettings() {
+  const { t } = useTranslation()
   const {
     user,
     organization,
@@ -225,18 +228,12 @@ export function VaultsSettings() {
           (newVaultNetworkUsername.trim() || newVaultNetworkPassword)
         ) {
           if (!newVaultNetworkUsername.trim() || !newVaultNetworkPassword) {
-            addToast(
-              'error',
-              'Enter both the network username and password, or leave both fields empty.',
-            )
+            addToast('error', t('mdbSetup.networkCredentialsBothOrEmpty'))
             return
           }
           const api = window.electronAPI
           if (!api) {
-            addToast(
-              'error',
-              'Network credentials can only be saved from the BluePLM desktop client.',
-            )
+            addToast('error', t('mdbSetup.networkCredentialsDesktopOnly'))
             return
           }
           const credentialResult = await api.saveNetworkVaultCredential({
@@ -247,7 +244,7 @@ export function VaultsSettings() {
           // Never retain a network password in renderer state after an attempt.
           setNewVaultNetworkPassword('')
           if (!credentialResult.success) {
-            addToast('error', credentialResult.error || 'Could not save the network credential.')
+            addToast('error', credentialResult.error || t('mdbSetup.networkCredentialSaveFailed'))
             return
           }
         }
@@ -266,7 +263,7 @@ export function VaultsSettings() {
           storageProvider: vault.storageProvider,
           networkRoot: vault.networkRoot,
         }
-        addToast('success', `Vault "${name}" created`)
+        addToast('success', t('mdbSetup.vaultCreated', { name }))
         setOrgVaults([...orgVaults, mappedVault])
         setIsCreatingVault(false)
         setNewVaultName('')
@@ -298,7 +295,7 @@ export function VaultsSettings() {
         return
       }
 
-      addToast('success', `Vault "${name}" created`)
+      addToast('success', t('mdbSetup.vaultCreated', { name }))
       // Map Supabase nullables to app types with defaults
       const mappedVault: Vault = {
         ...vault,
@@ -331,12 +328,12 @@ export function VaultsSettings() {
   const handleSaveVaultCredential = async () => {
     if (!credentialVault?.networkRoot) return
     if (!credentialUsername.trim() || !credentialPassword) {
-      addToast('error', 'Enter both the network username and password.')
+      addToast('error', t('mdbSetup.networkCredentialsRequired'))
       return
     }
     const api = window.electronAPI
     if (!api) {
-      addToast('error', 'Network credentials can only be saved from the BluePLM desktop client.')
+      addToast('error', t('mdbSetup.networkCredentialsDesktopOnly'))
       return
     }
 
@@ -351,10 +348,10 @@ export function VaultsSettings() {
       // main process. The persisted copy is managed by Windows, not BluePLM.
       setCredentialPassword('')
       if (!result.success) {
-        addToast('error', result.error || 'Could not save the network credential.')
+        addToast('error', result.error || t('mdbSetup.networkCredentialSaveFailed'))
         return
       }
-      addToast('success', `Network login saved locally for ${credentialVault.name}.`)
+      addToast('success', t('mdbSetup.networkCredentialSaved', { name: credentialVault.name }))
       setCredentialVault(null)
       setCredentialUsername('')
     } finally {
@@ -784,9 +781,20 @@ export function VaultsSettings() {
 
       // Clear local state if this is the active vault
       if (wipingVault.id === activeVaultId) {
+        // clearWorkingDir() stops the watcher before deletion. Re-attach it to
+        // the still-existing vault root so a viewer can immediately download
+        // the authoritative server inventory again after a local-only wipe.
+        const workingDirResult = await api.setWorkingDir(wipingVault.localPath)
+        if (!workingDirResult.success) {
+          throw new Error(workingDirResult.error || 'Failed to restore the vault working folder')
+        }
+
+        // A local wipe must invalidate the client cache and the completed-load
+        // marker. App's load policy will then fetch the authoritative server
+        // inventory again and render its rows as cloud-only downloads.
+        await clearVaultCache(wipingVault.id)
         setFiles([])
-        setServerFiles([])
-        setFilesLoaded(true) // Set to true since empty state is valid
+        setFilesLoaded(false)
       }
     } catch (error) {
       log.error('[VaultsSettings]', 'Failed to wipe local files', { error: error })
@@ -852,12 +860,14 @@ export function VaultsSettings() {
           </div>
           {!isBackendConfigured('community') && (
             <div className="space-y-2">
-              <label className="text-sm text-plm-fg-muted">Description (optional)</label>
+              <label className="text-sm text-plm-fg-muted">
+                {t('mdbSetup.vaultDescriptionOptional')}
+              </label>
               <input
                 type="text"
                 value={newVaultDescription}
                 onChange={(e) => setNewVaultDescription(e.target.value)}
-                placeholder="e.g., Main production files"
+                placeholder={t('mdbSetup.vaultDescriptionPlaceholder')}
                 className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
               />
             </div>
@@ -865,21 +875,17 @@ export function VaultsSettings() {
           {isBackendConfigured('community') && (
             <>
               <div className="space-y-2">
-                <label className="text-sm text-plm-fg-muted">Storage provider</label>
+                <label className="text-sm text-plm-fg-muted">{t('mdbSetup.storageProvider')}</label>
                 <select
                   value={newVaultStorageProvider}
-                  onChange={() =>
-                    setNewVaultStorageProvider('network')
-                  }
+                  onChange={() => setNewVaultStorageProvider('network')}
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                 >
-                  <option value="network">Network vault</option>
+                  <option value="network">{t('mdbSetup.networkVault')}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-plm-fg-muted">
-                  Network root path
-                </label>
+                <label className="text-sm text-plm-fg-muted">{t('mdbSetup.networkRootPath')}</label>
                 <input
                   type="text"
                   value={newVaultStorageRoot}
@@ -887,26 +893,23 @@ export function VaultsSettings() {
                   placeholder="\\\\server\\BluePLM-Vault"
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                 />
-                <p className="text-xs text-plm-fg-muted">
-                  BluePLM stores immutable revisions under .blueplm/objects in this vault.
-                </p>
+                <p className="text-xs text-plm-fg-muted">{t('mdbSetup.networkRootHelp')}</p>
               </div>
               {platform === 'win32' && (
                 <div className="space-y-2 rounded-lg border border-plm-border p-3">
                   <div>
                     <label className="text-sm text-plm-fg-muted">
-                      Network login (optional, this client only)
+                      {t('mdbSetup.networkLoginOptional')}
                     </label>
                     <p className="text-xs text-plm-fg-muted mt-1">
-                      Use a UNC path above. Credentials are stored only in Windows Credential
-                      Manager for this Windows user, never in BluePLM, MariaDB, or the web API.
+                      {t('mdbSetup.networkLoginHelp')}
                     </p>
                   </div>
                   <input
                     type="text"
                     value={newVaultNetworkUsername}
                     onChange={(event) => setNewVaultNetworkUsername(event.target.value)}
-                    placeholder="DOMAIN\\username or username"
+                    placeholder={t('mdbSetup.networkUsernamePlaceholder')}
                     autoComplete="username"
                     className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                   />
@@ -914,7 +917,7 @@ export function VaultsSettings() {
                     type="password"
                     value={newVaultNetworkPassword}
                     onChange={(event) => setNewVaultNetworkPassword(event.target.value)}
-                    placeholder="Network password"
+                    placeholder={t('mdbSetup.networkPassword')}
                     autoComplete="new-password"
                     className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                   />
@@ -934,7 +937,7 @@ export function VaultsSettings() {
               }}
               className="btn btn-ghost btn-sm"
             >
-              Cancel
+              {t('mdbSetup.cancel')}
             </button>
             <button
               onClick={handleCreateVault}
@@ -945,7 +948,7 @@ export function VaultsSettings() {
               }
               className="btn btn-primary btn-sm"
             >
-              {isSavingVault ? 'Creating...' : 'Create Vault'}
+              {isSavingVault ? t('mdbSetup.creating') : t('mdbSetup.createVault')}
             </button>
           </div>
         </div>
@@ -955,21 +958,20 @@ export function VaultsSettings() {
         <div className="mt-3 p-4 bg-plm-bg rounded-lg border border-plm-accent space-y-3">
           <div>
             <h3 className="text-base text-plm-fg font-medium">
-              Network login for {credentialVault.name}
+              {t('mdbSetup.networkLoginFor', { name: credentialVault.name })}
             </h3>
             <p className="text-sm text-plm-fg-muted mt-1 break-all">
               {credentialVault.networkRoot}
             </p>
             <p className="text-xs text-plm-fg-muted mt-2">
-              Saved only for the current Windows user in Windows Credential Manager. BluePLM,
-              MariaDB, and the web API do not receive the password.
+              {t('mdbSetup.networkLoginSavedLocallyHelp')}
             </p>
           </div>
           <input
             type="text"
             value={credentialUsername}
             onChange={(event) => setCredentialUsername(event.target.value)}
-            placeholder="DOMAIN\username or username"
+            placeholder={t('mdbSetup.networkUsernamePlaceholder')}
             autoComplete="username"
             className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
           />
@@ -977,7 +979,7 @@ export function VaultsSettings() {
             type="password"
             value={credentialPassword}
             onChange={(event) => setCredentialPassword(event.target.value)}
-            placeholder="Network password"
+            placeholder={t('mdbSetup.networkPassword')}
             autoComplete="new-password"
             className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
           />
@@ -991,14 +993,14 @@ export function VaultsSettings() {
               disabled={isSavingCredential}
               className="btn btn-ghost btn-sm"
             >
-              Cancel
+              {t('mdbSetup.cancel')}
             </button>
             <button
               onClick={handleSaveVaultCredential}
               disabled={isSavingCredential || !credentialUsername.trim() || !credentialPassword}
               className="btn btn-primary btn-sm"
             >
-              {isSavingCredential ? 'Saving...' : 'Save locally'}
+              {isSavingCredential ? t('mdbSetup.saving') : t('mdbSetup.saveLocally')}
             </button>
           </div>
         </div>
@@ -1105,7 +1107,7 @@ export function VaultsSettings() {
                           setCredentialPassword('')
                         }}
                         className="p-1.5 hover:bg-plm-highlight rounded transition-colors"
-                        title="Save network login on this Windows client"
+                        title={t('mdbSetup.saveNetworkLogin')}
                       >
                         <KeyRound size={14} className="text-plm-fg-muted" />
                       </button>

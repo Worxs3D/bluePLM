@@ -11,6 +11,8 @@ import {
   isBackendConfigured,
   removeCommunityTeamMember,
 } from '@/lib/community'
+import { mapMdbRole } from '@/lib/backendAdapter'
+import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { insertTeamMember } from '../../hooks/supabaseHelpers'
@@ -51,22 +53,24 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
     try {
       if (isBackendConfigured('community')) {
         const communityMembers = await getCommunityTeamMembers(team.id)
-        setMembers(communityMembers.map((member) => ({
-          id: `${team.id}:${member.userId}`,
-          team_id: team.id,
-          user_id: member.userId,
-          is_team_admin: false,
-          added_at: member.addedAt,
-          added_by: null,
-          user: {
-            id: member.userId,
-            email: member.email,
-            full_name: member.displayName,
-            avatar_url: null,
-            custom_avatar_url: null,
-            role: member.role === 'member' ? 'engineer' : 'admin',
-          },
-        })))
+        setMembers(
+          communityMembers.map((member) => ({
+            id: `${team.id}:${member.userId}`,
+            team_id: team.id,
+            user_id: member.userId,
+            is_team_admin: false,
+            added_at: member.addedAt,
+            added_by: null,
+            user: {
+              id: member.userId,
+              email: member.email,
+              full_name: member.displayName,
+              avatar_url: null,
+              custom_avatar_url: null,
+              role: mapMdbRole(member.role) ?? 'viewer',
+            },
+          })),
+        )
         return
       }
       const { data, error } = await supabase
@@ -125,7 +129,10 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
     try {
       if (isBackendConfigured('community')) {
         await addCommunityTeamMember(team.id, userToAdd.id)
-        addToast('success', `Added ${userToAdd.full_name || userToAdd.email} to team`)
+        addToast(
+          'success',
+          t('mdbSetup.teamMemberAdded', { name: userToAdd.full_name || userToAdd.email }),
+        )
         loadMembers()
         return
       }
@@ -137,7 +144,10 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
 
       if (error) throw error
 
-      addToast('success', `Added ${userToAdd.full_name || userToAdd.email} to team`)
+      addToast(
+        'success',
+        t('mdbSetup.teamMemberAdded', { name: userToAdd.full_name || userToAdd.email }),
+      )
       loadMembers()
     } catch (error) {
       addToast('error', 'Failed to add member')
@@ -150,14 +160,24 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
     try {
       if (isBackendConfigured('community')) {
         await removeCommunityTeamMember(team.id, member.user_id)
-        addToast('success', `Removed ${member.user?.full_name || member.user?.email} from team`)
+        addToast(
+          'success',
+          t('mdbSetup.teamMemberRemoved', {
+            name: member.user?.full_name || member.user?.email || '',
+          }),
+        )
         loadMembers()
         return
       }
       const { error } = await supabase.from('team_members').delete().eq('id', member.id)
       if (error) throw error
 
-      addToast('success', `Removed ${member.user?.full_name || member.user?.email} from team`)
+      addToast(
+        'success',
+        t('mdbSetup.teamMemberRemoved', {
+          name: member.user?.full_name || member.user?.email || '',
+        }),
+      )
       loadMembers()
     } catch (error) {
       addToast('error', 'Failed to remove member')

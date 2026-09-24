@@ -5,6 +5,7 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
 import { isBackendConfigured } from '@/lib/community'
+import { t } from '@/lib/i18n'
 import { STATE_COLORS } from '@/types/workflow'
 import { IconGridPicker } from '@/components/shared/IconPicker'
 import type { EditStateDialogProps, WorkflowRoleBasic } from '../types'
@@ -52,9 +53,19 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
       if (!organization) return
       if (isBackendConfigured('community')) {
         setWorkflowRoles([
-          { id: 'admin', name: 'Administrators', color: '#DC2626', icon: 'shield' },
-          { id: 'engineer', name: 'Engineers', color: '#2563EB', icon: 'wrench' },
-          { id: 'viewer', name: 'Viewers', color: '#64748B', icon: 'eye' },
+          {
+            id: 'admin',
+            name: t('mdbSetup.workflowRoleAdministrators'),
+            color: '#DC2626',
+            icon: 'shield',
+          },
+          {
+            id: 'engineer',
+            name: t('mdbSetup.workflowRoleEngineers'),
+            color: '#2563EB',
+            icon: 'wrench',
+          },
+          { id: 'viewer', name: t('mdbSetup.workflowRoleViewers'), color: '#64748B', icon: 'eye' },
         ])
         setLoadingRoles(false)
         return

@@ -35,6 +35,7 @@ import {
   removeCommunityTeamMember,
 } from '@/lib/community'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../types'
 import {
@@ -65,20 +66,22 @@ export function useMembers(orgId: string | null) {
     try {
       if (isBackendConfigured('community')) {
         const communityUsers = await getCommunityUsers()
-        const membersWithTeams: OrgUser[] = await Promise.all(communityUsers.map(async (communityUser) => ({
-          id: communityUser.id,
-          email: communityUser.email,
-          full_name: communityUser.displayName,
-          avatar_url: null,
-          custom_avatar_url: null,
-          job_title: null,
-          // Preserve the server membership role for the administration UI.
-          // Authentication maps this separately to the client's permission role.
-          role: communityUser.role,
-          last_sign_in: null,
-          last_online: null,
-          teams: await getCommunityUserTeams(communityUser.id),
-        })))
+        const membersWithTeams: OrgUser[] = await Promise.all(
+          communityUsers.map(async (communityUser) => ({
+            id: communityUser.id,
+            email: communityUser.email,
+            full_name: communityUser.displayName,
+            avatar_url: null,
+            custom_avatar_url: null,
+            job_title: null,
+            // Preserve the server membership role for the administration UI.
+            // Authentication maps this separately to the client's permission role.
+            role: communityUser.role,
+            last_sign_in: null,
+            last_online: null,
+            teams: await getCommunityUserTeams(communityUser.id),
+          })),
+        )
         setMembers(membersWithTeams)
         return
       }
@@ -171,13 +174,19 @@ export function useMembers(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           await removeCommunityUser(memberId)
-          addToast('success', `Removed ${member.full_name || member.email} from organization`)
+          addToast(
+            'success',
+            t('mdbSetup.memberRemovedFromOrganization', { name: member.full_name || member.email }),
+          )
           removeMemberFromStore(memberId)
           return true
         }
         const result = await removeUserFromOrg(memberId, orgId)
         if (result.success) {
-          addToast('success', `Removed ${member.full_name || member.email} from organization`)
+          addToast(
+            'success',
+            t('mdbSetup.memberRemovedFromOrganization', { name: member.full_name || member.email }),
+          )
           removeMemberFromStore(memberId)
           return true
         } else {
@@ -200,7 +209,13 @@ export function useMembers(orgId: string | null) {
       try {
         if (isBackendConfigured('community')) {
           await removeCommunityTeamMember(teamId, memberId)
-          addToast('success', `Removed ${member.full_name || member.email} from ${teamName}`)
+          addToast(
+            'success',
+            t('mdbSetup.memberRemovedFromTeam', {
+              name: member.full_name || member.email,
+              team: teamName,
+            }),
+          )
           await loadMembers()
           return true
         }
@@ -280,7 +295,12 @@ export function useMembers(orgId: string | null) {
         if (isBackendConfigured('community')) {
           for (const teamId of toRemove) await removeCommunityTeamMember(teamId, memberId)
           for (const teamId of toAdd) await addCommunityTeamMember(teamId, memberId)
-          addToast('success', `Updated teams${userName ? ` for ${userName}` : ''}`)
+          addToast(
+            'success',
+            userName
+              ? t('mdbSetup.teamsUpdatedFor', { name: userName })
+              : t('mdbSetup.teamsUpdated'),
+          )
           await loadMembers()
           return true
         }
@@ -299,7 +319,10 @@ export function useMembers(orgId: string | null) {
           })
         }
 
-        addToast('success', `Updated teams${userName ? ` for ${userName}` : ''}`)
+        addToast(
+          'success',
+          userName ? t('mdbSetup.teamsUpdatedFor', { name: userName }) : t('mdbSetup.teamsUpdated'),
+        )
         await loadMembers()
         return true
       } catch (error) {

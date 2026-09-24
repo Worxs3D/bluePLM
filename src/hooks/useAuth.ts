@@ -153,7 +153,9 @@ export function useAuth() {
   )
 
   // Track if Supabase is configured (can change at runtime)
-  const [supabaseReady, setSupabaseReady] = useState(() => isSupabaseConfigured() || isBackendConfigured('community'))
+  const [supabaseReady, setSupabaseReady] = useState(
+    () => isSupabaseConfigured() || isBackendConfigured('community'),
+  )
   const [sessionGeneration, setSessionGeneration] = useState(0)
   const sessionBoundaryRef = useRef<AuthSessionBoundary>({
     authenticatedUserId: null,
@@ -234,7 +236,8 @@ export function useAuth() {
           ])
           if (!active || epoch !== hydrationEpoch) return
           const mappedRole = mapMdbRole(principal.role)
-          if (!mappedRole || !principal.createdAt) throw new Error('Community principal has an invalid role or creation date')
+          if (!mappedRole || !principal.createdAt)
+            throw new Error('Community principal has an invalid role or creation date')
           const { boundary } = advanceSession('SIGNED_IN', principal.userId)
           setCurrentAccessToken(communityAccessToken())
           setUser({
@@ -246,6 +249,7 @@ export function useAuth() {
             job_title: null,
             org_id: principal.organizationId,
             role: mappedRole,
+            membership_role: principal.role,
             created_at: principal.createdAt,
             last_sign_in: null,
           })
@@ -285,7 +289,9 @@ export function useAuth() {
       }
 
       void hydrateCommunitySession()
-      const unsubscribe = onCommunityAuthChange(() => { void hydrateCommunitySession() })
+      const unsubscribe = onCommunityAuthChange(() => {
+        void hydrateCommunitySession()
+      })
       return () => {
         active = false
         unsubscribe()

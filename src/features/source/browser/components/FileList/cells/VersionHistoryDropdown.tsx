@@ -29,6 +29,7 @@ import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
 import { getCommunityVault, isBackendConfigured } from '@/lib/community'
 import { buildFullPath } from '@/lib/utils/path'
+import { t } from '@/lib/i18n'
 
 interface VersionEntry {
   id: string
@@ -177,21 +178,42 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
 
         if (isBackendConfigured('community')) {
           const vaultId = file.pdmData.vault_id
-          const storageRelativePath = result.targetVersionRecord.storageRelativePath
-            ?? result.targetVersionRecord._communityStorageRelativePath
+          const storageRelativePath =
+            result.targetVersionRecord.storageRelativePath ??
+            result.targetVersionRecord._communityStorageRelativePath
           if (!vaultId || typeof storageRelativePath !== 'string') {
-            addToast('warning', `${actionLabel} to v${targetVersion} - revision storage metadata is incomplete.`)
+            addToast(
+              'warning',
+              t('mdbSetup.revisionMetadataIncomplete', {
+                action: actionLabel,
+                version: targetVersion,
+              }),
+            )
           } else {
             const vault = await getCommunityVault(vaultId)
             if (vault.storageProvider === 'network') {
               if (!vault.networkRoot) {
-                addToast('warning', `${actionLabel} to v${targetVersion} - the Community network vault root is missing.`)
+                addToast(
+                  'warning',
+                  t('mdbSetup.networkVaultRootMissing', {
+                    action: actionLabel,
+                    version: targetVersion,
+                  }),
+                )
               } else if (window.electronAPI) {
                 const copyResult = await window.electronAPI.copyFile(
                   buildFullPath(vault.networkRoot, storageRelativePath),
                   file.path,
                 )
-                if (!copyResult.success) addToast('warning', `${actionLabel} to v${targetVersion} - but could not restore the revision: ${copyResult.error}`)
+                if (!copyResult.success)
+                  addToast(
+                    'warning',
+                    t('mdbSetup.revisionRestoreFailed', {
+                      action: actionLabel,
+                      version: targetVersion,
+                      error: copyResult.error || '',
+                    }),
+                  )
               }
             }
           }
