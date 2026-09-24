@@ -29,6 +29,7 @@ import {
   isBackendConfigured,
 } from '@/lib/community'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
+import { selectUserProfileDataSource } from './UserProfileModal.data'
 
 // Supabase v2 type inference incomplete for user profile queries
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -196,12 +197,15 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
     const loadUserData = async () => {
       setIsLoading(true)
-      const client = getDb()
+      const dataSource = selectUserProfileDataSource(
+        isBackendConfigured('community'),
+        getDb,
+      )
       const oneYearAgo = new Date()
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
 
       try {
-        if (isBackendConfigured('community')) {
+        if (dataSource.kind === 'community') {
           const communityUser = (await getCommunityUsers()).find((entry) => entry.id === userId)
           if (communityUser) {
             setUserData({
@@ -220,6 +224,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
           }
           return
         }
+        const client = dataSource.client
         // Load user info
         const { data: user, error: userError } = await client
           .from('users')
