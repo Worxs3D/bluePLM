@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 
 import { getTranslation } from './index'
 
@@ -147,6 +148,19 @@ const DELETE_ACCOUNT_KEYS = [
 ] as const
 
 describe('settings navigation translations', () => {
+  it.each([
+    ['en', 'en.ts'],
+    ['de', 'de.ts'],
+    ['fr', 'fr.ts'],
+    ['es', 'es.ts'],
+    ['pt', 'pt.ts'],
+    ['zh-CN', 'zhCN.ts'],
+    ['zh-TW', 'zhTW.ts'],
+  ] as const)('defines account settings only once for %s', (_locale, fileName) => {
+    const source = readFileSync(new URL(`./locales/${fileName}`, import.meta.url), 'utf8')
+    expect(source.match(/^  accountSettings: \{/gm)).toHaveLength(1)
+  })
+
   it.each(LOCALES)('defines every navigation and status key for %s', (locale) => {
     for (const key of SETTINGS_NAVIGATION_KEYS) {
       const value = getTranslation(locale, key)
