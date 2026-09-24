@@ -2189,6 +2189,7 @@ LANGUAGE plpgsql STABLE AS $$
 DECLARE
   r RECORD;
   color_swatches_scope_columns BOOLEAN;
+  color_swatches_scope_controls BOOLEAN;
 BEGIN
   -- ---------------------------------------------------------------------
   -- Share links handing out a file in an organization somebody involved is not
@@ -2414,6 +2415,40 @@ BEGIN
       identity := 'public.color_swatches';
       detail := 'Organization color swatches require nullable user_id plus org_id and '
              || 'created_by columns. Re-run supabase/core.sql before verifying this release.';
+      RETURN NEXT;
+    END IF;
+
+    SELECT
+      EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'public.color_swatches'::regclass
+           AND conname = 'color_swatches_scope_check'
+      )
+      AND EXISTS (
+        SELECT 1
+          FROM pg_trigger
+         WHERE tgrelid = 'public.color_swatches'::regclass
+           AND tgname = 'set_color_swatch_creator'
+           AND NOT tgisinternal
+      )
+      AND (
+        SELECT COUNT(*) = 2
+          FROM pg_policies
+         WHERE schemaname = 'public'
+           AND tablename = 'color_swatches'
+           AND policyname IN (
+             'Users can view accessible color swatches',
+             'Users can manage accessible color swatches'
+           )
+      )
+      INTO color_swatches_scope_controls;
+
+    IF NOT COALESCE(color_swatches_scope_controls, false) THEN
+      residue := 'color_swatches_scope_controls_missing';
+      identity := 'public.color_swatches';
+      detail := 'Organization color swatches require the scope constraint, creator trigger, '
+             || 'and both access policies. Re-run supabase/core.sql before verifying this release.';
       RETURN NEXT;
     END IF;
   END IF;
@@ -3508,7 +3543,10 @@ DO $$ BEGIN
   ALTER TABLE color_swatches ALTER COLUMN user_id DROP NOT NULL;
   UPDATE color_swatches SET created_by = user_id WHERE created_by IS NULL;
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'color_swatches_scope_check'
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_scope_check'
   ) THEN
     ALTER TABLE color_swatches ADD CONSTRAINT color_swatches_scope_check CHECK (
       (user_id IS NOT NULL AND org_id IS NULL) OR
@@ -3516,6 +3554,30 @@ DO $$ BEGIN
     );
   END IF;
 END $$;
+
+-- Creator attribution is assigned by the database. Authenticated clients
+-- cannot impersonate another user by supplying or changing created_by.
+CREATE OR REPLACE FUNCTION set_color_swatch_creator()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF auth.uid() IS NOT NULL THEN
+      NEW.created_by := auth.uid();
+    END IF;
+  ELSE
+    NEW.created_by := OLD.created_by;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_color_swatch_creator ON color_swatches;
+CREATE TRIGGER set_color_swatch_creator
+  BEFORE INSERT OR UPDATE OF created_by ON color_swatches
+  FOR EACH ROW EXECUTE FUNCTION set_color_swatch_creator();
 
 CREATE INDEX IF NOT EXISTS idx_color_swatches_user_id ON color_swatches(user_id);
 CREATE INDEX IF NOT EXISTS idx_color_swatches_org_id ON color_swatches(org_id);
