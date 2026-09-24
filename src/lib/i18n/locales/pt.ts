@@ -215,6 +215,23 @@ export const pt: TranslationDict = {
     about: 'Sobre',
   },
 
+  accountSettings: {
+    notSignedIn: 'Sessão não iniciada',
+    profile: 'Perfil',
+    noName: 'Sem nome',
+    role: 'Função',
+    sessions: 'Sessões',
+    sessionsDescription: 'Dispositivos em que tem sessão iniciada',
+    loadingSessions: 'A carregar sessões...',
+    noActiveSessions: 'Nenhuma sessão ativa',
+    thisDevice: 'Este dispositivo',
+    unknown: 'Desconhecido',
+    justNow: 'Agora mesmo',
+    minutesAgo: 'há {{count}} min',
+    signOut: 'Terminar sessão',
+    signOutDevice: 'Terminar sessão neste dispositivo',
+  },
+
   preferences: {
     title: 'Preferências',
     applicationUpdates: 'Atualizações da Aplicação',

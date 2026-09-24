@@ -223,6 +223,23 @@ export const de: TranslationDict = {
     about: 'Über',
   },
 
+  accountSettings: {
+    notSignedIn: 'Nicht angemeldet',
+    profile: 'Profil',
+    noName: 'Kein Name',
+    role: 'Rolle',
+    sessions: 'Sitzungen',
+    sessionsDescription: 'Geräte, auf denen du derzeit angemeldet bist',
+    loadingSessions: 'Sitzungen werden geladen ...',
+    noActiveSessions: 'Keine aktiven Sitzungen',
+    thisDevice: 'Dieses Gerät',
+    unknown: 'Unbekannt',
+    justNow: 'Gerade eben',
+    minutesAgo: 'vor {{count}} Min.',
+    signOut: 'Abmelden',
+    signOutDevice: 'Dieses Gerät abmelden',
+  },
+
   preferences: {
     title: 'Einstellungen',
     applicationUpdates: 'Anwendungsaktualisierungen',

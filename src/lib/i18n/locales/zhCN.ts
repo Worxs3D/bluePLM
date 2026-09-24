@@ -211,6 +211,23 @@ export const zhCN: TranslationDict = {
     about: '关于',
   },
 
+  accountSettings: {
+    notSignedIn: '未登录',
+    profile: '个人资料',
+    noName: '无姓名',
+    role: '角色',
+    sessions: '会话',
+    sessionsDescription: '您当前已登录的设备',
+    loadingSessions: '正在加载会话...',
+    noActiveSessions: '没有活动会话',
+    thisDevice: '此设备',
+    unknown: '未知',
+    justNow: '刚刚',
+    minutesAgo: '{{count}} 分钟前',
+    signOut: '退出登录',
+    signOutDevice: '在此设备上退出登录',
+  },
+
   preferences: {
     title: '偏好设置',
     applicationUpdates: '应用程序更新',

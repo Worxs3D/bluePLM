@@ -233,6 +233,23 @@ export const en: TranslationDict = {
     about: 'About',
   },
 
+  accountSettings: {
+    notSignedIn: 'Not signed in',
+    profile: 'Profile',
+    noName: 'No name',
+    role: 'Role',
+    sessions: 'Sessions',
+    sessionsDescription: "Devices where you're currently signed in",
+    loadingSessions: 'Loading sessions...',
+    noActiveSessions: 'No active sessions',
+    thisDevice: 'This device',
+    unknown: 'Unknown',
+    justNow: 'Just now',
+    minutesAgo: '{{count}}m ago',
+    signOut: 'Sign out',
+    signOutDevice: 'Sign out this device',
+  },
+
   // Log viewer
   logs: {
     loadFailed: 'Unable to load log files',

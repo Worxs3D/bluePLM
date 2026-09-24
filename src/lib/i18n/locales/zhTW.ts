@@ -211,6 +211,23 @@ export const zhTW: TranslationDict = {
     about: '關於',
   },
 
+  accountSettings: {
+    notSignedIn: '尚未登入',
+    profile: '個人資料',
+    noName: '未設定姓名',
+    role: '角色',
+    sessions: '工作階段',
+    sessionsDescription: '您目前已登入的裝置',
+    loadingSessions: '正在載入工作階段...',
+    noActiveSessions: '沒有使用中的工作階段',
+    thisDevice: '此裝置',
+    unknown: '未知',
+    justNow: '剛剛',
+    minutesAgo: '{{count}} 分鐘前',
+    signOut: '登出',
+    signOutDevice: '在此裝置上登出',
+  },
+
   preferences: {
     title: '偏好設定',
     applicationUpdates: '應用程式更新',
