@@ -1341,9 +1341,14 @@ export const checkinCommand: Command<CheckinParams> = {
                   }
                 }
               } catch (error) {
+                logCheckin('error', 'MDB revision staging failed', {
+                  operationId,
+                  fileName: file.name,
+                  error,
+                })
                 return {
                   success: false,
-                  error: `${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+                  error: t('mdbSetup.fileRevisionStageFailed', { name: file.name }),
                 }
               }
             } else {
