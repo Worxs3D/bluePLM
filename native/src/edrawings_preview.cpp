@@ -62,6 +62,7 @@ public:
             InstanceMethod("destroy", &EDrawingsPreview::Destroy),
             InstanceMethod("isLoaded", &EDrawingsPreview::IsLoaded),
             InstanceMethod("getVisualState", &EDrawingsPreview::GetVisualState),
+            InstanceMethod("getWindowState", &EDrawingsPreview::GetWindowState),
             InstanceMethod("lastError", &EDrawingsPreview::LastError),
         });
         exports.Set("EDrawingsPreview", constructor);
@@ -87,7 +88,11 @@ private:
             m_lastError = "The BluePLM window handle is invalid.";
             return Napi::Boolean::New(env, false);
         }
-        m_host = host;
+        // Electron should already return its top-level HWND, but Chromium can
+        // expose an intermediate child on some Windows/remote-session builds.
+        // Ownership only works for a real top-level window, so normalize it.
+        const HWND root = GetAncestor(host, GA_ROOT);
+        m_host = root && IsWindow(root) ? root : host;
         m_lastError.clear();
         return Napi::Boolean::New(env, true);
     }
@@ -117,8 +122,8 @@ private:
             L" --mode " + configuredHostMode() +
             L" --embedding " + configuredEmbeddingMode() +
             L" --parent " + std::to_wstring(reinterpret_cast<uintptr_t>(m_host)) +
-            L" --x " + std::to_wstring(m_x) + L" --y " + std::to_wstring(m_y) +
-            L" --width " + std::to_wstring(m_width) + L" --height " + std::to_wstring(m_height);
+            L" --bounds " + std::to_wstring(m_x) + L" " + std::to_wstring(m_y) + L" " +
+            std::to_wstring(m_width) + L" " + std::to_wstring(m_height);
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process{};
@@ -253,6 +258,29 @@ private:
         result.Set("brightRatio", Napi::Number::New(env, static_cast<double>(bright) / sampled));
         result.Set("averageLuminance", Napi::Number::New(env, average));
         result.Set("luminanceVariance", Napi::Number::New(env, variance));
+        return result;
+    }
+
+    // Diagnostic seam used by the integration harness to verify ownership and
+    // visibility across Electron window lifecycle transitions.  A live helper
+    // process is not enough: the exact regression left its top-level preview
+    // visible after the BluePLM owner had been minimized.
+    Napi::Value GetWindowState(const Napi::CallbackInfo& info) {
+        ResolveHostWindow();
+        Napi::Object result = Napi::Object::New(info.Env());
+        const bool exists = m_viewer && IsWindow(m_viewer);
+        const HWND owner = exists ? GetWindow(m_viewer, GW_OWNER) : nullptr;
+        result.Set("exists", Napi::Boolean::New(info.Env(), exists));
+        result.Set("visible", Napi::Boolean::New(info.Env(), exists && IsWindowVisible(m_viewer)));
+        result.Set("ownedByHost", Napi::Boolean::New(
+            info.Env(),
+            exists && owner == m_host));
+        result.Set("hostHandle", Napi::String::New(
+            info.Env(), std::to_string(reinterpret_cast<uintptr_t>(m_host))));
+        result.Set("ownerHandle", Napi::String::New(
+            info.Env(), std::to_string(reinterpret_cast<uintptr_t>(owner))));
+        const LONG_PTR extendedStyle = exists ? GetWindowLongPtrW(m_viewer, GWL_EXSTYLE) : 0;
+        result.Set("topmost", Napi::Boolean::New(info.Env(), (extendedStyle & WS_EX_TOPMOST) != 0));
         return result;
     }
 

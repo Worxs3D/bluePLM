@@ -106,6 +106,7 @@ interface NativeEDrawingsPreview {
   hide(): boolean
   destroy(): boolean
   isLoaded(): boolean
+  getWindowState(): { exists: boolean; visible: boolean; ownedByHost: boolean; topmost: boolean }
   lastError(): string
 }
 
@@ -115,6 +116,61 @@ interface NativeEDrawingsModule {
 
 let nativeEDrawingsModule: NativeEDrawingsModule | null | undefined
 let embeddedEDrawingsPreview: NativeEDrawingsPreview | null = null
+let embeddedEDrawingsBounds = { x: 0, y: 0, width: 1, height: 1 }
+
+function hideEmbeddedEDrawingsPreview(): void {
+  try {
+    embeddedEDrawingsPreview?.hide()
+  } catch (error) {
+    logWarn('[eDrawings] Failed to hide embedded preview', { error: String(error) })
+  }
+}
+
+function syncEmbeddedEDrawingsPreview(showAfterSync = false): void {
+  if (!embeddedEDrawingsPreview || !mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized() || !mainWindow.isVisible()) {
+    hideEmbeddedEDrawingsPreview()
+    return
+  }
+  try {
+    const { x, y, width, height } = embeddedEDrawingsBounds
+    embeddedEDrawingsPreview.setBounds(x, y, width, height)
+    if (showAfterSync) embeddedEDrawingsPreview.show()
+  } catch (error) {
+    logWarn('[eDrawings] Failed to synchronize embedded preview bounds', {
+      error: String(error),
+    })
+  }
+}
+
+const onEDrawingsOwnerMinimize = () => hideEmbeddedEDrawingsPreview()
+const onEDrawingsOwnerHide = () => hideEmbeddedEDrawingsPreview()
+const onEDrawingsOwnerRestore = () => syncEmbeddedEDrawingsPreview(true)
+const onEDrawingsOwnerShow = () => syncEmbeddedEDrawingsPreview(true)
+const onEDrawingsOwnerGeometry = () => syncEmbeddedEDrawingsPreview()
+
+function bindEDrawingsOwnerLifecycle(window: BrowserWindow): void {
+  window.on('minimize', onEDrawingsOwnerMinimize)
+  window.on('hide', onEDrawingsOwnerHide)
+  window.on('restore', onEDrawingsOwnerRestore)
+  window.on('show', onEDrawingsOwnerShow)
+  window.on('move', onEDrawingsOwnerGeometry)
+  window.on('resize', onEDrawingsOwnerGeometry)
+  window.on('maximize', onEDrawingsOwnerGeometry)
+  window.on('unmaximize', onEDrawingsOwnerGeometry)
+}
+
+function unbindEDrawingsOwnerLifecycle(window: BrowserWindow | null): void {
+  if (!window || window.isDestroyed()) return
+  window.removeListener('minimize', onEDrawingsOwnerMinimize)
+  window.removeListener('hide', onEDrawingsOwnerHide)
+  window.removeListener('restore', onEDrawingsOwnerRestore)
+  window.removeListener('show', onEDrawingsOwnerShow)
+  window.removeListener('move', onEDrawingsOwnerGeometry)
+  window.removeListener('resize', onEDrawingsOwnerGeometry)
+  window.removeListener('maximize', onEDrawingsOwnerGeometry)
+  window.removeListener('unmaximize', onEDrawingsOwnerGeometry)
+}
 
 /**
  * Loads the optional Windows module only when the user has selected embedded
@@ -183,6 +239,7 @@ function destroyEmbeddedEDrawingsPreview(): void {
     logWarn('[eDrawings] Failed to close embedded preview', { error: String(error) })
   }
   embeddedEDrawingsPreview = null
+  embeddedEDrawingsBounds = { x: 0, y: 0, width: 1, height: 1 }
 }
 
 /**
@@ -2980,6 +3037,7 @@ export function registerSolidWorksHandlers(
   log = deps.log
   logError = deps.logError
   logWarn = deps.logWarn
+  bindEDrawingsOwnerLifecycle(window)
 
   // Instances a previous run leaked are only knowable from the durable registry,
   // and only reapable while the watchdog is running, so both start with the app
@@ -3782,13 +3840,29 @@ export function registerSolidWorksHandlers(
   ipcMain.handle('edrawings:set-bounds', async (_, x: number, y: number, width: number, height: number) => {
     if (!embeddedEDrawingsPreview || ![x, y, width, height].every(Number.isFinite)) return { success: false }
     try {
-      return { success: embeddedEDrawingsPreview.setBounds(Math.round(x), Math.round(y), Math.round(width), Math.round(height)) }
+      embeddedEDrawingsBounds = {
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.max(1, Math.round(width)),
+        height: Math.max(1, Math.round(height)),
+      }
+      return { success: embeddedEDrawingsPreview.setBounds(
+        embeddedEDrawingsBounds.x,
+        embeddedEDrawingsBounds.y,
+        embeddedEDrawingsBounds.width,
+        embeddedEDrawingsBounds.height,
+      ) }
     } catch {
       return { success: false }
     }
   })
 
   ipcMain.handle('edrawings:show-preview', () => {
+    if (!mainWindow || mainWindow.isMinimized() || !mainWindow.isVisible()) {
+      hideEmbeddedEDrawingsPreview()
+      return { success: true }
+    }
+    syncEmbeddedEDrawingsPreview()
     return { success: embeddedEDrawingsPreview?.show() ?? false }
   })
 
@@ -3929,6 +4003,7 @@ export function registerSolidWorksHandlers(
 }
 
 export function unregisterSolidWorksHandlers(): void {
+  unbindEDrawingsOwnerLifecycle(mainWindow)
   const handlers = [
     'solidworks:extract-thumbnail',
     'solidworks:extract-preview',

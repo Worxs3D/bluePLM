@@ -2,6 +2,19 @@ import type { TranslationDict } from '../types'
 
 // German translations
 export const de: TranslationDict = {
+  solidworksSettings: {
+    previewMode: 'Vorschaumodus',
+    embeddedThumbnail: 'Eingebettete Miniaturansicht',
+    embeddedThumbnailDescription:
+      'Vorschaubild aus der SolidWorks-Datei extrahieren und anzeigen',
+    externalEDrawings: 'eDrawings (extern)',
+    externalEDrawingsDescription: 'Dateien in der externen eDrawings-Anwendung öffnen',
+    embeddedEDrawings: 'eDrawings-3D-Vorschau (Windows, optional)',
+    embeddedEDrawingsAvailable:
+      'Interaktiver 3D-Viewer in BluePLM. Experimentelle Windows-Funktion.',
+    embeddedEDrawingsUnavailable:
+      'Erfordert Windows, installiertes eDrawings und das optionale Vorschaumodul.',
+  },
   checkoutDisplay: {
     you: 'Du',
     loadingOwner: 'Checkout-Besitzer wird geladen',
