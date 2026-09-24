@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2, Trash2, UserX } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient, signOut } from '@/lib/supabase'
-import { deleteCommunityAccount, isCommunityConfigured } from '@/lib/community'
+import { deleteCommunityAccount, isBackendConfigured } from '@/lib/community'
 
 export function DeleteAccountSettings() {
   const { user, setUser, setOrganization, addToast } = usePDMStore()
@@ -24,7 +24,7 @@ export function DeleteAccountSettings() {
 
     setIsDeleting(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await deleteCommunityAccount()
         await signOut()
         setUser(null)

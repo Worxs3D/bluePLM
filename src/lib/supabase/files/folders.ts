@@ -11,7 +11,7 @@ import { getSupabaseClient } from '../client'
 import {
   deleteCommunityFolder,
   getCommunityFolders,
-  isCommunityConfigured,
+  isBackendConfigured,
   syncCommunityFolder,
   updateCommunityFolder,
 } from '@/lib/community'
@@ -109,7 +109,7 @@ export async function syncFolder(
   userId: string,
   folderPath: string,
 ): Promise<{ folder: FolderRecord | null; error: any }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const normalizedPath = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
       const parts = normalizedPath.split('/')
@@ -237,7 +237,7 @@ async function syncSingleFolder(
 export async function getVaultFolders(
   vaultId: string,
 ): Promise<{ folders: FolderRecord[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { folders: await getCommunityFolders(vaultId) as FolderRecord[] } }
     catch (error) { return { folders: [], error: error instanceof Error ? error.message : String(error) } }
   }
@@ -283,7 +283,7 @@ export async function updateFolderServerPath(
   folderId: string,
   newPath: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await updateCommunityFolder(folderId, newPath); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -387,7 +387,7 @@ export async function deleteFolderOnServer(
   folderId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityFolder(folderId); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -473,7 +473,7 @@ export async function deleteFolderByPath(
   folderPath: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const normalizedPath = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
       const folder = (await getCommunityFolders(vaultId)).find((candidate) => candidate.folder_path.toLowerCase() === normalizedPath.toLowerCase())

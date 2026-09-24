@@ -5,7 +5,7 @@ import {
   executeCommunityWorkflowTransition,
   getCommunityAvailableTransitions,
   getCommunityFileWorkflow,
-  isCommunityConfigured,
+  isBackendConfigured,
   moveCommunityFile,
   moveCommunityFilePathPrefix,
   syncCommunityFileReferences,
@@ -293,7 +293,7 @@ export async function syncFile(
   copiedFromFileId?: string,
   localFilePath?: string,
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     // The Community adapter stores immutable revisions in the configured
     // network vault. It must not fall through to Supabase Storage while that
     // native transfer path is unavailable.
@@ -897,7 +897,7 @@ export async function updateFileMetadata(
     workflow_state_id?: string
   },
 ): Promise<{ success: boolean; file?: any; error?: string | null; requiresReview?: boolean }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     if (updates.workflow_state_id) {
       return { success: false, error: 'Direct workflow-state updates are not supported. Execute an available workflow transition instead.' }
     }
@@ -1029,7 +1029,7 @@ export async function updateFilePath(
   fileId: string,
   newPath: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const newFileName = newPath.split('/').pop() || newPath.split('\\').pop() || newPath
     try {
       await moveCommunityFile(fileId, newPath, newFileName)
@@ -1140,7 +1140,7 @@ export async function updateFolderPath(
   newFolderPath: string,
   vaultId?: string,
 ): Promise<{ success: boolean; updated: number; total: number; errors: string[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     if (!vaultId) {
       return { success: false, updated: 0, total: 0, errors: ['A Community vault is required to move folder contents.'] }
     }
@@ -1300,7 +1300,7 @@ export async function upsertFileReferences(
   references: SWReference[],
   vaultRootPath?: string,
 ): Promise<UpsertReferencesResult> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return await syncCommunityFileReferences(parentFileId, references, vaultRootPath)
     } catch (error) {

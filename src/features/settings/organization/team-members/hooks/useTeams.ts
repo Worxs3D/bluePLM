@@ -31,7 +31,7 @@ import {
   deleteCommunityTeam,
   getCommunityTeamVaultAccess,
   getCommunityTeams,
-  isCommunityConfigured,
+  isBackendConfigured,
   setCommunityDefaultNewUserTeam,
   setCommunityTeamVaultAccess,
   updateCommunityTeam,
@@ -66,7 +66,7 @@ export function useTeams(orgId: string | null) {
 
     setTeamsLoading(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const communityTeams = await getCommunityTeams()
         const teamsWithDetails = await Promise.all(communityTeams.map(async (team) => ({
           id: team.id,
@@ -126,7 +126,7 @@ export function useTeams(orgId: string | null) {
       if (!orgId || !user || !formData.name.trim()) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           const created = await createCommunityTeam({
             name: formData.name.trim(), color: formData.color, icon: formData.icon,
           })
@@ -217,7 +217,7 @@ export function useTeams(orgId: string | null) {
       if (!user || !formData.name.trim()) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await updateCommunityTeam(teamId, {
             name: formData.name.trim(), color: formData.color, icon: formData.icon,
           })
@@ -259,7 +259,7 @@ export function useTeams(orgId: string | null) {
       if (!team) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await deleteCommunityTeam(teamId)
           addToast('success', `Team "${team.name}" deleted`)
           await loadTeams()
@@ -297,7 +297,7 @@ export function useTeams(orgId: string | null) {
       organization: T,
     ): Promise<boolean> => {
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await setCommunityDefaultNewUserTeam(teamId)
           setOrganization({
             ...organization,

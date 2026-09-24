@@ -27,7 +27,7 @@ import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/supabase'
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
-import { getCommunityVault, isCommunityConfigured } from '@/lib/community'
+import { getCommunityVault, isBackendConfigured } from '@/lib/community'
 import { buildFullPath } from '@/lib/utils/path'
 
 interface VersionEntry {
@@ -175,7 +175,7 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
         // Use relativePath to match file watcher format (relative paths with forward slashes)
         addExpectedFileChanges([file.relativePath])
 
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           const vaultId = file.pdmData.vault_id
           const storageRelativePath = result.targetVersionRecord.storageRelativePath
             ?? result.targetVersionRecord._communityStorageRelativePath

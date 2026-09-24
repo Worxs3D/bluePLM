@@ -5,7 +5,10 @@
  * while callers are moved one domain at a time to this HTTP API. No Supabase
  * key is used in Community mode.
  */
-import { activateBackend, isBackendActive } from './backend'
+import { activateBackend } from './backend'
+import { isBackendConfigured } from './backendAdapter'
+
+export { isBackendConfigured } from './backendAdapter'
 
 const STORAGE_KEY = 'blueplm-community-config'
 const CHECKOUTS_STORAGE_KEY = 'blueplm-community-checkouts'
@@ -16,12 +19,33 @@ export interface CommunityConfig {
   accessToken?: string
 }
 
+export type CommunityMembershipRole = 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
+
+export class CommunityTotpRequiredError extends Error {
+  constructor(public readonly challengeToken: string, public readonly expiresAt: string) {
+    super('Authenticator code required.')
+    this.name = 'CommunityTotpRequiredError'
+  }
+}
+
+export interface CommunityTotpStatus {
+  enabled: boolean
+  enabledAt: string | null
+}
+
+export interface CommunityTotpEnrollment {
+  enrollmentToken: string
+  secret: string
+  provisioningUri: string
+  expiresAt: string
+}
+
 export interface CommunityPrincipal {
   userId: string
   organizationId: string
   email: string
   displayName: string
-  role: 'owner' | 'admin' | 'member'
+  role: CommunityMembershipRole
   createdAt: string
 }
 
@@ -39,7 +63,7 @@ export interface CommunityUser {
   id: string
   email: string
   displayName: string
-  role: 'owner' | 'admin' | 'member'
+  role: CommunityMembershipRole
   createdAt: string
 }
 
@@ -66,7 +90,7 @@ export interface CommunityTeamMember {
   addedAt: string
   email: string
   displayName: string
-  role: 'owner' | 'admin' | 'member'
+  role: CommunityMembershipRole
 }
 
 export type CommunityPermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'admin'
@@ -261,8 +285,8 @@ export function clearCommunityConfig(): void {
   notify()
 }
 
-export function isCommunityConfigured(): boolean {
-  return isBackendActive('community') && loadCommunityConfig() !== null
+export function isCommunityServerConfigured(): boolean {
+  return isBackendConfigured('community') && loadCommunityConfig() !== null
 }
 
 export function onCommunityAuthChange(listener: AuthListener): () => void {
@@ -280,10 +304,21 @@ async function request<T>(path: string, init: RequestInit = {}, needsAuth = true
     if (!config.accessToken) throw new Error('Not signed in.')
     headers.set('Authorization', `Bearer ${config.accessToken}`)
   }
-  const response = await fetch(new URL(path, `${config.serverUrl}/`), { ...init, headers })
-  const body = await response.json().catch(() => ({})) as T & { error?: string; message?: string }
-  if (!response.ok) throw new Error(body.message ?? body.error ?? `Backend request failed (${response.status}).`)
-  return body
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+  try {
+    const response = await fetch(new URL(path, `${config.serverUrl}/`), { ...init, headers, signal: controller.signal })
+    const body = await response.json().catch(() => ({})) as T & { error?: string; message?: string }
+    if (!response.ok) throw new Error(body.message ?? body.error ?? `Backend request failed (${response.status}).`)
+    return body
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('The MariaDB backend did not respond within 15 seconds. Check the backend URL and HTTPS configuration.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function validateCommunityConfig(serverUrl: string): Promise<{ valid: boolean; error?: string }> {
@@ -299,11 +334,48 @@ export async function validateCommunityConfig(serverUrl: string): Promise<{ vali
 }
 
 export async function signInCommunity(email: string, password: string): Promise<CommunityPrincipal> {
-  const result = await request<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
+  const result = await request<{ token?: string; totpRequired?: boolean; challengeToken?: string; expiresAt: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
+  if (result.totpRequired && result.challengeToken) {
+    throw new CommunityTotpRequiredError(result.challengeToken, result.expiresAt)
+  }
+  if (!result.token) throw new Error('The MDB backend returned an invalid login response.')
   const config = loadCommunityConfig()
   if (!config) throw new Error('Community backend is not configured.')
   saveCommunityConfig({ ...config, accessToken: result.token })
   return await getCommunityPrincipal()
+}
+
+export async function verifyCommunityTotp(challengeToken: string, code: string): Promise<CommunityPrincipal> {
+  const result = await request<{ token: string }>('/auth/totp/verify', {
+    method: 'POST',
+    body: JSON.stringify({ challengeToken, code }),
+  }, false)
+  const config = loadCommunityConfig()
+  if (!config) throw new Error('Community backend is not configured.')
+  saveCommunityConfig({ ...config, accessToken: result.token })
+  return getCommunityPrincipal()
+}
+
+export async function getCommunityTotpStatus(): Promise<CommunityTotpStatus> {
+  return request<CommunityTotpStatus>('/account/totp')
+}
+
+export async function startCommunityTotpEnrollment(): Promise<CommunityTotpEnrollment> {
+  return request<CommunityTotpEnrollment>('/account/totp/enrollment', { method: 'POST' })
+}
+
+export async function confirmCommunityTotpEnrollment(enrollmentToken: string, code: string): Promise<void> {
+  await request<{ enabled: boolean }>('/account/totp/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ enrollmentToken, code }),
+  })
+}
+
+export async function disableCommunityTotp(code: string): Promise<void> {
+  await request<{ enabled: boolean }>('/account/totp', {
+    method: 'DELETE',
+    body: JSON.stringify({ code }),
+  })
 }
 
 export async function getCommunityPrincipal(): Promise<CommunityPrincipal> {
@@ -331,13 +403,13 @@ export async function getCommunityUsers(): Promise<CommunityUser[]> {
   return (await request<{ users: CommunityUser[] }>('/users')).users
 }
 
-export async function createCommunityUser(payload: Pick<CommunityUser, 'email' | 'displayName'> & { password: string; role?: 'admin' | 'member' }): Promise<Pick<CommunityUser, 'id' | 'email' | 'displayName' | 'role'>> {
+export async function createCommunityUser(payload: Pick<CommunityUser, 'email' | 'displayName'> & { password: string; role?: Exclude<CommunityMembershipRole, 'owner'> }): Promise<Pick<CommunityUser, 'id' | 'email' | 'displayName' | 'role'>> {
   return request<Pick<CommunityUser, 'id' | 'email' | 'displayName' | 'role'>>('/users', { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export async function updateCommunityUser(
   userId: string,
-  payload: Partial<Pick<CommunityUser, 'email' | 'displayName'>> & { password?: string },
+  payload: Partial<Pick<CommunityUser, 'email' | 'displayName'>> & { password?: string; role?: Exclude<CommunityMembershipRole, 'owner'> },
 ): Promise<CommunityUser> {
   return (await request<{ user: CommunityUser }>(`/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',

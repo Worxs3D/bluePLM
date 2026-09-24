@@ -12,7 +12,7 @@
  */
 import { supabase } from '@/lib/supabase'
 import {
-  isCommunityConfigured,
+  isBackendConfigured,
   updateCommunityWorkflowState,
   updateCommunityWorkflowTransition,
 } from '@/lib/community'
@@ -230,7 +230,7 @@ function scheduleWrite(
   const merged = { ...existing?.patch, ...patch }
   const timer = setTimeout(() => {
     pendingWrites.delete(key)
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       void (async () => {
         try {
           if (table === 'workflow_states') await updateCommunityWorkflowState(id, merged)

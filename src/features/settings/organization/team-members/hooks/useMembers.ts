@@ -30,12 +30,11 @@ import {
   addCommunityTeamMember,
   getCommunityUserTeams,
   getCommunityUsers,
-  isCommunityConfigured,
+  isBackendConfigured,
   removeCommunityUser,
   removeCommunityTeamMember,
 } from '@/lib/community'
 import { log } from '@/lib/logger'
-import { mapMdbRole } from '@/lib/backendAdapter'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../types'
 import {
@@ -64,7 +63,7 @@ export function useMembers(orgId: string | null) {
 
     setMembersLoading(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const communityUsers = await getCommunityUsers()
         const membersWithTeams: OrgUser[] = await Promise.all(communityUsers.map(async (communityUser) => ({
           id: communityUser.id,
@@ -73,7 +72,9 @@ export function useMembers(orgId: string | null) {
           avatar_url: null,
           custom_avatar_url: null,
           job_title: null,
-          role: mapMdbRole(communityUser.role) ?? 'viewer',
+          // Preserve the server membership role for the administration UI.
+          // Authentication maps this separately to the client's permission role.
+          role: communityUser.role,
           last_sign_in: null,
           last_online: null,
           teams: await getCommunityUserTeams(communityUser.id),
@@ -168,7 +169,7 @@ export function useMembers(orgId: string | null) {
       if (!member) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await removeCommunityUser(memberId)
           addToast('success', `Removed ${member.full_name || member.email} from organization`)
           removeMemberFromStore(memberId)
@@ -197,7 +198,7 @@ export function useMembers(orgId: string | null) {
       if (!member) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await removeCommunityTeamMember(teamId, memberId)
           addToast('success', `Removed ${member.full_name || member.email} from ${teamName}`)
           await loadMembers()
@@ -225,7 +226,7 @@ export function useMembers(orgId: string | null) {
   const toggleTeam = useCallback(
     async (memberId: string, teamId: string, isAdding: boolean): Promise<boolean> => {
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           if (isAdding) await addCommunityTeamMember(teamId, memberId)
           else await removeCommunityTeamMember(teamId, memberId)
           await loadMembers()
@@ -276,7 +277,7 @@ export function useMembers(orgId: string | null) {
         // Teams to remove (in currentTeamIds but not in teamIds)
         const toRemove = currentTeamIds.filter((id) => !teamIds.includes(id))
 
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           for (const teamId of toRemove) await removeCommunityTeamMember(teamId, memberId)
           for (const teamId of toAdd) await addCommunityTeamMember(teamId, memberId)
           addToast('success', `Updated teams${userName ? ` for ${userName}` : ''}`)

@@ -11,7 +11,7 @@ import {
   getCommunityWorkflow,
   getCommunityWorkflows,
   importCommunityWorkflow,
-  isCommunityConfigured,
+  isBackendConfigured,
   updateCommunityWorkflow,
 } from '@/lib/community'
 import type { Database } from '@/types/database'
@@ -40,7 +40,7 @@ export const workflowService = {
    * Get all active workflows for an organization
    */
   async getAll(orgId: string): Promise<WorkflowServiceResult<WorkflowTemplateRow[]>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await getCommunityWorkflows() as WorkflowTemplateRow[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflows.') } }
     }
@@ -61,7 +61,7 @@ export const workflowService = {
    * Get a single workflow by ID
    */
   async getById(workflowId: string): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await getCommunityWorkflow(workflowId) as WorkflowTemplateRow, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow.') } }
     }
@@ -77,7 +77,7 @@ export const workflowService = {
    * Create a new workflow using the default workflow function
    */
   async createDefault(orgId: string, userId: string): Promise<WorkflowServiceResult<string>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: (await createCommunityWorkflow({ name: 'Standard Release Process' })).id, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
     }
@@ -98,7 +98,7 @@ export const workflowService = {
   async create(
     workflow: Partial<WorkflowTemplateRow> & { org_id: string; name: string },
   ): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await createCommunityWorkflow(workflow) as WorkflowTemplateRow, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
     }
@@ -120,7 +120,7 @@ export const workflowService = {
     workflowId: string,
     updates: Partial<WorkflowTemplateRow>,
   ): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await updateCommunityWorkflow(workflowId, updates as Record<string, unknown>) as WorkflowTemplateRow, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow.') } }
     }
@@ -140,7 +140,7 @@ export const workflowService = {
    * Soft delete a workflow (set is_active = false)
    */
   async softDelete(workflowId: string): Promise<WorkflowServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await deleteCommunityWorkflow(workflowId); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow.') } }
     }
@@ -163,7 +163,7 @@ export const workflowService = {
     workflowId: string,
     payload: WorkflowExport,
   ): Promise<WorkflowServiceResult<ImportGraphResult>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await importCommunityWorkflow(workflowId, payload), error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to import workflow.') } }
     }
@@ -185,7 +185,7 @@ export const workflowService = {
     workflowId: string,
     config: { zoom: number; panX: number; panY: number },
   ): Promise<WorkflowServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await updateCommunityWorkflow(workflowId, { canvas_config: config }); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow canvas.') } }
     }

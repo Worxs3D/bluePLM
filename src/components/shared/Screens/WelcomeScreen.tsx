@@ -36,7 +36,12 @@ import {
   type AuthProviders,
 } from '@/lib/supabase'
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
-import { isCommunityConfigured, signInCommunity } from '@/lib/community'
+import {
+  CommunityTotpRequiredError,
+  isBackendConfigured,
+  signInCommunity,
+  verifyCommunityTotp,
+} from '@/lib/community'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
 import { logClick, logAuth } from '@/lib/userActionLogger'
@@ -134,6 +139,8 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   const [isNewAccount, setIsNewAccount] = useState(false)
   const [authName, setAuthName] = useState('')
   const [authError, setAuthError] = useState<string | null>(null)
+  const [communityTotpChallenge, setCommunityTotpChallenge] = useState<string | null>(null)
+  const [communityTotpCode, setCommunityTotpCode] = useState('')
   const [orgVaults, setOrgVaults] = useState<Vault[]>([])
   const [isLoadingVaults, setIsLoadingVaults] = useState(false)
   const [connectingVaultId, setConnectingVaultId] = useState<string | null>(null)
@@ -157,7 +164,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // Fetch org auth providers on mount and when user signs out (for pre-login sign-in method visibility)
   // We refetch when user becomes null to ensure we have fresh settings after sign-out
   useEffect(() => {
-    if (isCommunityConfigured()) return
+    if (isBackendConfigured('community')) return
     // Only fetch when showing sign-in screen (user is null and not in offline mode)
     if (user || isOfflineMode) return
 
@@ -758,17 +765,30 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   }
 
   const handleCommunitySignIn = async () => {
-    if (!authEmail.trim() || !authPassword) {
-      setAuthError('Enter your email address and password.')
+    if (!communityTotpChallenge && (!authEmail.trim() || !authPassword)) {
+      setAuthError(t('mdbSetup.enterCredentials'))
+      return
+    }
+    if (communityTotpChallenge && !/^\d{6}$/.test(communityTotpCode.trim())) {
+      setAuthError(t('mdbSetup.enterAuthenticatorCode'))
       return
     }
 
     setIsSigningIn(true)
     setAuthError(null)
     try {
-      await signInCommunity(authEmail.trim(), authPassword)
+      if (communityTotpChallenge) {
+        await verifyCommunityTotp(communityTotpChallenge, communityTotpCode.trim())
+      } else {
+        await signInCommunity(authEmail.trim(), authPassword)
+      }
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'Could not sign in to the MariaDB (MDB) backend.')
+      if (error instanceof CommunityTotpRequiredError) {
+        setCommunityTotpChallenge(error.challengeToken)
+        setCommunityTotpCode('')
+      } else {
+        setAuthError(error instanceof Error ? error.message : t('mdbSetup.signInFailed'))
+      }
     } finally {
       setIsSigningIn(false)
     }
@@ -1010,7 +1030,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // ============================================
   // CONNECTING SCREEN (shown after sign-in while loading organization)
   // ============================================
-  if (isCommunityConfigured() && !user && !isOfflineMode && !isAuthConnecting) {
+  if (isBackendConfigured('community') && !user && !isOfflineMode && !isAuthConnecting) {
     return (
       <div className="flex-1 flex items-center justify-center bg-plm-bg overflow-auto">
         <form
@@ -1022,10 +1042,10 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
         >
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-plm-fg">BluePLM</h1>
-            <p className="text-plm-fg-muted">Sign in to the configured MariaDB backend.</p>
+            <p className="text-plm-fg-muted">{t('mdbSetup.signInHelp')}</p>
           </div>
-          <label className="block space-y-1.5">
-            <span className="text-sm text-plm-fg-muted">Email</span>
+          {!communityTotpChallenge && <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">{t('mdbSetup.email')}</span>
             <input
               autoComplete="email"
               type="email"
@@ -1033,9 +1053,9 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
               onChange={(event) => setAuthEmail(event.target.value)}
               className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
             />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm text-plm-fg-muted">Password</span>
+          </label>}
+          {!communityTotpChallenge && <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">{t('mdbSetup.password')}</span>
             <input
               autoComplete="current-password"
               type="password"
@@ -1043,14 +1063,30 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
               onChange={(event) => setAuthPassword(event.target.value)}
               className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
             />
-          </label>
+          </label>}
+          {communityTotpChallenge && (
+            <label className="block space-y-1.5">
+              <span className="text-sm text-plm-fg-muted">{t('mdbSetup.authenticatorCode')}</span>
+              <input
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={communityTotpCode}
+                onChange={(event) => setCommunityTotpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+                autoFocus
+              />
+              <span className="text-xs text-plm-fg-dim">{t('mdbSetup.authenticatorCodeHelp')}</span>
+            </label>
+          )}
           {authError && <p className="text-sm text-red-400">{authError}</p>}
           <button type="submit" disabled={isSigningIn} className="w-full btn btn-primary btn-lg justify-center">
-            {isSigningIn ? <><Loader2 size={20} className="animate-spin" />Signing in…</> : 'Sign in'}
+            {isSigningIn ? <><Loader2 size={20} className="animate-spin" />{t('mdbSetup.signingIn')}</> : t('mdbSetup.signIn')}
           </button>
           {onChangeOrg && (
             <button type="button" onClick={() => void onChangeOrg()} className="w-full text-sm text-plm-fg-muted hover:text-plm-fg">
-              Change backend
+              {t('mdbSetup.changeBackend')}
             </button>
           )}
         </form>

@@ -7,7 +7,7 @@ import {
   getCommunityFileRevisions,
   getCommunityFiles,
   getCommunityVaults,
-  isCommunityConfigured,
+  isBackendConfigured,
   type CommunityFile,
 } from '@/lib/community'
 
@@ -82,7 +82,7 @@ export async function getFiles(
     workflow_state_ids?: string[]
   },
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       let files = await communityFilesForVaults(options?.vaultId)
       if (options?.folder) {
@@ -199,7 +199,7 @@ export async function getFilesLightweight(
   orgId: string,
   vaultId?: string,
 ): Promise<{ files: LightweightFile[] | null; error: any }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const files = await communityFilesForVaults(vaultId)
       return { files: files.map((file) => ({
@@ -265,7 +265,7 @@ export async function getFilesDelta(
   vaultId: string,
   since: string,
 ): Promise<{ files: DeltaFile[] | null; error: any }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const watermark = new Date(since).getTime()
       const files = await communityFilesForVaults(vaultId)
@@ -350,7 +350,7 @@ export async function getVaultFilesCount(
   orgId: string,
   vaultId: string,
 ): Promise<{ count: number | null; error: unknown }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return { count: (await communityFilesForVaults(vaultId)).length, error: null }
     } catch (error) {
@@ -536,7 +536,7 @@ export async function getUserBasicInfo(
 }
 
 export async function getFile(fileId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const files = await communityFilesForVaults()
       return { file: files.find((file) => file.id === fileId) ?? null, error: null }
@@ -580,7 +580,7 @@ export async function getFile(fileId: string) {
  * and types are regenerated.
  */
 export async function getFileByPath(vaultId: string, filePath: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const files = await communityFilesForVaults(vaultId)
       return { file: files.find((file) => file.file_path.localeCompare(filePath, undefined, { sensitivity: 'accent' }) === 0) ?? null, error: null }
@@ -603,7 +603,7 @@ export async function getFileByPath(vaultId: string, filePath: string) {
 // ============================================
 
 export async function getFileVersions(fileId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const versions = (await getCommunityFileRevisions(fileId)).map((revision) => ({
         id: revision.id,
@@ -644,7 +644,7 @@ export async function getFileVersions(fileId: string) {
 // ============================================
 
 export async function getWhereUsed(fileId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { references: (await getCommunityFileReferences(fileId, 'where-used')) as any, error: null } } catch (error) { return { references: null, error: error as Error } }
   }
   const client = getSupabaseClient()
@@ -664,7 +664,7 @@ export async function getWhereUsed(fileId: string) {
 }
 
 export async function getContains(fileId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { references: (await getCommunityFileReferences(fileId, 'contains')) as any, error: null } } catch (error) { return { references: null, error: error as Error } }
   }
   const client = getSupabaseClient()

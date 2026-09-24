@@ -10,7 +10,7 @@
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
-import { isCommunityConfigured, resolveCommunityShareLink } from '@/lib/community'
+import { isBackendConfigured, resolveCommunityShareLink } from '@/lib/community'
 import { buildFullPath } from '@/lib/utils/path'
 
 /**
@@ -72,7 +72,7 @@ export function useDeepLinkInstall(): void {
     const api = window.electronAPI
     if (!api?.onDeepLinkShare) return
     return api.onDeepLinkShare(async ({ token }) => {
-      if (!isCommunityConfigured()) { addToast('warning', 'This internal share link requires a Community backend connection.'); return }
+      if (!isBackendConfigured('community')) { addToast('warning', 'This internal share link requires a Community backend connection.'); return }
       try {
         const { file } = await resolveCommunityShareLink(token)
         if (file.vaultId !== activeVaultId || !vaultPath) { addToast('info', `Shared file: ${file.fileName}. Connect its vault to open it.`); return }

@@ -2,7 +2,7 @@ import { getSupabaseClient } from './client'
 import {
   getCommunityCheckoutOwner,
   getCommunityWatchedFiles,
-  isCommunityConfigured,
+  isBackendConfigured,
   isWatchingCommunityFile,
   unwatchCommunityFile,
   watchCommunityFile,
@@ -17,7 +17,7 @@ export async function getCheckedOutByUser(
   user: { id: string; email: string; full_name: string | null; avatar_url: string | null } | null
   error?: string
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { user: await getCommunityCheckoutOwner(fileId) } }
     catch (error) { return { user: null, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -64,7 +64,7 @@ export async function watchFile(
     notifyOnReview?: boolean
   },
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await watchCommunityFile(fileId, options ?? {}); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -99,7 +99,7 @@ export async function unwatchFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await unwatchCommunityFile(fileId); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -125,7 +125,7 @@ export async function isWatchingFile(
   fileId: string,
   userId: string,
 ): Promise<{ watching: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { watching: await isWatchingCommunityFile(fileId) } }
     catch (error) { return { watching: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -149,7 +149,7 @@ export async function isWatchingFile(
  * Get all files a user is watching
  */
 export async function getWatchedFiles(userId: string): Promise<{ files: any[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const watchers = await getCommunityWatchedFiles()
       return {

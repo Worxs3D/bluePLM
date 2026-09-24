@@ -4,7 +4,7 @@ import {
   getCommunityPrincipal,
   getCommunityUserVaultAccess,
   getCommunityVaults,
-  isCommunityConfigured,
+  isBackendConfigured,
   setCommunityUserVaultAccess,
 } from '@/lib/community'
 
@@ -19,7 +19,7 @@ import {
 export async function getUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.role !== 'owner' && principal.role !== 'admin')
@@ -53,7 +53,7 @@ export async function getOrgVaultAccess(orgId: string): Promise<{
   accessMap: Record<string, string[]>
   error?: string
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.organizationId !== orgId)
@@ -111,7 +111,7 @@ export async function grantVaultAccess(
   userId: string,
   grantedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const access = await getUserVaultAccess(userId)
       if (access.error) return { success: false, error: access.error }
@@ -147,7 +147,7 @@ export async function revokeVaultAccess(
   vaultId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const access = await getUserVaultAccess(userId)
       if (access.error) return { success: false, error: access.error }
@@ -185,7 +185,7 @@ export async function setUserVaultAccess(
   grantedBy: string,
   orgId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.organizationId !== orgId)
@@ -276,7 +276,7 @@ export async function checkVaultAccess(
 export async function getEffectiveUserVaultAccess(
   userId: string,
 ): Promise<{ vaultIds: string[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return { vaultIds: await getCommunityUserVaultAccess(userId) }
     } catch (error) {
@@ -318,7 +318,7 @@ export async function getAccessibleVaults(
   }>
   error?: string
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.userId !== userId || principal.organizationId !== orgId) {

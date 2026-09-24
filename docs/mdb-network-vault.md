@@ -26,6 +26,13 @@ fail with a controlled error.
 
 ## Installer transport
 
-The MDB installer accepts `ftps://` only. TLS certificate and hostname checks use
-curl defaults and cannot be disabled by the installer. Plain FTP is rejected
-before any file or credential is sent.
+The MDB installer accepts `ftps://` URLs with an explicit port. Port 990 uses
+implicit TLS; port 21 is automatically upgraded to explicit TLS (AUTH TLS).
+For ALL-INKL use the KAS server name with `:21`, for example
+`ftps://w0XXXXXX.kasserver.com:21`. TLS certificate and hostname checks use
+Node's OpenSSL defaults and cannot be disabled by the installer. Plain FTP is
+rejected before any file or credential is sent.
+
+The FTP target folder may be left empty. This is required when the FTP user is
+already restricted to the domain's web root; in that case BluePLM uploads into
+that root and the domain itself should point to its `public/` subdirectory.

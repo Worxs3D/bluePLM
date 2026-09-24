@@ -7,7 +7,7 @@ import { getSupabaseClient } from '../client'
 import { getCurrentUserEmail } from '../auth'
 import { getNextRevision } from '../../../types/pdm'
 import type { PDMFile } from '../../../types/pdm'
-import { getCommunityRollbackTarget, isCommunityConfigured } from '@/lib/community'
+import { getCommunityRollbackTarget, isBackendConfigured } from '@/lib/community'
 
 /**
  * Rollback file to a previous version (LOCAL ONLY)
@@ -21,7 +21,7 @@ export async function rollbackToVersion(
   targetVersion: number,
   comment?: string,
 ): Promise<{ success: boolean; targetVersionRecord?: any; maxVersion?: number; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return await getCommunityRollbackTarget(fileId, targetVersion, comment)
     } catch (error) {

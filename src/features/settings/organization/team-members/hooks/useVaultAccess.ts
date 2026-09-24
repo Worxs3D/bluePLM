@@ -15,7 +15,7 @@ import {
   getCommunityTeams,
   getCommunityOrgVaultAccess,
   getCommunityVaults,
-  isCommunityConfigured,
+  isBackendConfigured,
   setCommunityUserVaultAccess,
   setCommunityTeamVaultAccess,
 } from '@/lib/community'
@@ -51,7 +51,7 @@ export function useVaultAccess(orgId: string | null) {
 
     setOrgVaultsLoading(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const communityVaults = await getCommunityVaults()
         setOrgVaults(
           communityVaults.map((vault) => ({
@@ -84,7 +84,7 @@ export function useVaultAccess(orgId: string | null) {
   const loadVaultAccess = useCallback(async () => {
     if (!orgId) return
 
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try {
         setVaultAccessMap(await getCommunityOrgVaultAccess())
       } catch (error) {
@@ -105,7 +105,7 @@ export function useVaultAccess(orgId: string | null) {
     if (!orgId) return
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const teams = await getCommunityTeams()
         const entries = await Promise.all(
           teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
@@ -142,7 +142,7 @@ export function useVaultAccess(orgId: string | null) {
       if (!user || !orgId) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await setCommunityUserVaultAccess(userId, vaultIds)
           addToast('success', `Updated vault access for ${userName || 'user'}`)
           await loadVaultAccess()
@@ -172,7 +172,7 @@ export function useVaultAccess(orgId: string | null) {
       if (!user) return false
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           await setCommunityTeamVaultAccess(teamId, vaultIds)
           setTeamVaultAccessMap({
             ...teamVaultAccessMap,

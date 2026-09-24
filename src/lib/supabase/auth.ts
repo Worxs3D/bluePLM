@@ -2,7 +2,7 @@ import { getSupabaseClient, authLog, getCurrentConfigValues, setSessionResolver 
 import {
   communityAccessToken,
   getCommunityPrincipal,
-  isCommunityConfigured,
+  isBackendConfigured,
   signInCommunity,
   signOutCommunity,
 } from '@/lib/community'
@@ -15,7 +15,7 @@ export function setCurrentAccessToken(token: string | null) {
 }
 
 export function getCurrentAccessToken(): string | null {
-  if (isCommunityConfigured()) return communityAccessToken()
+  if (isBackendConfigured('community')) return communityAccessToken()
   return currentAccessToken
 }
 
@@ -34,7 +34,7 @@ export function clearCachedUserEmail() {
 // ============================================
 
 export async function signInWithGoogle() {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     return { data: null, error: new Error('Google sign-in is not configured for the Community backend.') }
   }
   const client = getSupabaseClient()
@@ -158,7 +158,7 @@ export async function signInWithGoogle() {
 // ============================================
 
 export async function signInWithEmail(email: string, password: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await signInCommunity(email, password)
       const user = {
@@ -195,7 +195,7 @@ export async function signInWithEmail(email: string, password: string) {
 }
 
 export async function signUpWithEmail(email: string, password: string, fullName?: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     return { data: null, error: new Error('Community accounts are created by an organization administrator.') }
   }
   const client = getSupabaseClient()
@@ -233,7 +233,7 @@ export async function signUpWithEmail(email: string, password: string, fullName?
 // ============================================
 
 export async function signInWithPhone(phone: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     return { data: null, error: new Error('Phone sign-in is not configured for the Community backend.') }
   }
   const client = getSupabaseClient()
@@ -262,7 +262,7 @@ export async function signInWithPhone(phone: string) {
 }
 
 export async function verifyPhoneOTP(phone: string, token: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     return { data: null, error: new Error('Phone sign-in is not configured for the Community backend.') }
   }
   const client = getSupabaseClient()
@@ -386,7 +386,7 @@ export async function getSupplierContact(authUserId: string) {
 }
 
 export async function signOut() {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     clearCachedUserEmail()
     signOutCommunity()
     return { error: null }
@@ -416,7 +416,7 @@ export async function signOut() {
 }
 
 export async function getCurrentUser() {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       return {
@@ -441,7 +441,7 @@ export async function getCurrentUser() {
 }
 
 export async function getCurrentSession() {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       return {

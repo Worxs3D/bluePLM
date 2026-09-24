@@ -349,9 +349,10 @@ declare global {
         username: string
         password: string
       }) => Promise<{ success: boolean; target?: string; error?: string }>
-      provisionMdb: (request: {
+      inspectMdbDatabase: (request: {
         publicUrl: string
         ftpUrl: string
+        ftpSecurity: 'explicit' | 'implicit'
         ftpRemotePath: string
         ftpUsername: string
         ftpPassword: string
@@ -366,10 +367,61 @@ declare global {
         documentRootConfirmed: boolean
       }) => Promise<{
         success: boolean
-        setupUrl?: string
-        generatedSecrets?: { sessionSecret: string; bootstrapToken: string; maintenanceToken: string }
+        database?: {
+          state: 'empty' | 'managed' | 'legacy' | 'foreign'
+          tableCount: number
+          bootstrapped: boolean
+          appliedMigrations: number
+          pendingMigrations: number
+        }
         error?: string
       }>
+      provisionMdb: (request: {
+        publicUrl: string
+        ftpUrl: string
+        ftpSecurity: 'explicit' | 'implicit'
+        ftpRemotePath: string
+        ftpUsername: string
+        ftpPassword: string
+        databaseHost: string
+        databasePort: number
+        databaseName: string
+        databaseUser: string
+        databasePassword: string
+        sessionSecret?: string
+        bootstrapToken?: string
+        maintenanceToken?: string
+        documentRootConfirmed: boolean
+        databaseAction: 'install' | 'migrate' | 'reset'
+        resetConfirmation?: string
+        bootstrap?: {
+          organizationName: string
+          organizationSlug: string
+          email: string
+          displayName: string
+          password: string
+          vaultName?: string
+          networkRoot?: string
+        }
+      }) => Promise<{
+        success: boolean
+        serverUrl?: string
+        accessToken?: string
+        migrated?: boolean
+        generatedSecrets?: {
+          sessionSecret: string
+          bootstrapToken: string
+          maintenanceToken: string
+        }
+        error?: string
+      }>
+      testMdbFtp: (request: {
+        ftpUrl: string
+        ftpSecurity: 'explicit' | 'implicit'
+        ftpRemotePath: string
+        ftpUsername: string
+        ftpPassword: string
+      }) => Promise<{ success: boolean; error?: string }>
 
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>

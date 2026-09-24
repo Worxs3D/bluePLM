@@ -1,6 +1,6 @@
 import { getSupabaseClient } from './client'
 import { log } from '@/lib/logger'
-import { createCommunityRecoveryCode, deleteCommunityRecoveryCode, isCommunityConfigured, listCommunityRecoveryCodes, revokeCommunityRecoveryCode, useCommunityRecoveryCode } from '@/lib/community'
+import { createCommunityRecoveryCode, deleteCommunityRecoveryCode, isBackendConfigured, listCommunityRecoveryCodes, revokeCommunityRecoveryCode, useCommunityRecoveryCode } from '@/lib/community'
 
 // ===========================================
 // ADMIN RECOVERY CODES
@@ -80,7 +80,7 @@ export async function generateAdminRecoveryCode(
   description?: string,
   expiresInDays: number = 90,
 ): Promise<{ success: boolean; code?: string; codeId?: string; error?: string }> {
-  if (isCommunityConfigured()) { try { const result = await createCommunityRecoveryCode(description, expiresInDays); return { success: true, ...result } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
+  if (isBackendConfigured('community')) { try { const result = await createCommunityRecoveryCode(description, expiresInDays); return { success: true, ...result } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   // Generate the code
@@ -124,7 +124,7 @@ export async function generateAdminRecoveryCode(
 export async function listAdminRecoveryCodes(
   orgId: string,
 ): Promise<{ codes: AdminRecoveryCode[]; error?: string }> {
-  if (isCommunityConfigured()) { try { return { codes: await listCommunityRecoveryCodes() as unknown as AdminRecoveryCode[] } } catch (error) { return { codes: [], error: error instanceof Error ? error.message : String(error) } } }
+  if (isBackendConfigured('community')) { try { return { codes: await listCommunityRecoveryCodes() as unknown as AdminRecoveryCode[] } } catch (error) { return { codes: [], error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -166,7 +166,7 @@ export async function revokeAdminRecoveryCode(
   revokedBy: string,
   reason?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) { try { await revokeCommunityRecoveryCode(codeId, reason); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
+  if (isBackendConfigured('community')) { try { await revokeCommunityRecoveryCode(codeId, reason); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { error } = await client
@@ -195,7 +195,7 @@ export async function revokeAdminRecoveryCode(
 export async function deleteAdminRecoveryCode(
   codeId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) { try { await deleteCommunityRecoveryCode(codeId); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
+  if (isBackendConfigured('community')) { try { await deleteCommunityRecoveryCode(codeId); return { success: true } } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   const { error } = await client.from('admin_recovery_codes').delete().eq('id', codeId)
@@ -216,7 +216,7 @@ export async function deleteAdminRecoveryCode(
 export async function useAdminRecoveryCode(
   code: string,
 ): Promise<{ success: boolean; message?: string; error?: string }> {
-  if (isCommunityConfigured()) { try { return await useCommunityRecoveryCode(code) } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
+  if (isBackendConfigured('community')) { try { return await useCommunityRecoveryCode(code) } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } } }
   const client = getSupabaseClient()
 
   // Hash the code to match against stored hash

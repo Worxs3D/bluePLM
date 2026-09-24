@@ -33,7 +33,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { getCurrentConfig, supabase } from '@/lib/supabase'
 import { generateOrgCode } from '@/lib/supabaseConfig'
 import { subscribeToMemberChanges } from '@/lib/realtime'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
 
 // Import components and hooks from team-members
@@ -72,7 +72,7 @@ export function TeamMembersSettings() {
   const { user, organization, getEffectiveRole, apiServerUrl, addToast } = usePDMStore()
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
-  const isCommunityBackend = isCommunityConfigured()
+  const isCommunityBackend = isBackendConfigured('community')
 
   // Track if we're currently saving to avoid overwriting with stale realtime data
   const savingRef = useRef(false)

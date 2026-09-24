@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { JobTitle, OrgUser } from '../types'
@@ -49,7 +49,7 @@ export function useJobTitles(orgId: string | null) {
     try {
       // Job titles are not represented by the Community API yet. Do not let
       // this optional Supabase feature leak into a MariaDB installation.
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         setJobTitles([])
         return
       }

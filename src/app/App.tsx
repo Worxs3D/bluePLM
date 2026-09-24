@@ -15,7 +15,7 @@ import { logUserAction, logExplorer } from '@/lib/userActionLogger'
 import { checkSchemaCompatibility, shouldCheckSupabaseSchema } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { clearSwReferencesCache } from '@/lib/solidworks'
 import { syncDrawingReferencesInBackground } from '@/lib/solidworks/drawingReferenceSync'
 import { hashCheckoutIdentifier } from '@/types/pdm'
@@ -303,7 +303,16 @@ export function App() {
   // Validate connected vault IDs after organization loads
   useEffect(() => {
     const validateVaults = async () => {
-      if (!organization || !user || connectedVaults.length === 0) return
+      // MDB uses its PHP API and does not expose the Supabase vault query.
+      // Connected vaults are validated by the MDB file-loading path instead;
+      // never initialise the Supabase adapter just because a local vault is
+      // still persisted from an earlier session.
+      if (
+        !organization ||
+        !user ||
+        connectedVaults.length === 0 ||
+        isBackendConfigured('community')
+      ) return
 
       log.debug('[VaultValidation]', 'Checking connected vaults', { count: connectedVaults.length })
 
@@ -378,7 +387,7 @@ export function App() {
         !organization?.id ||
         isOfflineMode ||
         schemaCheckDoneRef.current ||
-        !shouldCheckSupabaseSchema(isCommunityConfigured())
+        !shouldCheckSupabaseSchema(isBackendConfigured('community'))
       ) return
 
       schemaCheckDoneRef.current = true

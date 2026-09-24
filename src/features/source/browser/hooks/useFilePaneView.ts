@@ -8,7 +8,7 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { FileMetadataColumn } from '@/types/database'
 import { supabase, isWatchingFile } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 
 import { useContextMenuState } from './useContextMenuState'
 import { useDialogState } from './useDialogState'
@@ -183,7 +183,7 @@ export function useFilePaneView() {
   // Load custom metadata columns
   useEffect(() => {
     const loadCustomColumns = async () => {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         setCustomMetadataColumns([])
         return
       }

@@ -3,7 +3,7 @@ import {
   createCommunityAnnotation,
   deleteCommunityAnnotation,
   getCommunityAnnotations,
-  isCommunityConfigured,
+  isBackendConfigured,
   resolveCommunityAnnotation,
   unresolveCommunityAnnotation,
   updateCommunityAnnotation,
@@ -116,7 +116,7 @@ export async function getFileAnnotations(
   fileId: string,
   version?: number,
 ): Promise<{ annotations: FileAnnotation[]; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const rows = await getCommunityAnnotations(fileId, version)
       return { annotations: buildThreadTree(rows.map((row) => toFileAnnotation(row as unknown as FileCommentRow))), error: null }
@@ -182,7 +182,7 @@ export async function getFileAnnotations(
 export async function getAnnotationCount(
   fileId: string,
 ): Promise<{ count: number; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const annotations = await getCommunityAnnotations(fileId)
       return { count: annotations.filter((annotation) => !annotation.resolved && annotation.parent_id === null).length, error: null }
@@ -235,7 +235,7 @@ export interface CreateAnnotationParams {
 export async function createAnnotation(
   params: CreateAnnotationParams,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const annotation = await createCommunityAnnotation(params.fileId, {
         comment: params.comment,
@@ -311,7 +311,7 @@ export async function updateAnnotation(
   annotationId: string,
   comment: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { annotation: toFileAnnotation(await updateCommunityAnnotation(annotationId, comment) as unknown as FileCommentRow), error: null } }
     catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to update annotation.' } }
   }
@@ -369,7 +369,7 @@ export async function updateAnnotation(
 export async function deleteAnnotation(
   annotationId: string,
 ): Promise<{ success: boolean; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityAnnotation(annotationId); return { success: true, error: null } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Failed to delete annotation.' } }
   }
@@ -404,7 +404,7 @@ export async function resolveAnnotation(
   annotationId: string,
   userId: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { annotation: toFileAnnotation(await resolveCommunityAnnotation(annotationId) as unknown as FileCommentRow), error: null } }
     catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to resolve annotation.' } }
   }
@@ -463,7 +463,7 @@ export async function resolveAnnotation(
 export async function unresolveAnnotation(
   annotationId: string,
 ): Promise<{ annotation: FileAnnotation | null; error: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { annotation: toFileAnnotation(await unresolveCommunityAnnotation(annotationId) as unknown as FileCommentRow), error: null } }
     catch (error) { return { annotation: null, error: error instanceof Error ? error.message : 'Failed to unresolve annotation.' } }
   }

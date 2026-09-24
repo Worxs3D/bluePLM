@@ -308,9 +308,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     password: string
   }) => ipcRenderer.invoke('network-vault:save-credential', request),
 
-  provisionMdb: (request: {
+  inspectMdbDatabase: (request: {
     publicUrl: string
     ftpUrl: string
+    ftpSecurity: 'explicit' | 'implicit'
     ftpRemotePath: string
     ftpUsername: string
     ftpPassword: string
@@ -323,7 +324,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
     bootstrapToken?: string
     maintenanceToken?: string
     documentRootConfirmed: boolean
+  }) => ipcRenderer.invoke('mdb-installer:inspect-database', request),
+  provisionMdb: (request: {
+    publicUrl: string
+    ftpUrl: string
+    ftpSecurity: 'explicit' | 'implicit'
+    ftpRemotePath: string
+    ftpUsername: string
+    ftpPassword: string
+    databaseHost: string
+    databasePort: number
+    databaseName: string
+    databaseUser: string
+    databasePassword: string
+    sessionSecret?: string
+    bootstrapToken?: string
+    maintenanceToken?: string
+    documentRootConfirmed: boolean
+    databaseAction: 'install' | 'migrate' | 'reset'
+    resetConfirmation?: string
+    bootstrap?: {
+      organizationName: string
+      organizationSlug: string
+      email: string
+      displayName: string
+      password: string
+      vaultName?: string
+      networkRoot?: string
+    }
   }) => ipcRenderer.invoke('mdb-installer:provision', request),
+  testMdbFtp: (request: {
+    ftpUrl: string
+    ftpSecurity: 'explicit' | 'implicit'
+    ftpRemotePath: string
+    ftpUsername: string
+    ftpPassword: string
+  }) => ipcRenderer.invoke('mdb-installer:test-ftp', request),
 
   // File system operations
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),

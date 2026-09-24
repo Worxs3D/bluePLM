@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import {
   addCommunityTeamMember,
   getCommunityTeamMembers,
-  isCommunityConfigured,
+  isBackendConfigured,
   removeCommunityTeamMember,
 } from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -49,7 +49,7 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
   const loadMembers = async () => {
     setIsLoading(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const communityMembers = await getCommunityTeamMembers(team.id)
         setMembers(communityMembers.map((member) => ({
           id: `${team.id}:${member.userId}`,
@@ -123,7 +123,7 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
 
     setIsAdding(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await addCommunityTeamMember(team.id, userToAdd.id)
         addToast('success', `Added ${userToAdd.full_name || userToAdd.email} to team`)
         loadMembers()
@@ -148,7 +148,7 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
 
   const removeMember = async (member: TeamMember) => {
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await removeCommunityTeamMember(team.id, member.user_id)
         addToast('success', `Removed ${member.user?.full_name || member.user?.email} from team`)
         loadMembers()

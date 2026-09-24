@@ -21,7 +21,7 @@ import {
   getCommunityWorkflowStates,
   getCommunityWorkflowTransitions,
   getCommunityWorkflows,
-  isCommunityConfigured,
+  isBackendConfigured,
   updateCommunityWorkflow,
   updateCommunityWorkflowGate,
   updateCommunityWorkflowState,
@@ -44,7 +44,7 @@ import type {
 // ============================================
 
 export async function getWorkflowTemplates(orgId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityWorkflows() as unknown as WorkflowTemplate[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflows.') } }
   }
@@ -60,7 +60,7 @@ export async function getWorkflowTemplates(orgId: string) {
 }
 
 export async function getDefaultWorkflow(orgId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const workflow = (await getCommunityWorkflows()).find((candidate) => candidate.is_default)
       return { data: workflow as unknown as WorkflowTemplate | undefined ?? null, error: null }
@@ -83,7 +83,7 @@ export async function createWorkflowTemplate(
   name: string,
   description?: string,
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await createCommunityWorkflow({ name, description: description ?? null }) as unknown as WorkflowTemplate, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
   }
@@ -113,7 +113,7 @@ export async function updateWorkflowTemplate(
   workflowId: string,
   updates: Partial<WorkflowTemplate>,
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await updateCommunityWorkflow(workflowId, updates as Record<string, unknown>) as unknown as WorkflowTemplate, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow.') } }
   }
@@ -132,7 +132,7 @@ export async function updateWorkflowTemplate(
 }
 
 export async function deleteWorkflowTemplate(workflowId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityWorkflow(workflowId); return { data: null, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow.') } }
   }
@@ -145,7 +145,7 @@ export async function deleteWorkflowTemplate(workflowId: string) {
 // ============================================
 
 export async function getWorkflowStates(workflowId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow states.') } }
   }
@@ -159,7 +159,7 @@ export async function getWorkflowStates(workflowId: string) {
 export async function createWorkflowState(
   state: Omit<Partial<WorkflowState>, 'id'> & { name: string; workflow_id: string },
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await createCommunityWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow state.') } }
   }
@@ -167,7 +167,7 @@ export async function createWorkflowState(
 }
 
 export async function updateWorkflowState(stateId: string, updates: Partial<WorkflowState>) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await updateCommunityWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
   }
@@ -175,7 +175,7 @@ export async function updateWorkflowState(stateId: string, updates: Partial<Work
 }
 
 export async function deleteWorkflowState(stateId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityWorkflowState(stateId); return { data: null, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow state.') } }
   }
@@ -187,7 +187,7 @@ export async function deleteWorkflowState(stateId: string) {
 // ============================================
 
 export async function getWorkflowTransitions(workflowId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
   }
@@ -201,7 +201,7 @@ export async function createWorkflowTransition(
     to_state_id: string
   },
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await createCommunityWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow transition.') } }
   }
@@ -217,7 +217,7 @@ export async function updateWorkflowTransition(
   transitionId: string,
   updates: Partial<WorkflowTransition>,
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await updateCommunityWorkflowTransition(transitionId, updates as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow transition.') } }
   }
@@ -235,7 +235,7 @@ export async function updateWorkflowTransition(
 }
 
 export async function deleteWorkflowTransition(transitionId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityWorkflowTransition(transitionId); return { data: null, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow transition.') } }
   }
@@ -247,7 +247,7 @@ export async function deleteWorkflowTransition(transitionId: string) {
 // ============================================
 
 export async function getGatesForTransitions(transitionIds: string[]) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow gates.') } }
   }
@@ -261,7 +261,7 @@ export async function getGatesForTransitions(transitionIds: string[]) {
 export async function createWorkflowGate(
   gate: Omit<Partial<WorkflowGate>, 'id'> & { transition_id: string; name: string },
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await createCommunityWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow gate.') } }
   }
@@ -276,7 +276,7 @@ export async function createWorkflowGate(
 }
 
 export async function updateWorkflowGate(gateId: string, updates: Partial<WorkflowGate>) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await updateCommunityWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow gate.') } }
   }
@@ -291,7 +291,7 @@ export async function updateWorkflowGate(gateId: string, updates: Partial<Workfl
 }
 
 export async function deleteWorkflowGate(gateId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityWorkflowGate(gateId); return { data: null, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow gate.') } }
   }
@@ -344,7 +344,7 @@ export async function removeGateReviewer(reviewerId: string) {
 // ============================================
 
 export async function getFileWorkflowAssignment(fileId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityFileWorkflow(fileId), error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load file workflow.') } }
   }
@@ -367,7 +367,7 @@ export async function assignWorkflowToFile(
   initialStateId: string,
   assignedBy: string,
 ) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await assignCommunityFileWorkflow(fileId, workflowId, initialStateId); return { data: { file_id: fileId, workflow_id: workflowId, current_state_id: initialStateId }, error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to assign workflow.') } }
   }
@@ -384,7 +384,7 @@ export async function assignWorkflowToFile(
 }
 
 export async function updateFileWorkflowState(fileId: string, newStateId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const assignment = await getCommunityFileWorkflow(fileId)
       const workflowId = typeof assignment?.workflow_id === 'string' ? assignment.workflow_id : null
@@ -409,7 +409,7 @@ export async function getAvailableTransitions(
   fileId: string,
   userId: string,
 ): Promise<{ data: AvailableTransition[] | null; error: Error | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityAvailableTransitions(fileId) as unknown as AvailableTransition[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
   }
@@ -446,7 +446,7 @@ export async function getMyPendingReviews(): Promise<{
   data: MyPendingReview[] | null
   error: Error | null
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await getCommunityMyWorkflowReviews() as unknown as MyPendingReview[], error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load pending reviews.') } }
   }
@@ -478,7 +478,7 @@ export async function submitReviewDecision(
   comment?: string,
   checklistResponses?: Record<string, boolean>,
 ): Promise<{ data: TransitionResult | null; error: Error | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await decideCommunityWorkflowReview(reviewId, decision, comment, checklistResponses), error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to submit review decision.') } }
   }
@@ -560,7 +560,7 @@ export async function executeTransition(
   transitionId: string,
   options?: { comment?: string },
 ): Promise<{ data: TransitionResult | null; error: Error | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { data: await executeCommunityWorkflowTransition(fileId, transitionId, options?.comment), error: null } }
     catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to execute workflow transition.') } }
   }

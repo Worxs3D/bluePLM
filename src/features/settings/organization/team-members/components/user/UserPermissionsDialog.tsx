@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase'
 import {
   getCommunityUserPermissions,
   getCommunityVaults,
-  isCommunityConfigured,
+  isBackendConfigured,
   setCommunityUserPermissions,
 } from '@/lib/community'
 import type { OrgUser, Vault } from '../../types'
@@ -60,7 +60,7 @@ export function UserPermissionsDialog({
         return
       }
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           setVaults((await getCommunityVaults()).map((vault) => ({
             id: vault.id,
             name: vault.name,
@@ -97,7 +97,7 @@ export function UserPermissionsDialog({
   const loadPermissions = async () => {
     setIsLoading(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const permsMap = await getCommunityUserPermissions(user.id, selectedVaultId)
         setPermissions(permsMap)
         setOriginalPermissions(permsMap)
@@ -138,7 +138,7 @@ export function UserPermissionsDialog({
 
     setIsSaving(true)
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await setCommunityUserPermissions(user.id, selectedVaultId, permissions)
         const vaultName = selectedVaultId
           ? vaults.find((vault) => vault.id === selectedVaultId)?.name || 'selected vault'

@@ -17,7 +17,7 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { Supplier } from '@/stores/types'
 import { supabase } from '@/lib/supabase'
-import { getCommunitySuppliers, isCommunityConfigured } from '@/lib/community'
+import { getCommunitySuppliers, isBackendConfigured } from '@/lib/community'
 
 function getApiUrl(organization: { settings?: { api_url?: string } } | null): string | null {
   return organization?.settings?.api_url || null
@@ -49,7 +49,7 @@ export function SuppliersView() {
     setSuppliersLoading(true)
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         setSuppliers((await getCommunitySuppliers()) as Supplier[])
         return
       }
@@ -82,7 +82,7 @@ export function SuppliersView() {
     setSyncing(true)
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         addToast('warning', 'ERP synchronization is not configured for the Community backend yet.')
         return
       }

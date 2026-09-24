@@ -6,7 +6,7 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { getSupabaseClient } from '../client'
 import {
   getCommunityTrash,
-  isCommunityConfigured,
+  isBackendConfigured,
   permanentlyDeleteCommunityFile,
   restoreCommunityFile,
   trashCommunityFile,
@@ -45,7 +45,7 @@ export async function softDeleteFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await trashCommunityFile(fileId)
       return { success: true, file: { id: fileId } }
@@ -150,7 +150,7 @@ export async function restoreFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; file?: any; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await restoreCommunityFile(fileId)
       return { success: true, file: { id: fileId } }
@@ -272,7 +272,7 @@ export async function permanentlyDeleteFile(
   fileId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await permanentlyDeleteCommunityFile(fileId)
       return { success: true }
@@ -386,7 +386,7 @@ export async function getDeletedFiles(
     folderPath?: string // Get deleted files that were in this folder
   },
 ): Promise<{ files: any[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const files = await getCommunityTrash(options?.vaultId)
       const normalizedFolder = options?.folderPath?.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
@@ -498,7 +498,7 @@ export async function getDeletedFilesCount(
   orgId: string,
   vaultId?: string,
 ): Promise<{ count: number; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { count: (await getCommunityTrash(vaultId)).length } }
     catch (error) { return { count: 0, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -542,7 +542,7 @@ export async function emptyTrash(
   userId: string,
   vaultId?: string,
 ): Promise<{ success: boolean; deleted: number; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const files = await getCommunityTrash(vaultId)
       const result = await permanentlyDeleteFiles(files.map((file) => file.id), userId)

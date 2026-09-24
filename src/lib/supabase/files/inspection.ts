@@ -17,7 +17,7 @@ import {
   getCommunityInspectionMethods,
   getCommunityInspectionRows,
   getCommunityInspectionRowsForRevision,
-  isCommunityConfigured,
+  isBackendConfigured,
   saveCommunityInspectionRows,
   updateCommunityInspectionMethod,
 } from '@/lib/community'
@@ -81,7 +81,7 @@ export async function getInspectionRows(
   error?: string
   notInstalled?: boolean
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { success: true, rows: await getCommunityInspectionRows(fileId) as InspectionCharacteristic[] } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -115,7 +115,7 @@ export async function getInspectionRowsForVersion(
   error?: string
   notInstalled?: boolean
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { success: true, rows: await getCommunityInspectionRowsForRevision(fileVersionId) as InspectionCharacteristicVersion[] } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -150,7 +150,7 @@ export async function saveInspectionRows(
   userId: string,
   rows: InspectionRowInput[],
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await saveCommunityInspectionRows(fileId, rows); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -220,7 +220,7 @@ export interface InspectionMethodOption {
 export async function getInspectionMethods(
   orgId: string,
 ): Promise<{ success: boolean; methods?: InspectionMethodOption[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { success: true, methods: await getCommunityInspectionMethods() } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -257,7 +257,7 @@ export async function addInspectionMethod(
   const trimmed = name.trim()
   if (!trimmed) return { success: false, error: 'Method name is required' }
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return { success: true, method: await createCommunityInspectionMethod(trimmed) } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -286,7 +286,7 @@ export async function updateInspectionMethod(
   const trimmed = name.trim()
   if (!trimmed) return { success: false, error: 'Method name is required' }
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await updateCommunityInspectionMethod(id, trimmed); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }
@@ -310,7 +310,7 @@ export async function deleteInspectionMethod(
   orgId: string,
   id: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await deleteCommunityInspectionMethod(id); return { success: true } }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) } }
   }

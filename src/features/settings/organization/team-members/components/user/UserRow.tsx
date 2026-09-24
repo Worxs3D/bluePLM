@@ -21,6 +21,7 @@ import {
 import { getInitials, getEffectiveAvatarUrl, getAvatarColor } from '@/lib/utils'
 import { formatLastOnline, getTitleIcon, getTeamIcon, getRoleIcon } from '../../utils'
 import type { UserRowProps } from '../../types'
+import { useTranslation } from '@/lib/i18n'
 
 export function UserRow({
   user,
@@ -49,6 +50,7 @@ export function UserRow({
   onToggleTeam,
   onToggleWorkflowRole,
 }: UserRowProps) {
+  const { t } = useTranslation()
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false)
   const [titleDropdownOpen, setTitleDropdownOpen] = useState(false)
   const [teamsDropdownOpen, setTeamsDropdownOpen] = useState(false)
@@ -62,6 +64,14 @@ export function UserRow({
 
   // Admins can manage settings for everyone including themselves
   const canManage = isAdmin
+  const membershipRoleKey = {
+    owner: 'mdbSetup.membershipRoleOwner',
+    admin: 'mdbSetup.membershipRoleAdmin',
+    member: 'mdbSetup.membershipRoleMember',
+    engineer: 'mdbSetup.membershipRoleEngineer',
+    viewer: 'mdbSetup.membershipRoleViewer',
+    guest: 'mdbSetup.membershipRoleGuest',
+  }[user.role]
 
   return (
     <div
@@ -97,6 +107,12 @@ export function UserRow({
           </div>
           <div className={`${compact ? 'text-xs' : 'text-sm'} text-plm-fg-muted truncate`}>
             {user.email}
+          </div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded bg-plm-accent/10 px-1.5 py-0.5 text-[11px] text-plm-accent">
+              <Shield size={10} />
+              {membershipRoleKey ? t(membershipRoleKey) : user.role}
+            </span>
           </div>
           {/* Last online - on its own line */}
           {!compact && formatLastOnline(user.last_online) && (

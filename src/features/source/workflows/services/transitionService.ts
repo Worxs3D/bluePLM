@@ -12,7 +12,7 @@ import {
   deleteCommunityWorkflowTransition,
   getCommunityWorkflowGates,
   getCommunityWorkflowTransitions,
-  isCommunityConfigured,
+  isBackendConfigured,
   updateCommunityWorkflowGate,
   updateCommunityWorkflowTransition,
 } from '@/lib/community'
@@ -42,7 +42,7 @@ export const transitionService = {
   async getByWorkflow(
     workflowId: string,
   ): Promise<TransitionServiceResult<WorkflowTransition[]>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await getCommunityWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
     }
@@ -76,7 +76,7 @@ export const transitionService = {
       to_state_id: string
     },
   ): Promise<TransitionServiceResult<WorkflowTransition>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await createCommunityWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow transition.') } }
     }
@@ -100,7 +100,7 @@ export const transitionService = {
     transitionId: string,
     updates: Record<string, unknown>,
   ): Promise<TransitionServiceResult<WorkflowTransition>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await updateCommunityWorkflowTransition(transitionId, updates) as unknown as WorkflowTransition, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow transition.') } }
     }
@@ -120,7 +120,7 @@ export const transitionService = {
    * Delete a transition
    */
   async delete(transitionId: string): Promise<TransitionServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await deleteCommunityWorkflowTransition(transitionId); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow transition.') } }
     }
@@ -150,7 +150,7 @@ export const transitionService = {
         ? { from_state_id: stateId, ...anchorPatch('start', anchor) }
         : { to_state_id: stateId, ...anchorPatch('end', anchor) }
 
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await updateCommunityWorkflowTransition(transitionId, updates); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to reconnect workflow transition.') } }
     }
@@ -178,7 +178,7 @@ export const transitionService = {
     if (transitionIds.length === 0) {
       return { data: [], error: null }
     }
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await getCommunityWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow gates.') } }
     }
@@ -223,7 +223,7 @@ export const transitionService = {
   async createGate(
     gate: Partial<WorkflowGateRow> & { transition_id: string; name: string },
   ): Promise<TransitionServiceResult<WorkflowGate>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await createCommunityWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow gate.') } }
     }
@@ -245,7 +245,7 @@ export const transitionService = {
     gateId: string,
     updates: Partial<WorkflowGateRow>,
   ): Promise<TransitionServiceResult<WorkflowGate>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await updateCommunityWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow gate.') } }
     }
@@ -265,7 +265,7 @@ export const transitionService = {
    * Delete a gate
    */
   async deleteGate(gateId: string): Promise<TransitionServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await deleteCommunityWorkflowGate(gateId); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow gate.') } }
     }

@@ -23,6 +23,11 @@ import {
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient } from '@/lib/supabase'
+import {
+  getCommunityUsers,
+  getCommunityUserTeams,
+  isBackendConfigured,
+} from '@/lib/community'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 
 // Supabase v2 type inference incomplete for user profile queries
@@ -45,6 +50,7 @@ interface UserData {
   teams: { id: string; name: string; color: string; icon: string }[]
   workflow_roles: { id: string; name: string; color: string }[]
   job_title: { id: string; name: string; color: string; icon: string } | null
+  role: string
 }
 
 interface DayData {
@@ -195,10 +201,29 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
 
       try {
+        if (isBackendConfigured('community')) {
+          const communityUser = (await getCommunityUsers()).find((entry) => entry.id === userId)
+          if (communityUser) {
+            setUserData({
+              id: communityUser.id,
+              email: communityUser.email,
+              full_name: communityUser.displayName,
+              avatar_url: null,
+              custom_avatar_url: null,
+              last_sign_in: null,
+              last_online: null,
+              teams: await getCommunityUserTeams(communityUser.id),
+              workflow_roles: [],
+              job_title: null,
+              role: communityUser.role,
+            })
+          }
+          return
+        }
         // Load user info
         const { data: user, error: userError } = await client
           .from('users')
-          .select('id, email, full_name, avatar_url, custom_avatar_url, last_sign_in, last_online')
+          .select('id, email, full_name, avatar_url, custom_avatar_url, last_sign_in, last_online, role')
           .eq('id', userId)
           .single()
 

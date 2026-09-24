@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getCommunityFiles, getCommunityVaults, isCommunityConfigured } = vi.hoisted(() => ({
+const { getCommunityFiles, getCommunityVaults, isBackendConfigured } = vi.hoisted(() => ({
   getCommunityFiles: vi.fn(),
   getCommunityVaults: vi.fn(),
-  isCommunityConfigured: vi.fn(),
+  isBackendConfigured: vi.fn(),
 }))
 
 vi.mock('../client', () => ({ getSupabaseClient: vi.fn() }))
@@ -12,14 +12,14 @@ vi.mock('@/lib/community', () => ({
   getCommunityFileRevisions: vi.fn(),
   getCommunityFiles,
   getCommunityVaults,
-  isCommunityConfigured,
+  isBackendConfigured,
 }))
 
 import { getFilesLightweight } from './queries'
 
 describe('Community lightweight file loading', () => {
   beforeEach(() => {
-    isCommunityConfigured.mockReturnValue(true)
+    isBackendConfigured.mockReturnValue(true)
     getCommunityVaults.mockResolvedValue([{ id: 'vault-1' }])
     getCommunityFiles.mockResolvedValue([{
       id: 'file-1', canonicalPath: 'Rollenlager/04er_Rolle_V.3mf', fileName: '04er_Rolle_V.3mf',

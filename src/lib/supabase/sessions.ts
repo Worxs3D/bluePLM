@@ -7,7 +7,7 @@ import {
   getCommunityDeviceSessions,
   getCommunityOnlineUsers,
   heartbeatCommunityDeviceSession,
-  isCommunityConfigured,
+  isBackendConfigured,
   registerCommunityDeviceSession,
 } from '@/lib/community'
 
@@ -46,8 +46,6 @@ export async function registerDeviceSession(
   userId: string,
   orgId: string | null,
 ): Promise<{ success: boolean; session?: UserSession; error?: string; isNewUser?: boolean }> {
-  const client = getSupabaseClient()
-
   // Get machine info
   const { getMachineId, getMachineName } = await import('../backup')
   const machineId = await getMachineId()
@@ -64,7 +62,7 @@ export async function registerDeviceSession(
     return { success: false, error: 'No organization ID provided' }
   }
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const session = await registerCommunityDeviceSession({ machineId, machineName, platform, appVersion })
       return { success: true, session: { ...session, is_active: Boolean(session.is_active) } }
@@ -72,6 +70,11 @@ export async function registerDeviceSession(
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
+
+  // Only the Supabase session adapter needs a Supabase client. Keep this
+  // initialisation after the MDB branch so an MDB login never touches the
+  // inactive backend.
+  const client = getSupabaseClient()
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const { data, error } = await client
@@ -128,7 +131,7 @@ export async function registerDeviceSession(
  * Call this after org is loaded to fix sessions that were created with null or wrong org_id
  */
 export async function syncUserSessionsOrgId(userId: string, orgId: string): Promise<void> {
-  if (isCommunityConfigured()) return
+  if (isBackendConfigured('community')) return
   const client = getSupabaseClient()
 
   // Update ALL active sessions for this user to have the correct org_id
@@ -162,7 +165,7 @@ export async function ensureUserOrgId(): Promise<{
   org_id?: string
   error?: string
 }> {
-  if (isCommunityConfigured()) return { success: true, fixed: false }
+  if (isBackendConfigured('community')) return { success: true, fixed: false }
   const client = getSupabaseClient()
 
   // Wrap in a timeout since client.rpc() can hang
@@ -221,7 +224,7 @@ export async function sendSessionHeartbeat(
   const { getMachineId } = await import('../backup')
   const machineId = await getMachineId()
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return await heartbeatCommunityDeviceSession(machineId) }
     catch (error) {
       log.error('[Session]', 'Community heartbeat failed', { error })
@@ -355,7 +358,7 @@ export async function endDeviceSession(userId: string): Promise<void> {
   const { getMachineId } = await import('../backup')
   const machineId = await getMachineId()
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { await endCommunityDeviceSession(machineId) }
     finally { stopSessionHeartbeat() }
     return
@@ -376,7 +379,7 @@ export async function endDeviceSession(userId: string): Promise<void> {
 export async function endRemoteSession(
   sessionId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await endRemoteCommunityDeviceSession(sessionId)
       return { success: true }
@@ -405,7 +408,7 @@ export async function endRemoteSession(
 export async function getActiveSessions(
   userId: string,
 ): Promise<{ sessions: UserSession[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const sessions = await getCommunityDeviceSessions()
       return { sessions: sessions.map((session) => ({ ...session, is_active: Boolean(session.is_active) })) }
@@ -440,7 +443,7 @@ export async function getActiveSessions(
  * @returns Whether the machine is online (active session within last 2 minutes)
  */
 export async function isMachineOnline(userId: string, machineId: string): Promise<boolean> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try { return (await getCommunityDeviceSessions()).some((session) => session.machine_id === machineId && Boolean(session.is_active)) }
     catch { return false }
   }
@@ -473,7 +476,7 @@ export function subscribeToSessions(
   userId: string,
   onSessionChange: (sessions: UserSession[]) => void,
 ): () => void {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const refresh = async () => {
       const { sessions } = await getActiveSessions(userId)
       onSessionChange(sessions)
@@ -535,7 +538,7 @@ export interface OnlineUser {
 export async function getOrgOnlineUsers(
   orgId: string,
 ): Promise<{ users: OnlineUser[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const users = await getCommunityOnlineUsers()
       return { users }
@@ -609,7 +612,7 @@ export function subscribeToOrgOnlineUsers(
   orgId: string,
   onUsersChange: (users: OnlineUser[]) => void,
 ): () => void {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const refresh = async () => {
       const { users } = await getOrgOnlineUsers(orgId)
       onUsersChange(users)
@@ -651,7 +654,7 @@ export function subscribeToOrgOnlineUsers(
  * Called when user is active in the app.
  */
 export async function updateLastOnline(): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) return { success: true }
+  if (isBackendConfigured('community')) return { success: true }
   const client = getSupabaseClient()
 
   try {

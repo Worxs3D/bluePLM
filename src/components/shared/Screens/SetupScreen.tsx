@@ -115,9 +115,12 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
   const [mariadbServerUrl, setMariadbServerUrl] = useState('')
   const [mdbPublicUrl, setMdbPublicUrl] = useState('')
   const [mdbFtpUrl, setMdbFtpUrl] = useState('ftps://')
-  const [mdbFtpPath, setMdbFtpPath] = useState('blueplm-mdb')
+  const [mdbFtpSecurity, setMdbFtpSecurity] = useState<'explicit' | 'implicit'>('explicit')
+  const [mdbFtpPath, setMdbFtpPath] = useState('')
   const [mdbFtpUser, setMdbFtpUser] = useState('')
   const [mdbFtpPassword, setMdbFtpPassword] = useState('')
+  const [isTestingMdbFtp, setIsTestingMdbFtp] = useState(false)
+  const [mdbFtpTestResult, setMdbFtpTestResult] = useState<'success' | null>(null)
   const [mdbDatabaseHost, setMdbDatabaseHost] = useState('localhost')
   const [mdbDatabasePort, setMdbDatabasePort] = useState('3306')
   const [mdbDatabaseName, setMdbDatabaseName] = useState('')
@@ -127,12 +130,47 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
   const [mdbSessionSecret, setMdbSessionSecret] = useState('')
   const [mdbBootstrapToken, setMdbBootstrapToken] = useState('')
   const [mdbMaintenanceToken, setMdbMaintenanceToken] = useState('')
-const [mdbDocumentRootConfirmed, setMdbDocumentRootConfirmed] = useState(false)
-const [mdbNetworkRoot, setMdbNetworkRoot] = useState('')
-const [mdbProvisioned, setMdbProvisioned] = useState<{
-    setupUrl: string
+  const [mdbDocumentRootConfirmed, setMdbDocumentRootConfirmed] = useState(false)
+  const [mdbNetworkRoot, setMdbNetworkRoot] = useState('')
+  const [mdbCompanyName, setMdbCompanyName] = useState('')
+  const [mdbCompanySlug, setMdbCompanySlug] = useState('')
+  const [mdbOwnerName, setMdbOwnerName] = useState('')
+  const [mdbOwnerEmail, setMdbOwnerEmail] = useState('')
+  const [mdbOwnerPassword, setMdbOwnerPassword] = useState('')
+  const [mdbVaultName, setMdbVaultName] = useState('')
+  const [mdbResetConfirmation, setMdbResetConfirmation] = useState('')
+  const [mdbDatabaseAction, setMdbDatabaseAction] = useState<
+    'install' | 'migrate' | 'reset' | null
+  >(null)
+  const [mdbInspection, setMdbInspection] = useState<{
+    state: 'empty' | 'managed' | 'legacy' | 'foreign'
+    tableCount: number
+    bootstrapped: boolean
+    appliedMigrations: number
+    pendingMigrations: number
+  } | null>(null)
+  const [mdbProvisioned, setMdbProvisioned] = useState<{
+    serverUrl: string
+    migrated: boolean
     generatedSecrets?: { sessionSecret: string; bootstrapToken: string; maintenanceToken: string }
   } | null>(null)
+
+  useEffect(() => {
+    setMdbInspection(null)
+    setMdbDatabaseAction(null)
+    setMdbResetConfirmation('')
+  }, [
+    mdbPublicUrl,
+    mdbFtpUrl,
+    mdbFtpPath,
+    mdbFtpUser,
+    mdbFtpPassword,
+    mdbDatabaseHost,
+    mdbDatabasePort,
+    mdbDatabaseName,
+    mdbDatabaseUser,
+    mdbDatabasePassword,
+  ])
 
   const handleAdminSetup = async () => {
     if (!projectId.trim() || !anonKey.trim()) {
@@ -238,7 +276,9 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
       const result = await window.electronAPI.selectDirectory()
       if (result.success && result.folderPath) setMdbNetworkRoot(result.folderPath)
     } catch (pickerError) {
-      setError(pickerError instanceof Error ? pickerError.message : 'Could not open the folder picker.')
+      setError(
+        pickerError instanceof Error ? pickerError.message : 'Could not open the folder picker.',
+      )
     }
   }
 
@@ -261,46 +301,139 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
       setIsValidating(false)
       onConfigured()
     } catch (setupError) {
-      setError(setupError instanceof Error ? setupError.message : 'Could not save the backend configuration.')
+      setError(
+        setupError instanceof Error
+          ? setupError.message
+          : 'Could not save the backend configuration.',
+      )
       setIsValidating(false)
     }
   }
 
+  const mdbInstallerRequest = () => ({
+    publicUrl: mdbPublicUrl,
+    ftpUrl: mdbFtpUrl,
+    ftpSecurity: mdbFtpSecurity,
+    ftpRemotePath: mdbFtpPath,
+    ftpUsername: mdbFtpUser,
+    ftpPassword: mdbFtpPassword,
+    databaseHost: mdbDatabaseHost,
+    databasePort: Number(mdbDatabasePort),
+    databaseName: mdbDatabaseName,
+    databaseUser: mdbDatabaseUser,
+    databasePassword: mdbDatabasePassword,
+    sessionSecret: mdbGenerateSecrets ? undefined : mdbSessionSecret,
+    bootstrapToken: mdbGenerateSecrets ? undefined : mdbBootstrapToken,
+    maintenanceToken: mdbGenerateSecrets ? undefined : mdbMaintenanceToken,
+    documentRootConfirmed: mdbDocumentRootConfirmed,
+  })
+
+  const handleMdbInspect = async () => {
+    if (!window.electronAPI?.inspectMdbDatabase) {
+      setError(t('mdbSetup.databaseInspectionUnavailable'))
+      return
+    }
+    setIsValidating(true)
+    setError(null)
+    setMdbInspection(null)
+    setMdbDatabaseAction(null)
+    const result = await window.electronAPI.inspectMdbDatabase(mdbInstallerRequest())
+    setIsValidating(false)
+    if (!result.success || !result.database) {
+      setError(result.error || t('mdbSetup.databaseInspectionFailed'))
+      return
+    }
+    setMdbInspection(result.database)
+    if (result.database.state === 'empty') setMdbDatabaseAction('install')
+  }
+
   const handleMdbProvision = async () => {
     if (!window.electronAPI?.provisionMdb) {
-      setError('The MDB installer is unavailable in this build.')
+      setError(t('mdbSetup.installerUnavailable'))
+      return
+    }
+    if (!mdbInspection || !mdbDatabaseAction) {
+      setError(t('mdbSetup.inspectBeforeContinue'))
       return
     }
     setIsValidating(true)
     setError(null)
     const result = await window.electronAPI.provisionMdb({
-      publicUrl: mdbPublicUrl,
-      ftpUrl: mdbFtpUrl,
-      ftpRemotePath: mdbFtpPath,
-      ftpUsername: mdbFtpUser,
-      ftpPassword: mdbFtpPassword,
-      databaseHost: mdbDatabaseHost,
-      databasePort: Number(mdbDatabasePort),
-      databaseName: mdbDatabaseName,
-      databaseUser: mdbDatabaseUser,
-      databasePassword: mdbDatabasePassword,
-      sessionSecret: mdbGenerateSecrets ? undefined : mdbSessionSecret,
-      bootstrapToken: mdbGenerateSecrets ? undefined : mdbBootstrapToken,
-      maintenanceToken: mdbGenerateSecrets ? undefined : mdbMaintenanceToken,
-      documentRootConfirmed: mdbDocumentRootConfirmed,
+      ...mdbInstallerRequest(),
+      databaseAction: mdbDatabaseAction,
+      resetConfirmation: mdbDatabaseAction === 'reset' ? mdbResetConfirmation : undefined,
+      bootstrap: {
+        organizationName: mdbCompanyName,
+        organizationSlug: mdbCompanySlug,
+        email: mdbOwnerEmail,
+        displayName: mdbOwnerName,
+        password: mdbOwnerPassword,
+        vaultName: mdbVaultName,
+        networkRoot: mdbNetworkRoot,
+      },
     })
     setIsValidating(false)
-    if (!result.success || !result.setupUrl) {
-      setError(result.error || 'The MDB installation could not be completed.')
+    if (!result.success || !result.serverUrl) {
+      setError(result.error || t('mdbSetup.installationFailed'))
       return
     }
+    clearConfig()
+    saveCommunityConfig({
+      version: 1,
+      serverUrl: result.serverUrl,
+      accessToken: result.accessToken,
+    })
     setMdbFtpPassword('')
     setMdbDatabasePassword('')
+    setMdbOwnerPassword('')
     setMdbSessionSecret('')
     setMdbBootstrapToken('')
     setMdbMaintenanceToken('')
-    setMdbProvisioned({ setupUrl: result.setupUrl, generatedSecrets: result.generatedSecrets })
+    setMdbProvisioned({
+      serverUrl: result.serverUrl,
+      migrated: result.migrated === true,
+      generatedSecrets: result.generatedSecrets,
+    })
   }
+
+  const handleMdbFtpTest = async () => {
+    if (!window.electronAPI?.testMdbFtp) {
+      setError(t('mdbSetup.ftpTestUnavailable'))
+      return
+    }
+    setIsTestingMdbFtp(true)
+    setMdbFtpTestResult(null)
+    setError(null)
+    const result = await window.electronAPI.testMdbFtp({
+      ftpUrl: mdbFtpUrl,
+      ftpSecurity: mdbFtpSecurity,
+      ftpRemotePath: mdbFtpPath,
+      ftpUsername: mdbFtpUser,
+      ftpPassword: mdbFtpPassword,
+    })
+    setIsTestingMdbFtp(false)
+    if (!result.success) {
+      setError(result.error || t('mdbSetup.ftpTestFailed'))
+      return
+    }
+    setMdbFtpTestResult('success')
+  }
+
+  const mdbNeedsBootstrap =
+    mdbDatabaseAction === 'install' ||
+    mdbDatabaseAction === 'reset' ||
+    (mdbDatabaseAction === 'migrate' && mdbInspection?.bootstrapped === false)
+  const mdbBootstrapValid =
+    !mdbNeedsBootstrap ||
+    (mdbCompanyName.trim() !== '' &&
+      /^[a-z0-9-]{2,100}$/.test(mdbCompanySlug) &&
+      mdbOwnerName.trim() !== '' &&
+      mdbOwnerEmail.includes('@') &&
+      mdbOwnerPassword.length >= 12)
+  const mdbCommitEnabled =
+    Boolean(mdbDatabaseAction) &&
+    mdbBootstrapValid &&
+    (mdbDatabaseAction !== 'reset' || mdbResetConfirmation === 'DELETE ALL DATABASE DATA')
 
   // Selection mode - choose admin or member
   if (mode === 'select') {
@@ -358,7 +491,7 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                 />
               </svg>
               <h1 className="text-3xl font-bold text-plm-fg mb-2">{t('setup.welcome')}</h1>
-              <p className="text-plm-fg-muted">Choose the backend provider for this BluePLM client.</p>
+              <p className="text-plm-fg-muted">{t('setup.backendChooser')}</p>
             </div>
 
             {/* Setup Options */}
@@ -373,10 +506,15 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-plm-fg text-lg">MariaDB (MDB) Backend</h3>
-                      <ChevronRight size={20} className="text-plm-fg-muted group-hover:text-plm-accent transition-colors" />
+                      <h3 className="font-semibold text-plm-fg text-lg">
+                        {t('mdbSetup.title')} Backend
+                      </h3>
+                      <ChevronRight
+                        size={20}
+                        className="text-plm-fg-muted group-hover:text-plm-accent transition-colors"
+                      />
                     </div>
-                    <p className="text-sm text-plm-fg-muted mt-1">PHP API and MariaDB. BluePLM keeps every backend-neutral feature available.</p>
+                    <p className="text-sm text-plm-fg-muted mt-1">{t('setup.mdbDescription')}</p>
                   </div>
                 </div>
               </button>
@@ -391,7 +529,9 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-plm-fg text-lg">Supabase — {t('setup.imAdmin')}</h3>
+                      <h3 className="font-semibold text-plm-fg text-lg">
+                        Supabase — {t('setup.imAdmin')}
+                      </h3>
                       <ChevronRight
                         size={20}
                         className="text-plm-fg-muted group-hover:text-plm-accent transition-colors"
@@ -412,7 +552,9 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-plm-fg text-lg">Supabase — {t('setup.haveCode')}</h3>
+                      <h3 className="font-semibold text-plm-fg text-lg">
+                        Supabase — {t('setup.haveCode')}
+                      </h3>
                       <ChevronRight
                         size={20}
                         className="text-plm-fg-muted group-hover:text-plm-accent transition-colors"
@@ -679,18 +821,37 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
         <SetupTitleBar />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-xl w-full">
-            <button onClick={() => setMode('select')} className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors">← {t('common.back')}</button>
+            <button
+              onClick={() => setMode('select')}
+              className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors"
+            >
+              ← {t('common.back')}
+            </button>
             <div className="text-center mb-8">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-plm-accent/20 flex items-center justify-center"><Server size={32} className="text-plm-accent" /></div>
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-plm-accent/20 flex items-center justify-center">
+                <Server size={32} className="text-plm-accent" />
+              </div>
               <h1 className="text-2xl font-bold text-plm-fg mb-2">{t('mdbSetup.title')}</h1>
               <p className="text-plm-fg-muted">{t('mdbSetup.chooseConnection')}</p>
             </div>
             <div className="space-y-4">
-              <button onClick={() => { setError(null); setMode('mariadb-existing') }} className="w-full p-5 bg-plm-bg-light border border-plm-border rounded-xl hover:border-plm-accent text-left">
+              <button
+                onClick={() => {
+                  setError(null)
+                  setMode('mariadb-existing')
+                }}
+                className="w-full p-5 bg-plm-bg-light border border-plm-border rounded-xl hover:border-plm-accent text-left"
+              >
                 <h2 className="font-semibold text-plm-fg">{t('mdbSetup.existing')}</h2>
                 <p className="text-sm text-plm-fg-muted mt-1">{t('mdbSetup.existingHelp')}</p>
               </button>
-              <button onClick={() => { setError(null); setMode('mariadb-install') }} className="w-full p-5 bg-plm-bg-light border border-plm-accent/50 rounded-xl hover:border-plm-accent text-left">
+              <button
+                onClick={() => {
+                  setError(null)
+                  setMode('mariadb-install')
+                }}
+                className="w-full p-5 bg-plm-bg-light border border-plm-accent/50 rounded-xl hover:border-plm-accent text-left"
+              >
                 <h2 className="font-semibold text-plm-fg">{t('mdbSetup.install')}</h2>
                 <p className="text-sm text-plm-fg-muted mt-1">{t('mdbSetup.installHelp')}</p>
               </button>
@@ -707,7 +868,10 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
         <SetupTitleBar />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-xl w-full">
-            <button onClick={() => setMode('mariadb')} className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors">
+            <button
+              onClick={() => setMode('mariadb')}
+              className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors"
+            >
               ← {t('common.back')}
             </button>
             <div className="text-center mb-8">
@@ -719,7 +883,9 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-plm-fg-muted mb-1.5">{t('mdbSetup.backendUrl')}</label>
+                <label className="block text-sm text-plm-fg-muted mb-1.5">
+                  {t('mdbSetup.backendUrl')}
+                </label>
                 <input
                   type="url"
                   value={mariadbServerUrl}
@@ -734,8 +900,19 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
                   <span className="text-sm text-red-400">{error}</span>
                 </div>
               )}
-              <button onClick={() => void handleMariadbSetup()} disabled={isValidating || !mariadbServerUrl} className="w-full btn btn-primary btn-lg justify-center mt-6">
-                {isValidating ? <><Loader2 size={20} className="animate-spin" />{t('common.connecting')}</> : <>{t('mdbSetup.connect')}</>}
+              <button
+                onClick={() => void handleMariadbSetup()}
+                disabled={isValidating || !mariadbServerUrl}
+                className="w-full btn btn-primary btn-lg justify-center mt-6"
+              >
+                {isValidating ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    {t('common.connecting')}
+                  </>
+                ) : (
+                  <>{t('mdbSetup.connect')}</>
+                )}
               </button>
             </div>
           </div>
@@ -746,19 +923,50 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
 
   if (mode === 'mariadb-install') {
     if (mdbProvisioned) {
-      const setupUrl = mdbNetworkRoot.trim()
-        ? `${mdbProvisioned.setupUrl}?vaultPath=${encodeURIComponent(mdbNetworkRoot.trim())}`
-        : mdbProvisioned.setupUrl
       return (
         <div className="h-full flex flex-col bg-plm-bg">
           <SetupTitleBar />
           <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
             <div className="max-w-xl w-full space-y-5">
-              <div className="text-center"><Check size={40} className="mx-auto text-green-500 mb-3" /><h1 className="text-2xl font-bold text-plm-fg">MDB server deployed</h1><p className="text-plm-fg-muted">The server package and private configuration were uploaded and the schema migration completed.</p></div>
-              {mdbProvisioned.generatedSecrets && <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4"><strong className="text-amber-300">Store these generated secrets now</strong><p className="text-sm text-plm-fg-muted mt-1">They are shown once and are not retained by the client. Only the bootstrap token is entered on the next page.</p><code className="block break-all mt-3 text-xs">BLUEPLM_SESSION_SECRET={mdbProvisioned.generatedSecrets.sessionSecret} <span className="text-plm-fg-muted"># session secret — signs login sessions; do not enter in the setup form</span><br />BLUEPLM_BOOTSTRAP_TOKEN={mdbProvisioned.generatedSecrets.bootstrapToken} <span className="text-plm-fg-muted"># bootstrap token — paste into “Bootstrap token” on the next page</span><br />BLUEPLM_MAINTENANCE_TOKEN={mdbProvisioned.generatedSecrets.maintenanceToken} <span className="text-plm-fg-muted"># maintenance token — retain securely for administrative maintenance</span></code></div>}
-              <div className="bg-plm-bg-light border border-plm-border rounded-xl p-4"><h2 className="font-semibold text-plm-fg">Archive/NAS vault path</h2><p className="mt-1 text-sm text-plm-fg-muted">Choose the archive or NAS root now, or enter a UNC path manually. It will only prefill the server setup form and can still be edited there.</p><div className="mt-3 flex gap-2"><input value={mdbNetworkRoot} onChange={(event) => setMdbNetworkRoot(event.target.value)} placeholder="\\\\server\\share\\BluePLM" maxLength={1024} className="min-w-0 flex-1" /><button type="button" onClick={() => void handleMdbNetworkRootBrowse()} className="btn btn-secondary whitespace-nowrap">Browse folders…</button></div></div>
-              <div className="bg-plm-bg-light border border-plm-border rounded-xl p-4"><h2 className="font-semibold text-plm-fg">Finish the guided server setup</h2><ol className="list-decimal ml-5 mt-2 text-sm text-plm-fg-muted space-y-1"><li>Open the setup page and enter the bootstrap token.</li><li>Create the company, first owner, NAS vault, and optional authenticator protection.</li><li>Return here after the setup page reports success.</li></ol><a className="inline-block mt-3 text-plm-accent hover:underline" href={setupUrl} target="_blank" rel="noreferrer">Open server setup</a></div>
-              <button onClick={() => void handleMariadbSetup(mdbPublicUrl)} disabled={isValidating} className="w-full btn btn-primary btn-lg justify-center">{isValidating ? 'Checking MDB server…' : 'I completed server setup — connect BluePLM'}</button>
+              <div className="text-center">
+                <Check size={40} className="mx-auto text-green-500 mb-3" />
+                <h1 className="text-2xl font-bold text-plm-fg">
+                  {mdbProvisioned.migrated
+                    ? t('mdbSetup.migrationComplete')
+                    : t('mdbSetup.installationComplete')}
+                </h1>
+                <p className="text-plm-fg-muted">
+                  {mdbProvisioned.migrated
+                    ? t('mdbSetup.migrationCompleteHelp')
+                    : t('mdbSetup.installationCompleteHelp')}
+                </p>
+              </div>
+              {mdbProvisioned.generatedSecrets && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+                  <strong className="text-amber-300">{t('mdbSetup.storeSecrets')}</strong>
+                  <p className="text-sm text-plm-fg-muted mt-1">{t('mdbSetup.generatedHelp')}</p>
+                  <code className="block break-all mt-3 text-xs">
+                    BLUEPLM_SESSION_SECRET={mdbProvisioned.generatedSecrets.sessionSecret}{' '}
+                    <span className="text-plm-fg-muted"># {t('mdbSetup.sessionComment')}</span>
+                    <br />
+                    BLUEPLM_BOOTSTRAP_TOKEN={mdbProvisioned.generatedSecrets.bootstrapToken}{' '}
+                    <span className="text-plm-fg-muted"># {t('mdbSetup.bootstrapComment')}</span>
+                    <br />
+                    BLUEPLM_MAINTENANCE_TOKEN={
+                      mdbProvisioned.generatedSecrets.maintenanceToken
+                    }{' '}
+                    <span className="text-plm-fg-muted"># {t('mdbSetup.maintenanceComment')}</span>
+                  </code>
+                </div>
+              )}
+              <button
+                onClick={onConfigured}
+                className="w-full btn btn-primary btn-lg justify-center"
+              >
+                {mdbProvisioned.migrated
+                  ? t('mdbSetup.continueToLogin')
+                  : t('mdbSetup.openBluePlm')}
+              </button>
             </div>
           </div>
         </div>
@@ -769,16 +977,428 @@ const [mdbProvisioned, setMdbProvisioned] = useState<{
         <SetupTitleBar />
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-2xl mx-auto">
-            <button onClick={() => setMode('mariadb')} className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors">← {t('common.back')}</button>
-            <h1 className="text-2xl font-bold text-plm-fg mb-2">Set up a new BluePLM MDB server</h1>
-            <p className="text-plm-fg-muted mb-6">FTP/FTPS and MariaDB credentials are used only for this deployment. They are never saved in BluePLM.</p>
+            <button
+              onClick={() => setMode('mariadb')}
+              className="mb-6 text-sm text-plm-fg-muted hover:text-plm-fg transition-colors"
+            >
+              ← {t('common.back')}
+            </button>
+            <h1 className="text-2xl font-bold text-plm-fg mb-2">{t('mdbSetup.newServer')}</h1>
+            <p className="text-plm-fg-muted mb-6">{t('mdbSetup.installHelp')}</p>
             <div className="space-y-5">
-              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5"><h2 className="font-semibold text-plm-fg">1. Hosting preparation</h2><p className="text-sm text-plm-fg-muted mt-2">Create the FTP user and MariaDB database at your host. In the hosting control panel, point the chosen domain’s document root to <code>…/public</code> inside the FTP target folder. FTP cannot change this setting.</p><label className="flex gap-2 items-start mt-4 text-sm text-plm-fg"><input type="checkbox" checked={mdbDocumentRootConfirmed} onChange={(event) => setMdbDocumentRootConfirmed(event.target.checked)} />I confirmed the domain document root points to the uploaded <code>public/</code> directory.</label></section>
-              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4"><h2 className="font-semibold text-plm-fg md:col-span-2">2. Public address and FTP/FTPS</h2><label>Public HTTPS URL<input type="url" value={mdbPublicUrl} onChange={(event) => setMdbPublicUrl(event.target.value)} placeholder="https://blueplm.example.tld" className="w-full" /></label><label>FTP/FTPS server URL<input value={mdbFtpUrl} onChange={(event) => setMdbFtpUrl(event.target.value)} placeholder="ftps://ftp.example.tld" className="w-full" /></label><label>FTP target folder<input value={mdbFtpPath} onChange={(event) => setMdbFtpPath(event.target.value)} placeholder="blueplm-mdb" className="w-full" /></label><label>FTP user<input value={mdbFtpUser} onChange={(event) => setMdbFtpUser(event.target.value)} className="w-full" /></label><label className="md:col-span-2">FTP password<input type="password" value={mdbFtpPassword} onChange={(event) => setMdbFtpPassword(event.target.value)} autoComplete="new-password" className="w-full" /></label></section>
-              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4"><h2 className="font-semibold text-plm-fg md:col-span-2">3. MariaDB connection for the PHP server</h2><label>Database host<input value={mdbDatabaseHost} onChange={(event) => setMdbDatabaseHost(event.target.value)} className="w-full" /></label><label>Port<input inputMode="numeric" value={mdbDatabasePort} onChange={(event) => setMdbDatabasePort(event.target.value)} className="w-full" /></label><label>Database name<input value={mdbDatabaseName} onChange={(event) => setMdbDatabaseName(event.target.value)} className="w-full" /></label><label>Database user<input value={mdbDatabaseUser} onChange={(event) => setMdbDatabaseUser(event.target.value)} className="w-full" /></label><label className="md:col-span-2">Database password<input type="password" value={mdbDatabasePassword} onChange={(event) => setMdbDatabasePassword(event.target.value)} autoComplete="new-password" className="w-full" /></label></section>
-              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5"><h2 className="font-semibold text-plm-fg">4. First-install secrets</h2><label className="flex gap-2 items-center mt-2 text-sm text-plm-fg"><input type="checkbox" checked={mdbGenerateSecrets} onChange={(event) => setMdbGenerateSecrets(event.target.checked)} />Generate three independent secure secrets for me</label><p className="text-xs text-plm-fg-muted mt-2">The values are written only to the private server <code>.env</code>. Generated values are displayed once after deployment; user-entered values are never displayed or saved.</p>{!mdbGenerateSecrets && <div className="grid grid-cols-1 gap-3 mt-4"><label>Session secret<input type="password" value={mdbSessionSecret} onChange={(event) => setMdbSessionSecret(event.target.value)} autoComplete="new-password" /></label><label>Bootstrap token<input type="password" value={mdbBootstrapToken} onChange={(event) => setMdbBootstrapToken(event.target.value)} autoComplete="new-password" /></label><label>Maintenance token<input type="password" value={mdbMaintenanceToken} onChange={(event) => setMdbMaintenanceToken(event.target.value)} autoComplete="new-password" /></label></div>}</section>
-              {error && <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg"><AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" /><span className="text-sm text-red-400">{error}</span></div>}
-              <button onClick={handleMdbProvision} disabled={isValidating} className="w-full btn btn-primary btn-lg justify-center">{isValidating ? <><Loader2 size={20} className="animate-spin" />Deploying MDB server…</> : <>Deploy and start guided setup</>}</button>
+              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5">
+                <h2 className="font-semibold text-plm-fg">{t('mdbSetup.hostingPreparation')}</h2>
+                <p className="text-sm text-plm-fg-muted mt-2">{t('mdbSetup.hostingHelp')}</p>
+                <label className="flex gap-2 items-start mt-4 text-sm text-plm-fg">
+                  <input
+                    type="checkbox"
+                    checked={mdbDocumentRootConfirmed}
+                    onChange={(event) => setMdbDocumentRootConfirmed(event.target.checked)}
+                  />
+                  {t('mdbSetup.documentRootConfirmed')}
+                </label>
+              </section>
+              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h2 className="font-semibold text-plm-fg md:col-span-2">
+                  {t('mdbSetup.addressFtp')}
+                </h2>
+                <label>
+                  {t('mdbSetup.publicHttps')}
+                  <input
+                    type="url"
+                    value={mdbPublicUrl}
+                    onChange={(event) => setMdbPublicUrl(event.target.value)}
+                    placeholder="https://blueplm.example.tld"
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.ftpSecurity')}
+                  <select
+                    value={mdbFtpSecurity}
+                    onChange={(event) => {
+                      const next = event.target.value as 'explicit' | 'implicit'
+                      setMdbFtpSecurity(next)
+                      setMdbFtpUrl((current) => {
+                        try {
+                          const url = new URL(current)
+                          url.port = next === 'implicit' ? '990' : '21'
+                          return url.toString().replace(/\/$/, '')
+                        } catch {
+                          return current
+                        }
+                      })
+                      setMdbFtpTestResult(null)
+                    }}
+                    className="w-full"
+                  >
+                    <option value="explicit">{t('mdbSetup.ftpSecurityExplicit')}</option>
+                    <option value="implicit">{t('mdbSetup.ftpSecurityImplicit')}</option>
+                  </select>
+                  <span className="block mt-1 text-xs text-plm-fg-muted">
+                    {t(
+                      mdbFtpSecurity === 'implicit'
+                        ? 'mdbSetup.ftpSecurityImplicitHelp'
+                        : 'mdbSetup.ftpSecurityExplicitHelp',
+                    )}
+                  </span>
+                </label>
+                <label>
+                  {t('mdbSetup.ftpServer')}
+                  <input
+                    value={mdbFtpUrl}
+                    onChange={(event) => {
+                      setMdbFtpUrl(event.target.value)
+                      setMdbFtpTestResult(null)
+                    }}
+                    placeholder={
+                      mdbFtpSecurity === 'implicit'
+                        ? 'ftps://ftp.example.tld:990'
+                        : 'ftps://ftp.example.tld:21'
+                    }
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.ftpTarget')}
+                  <input
+                    value={mdbFtpPath}
+                    onChange={(event) => {
+                      setMdbFtpPath(event.target.value)
+                      setMdbFtpTestResult(null)
+                    }}
+                    placeholder={t('mdbSetup.ftpTargetPlaceholder')}
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.ftpUser')}
+                  <input
+                    value={mdbFtpUser}
+                    onChange={(event) => {
+                      setMdbFtpUser(event.target.value)
+                      setMdbFtpTestResult(null)
+                    }}
+                    className="w-full"
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  {t('mdbSetup.ftpPassword')}
+                  <input
+                    type="password"
+                    value={mdbFtpPassword}
+                    onChange={(event) => {
+                      setMdbFtpPassword(event.target.value)
+                      setMdbFtpTestResult(null)
+                    }}
+                    autoComplete="new-password"
+                    className="w-full"
+                  />
+                </label>
+                <div className="md:col-span-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleMdbFtpTest()}
+                    disabled={isTestingMdbFtp || !mdbFtpUrl || !mdbFtpUser || !mdbFtpPassword}
+                    className="btn btn-secondary"
+                  >
+                    {isTestingMdbFtp ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        {t('mdbSetup.testingFtp')}
+                      </>
+                    ) : (
+                      t('mdbSetup.testFtp')
+                    )}
+                  </button>
+                  {mdbFtpTestResult && (
+                    <span className="text-sm text-green-400">{t('mdbSetup.ftpTestPassed')}</span>
+                  )}
+                </div>
+              </section>
+              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h2 className="font-semibold text-plm-fg md:col-span-2">
+                  {t('mdbSetup.databaseConnection')}
+                </h2>
+                <label>
+                  {t('mdbSetup.databaseHost')}
+                  <input
+                    value={mdbDatabaseHost}
+                    onChange={(event) => setMdbDatabaseHost(event.target.value)}
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.port')}
+                  <input
+                    inputMode="numeric"
+                    value={mdbDatabasePort}
+                    onChange={(event) => setMdbDatabasePort(event.target.value)}
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.databaseName')}
+                  <input
+                    value={mdbDatabaseName}
+                    onChange={(event) => setMdbDatabaseName(event.target.value)}
+                    className="w-full"
+                  />
+                </label>
+                <label>
+                  {t('mdbSetup.databaseUser')}
+                  <input
+                    value={mdbDatabaseUser}
+                    onChange={(event) => setMdbDatabaseUser(event.target.value)}
+                    className="w-full"
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  {t('mdbSetup.databasePassword')}
+                  <input
+                    type="password"
+                    value={mdbDatabasePassword}
+                    onChange={(event) => setMdbDatabasePassword(event.target.value)}
+                    autoComplete="new-password"
+                    className="w-full"
+                  />
+                </label>
+              </section>
+              {mdbInspection && (
+                <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 space-y-4">
+                  <div>
+                    <h2 className="font-semibold text-plm-fg">{t('mdbSetup.databaseDetected')}</h2>
+                    <p className="text-sm text-plm-fg-muted mt-1">
+                      {mdbInspection.state === 'empty'
+                        ? t('mdbSetup.databaseEmpty')
+                        : mdbInspection.state === 'managed'
+                          ? t('mdbSetup.databaseManaged')
+                          : mdbInspection.state === 'legacy'
+                            ? t('mdbSetup.databaseLegacy')
+                            : t('mdbSetup.databaseForeign')}
+                    </p>
+                    <p className="text-xs text-plm-fg-muted mt-2">
+                      {t('mdbSetup.databaseSummary')
+                        .replace('{tables}', String(mdbInspection.tableCount))
+                        .replace('{pending}', String(mdbInspection.pendingMigrations))}
+                    </p>
+                  </div>
+                  {mdbInspection.state === 'managed' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMdbDatabaseAction('migrate')
+                          setMdbResetConfirmation('')
+                        }}
+                        className={`btn ${mdbDatabaseAction === 'migrate' ? 'btn-primary' : 'btn-secondary'} justify-center`}
+                      >
+                        {t('mdbSetup.migrateExisting')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMdbDatabaseAction('reset')}
+                        className={`btn ${mdbDatabaseAction === 'reset' ? 'bg-red-600 text-white' : 'btn-secondary'} justify-center`}
+                      >
+                        {t('mdbSetup.eraseAndReinstall')}
+                      </button>
+                    </div>
+                  )}
+                  {(mdbInspection.state === 'legacy' || mdbInspection.state === 'foreign') && (
+                    <button
+                      type="button"
+                      onClick={() => setMdbDatabaseAction('reset')}
+                      className={`w-full btn ${mdbDatabaseAction === 'reset' ? 'bg-red-600 text-white' : 'btn-secondary'} justify-center`}
+                    >
+                      {t('mdbSetup.eraseAndReinstall')}
+                    </button>
+                  )}
+                </section>
+              )}
+              {mdbNeedsBootstrap && (
+                <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <h2 className="font-semibold text-plm-fg">{t('mdbSetup.initialOwner')}</h2>
+                    <p className="text-sm text-plm-fg-muted mt-1">
+                      {t('mdbSetup.initialOwnerHelp')}
+                    </p>
+                  </div>
+                  <label>
+                    {t('mdbSetup.companyName')}
+                    <input
+                      value={mdbCompanyName}
+                      onChange={(event) => setMdbCompanyName(event.target.value)}
+                      className="w-full"
+                    />
+                  </label>
+                  <label>
+                    {t('mdbSetup.companySlug')}
+                    <input
+                      value={mdbCompanySlug}
+                      onChange={(event) => setMdbCompanySlug(event.target.value.toLowerCase())}
+                      placeholder="example-company"
+                      className="w-full"
+                    />
+                  </label>
+                  <label>
+                    {t('mdbSetup.ownerName')}
+                    <input
+                      value={mdbOwnerName}
+                      onChange={(event) => setMdbOwnerName(event.target.value)}
+                      className="w-full"
+                    />
+                  </label>
+                  <label>
+                    {t('mdbSetup.ownerEmail')}
+                    <input
+                      type="email"
+                      value={mdbOwnerEmail}
+                      onChange={(event) => setMdbOwnerEmail(event.target.value)}
+                      className="w-full"
+                    />
+                  </label>
+                  <label className="md:col-span-2">
+                    {t('mdbSetup.ownerPassword')}
+                    <input
+                      type="password"
+                      value={mdbOwnerPassword}
+                      onChange={(event) => setMdbOwnerPassword(event.target.value)}
+                      minLength={12}
+                      autoComplete="new-password"
+                      className="w-full"
+                    />
+                  </label>
+                  <label>
+                    {t('mdbSetup.vaultName')}
+                    <input
+                      value={mdbVaultName}
+                      onChange={(event) => setMdbVaultName(event.target.value)}
+                      className="w-full"
+                    />
+                  </label>
+                  <label>
+                    {t('mdbSetup.networkVaultPath')}
+                    <div className="flex gap-2">
+                      <input
+                        value={mdbNetworkRoot}
+                        onChange={(event) => setMdbNetworkRoot(event.target.value)}
+                        placeholder="\\\\server\\share\\BluePLM"
+                        maxLength={1024}
+                        className="min-w-0 flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleMdbNetworkRootBrowse()}
+                        className="btn btn-secondary whitespace-nowrap"
+                      >
+                        {t('mdbSetup.browseFolders')}
+                      </button>
+                    </div>
+                  </label>
+                </section>
+              )}
+              {mdbDatabaseAction === 'reset' && (
+                <section className="bg-red-500/10 border border-red-500/40 rounded-xl p-5">
+                  <h2 className="font-semibold text-red-300">
+                    {t('mdbSetup.confirmDatabaseErase')}
+                  </h2>
+                  <p className="text-sm text-red-200/80 mt-2">
+                    {t('mdbSetup.confirmDatabaseEraseHelp')}
+                  </p>
+                  <input
+                    value={mdbResetConfirmation}
+                    onChange={(event) => setMdbResetConfirmation(event.target.value)}
+                    placeholder="DELETE ALL DATABASE DATA"
+                    className="w-full mt-3"
+                  />
+                </section>
+              )}
+              <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5">
+                <h2 className="font-semibold text-plm-fg">{t('mdbSetup.firstSecrets')}</h2>
+                <label className="flex gap-2 items-center mt-2 text-sm text-plm-fg">
+                  <input
+                    type="checkbox"
+                    checked={mdbGenerateSecrets}
+                    onChange={(event) => setMdbGenerateSecrets(event.target.checked)}
+                  />
+                  {t('mdbSetup.generateSecrets')}
+                </label>
+                <p className="text-xs text-plm-fg-muted mt-2">{t('mdbSetup.secretsHelp')}</p>
+                {!mdbGenerateSecrets && (
+                  <div className="grid grid-cols-1 gap-3 mt-4">
+                    <label>
+                      {t('mdbSetup.sessionSecret')}
+                      <input
+                        type="password"
+                        value={mdbSessionSecret}
+                        onChange={(event) => setMdbSessionSecret(event.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <label>
+                      {t('mdbSetup.bootstrapToken')}
+                      <input
+                        type="password"
+                        value={mdbBootstrapToken}
+                        onChange={(event) => setMdbBootstrapToken(event.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <label>
+                      {t('mdbSetup.maintenanceToken')}
+                      <input
+                        type="password"
+                        value={mdbMaintenanceToken}
+                        onChange={(event) => setMdbMaintenanceToken(event.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                  </div>
+                )}
+              </section>
+              {error && (
+                <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-red-400">{error}</span>
+                </div>
+              )}
+              {!mdbInspection ? (
+                <button
+                  onClick={() => void handleMdbInspect()}
+                  disabled={isValidating}
+                  className="w-full btn btn-primary btn-lg justify-center"
+                >
+                  {isValidating ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      {t('mdbSetup.inspectingDatabase')}
+                    </>
+                  ) : (
+                    <>{t('mdbSetup.inspectDatabase')}</>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={() => void handleMdbProvision()}
+                  disabled={isValidating || !mdbCommitEnabled}
+                  className="w-full btn btn-primary btn-lg justify-center"
+                >
+                  {isValidating ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      {t('mdbSetup.deploying')}
+                    </>
+                  ) : (
+                    <>
+                      {mdbDatabaseAction === 'migrate'
+                        ? t('mdbSetup.runMigration')
+                        : mdbDatabaseAction === 'reset'
+                          ? t('mdbSetup.eraseAndInstall')
+                          : t('mdbSetup.deploy')}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

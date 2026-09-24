@@ -1,6 +1,7 @@
 import { getActiveBackendKind } from './backend'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
+export type BackendCapability = 'solidworks-license-management'
 
 /** Translate the MDB server role without promoting unknown values. */
 export function mapMdbRole(role: string): ClientRole | null {
@@ -11,6 +12,7 @@ export function mapMdbRole(role: string): ClientRole | null {
     case 'member':
       return 'engineer'
     case 'viewer':
+    case 'guest':
       return 'viewer'
     default:
       return null
@@ -20,4 +22,22 @@ export function mapMdbRole(role: string): ClientRole | null {
 /** Single backend-selection seam for auth and data adapters. */
 export function isMdbBackendActive(): boolean {
   return getActiveBackendKind() === 'community'
+}
+
+/** Central backend capability check used by legacy feature call-sites. */
+export function isBackendConfigured(kind: 'community' | 'supabase'): boolean {
+  return getActiveBackendKind() === kind
+}
+
+/**
+ * Keep backend-specific feature availability behind the adapter seam so UI
+ * components never have to probe an inactive SDK client.
+ */
+export function activeBackendSupports(capability: BackendCapability): boolean {
+  const backend = getActiveBackendKind()
+
+  switch (capability) {
+    case 'solidworks-license-management':
+      return backend === 'supabase'
+  }
 }

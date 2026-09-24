@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from '@/lib/i18n'
 import { Loader2 } from 'lucide-react'
 import { Dialog } from '@/components/core/Dialog'
 import { updateCommunityUser } from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../../types'
+import type { CommunityMembershipRole } from '@/lib/community'
 
 interface EditCommunityUserCredentialsDialogProps {
   user: OrgUser
@@ -21,11 +23,17 @@ export function EditCommunityUserCredentialsDialog({
   onClose,
   onUpdated,
 }: EditCommunityUserCredentialsDialogProps) {
+  const { t } = useTranslation()
   const { addToast } = usePDMStore()
   const [email, setEmail] = useState(user.email)
   const [displayName, setDisplayName] = useState(user.full_name ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const originalRole: Exclude<CommunityMembershipRole, 'owner'> =
+    user.role === 'admin' || user.role === 'viewer' || user.role === 'guest' ? user.role : 'member'
+  const [role, setRole] = useState<Exclude<CommunityMembershipRole, 'owner'>>(
+    originalRole,
+  )
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async () => {
@@ -33,26 +41,28 @@ export function EditCommunityUserCredentialsDialog({
     const normalizedName = displayName.trim()
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      addToast('error', 'Enter a valid email address')
+      addToast('error', t('mdbSetup.validEmail'))
       return
     }
     if (normalizedName.length < 2) {
-      addToast('error', "Enter the user's full name")
+      addToast('error', t('mdbSetup.fullNameRequired'))
       return
     }
     if (password && password.length < 12) {
-      addToast('error', 'The new password must have at least 12 characters')
+      addToast('error', t('mdbSetup.newPasswordTooShort'))
       return
     }
     if (password !== confirmPassword) {
-      addToast('error', 'The passwords do not match')
+      addToast('error', t('mdbSetup.passwordsMismatch'))
       return
     }
 
+    const roleChanged = user.role !== 'owner' && role !== originalRole
     const changed =
       normalizedEmail !== user.email.toLowerCase() ||
       normalizedName !== (user.full_name ?? '').trim() ||
-      password.length > 0
+      password.length > 0 ||
+      roleChanged
     if (!changed) {
       onClose()
       return
@@ -64,26 +74,26 @@ export function EditCommunityUserCredentialsDialog({
         email: normalizedEmail,
         displayName: normalizedName,
         ...(password ? { password } : {}),
+        ...(roleChanged ? { role } : {}),
       })
       await onUpdated()
-      addToast('success', `Updated account for ${normalizedName}`)
+      addToast('success', t('mdbSetup.updatedAccount', { name: normalizedName }))
       onClose()
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : 'Failed to update user account')
+      addToast('error', error instanceof Error ? error.message : t('mdbSetup.failedUpdate'))
     } finally {
       setIsSaving(false)
     }
   }
 
   return (
-    <Dialog open onClose={isSaving ? () => undefined : onClose} title="Edit Community account">
+    <Dialog open onClose={isSaving ? () => undefined : onClose} title={t('mdbSetup.editAccount')}>
       <div className="space-y-4">
         <p className="text-sm text-plm-fg-muted">
-          Changing an email address or password ends this user&apos;s active sessions. They will
-          sign in again with the new credentials.
+          {t('mdbSetup.editAccountHelp')}
         </p>
         <label className="block text-sm text-plm-fg">
-          Full name
+          {t('mdbSetup.fullName')}
           <input
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
@@ -93,7 +103,7 @@ export function EditCommunityUserCredentialsDialog({
           />
         </label>
         <label className="block text-sm text-plm-fg">
-          Email address
+          {t('mdbSetup.emailAddressRequired').replace(' *', '')}
           <input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -104,7 +114,7 @@ export function EditCommunityUserCredentialsDialog({
           />
         </label>
         <label className="block text-sm text-plm-fg">
-          New password <span className="text-plm-fg-muted">(leave blank to keep)</span>
+          {t('mdbSetup.newPassword')} <span className="text-plm-fg-muted">({t('mdbSetup.leaveBlankKeep')})</span>
           <input
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -115,7 +125,7 @@ export function EditCommunityUserCredentialsDialog({
           />
         </label>
         <label className="block text-sm text-plm-fg">
-          Confirm new password
+          {t('mdbSetup.confirmNewPassword')}
           <input
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
@@ -125,13 +135,29 @@ export function EditCommunityUserCredentialsDialog({
             autoComplete="new-password"
           />
         </label>
+        {user.role !== 'owner' && (
+          <label className="block text-sm text-plm-fg">
+            {t('mdbSetup.accountRole')}
+            <select
+              value={role}
+              onChange={(event) => setRole(event.target.value as Exclude<CommunityMembershipRole, 'owner'>)}
+              disabled={isSaving}
+              className="input mt-1 w-full"
+            >
+              <option value="admin">{t('mdbSetup.membershipRoleAdmin')}</option>
+              <option value="member">{t('mdbSetup.membershipRoleMember')}</option>
+              <option value="viewer">{t('mdbSetup.membershipRoleViewer')}</option>
+              <option value="guest">{t('mdbSetup.membershipRoleGuest')}</option>
+            </select>
+          </label>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} disabled={isSaving} className="btn btn-secondary">
-            Cancel
+            {t('mdbSetup.cancel')}
           </button>
           <button onClick={() => void handleSave()} disabled={isSaving} className="btn btn-primary">
             {isSaving && <Loader2 size={15} className="animate-spin" />}
-            Save account
+            {t('mdbSetup.saveAccount')}
           </button>
         </div>
       </div>

@@ -8,7 +8,7 @@ import { Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import {
   getAvailableTransitions,
   getFileWorkflowAssignment,
@@ -59,7 +59,7 @@ export function ChangeStateSubmenu({
     const currentStateId = targetFile.pdmData?.workflow_state_id ?? null
 
     // If the file already references a workflow state, assign it to that state's workflow.
-    if (currentStateId && !isCommunityConfigured()) {
+    if (currentStateId && !isBackendConfigured('community')) {
       const { data: stateRow } = await supabase
         .from('workflow_states')
         .select('id, workflow_id')

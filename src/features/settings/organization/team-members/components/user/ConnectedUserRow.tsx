@@ -30,8 +30,10 @@ import {
   useUserDialogs,
 } from '../../hooks'
 import { UserRow } from './UserRow'
+import { UserVaultAccessDialog } from './UserVaultAccessDialog'
 import { EditCommunityUserCredentialsDialog } from './EditCommunityUserCredentialsDialog'
-import { isCommunityConfigured } from '@/lib/community'
+import { UserProfileModal } from '@/features/settings/account'
+import { isBackendConfigured } from '@/lib/community'
 import type { OrgUser } from '../../types'
 
 export interface ConnectedUserRowProps {
@@ -72,16 +74,26 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
     toggleUserRole,
   } = useWorkflowRoles(orgId)
   const { jobTitles, assignJobTitle } = useJobTitles(orgId)
-  const { getUserVaultAccessCount, getUserAccessibleVaults } = useVaultAccess(orgId)
+  const {
+    vaults,
+    getUserVaultAccessCount,
+    getUserAccessibleVaults,
+    saveUserVaultAccess,
+  } = useVaultAccess(orgId)
 
   // Dialog state hooks
   const {
+    viewingUserId,
     setViewingUserId,
     setRemovingUser,
     setEditingPermissionsUser,
     setViewingPermissionsUser,
+    editingVaultAccessUser,
     setEditingVaultAccessUser,
+    pendingVaultAccess,
     setPendingVaultAccess,
+    isSavingVaultAccess,
+    setIsSavingVaultAccess,
     setEditingWorkflowRolesUser,
     setEditingTeamsUser,
     setRemovingFromTeam,
@@ -141,6 +153,27 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
     [getUserAccessibleVaults, setEditingVaultAccessUser, setPendingVaultAccess],
   )
 
+  const saveVaultAccess = useCallback(async () => {
+    if (!editingVaultAccessUser) return
+    setIsSavingVaultAccess(true)
+    try {
+      const saved = await saveUserVaultAccess(
+        editingVaultAccessUser.id,
+        pendingVaultAccess,
+        editingVaultAccessUser.full_name || editingVaultAccessUser.email,
+      )
+      if (saved) setEditingVaultAccessUser(null)
+    } finally {
+      setIsSavingVaultAccess(false)
+    }
+  }, [
+    editingVaultAccessUser,
+    pendingVaultAccess,
+    saveUserVaultAccess,
+    setEditingVaultAccessUser,
+    setIsSavingVaultAccess,
+  ])
+
   return (
     <>
       <UserRow
@@ -152,7 +185,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         // Profile & View actions
         onViewProfile={() => setViewingUserId(user.id)}
         onViewNetPermissions={
-          !isCommunityConfigured() ? () => setViewingPermissionsUser(user) : undefined
+          !isBackendConfigured('community') ? () => setViewingPermissionsUser(user) : undefined
         }
         // Simulate permissions (impersonation)
         onSimulatePermissions={() => startUserImpersonation(user.id)}
@@ -169,13 +202,13 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         vaultAccessCount={getUserVaultAccessCount(user.id)}
         // Permissions
         onPermissions={
-          isAdmin && !isCommunityConfigured() ? () => setEditingPermissionsUser(user) : undefined
+          isAdmin && !isBackendConfigured('community') ? () => setEditingPermissionsUser(user) : undefined
         }
         // Community credentials are managed directly by the Community PHP API.
         // Do not expose this action in a Supabase installation (or for oneself,
         // because a password/email update intentionally revokes its sessions).
         onManageCredentials={
-          isAdmin && !isCurrentUser && isCommunityConfigured()
+          isAdmin && !isCurrentUser && isBackendConfigured('community')
             ? () => setEditingCredentialsUser(user)
             : undefined
         }
@@ -193,6 +226,20 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         onEditTeams={setEditingTeamsUser}
         onToggleTeam={isAdmin ? handleToggleTeam : undefined}
       />
+      {viewingUserId && (
+        <UserProfileModal userId={viewingUserId} onClose={() => setViewingUserId(null)} />
+      )}
+      {editingVaultAccessUser && (
+        <UserVaultAccessDialog
+          user={editingVaultAccessUser}
+          orgVaults={vaults}
+          pendingVaultAccess={pendingVaultAccess}
+          setPendingVaultAccess={setPendingVaultAccess}
+          onSave={saveVaultAccess}
+          onClose={() => setEditingVaultAccessUser(null)}
+          isSaving={isSavingVaultAccess}
+        />
+      )}
       {editingCredentialsUser && (
         <EditCommunityUserCredentialsDialog
           user={editingCredentialsUser}

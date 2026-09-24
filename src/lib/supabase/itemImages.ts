@@ -2,7 +2,7 @@ import { getSupabaseClient } from './client'
 
 import { log } from '@/lib/logger'
 import type { ItemImage } from '@/types/item'
-import { getCommunityItemImages, getCommunityVault, getCommunityVaults, isCommunityConfigured, resetCommunityItemImage, setCommunityItemImage } from '@/lib/community'
+import { getCommunityItemImages, getCommunityVault, getCommunityVaults, isBackendConfigured, resetCommunityItemImage, setCommunityItemImage } from '@/lib/community'
 import { buildFullPath } from '@/lib/utils/path'
 
 const VAULT_BUCKET = 'vault'
@@ -55,7 +55,7 @@ function toItemImage(row: ItemImageRow, imageUrl: string | null): ItemImage {
  * with no override row use the default SolidWorks preview and are absent here.
  */
 export async function getItemImages(orgId: string): Promise<Map<string, ItemImage>> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const result = new Map<string, ItemImage>()
     try {
       const rows = await getCommunityItemImages()
@@ -104,7 +104,7 @@ export async function setItemIcon(
   iconColor?: string | null,
   vaultId?: string,
 ): Promise<ItemImage> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
     if (!vault) throw new Error('Select a vault before assigning an item icon.')
     const row = await setCommunityItemImage(partNumber, { vaultId: vault.id, imageType: 'icon', iconName, iconColor: iconColor ?? null, storageRelativePath: null })
@@ -137,7 +137,7 @@ export async function uploadItemImage(
     throw new Error('Image must be 2 MB or smaller')
   }
 
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
     if (!vault) throw new Error('Select a vault before uploading an item image.')
     if (!window.electronAPI) throw new Error('Item image upload requires the BluePLM desktop client.')
@@ -189,7 +189,7 @@ export async function uploadItemImage(
 
 /** Remove an item's override, reverting to the default SolidWorks preview. */
 export async function resetItemImage(orgId: string, partNumber: string): Promise<void> {
-  if (isCommunityConfigured()) { await resetCommunityItemImage(partNumber); return }
+  if (isBackendConfigured('community')) { await resetCommunityItemImage(partNumber); return }
   const supabase = getSupabaseClient() as unknown as RpcClient
   const { error } = await supabase.rpc('reset_item_image', {
     p_org_id: orgId,

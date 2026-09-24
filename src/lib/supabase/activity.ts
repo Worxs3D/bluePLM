@@ -1,12 +1,12 @@
 import { getSupabaseClient } from './client'
-import { getCommunityActivity, getCommunityFileActivity, isCommunityConfigured } from '@/lib/community'
+import { getCommunityActivity, getCommunityFileActivity, isBackendConfigured } from '@/lib/community'
 
 // ============================================
 // Activity Log
 // ============================================
 
 export async function getRecentActivity(orgId: string, limit = 50) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return { activity: await getCommunityActivity(limit), error: null }
     } catch (error) {
@@ -30,7 +30,7 @@ export async function getRecentActivity(orgId: string, limit = 50) {
 }
 
 export async function getFileActivity(fileId: string, limit = 20) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return { activity: await getCommunityFileActivity(fileId, limit), error: null }
     } catch (error) {

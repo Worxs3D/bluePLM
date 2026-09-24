@@ -13,7 +13,7 @@ import {
   createCommunityWorkflowState,
   deleteCommunityWorkflowState,
   getCommunityWorkflowStates,
-  isCommunityConfigured,
+  isBackendConfigured,
   updateCommunityWorkflowState,
 } from '@/lib/community'
 import type { Database } from '@/types/database'
@@ -34,7 +34,7 @@ export const stateService = {
    * Get all states for a workflow
    */
   async getByWorkflow(workflowId: string): Promise<StateServiceResult<WorkflowState[]>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await getCommunityWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow states.') } }
     }
@@ -67,7 +67,7 @@ export const stateService = {
   async create(
     state: Partial<WorkflowStateRow> & { workflow_id: string; name: string },
   ): Promise<StateServiceResult<WorkflowState>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await createCommunityWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow state.') } }
     }
@@ -89,7 +89,7 @@ export const stateService = {
     stateId: string,
     updates: Partial<WorkflowStateRow>,
   ): Promise<StateServiceResult<WorkflowState>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { return { data: await updateCommunityWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
     }
@@ -113,7 +113,7 @@ export const stateService = {
     positionX: number,
     positionY: number,
   ): Promise<StateServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await updateCommunityWorkflowState(stateId, { position_x: positionX, position_y: positionY }); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
     }
@@ -131,7 +131,7 @@ export const stateService = {
    * Delete a state
    */
   async delete(stateId: string): Promise<StateServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try { await deleteCommunityWorkflowState(stateId); return { data: undefined, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow state.') } }
     }
@@ -149,7 +149,7 @@ export const stateService = {
   async batchUpdatePositions(
     updates: Array<{ id: string; position_x: number; position_y: number }>,
   ): Promise<StateServiceResult<void>> {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       try {
         await Promise.all(updates.map(({ id, position_x, position_y }) => updateCommunityWorkflowState(id, { position_x, position_y })))
         return { data: undefined, error: null }

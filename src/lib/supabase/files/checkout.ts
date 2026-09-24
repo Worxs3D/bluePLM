@@ -8,7 +8,7 @@ import {
   cancelCommunityCheckout,
   checkinCommunityFile,
   checkoutCommunityFile,
-  isCommunityConfigured,
+  isBackendConfigured,
 } from '@/lib/community'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
@@ -114,7 +114,7 @@ export async function checkoutFile(
     vaultId?: string
   },
 ): Promise<{ success: boolean; file?: CheckoutSnapshotFields; error?: string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await checkoutCommunityFile(fileId, options?.clientWorkingPath || '', options?.vaultId)
       return { success: true, file: undefined, error: null }
@@ -204,7 +204,7 @@ export async function checkinFile(
   inspectionChanged?: boolean
   machineMismatchWarning?: string | null
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       if (!options?.communityStorageRelativePath) {
         await cancelCommunityCheckout(fileId)
@@ -484,7 +484,7 @@ export async function syncSolidWorksFileMetadata(
 }
 
 export async function undoCheckout(fileId: string, userId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await cancelCommunityCheckout(fileId)
       return { success: true, error: null }

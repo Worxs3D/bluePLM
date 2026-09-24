@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../client'
 import { CONCURRENT_OPERATIONS, processWithConcurrency } from '../../concurrency'
-import { isCommunityConfigured, moveCommunityFile } from '@/lib/community'
+import { isBackendConfigured, moveCommunityFile } from '@/lib/community'
 
 // ============================================
 // File Move Operations
@@ -26,7 +26,7 @@ export async function moveFileOnServer(
   newFilePath: string,
   newFileName?: string,
 ): Promise<{ success: boolean; file?: unknown; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await moveCommunityFile(fileId, newFilePath, newFileName)
       return { success: true, file: { id: fileId, file_path: newFilePath, file_name: newFileName } }

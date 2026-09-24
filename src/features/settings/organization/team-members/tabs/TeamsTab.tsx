@@ -27,7 +27,7 @@ import {
   ClipboardCheck,
 } from 'lucide-react'
 import { PermissionsEditor } from '@/features/settings/organization/PermissionsEditor'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useTeams, useMembers, useVaultAccess, useTeamDialogs } from '../hooks'
 import { useFilteredData } from '../hooks/useFilteredData'
@@ -48,7 +48,7 @@ export function TeamsTab({ searchQuery = '', onShowCreateTeamDialog }: TeamsTabP
   const { user, organization, setOrganization, getEffectiveRole, workflowRoles } = usePDMStore()
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
-  const isCommunityBackend = isCommunityConfigured()
+  const isCommunityBackend = isBackendConfigured('community')
 
   // Data hooks
   const { teams, loadTeams, createTeam, updateTeam, deleteTeam, setDefaultTeam } = useTeams(orgId)

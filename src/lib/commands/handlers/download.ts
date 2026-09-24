@@ -15,7 +15,7 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
-import { getCommunityVault, isCommunityConfigured, type CommunityVault } from '@/lib/community'
+import { getCommunityVault, isBackendConfigured, type CommunityVault } from '@/lib/community'
 
 // Number of retry attempts for failed downloads
 const MAX_RETRY_ATTEMPTS = 3
@@ -167,7 +167,7 @@ export const downloadCommand: Command<DownloadParams> = {
     const organization = ctx.organization!
     const vaultPath = ctx.vaultPath!
     const operationId = `download-${Date.now()}`
-    const communityMode = isCommunityConfigured()
+    const communityMode = isBackendConfigured('community')
     let communityVault: CommunityVault | null = null
     if (communityMode) {
       try {

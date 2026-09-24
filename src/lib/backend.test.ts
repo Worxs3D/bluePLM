@@ -8,7 +8,7 @@ import {
   loadBackendProfile,
 } from './backend'
 import { hasConfig } from './supabaseConfig'
-import { isCommunityConfigured, saveCommunityConfig } from './community'
+import { isBackendConfigured, saveCommunityConfig } from './community'
 
 const storage = new Map<string, string>()
 vi.stubGlobal('localStorage', {
@@ -62,7 +62,7 @@ describe('backend profile', () => {
     localStorage.setItem('blueplm-supabase-config', JSON.stringify({ url: 'https://example.test', anonKey: 'key' }))
     saveCommunityConfig({ version: 1, serverUrl: 'https://community.example.test' })
 
-    expect(isCommunityConfigured()).toBe(true)
+    expect(isBackendConfigured('community')).toBe(true)
     expect(hasConfig()).toBe(false)
   })
 })

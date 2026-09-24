@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { PendingMember, PendingMemberFormData } from '../types'
@@ -38,7 +38,7 @@ export function useInvites(orgId: string | null) {
     try {
       // Community creates password accounts directly. It does not use the
       // Supabase pending-invitation table, so leave this optional list empty.
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         setPendingMembers([])
         return
       }

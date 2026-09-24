@@ -6,7 +6,7 @@ import {
   getCommunityOrganization,
   getCommunityPrincipal,
   getCommunityUsers,
-  isCommunityConfigured,
+  isBackendConfigured,
 } from '@/lib/community'
 
 // ============================================
@@ -27,7 +27,7 @@ export async function getUserProfile(
   userId: string,
   options?: { maxRetries?: number },
 ): Promise<{ profile: UserProfileResult | null; error: Error | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.userId !== userId) return { profile: null, error: new Error('User is outside the active session.') }
@@ -110,7 +110,7 @@ export async function getUserProfile(
 }
 
 export async function getOrganization(orgId: string) {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const organization = await getCommunityOrganization()
       if (organization.id !== orgId) return { org: null, error: new Error('Organization not found') }
@@ -160,7 +160,7 @@ const DEFAULT_AUTH_PROVIDERS: AuthProviders = {
 // Used by the sign-in screen to determine which sign-in methods to show
 // If orgSlug is provided, fetches by slug. Otherwise, fetches from the first/only org in the database.
 export async function getOrgAuthProviders(orgSlug?: string): Promise<AuthProviders | null> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     return { users: { google: false, email: true, phone: false }, suppliers: { google: false, email: false, phone: false } }
   }
   try {
@@ -383,7 +383,7 @@ export async function linkUserToOrganization(
   userEmail: string,
   cachedOrgId?: string | null,
 ): Promise<{ org: Organization | null; error: Error | string | null }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const [principal, organization] = await Promise.all([getCommunityPrincipal(), getCommunityOrganization()])
       if (principal.userId !== userId || principal.email !== userEmail || (cachedOrgId && cachedOrgId !== organization.id)) {
@@ -698,7 +698,7 @@ export async function linkUserToOrganization(
  * Get all users in an organization (for selecting reviewers)
  */
 export async function getOrgUsers(orgId: string): Promise<{ users: any[]; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const principal = await getCommunityPrincipal()
       if (principal.organizationId !== orgId) return { users: [], error: 'Organization not found' }

@@ -2,7 +2,7 @@ import { getSupabaseClient } from './client'
 import {
   getCommunityTeams,
   getCommunityUserTeams,
-  isCommunityConfigured,
+  isBackendConfigured,
   removeCommunityUser,
 } from '@/lib/community'
 import type { PermissionAction } from '../../types/permissions'
@@ -57,7 +57,7 @@ export async function removeUserFromOrg(
   targetUserId: string,
   _adminOrgId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       await removeCommunityUser(targetUserId)
       return { success: true }
@@ -158,7 +158,7 @@ export async function getUserTeams(
   teams: Array<{ id: string; name: string; color: string; icon: string }> | null
   error?: string
 }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       return { teams: await getCommunityUserTeams(userId) }
     } catch (error) {
@@ -197,7 +197,7 @@ export async function getUserTeams(
 export async function getUserWorkflowRoles(
   userId: string,
 ): Promise<{ roleIds: string[]; error?: string }> {
-  if (isCommunityConfigured()) return { roleIds: [] }
+  if (isBackendConfigured('community')) return { roleIds: [] }
   const client = getSupabaseClient()
 
   const { data, error } = await client
@@ -226,7 +226,7 @@ export async function getUserPermissions(
     return { permissions: { __admin__: ['view', 'create', 'edit', 'delete', 'admin'] } }
   }
 
-  if (isCommunityConfigured()) return { permissions: {} }
+  if (isBackendConfigured('community')) return { permissions: {} }
 
   const client = getSupabaseClient()
 
@@ -550,7 +550,7 @@ export async function removeTeamReviewer(
  * Get all teams in an organization
  */
 export async function getOrgTeams(orgId: string): Promise<{ teams: any[] | null; error?: string }> {
-  if (isCommunityConfigured()) {
+  if (isBackendConfigured('community')) {
     try {
       const teams = await getCommunityTeams()
       return {

@@ -4,7 +4,7 @@ import { BadgeCheck, CheckCircle } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
-import { isCommunityConfigured } from '@/lib/community'
+import { isBackendConfigured } from '@/lib/community'
 import { STATE_COLORS } from '@/types/workflow'
 import { IconGridPicker } from '@/components/shared/IconPicker'
 import type { EditStateDialogProps, WorkflowRoleBasic } from '../types'
@@ -50,7 +50,7 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
   useEffect(() => {
     const loadRoles = async () => {
       if (!organization) return
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         setWorkflowRoles([
           { id: 'admin', name: 'Administrators', color: '#DC2626', icon: 'shield' },
           { id: 'engineer', name: 'Engineers', color: '#2563EB', icon: 'wrench' },

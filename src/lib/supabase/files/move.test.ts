@@ -10,7 +10,7 @@ const rpc = vi.fn()
 vi.mock('../client', () => ({ getSupabaseClient: () => ({ rpc }) }))
 
 const community = vi.hoisted(() => ({
-  isCommunityConfigured: vi.fn(),
+  isBackendConfigured: vi.fn(),
   moveCommunityFile: vi.fn(),
 }))
 vi.mock('@/lib/community', () => community)
@@ -35,7 +35,7 @@ function moves(...fileIds: string[]) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  community.isCommunityConfigured.mockReturnValue(false)
+  community.isBackendConfigured.mockReturnValue(false)
   community.moveCommunityFile.mockResolvedValue(undefined)
   replies({})
 })
@@ -62,7 +62,7 @@ describe('moveFileOnServer', () => {
   })
 
   it('uses the Community/MariaDB endpoint instead of the Supabase RPC', async () => {
-    community.isCommunityConfigured.mockReturnValue(true)
+    community.isBackendConfigured.mockReturnValue(true)
 
     await expect(moveFileOnServer('a', 'user-me', 'new/a.sldprt', 'a.sldprt')).resolves.toEqual({
       success: true,
@@ -74,7 +74,7 @@ describe('moveFileOnServer', () => {
   })
 
   it('reports a Community/MariaDB move failure without falling back to Supabase', async () => {
-    community.isCommunityConfigured.mockReturnValue(true)
+    community.isBackendConfigured.mockReturnValue(true)
     community.moveCommunityFile.mockRejectedValueOnce(new Error('Community server unavailable'))
 
     await expect(moveFileOnServer('a', 'user-me', 'new/a.sldprt')).resolves.toEqual({

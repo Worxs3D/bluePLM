@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient, getFileVersions } from '@/lib/supabase'
-import { createCommunityDeviation, getCommunityDeviationFiles, getCommunityDeviations, isCommunityConfigured, removeCommunityDeviationFile, setCommunityDeviationFiles, updateCommunityDeviationStatus } from '@/lib/community'
+import { createCommunityDeviation, getCommunityDeviationFiles, getCommunityDeviations, isBackendConfigured, removeCommunityDeviationFile, setCommunityDeviationFiles, updateCommunityDeviationStatus } from '@/lib/community'
 import type { Database } from '@/types/supabase'
 import { formatDistanceToNow, format } from 'date-fns'
 
@@ -200,7 +200,7 @@ export function DeviationsView() {
       setIsLoading(true)
 
       try {
-        if (isCommunityConfigured()) {
+        if (isBackendConfigured('community')) {
           setDeviations((await getCommunityDeviations()).map(communityDeviationToView))
           return
         }
@@ -292,7 +292,7 @@ export function DeviationsView() {
     setLoadingFiles(deviationId)
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const files = await getCommunityDeviationFiles(deviationId)
         setDeviationFiles((prev) => ({ ...prev, [deviationId]: files }))
         return
@@ -379,7 +379,7 @@ export function DeviationsView() {
     setIsCreating(true)
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const data = await createCommunityDeviation({ deviationNumber: newDeviationNumber.trim(), title: newDeviationTitle.trim(), description: newDeviationDescription.trim() || null, deviationType: newDeviationType || null, expirationDate: newExpirationDate || null })
         setDeviations((prev) => [communityDeviationToView(data), ...prev])
         setNewDeviationNumber(''); setNewDeviationTitle(''); setNewDeviationDescription(''); setNewDeviationType(''); setNewExpirationDate(''); setShowCreateModal(false)
@@ -477,7 +477,7 @@ export function DeviationsView() {
         return
       }
 
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await setCommunityDeviationFiles(tagDeviationId, fileData.map((file) => ({ fileId: file.id, fileVersion: tagSpecificVersion ? file.version : null, fileRevision: tagSpecificVersion ? file.revision : null, notes: tagNotes.trim() || null })), partNumbers)
         const dev = deviations.find((d) => d.id === tagDeviationId)
         setDeviations((prev) => prev.map((d) => d.id === tagDeviationId ? { ...d, file_count: (d.file_count || 0) + fileData.length, affected_part_numbers: [...new Set([...(dev?.affected_part_numbers || []), ...partNumbers])] } : d))
@@ -562,7 +562,7 @@ export function DeviationsView() {
   // Remove file from deviation
   const handleRemoveFileFromDeviation = async (fileDeviationId: string, deviationId: string) => {
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await removeCommunityDeviationFile(fileDeviationId)
         setDeviationFiles((prev) => ({ ...prev, [deviationId]: prev[deviationId]?.filter((fd) => fd.id !== fileDeviationId) || [] }))
         setDeviations((prev) => prev.map((d) => d.id === deviationId ? { ...d, file_count: Math.max(0, (d.file_count || 0) - 1) } : d))
@@ -716,7 +716,7 @@ export function DeviationsView() {
         }
       })
 
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await setCommunityDeviationFiles(dropDeviationId, insertData.map((file) => ({ fileId: file.file_id, fileVersion: file.file_version, fileRevision: file.file_revision, notes: file.notes })), partNumbers)
         setDeviations((prev) => prev.map((d) => d.id === dropDeviationId ? { ...d, file_count: (d.file_count || 0) + droppedFiles.length, affected_part_numbers: [...new Set([...(d.affected_part_numbers || []), ...partNumbers])] } : d))
         setDeviationFiles((prev) => { const { [dropDeviationId]: _, ...rest } = prev; return rest })
@@ -792,7 +792,7 @@ export function DeviationsView() {
     if (!user) return
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         await updateCommunityDeviationStatus(deviationId, newStatus)
         setDeviations((prev) => prev.map((d) => d.id === deviationId ? { ...d, status: newStatus, ...(newStatus === 'approved' ? { approved_by: user.id, approved_at: new Date().toISOString(), approved_by_name: user.full_name } : {}) } : d))
         addToast('success', `Deviation status updated to ${STATUS_CONFIG[newStatus].label}`)

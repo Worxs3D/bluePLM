@@ -31,7 +31,7 @@ import { executeCommand } from '@/lib/commands'
 import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialogs'
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { RealignSection } from './realign'
-import { createCommunityVault, isCommunityConfigured } from '@/lib/community'
+import { createCommunityVault, isBackendConfigured } from '@/lib/community'
 
 // Build vault path based on platform
 function buildVaultPath(platform: string, vaultSlug: string): string {
@@ -218,7 +218,7 @@ export function VaultsSettings() {
     const storageBucket = `vault-${organization.slug}-${slug}`
 
     try {
-      if (isCommunityConfigured()) {
+      if (isBackendConfigured('community')) {
         const networkRoot = newVaultStorageRoot.trim()
         if (
           newVaultStorageProvider === 'network' &&
@@ -850,7 +850,7 @@ export function VaultsSettings() {
               autoFocus
             />
           </div>
-          {!isCommunityConfigured() && (
+          {!isBackendConfigured('community') && (
             <div className="space-y-2">
               <label className="text-sm text-plm-fg-muted">Description (optional)</label>
               <input
@@ -862,7 +862,7 @@ export function VaultsSettings() {
               />
             </div>
           )}
-          {isCommunityConfigured() && (
+          {isBackendConfigured('community') && (
             <>
               <div className="space-y-2">
                 <label className="text-sm text-plm-fg-muted">Storage provider</label>
@@ -940,7 +940,7 @@ export function VaultsSettings() {
               onClick={handleCreateVault}
               disabled={
                 !newVaultName.trim() ||
-                (isCommunityConfigured() && !newVaultStorageRoot.trim()) ||
+                (isBackendConfigured('community') && !newVaultStorageRoot.trim()) ||
                 isSavingVault
               }
               className="btn btn-primary btn-sm"
@@ -1094,7 +1094,7 @@ export function VaultsSettings() {
                     </button>
                   )}
 
-                  {isCommunityConfigured() &&
+                  {isBackendConfigured('community') &&
                     platform === 'win32' &&
                     vault.storageProvider === 'network' &&
                     vault.networkRoot && (

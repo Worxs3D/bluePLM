@@ -6,7 +6,7 @@ import type { Database } from '@/types/supabase'
 import {
   createCommunityPartSupplier,
   getCommunityPartSuppliers,
-  isCommunityConfigured,
+  isBackendConfigured,
   removeCommunityPartSupplier,
   setCommunityPreferredPartSupplier,
   updateCommunityPartSupplier,
@@ -51,7 +51,7 @@ export async function getPartSuppliers(
   fileId: string,
 ): Promise<{ data: PartSupplier[] | null; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       return { data: (await getCommunityPartSuppliers(fileId)) as PartSupplier[], error: null }
     }
     const { data, error } = await supabase
@@ -130,7 +130,7 @@ export async function addPartSupplier(
   userId: string,
 ): Promise<{ data: PartSupplier | null; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       return { data: (await createCommunityPartSupplier(fileId, supplierId, toCommunityInput(data))) as PartSupplier, error: null }
     }
     const { data: result, error } = await supabase
@@ -224,7 +224,7 @@ export async function updatePartSupplier(
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       await updateCommunityPartSupplier(partSupplierId, toCommunityInput(data))
       return { success: true, error: null }
     }
@@ -278,7 +278,7 @@ export async function setPreferredPartSupplier(
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       await setCommunityPreferredPartSupplier(fileId, partSupplierId)
       return { success: true, error: null }
     }
@@ -327,7 +327,7 @@ export async function removePartSupplier(
   userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       await removeCommunityPartSupplier(partSupplierId)
       return { success: true, error: null }
     }
@@ -359,7 +359,7 @@ export async function deletePartSupplier(
   partSupplierId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    if (isCommunityConfigured()) {
+    if (isBackendConfigured('community')) {
       await removeCommunityPartSupplier(partSupplierId)
       return { success: true, error: null }
     }
