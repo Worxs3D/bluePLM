@@ -6,6 +6,7 @@ import { updateCommunityUser } from '@/lib/community'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../../types'
 import type { CommunityMembershipRole } from '@/lib/community'
+import { log } from '@/lib/logger'
 
 interface EditCommunityUserCredentialsDialogProps {
   user: OrgUser
@@ -31,9 +32,7 @@ export function EditCommunityUserCredentialsDialog({
   const [confirmPassword, setConfirmPassword] = useState('')
   const originalRole: Exclude<CommunityMembershipRole, 'owner'> =
     user.role === 'admin' || user.role === 'viewer' || user.role === 'guest' ? user.role : 'member'
-  const [role, setRole] = useState<Exclude<CommunityMembershipRole, 'owner'>>(
-    originalRole,
-  )
+  const [role, setRole] = useState<Exclude<CommunityMembershipRole, 'owner'>>(originalRole)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async () => {
@@ -80,7 +79,8 @@ export function EditCommunityUserCredentialsDialog({
       addToast('success', t('mdbSetup.updatedAccount', { name: normalizedName }))
       onClose()
     } catch (error) {
-      addToast('error', error instanceof Error ? error.message : t('mdbSetup.failedUpdate'))
+      log.error('[EditCommunityUserCredentialsDialog]', 'Failed to update MDB user', { error })
+      addToast('error', t('mdbSetup.failedUpdate'))
     } finally {
       setIsSaving(false)
     }
@@ -89,9 +89,7 @@ export function EditCommunityUserCredentialsDialog({
   return (
     <Dialog open onClose={isSaving ? () => undefined : onClose} title={t('mdbSetup.editAccount')}>
       <div className="space-y-4">
-        <p className="text-sm text-plm-fg-muted">
-          {t('mdbSetup.editAccountHelp')}
-        </p>
+        <p className="text-sm text-plm-fg-muted">{t('mdbSetup.editAccountHelp')}</p>
         <label className="block text-sm text-plm-fg">
           {t('mdbSetup.fullName')}
           <input
@@ -114,7 +112,8 @@ export function EditCommunityUserCredentialsDialog({
           />
         </label>
         <label className="block text-sm text-plm-fg">
-          {t('mdbSetup.newPassword')} <span className="text-plm-fg-muted">({t('mdbSetup.leaveBlankKeep')})</span>
+          {t('mdbSetup.newPassword')}{' '}
+          <span className="text-plm-fg-muted">({t('mdbSetup.leaveBlankKeep')})</span>
           <input
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -140,7 +139,9 @@ export function EditCommunityUserCredentialsDialog({
             {t('mdbSetup.accountRole')}
             <select
               value={role}
-              onChange={(event) => setRole(event.target.value as Exclude<CommunityMembershipRole, 'owner'>)}
+              onChange={(event) =>
+                setRole(event.target.value as Exclude<CommunityMembershipRole, 'owner'>)
+              }
               disabled={isSaving}
               className="input mt-1 w-full"
             >

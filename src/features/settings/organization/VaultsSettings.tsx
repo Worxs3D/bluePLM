@@ -244,7 +244,10 @@ export function VaultsSettings() {
           // Never retain a network password in renderer state after an attempt.
           setNewVaultNetworkPassword('')
           if (!credentialResult.success) {
-            addToast('error', credentialResult.error || t('mdbSetup.networkCredentialSaveFailed'))
+            log.error('[VaultsSettings]', 'Failed to save network credential', {
+              error: credentialResult.error,
+            })
+            addToast('error', t('mdbSetup.networkCredentialSaveFailed'))
             return
           }
         }
@@ -348,7 +351,10 @@ export function VaultsSettings() {
       // main process. The persisted copy is managed by Windows, not BluePLM.
       setCredentialPassword('')
       if (!result.success) {
-        addToast('error', result.error || t('mdbSetup.networkCredentialSaveFailed'))
+        log.error('[VaultsSettings]', 'Failed to save network credential', {
+          error: result.error,
+        })
+        addToast('error', t('mdbSetup.networkCredentialSaveFailed'))
         return
       }
       addToast('success', t('mdbSetup.networkCredentialSaved', { name: credentialVault.name }))
@@ -890,7 +896,7 @@ export function VaultsSettings() {
                   type="text"
                   value={newVaultStorageRoot}
                   onChange={(event) => setNewVaultStorageRoot(event.target.value)}
-                  placeholder="\\\\server\\BluePLM-Vault"
+                  placeholder={t('mdbSetup.networkRootPlaceholder')}
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-3 py-2 text-base focus:border-plm-accent focus:outline-none"
                 />
                 <p className="text-xs text-plm-fg-muted">{t('mdbSetup.networkRootHelp')}</p>

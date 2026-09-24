@@ -181,7 +181,11 @@ async function uploadFileContentToStorage(
         .createSignedUploadUrl(storagePath)
       const streamed =
         !signedUploadError && signedUpload?.signedUrl
-          ? await window.electronAPI?.uploadSignedUrl(filePath, signedUpload.signedUrl, 'application/octet-stream')
+          ? await window.electronAPI?.uploadSignedUrl(
+              filePath,
+              signedUpload.signedUrl,
+              'application/octet-stream',
+            )
           : undefined
       const uploadError = signedUploadError?.message || streamed?.error
 
@@ -1275,12 +1279,18 @@ export const checkinCommand: Command<CheckinParams> = {
               try {
                 const vaultId = file.pdmData?.vault_id
                 if (!vaultId || !file.pdmData?.id) {
-                  return { success: false, error: `${file.name}: Community vault metadata is incomplete.` }
+                  return {
+                    success: false,
+                    error: t('mdbSetup.fileVaultMetadataIncomplete', { name: file.name }),
+                  }
                 }
                 const vault = await getCommunityVault(vaultId)
                 if (vault.storageProvider === 'network') {
                   if (!vault.networkRoot) {
-                    return { success: false, error: `${file.name}: Network vault root is missing.` }
+                    return {
+                      success: false,
+                      error: t('mdbSetup.fileNetworkRootMissing', { name: file.name }),
+                    }
                   }
                   // Match BluePLM's Supabase model: every check-in is an immutable,
                   // content-addressed object. file_revisions points to this object;
@@ -1289,103 +1299,135 @@ export const checkinCommand: Command<CheckinParams> = {
                   const stagedPath = buildFullPath(vault.networkRoot, communityStorageRelativePath)
                   const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
                   if (!staged?.success) {
-                    return { success: false, error: `${file.name}: Failed to stage Community revision - ${staged?.error || 'unknown copy error'}` }
+                    logCheckin('error', 'Failed to stage MDB revision', {
+                      operationId,
+                      fileName: file.name,
+                      error: staged?.error,
+                    })
+                    return {
+                      success: false,
+                      error: t('mdbSetup.fileRevisionStageFailed', { name: file.name }),
+                    }
                   }
                   const stagedHash = await window.electronAPI?.hashFile(stagedPath)
                   if (!stagedHash?.success || !stagedHash.hash) {
-                    return { success: false, error: `${file.name}: Failed to verify staged Community revision - ${stagedHash?.error || 'unknown hash error'}` }
+                    logCheckin('error', 'Failed to verify staged MDB revision', {
+                      operationId,
+                      fileName: file.name,
+                      error: stagedHash?.error,
+                    })
+                    return {
+                      success: false,
+                      error: t('mdbSetup.fileRevisionVerifyFailed', { name: file.name }),
+                    }
                   }
                   if (stagedHash.hash !== fileHash) {
-                    return { success: false, error: `${file.name}: Staged Community revision hash does not match the local file.` }
+                    return {
+                      success: false,
+                      error: t('mdbSetup.fileRevisionHashMismatch', { name: file.name }),
+                    }
                   }
                   fileSize = stagedHash.size ?? fileSize
                   logCheckin('info', 'Staged immutable Community revision', {
-                    operationId, fileName: file.name, stagedPath, hash: fileHash.substring(0, 12),
+                    operationId,
+                    fileName: file.name,
+                    stagedPath,
+                    hash: fileHash.substring(0, 12),
                   })
                 } else {
-                  return { success: false, error: `${file.name}: MDB supports Network Vault storage only.` }
+                  return {
+                    success: false,
+                    error: t('mdbSetup.fileNetworkVaultOnly', { name: file.name }),
+                  }
                 }
               } catch (error) {
-                return { success: false, error: `${file.name}: ${error instanceof Error ? error.message : String(error)}` }
+                return {
+                  success: false,
+                  error: `${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+                }
               }
             } else {
-            logCheckin('debug', 'Content changed, uploading to storage', {
-              operationId,
-              fileName: file.name,
-              oldHash: file.pdmData?.content_hash?.substring(0, 12),
-              newHash: fileHash.substring(0, 12),
-            })
-
-            // Read file content for upload
-            const readFileStart = performance.now()
-            // Keep file bytes in the main process. The compatibility-shaped value
-            // below avoids a renderer base64 allocation; uploadFileContentToStorage
-            // streams directly from file.path.
-            const readResult = {
-              success: true,
-              data: '',
-              hash: fileHash,
-              size: fileSize,
-              locked: false,
-              error: undefined as string | undefined,
-            }
-            recordSubstepTiming('readFile', performance.now() - readFileStart)
-            if (!readResult?.success || readResult.data === undefined) {
-              const errorDetail = readResult?.locked
-                ? `${file.name}: File is locked by another process \u2014 save your work and try again`
-                : `${file.name}: Failed to read file for upload`
-              logCheckin('error', 'Failed to read file for upload', {
+              logCheckin('debug', 'Content changed, uploading to storage', {
                 operationId,
                 fileName: file.name,
-                error: readResult?.error,
-                locked: readResult?.locked,
+                oldHash: file.pdmData?.content_hash?.substring(0, 12),
+                newHash: fileHash.substring(0, 12),
               })
-              progress.update()
-              return { success: false, error: errorDetail }
-            }
 
-            // TOCTOU guard: file may have changed between hashFile and readFile.
-            // Use the hash from readFile (which matches the actual content) as the
-            // authoritative hash for the storage path and DB record.
-            if (readResult.hash && readResult.hash !== fileHash) {
-              logCheckin('warn', 'File changed between hash and read (TOCTOU) — using read hash', {
-                operationId,
-                fileName: file.name,
-                hashFileHash: fileHash.substring(0, 12),
-                readFileHash: readResult.hash.substring(0, 12),
-              })
-              fileHash = readResult.hash
-              fileSize = readResult.size ?? fileSize
-            }
-
-            // Upload to storage
-            const uploadStart = performance.now()
-            const uploadResult = await uploadFileContentToStorage(
-              orgId,
-              fileHash,
-              file.path,
-              fileSize ?? file.size,
-            )
-            recordSubstepTiming('upload', performance.now() - uploadStart)
-            if (!uploadResult.success) {
-              logCheckin('error', 'Failed to upload file to storage', {
-                operationId,
-                fileName: file.name,
-                error: uploadResult.error,
-              })
-              progress.update()
-              return {
-                success: false,
-                error: `${file.name}: Failed to upload - ${uploadResult.error}`,
+              // Read file content for upload
+              const readFileStart = performance.now()
+              // Keep file bytes in the main process. The compatibility-shaped value
+              // below avoids a renderer base64 allocation; uploadFileContentToStorage
+              // streams directly from file.path.
+              const readResult = {
+                success: true,
+                data: '',
+                hash: fileHash,
+                size: fileSize,
+                locked: false,
+                error: undefined as string | undefined,
               }
-            }
+              recordSubstepTiming('readFile', performance.now() - readFileStart)
+              if (!readResult?.success || readResult.data === undefined) {
+                const errorDetail = readResult?.locked
+                  ? `${file.name}: File is locked by another process \u2014 save your work and try again`
+                  : `${file.name}: Failed to read file for upload`
+                logCheckin('error', 'Failed to read file for upload', {
+                  operationId,
+                  fileName: file.name,
+                  error: readResult?.error,
+                  locked: readResult?.locked,
+                })
+                progress.update()
+                return { success: false, error: errorDetail }
+              }
 
-            logCheckin('info', 'Uploaded new content to storage', {
-              operationId,
-              fileName: file.name,
-              hash: fileHash.substring(0, 12),
-              size: fileSize,
-            })
+              // TOCTOU guard: file may have changed between hashFile and readFile.
+              // Use the hash from readFile (which matches the actual content) as the
+              // authoritative hash for the storage path and DB record.
+              if (readResult.hash && readResult.hash !== fileHash) {
+                logCheckin(
+                  'warn',
+                  'File changed between hash and read (TOCTOU) — using read hash',
+                  {
+                    operationId,
+                    fileName: file.name,
+                    hashFileHash: fileHash.substring(0, 12),
+                    readFileHash: readResult.hash.substring(0, 12),
+                  },
+                )
+                fileHash = readResult.hash
+                fileSize = readResult.size ?? fileSize
+              }
+
+              // Upload to storage
+              const uploadStart = performance.now()
+              const uploadResult = await uploadFileContentToStorage(
+                orgId,
+                fileHash,
+                file.path,
+                fileSize ?? file.size,
+              )
+              recordSubstepTiming('upload', performance.now() - uploadStart)
+              if (!uploadResult.success) {
+                logCheckin('error', 'Failed to upload file to storage', {
+                  operationId,
+                  fileName: file.name,
+                  error: uploadResult.error,
+                })
+                progress.update()
+                return {
+                  success: false,
+                  error: `${file.name}: Failed to upload - ${uploadResult.error}`,
+                }
+              }
+
+              logCheckin('info', 'Uploaded new content to storage', {
+                operationId,
+                fileName: file.name,
+                hash: fileHash.substring(0, 12),
+                size: fileSize,
+              })
             }
           }
 

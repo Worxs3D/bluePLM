@@ -276,9 +276,8 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       const result = await window.electronAPI.selectDirectory(t('mdbSetup.selectNetworkFolder'))
       if (result.success && result.folderPath) setMdbNetworkRoot(result.folderPath)
     } catch (pickerError) {
-      setError(
-        pickerError instanceof Error ? pickerError.message : t('mdbSetup.folderPickerFailed'),
-      )
+      log.error('[SetupScreen]', 'Network folder picker failed', { error: pickerError })
+      setError(t('mdbSetup.folderPickerFailed'))
     }
   }
 
@@ -291,7 +290,8 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     setError(null)
     const result = await validateCommunityConfig(serverUrl.trim())
     if (!result.valid) {
-      setError(result.error || t('mdbSetup.backendConnectionFailed'))
+      log.warn('[SetupScreen]', 'MDB backend validation failed', { error: result.error })
+      setError(t('mdbSetup.backendConnectionFailed'))
       setIsValidating(false)
       return
     }
@@ -301,9 +301,10 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       setIsValidating(false)
       onConfigured()
     } catch (setupError) {
-      setError(
-        setupError instanceof Error ? setupError.message : t('mdbSetup.backendConfigSaveFailed'),
-      )
+      log.error('[SetupScreen]', 'MDB backend configuration could not be saved', {
+        error: setupError,
+      })
+      setError(t('mdbSetup.backendConfigSaveFailed'))
       setIsValidating(false)
     }
   }
@@ -338,7 +339,8 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     const result = await window.electronAPI.inspectMdbDatabase(mdbInstallerRequest())
     setIsValidating(false)
     if (!result.success || !result.database) {
-      setError(result.error || t('mdbSetup.databaseInspectionFailed'))
+      log.error('[SetupScreen]', 'MDB database inspection failed', { error: result.error })
+      setError(t('mdbSetup.databaseInspectionFailed'))
       return
     }
     setMdbInspection(result.database)
@@ -372,7 +374,8 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     })
     setIsValidating(false)
     if (!result.success || !result.serverUrl) {
-      setError(result.error || t('mdbSetup.installationFailed'))
+      log.error('[SetupScreen]', 'MDB provisioning failed', { error: result.error })
+      setError(t('mdbSetup.installationFailed'))
       return
     }
     clearConfig()
@@ -411,7 +414,8 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     })
     setIsTestingMdbFtp(false)
     if (!result.success) {
-      setError(result.error || t('mdbSetup.ftpTestFailed'))
+      log.error('[SetupScreen]', 'FTPS connection test failed', { error: result.error })
+      setError(t('mdbSetup.ftpTestFailed'))
       return
     }
     setMdbFtpTestResult('success')
@@ -888,7 +892,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   type="url"
                   value={mariadbServerUrl}
                   onChange={(event) => setMariadbServerUrl(event.target.value)}
-                  placeholder="https://blueplm.example.tld"
+                  placeholder={t('mdbSetup.backendUrlPlaceholder')}
                   className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg placeholder-plm-fg-dim focus:border-plm-accent focus:outline-none"
                 />
               </div>
@@ -1006,7 +1010,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                     type="url"
                     value={mdbPublicUrl}
                     onChange={(event) => setMdbPublicUrl(event.target.value)}
-                    placeholder="https://blueplm.example.tld"
+                    placeholder={t('mdbSetup.publicUrlPlaceholder')}
                     className="w-full"
                   />
                 </label>
@@ -1049,11 +1053,11 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                       setMdbFtpUrl(event.target.value)
                       setMdbFtpTestResult(null)
                     }}
-                    placeholder={
+                    placeholder={t(
                       mdbFtpSecurity === 'implicit'
-                        ? 'ftps://ftp.example.tld:990'
-                        : 'ftps://ftp.example.tld:21'
-                    }
+                        ? 'mdbSetup.ftpImplicitPlaceholder'
+                        : 'mdbSetup.ftpExplicitPlaceholder',
+                    )}
                     className="w-full"
                   />
                 </label>
@@ -1234,7 +1238,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                     <input
                       value={mdbCompanySlug}
                       onChange={(event) => setMdbCompanySlug(event.target.value.toLowerCase())}
-                      placeholder="example-company"
+                      placeholder={t('mdbSetup.companySlugPlaceholder')}
                       className="w-full"
                     />
                   </label>
@@ -1280,7 +1284,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                       <input
                         value={mdbNetworkRoot}
                         onChange={(event) => setMdbNetworkRoot(event.target.value)}
-                        placeholder="\\\\server\\share\\BluePLM"
+                        placeholder={t('mdbSetup.networkRootPlaceholder')}
                         maxLength={1024}
                         className="min-w-0 flex-1"
                       />
@@ -1306,7 +1310,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   <input
                     value={mdbResetConfirmation}
                     onChange={(event) => setMdbResetConfirmation(event.target.value)}
-                    placeholder="DELETE ALL DATABASE DATA"
+                    placeholder={t('mdbSetup.databaseErasePlaceholder')}
                     className="w-full mt-3"
                   />
                 </section>

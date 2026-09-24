@@ -16,6 +16,7 @@ import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
 import { getCommunityVault, isBackendConfigured, type CommunityVault } from '@/lib/community'
+import { t } from '@/lib/i18n'
 
 // Number of retry attempts for failed downloads
 const MAX_RETRY_ATTEMPTS = 3
@@ -29,19 +30,28 @@ const RETRY_BASE_DELAY_MS = 1000
  */
 export function resolveCommunityStorageRelativePath(pdmData: unknown): string | null {
   const metadata = pdmData as Record<string, unknown> | null | undefined
-  if (typeof metadata?._communityStorageRelativePath === 'string' && metadata._communityStorageRelativePath.trim() !== '') {
+  if (
+    typeof metadata?._communityStorageRelativePath === 'string' &&
+    metadata._communityStorageRelativePath.trim() !== ''
+  ) {
     return metadata._communityStorageRelativePath
   }
-  if (typeof metadata?.storage_relative_path === 'string' && metadata.storage_relative_path.trim() !== '') {
+  if (
+    typeof metadata?.storage_relative_path === 'string' &&
+    metadata.storage_relative_path.trim() !== ''
+  ) {
     return metadata.storage_relative_path
   }
 
   // CB1.0 installations cached a few Community rows before the storage path
   // field was persisted. Immutable objects are content-addressed, so a valid
   // SHA-256 hash is sufficient to recover the exact vault location.
-  const contentHash = typeof metadata?.content_hash === 'string'
-    ? metadata.content_hash
-    : typeof metadata?.contentHash === 'string' ? metadata.contentHash : ''
+  const contentHash =
+    typeof metadata?.content_hash === 'string'
+      ? metadata.content_hash
+      : typeof metadata?.contentHash === 'string'
+        ? metadata.contentHash
+        : ''
   const normalizedHash = contentHash.trim().toLowerCase()
   return /^[a-f0-9]{64}$/.test(normalizedHash)
     ? `.blueplm/objects/${normalizedHash.slice(0, 2)}/${normalizedHash}`
@@ -171,10 +181,24 @@ export const downloadCommand: Command<DownloadParams> = {
     let communityVault: CommunityVault | null = null
     if (communityMode) {
       try {
-        if (!ctx.activeVaultId) return { success: false, message: 'No Community vault selected.', total: 0, succeeded: 0, failed: 0 }
+        if (!ctx.activeVaultId)
+          return {
+            success: false,
+            message: t('mdbSetup.noVaultSelected'),
+            total: 0,
+            succeeded: 0,
+            failed: 0,
+          }
         communityVault = await getCommunityVault(ctx.activeVaultId)
       } catch (error) {
-        return { success: false, message: error instanceof Error ? error.message : String(error), total: 0, succeeded: 0, failed: 0 }
+        log.error('[Download]', 'Failed to load MDB vault', { error })
+        return {
+          success: false,
+          message: t('mdbSetup.vaultLoadFailed'),
+          total: 0,
+          succeeded: 0,
+          failed: 0,
+        }
       }
     }
 
@@ -397,42 +421,89 @@ export const downloadCommand: Command<DownloadParams> = {
           }
         }
 
-        let downloadResult: { success: boolean; error?: string; size?: number; hash?: string } | undefined
+        let downloadResult:
+          | { success: boolean; error?: string; size?: number; hash?: string }
+          | undefined
         if (communityMode) {
           const storagePath = resolveCommunityStorageRelativePath(file.pdmData)
           if (typeof storagePath !== 'string' || !communityVault) {
-            return { success: false, error: `${file.name}: Community storage path is missing.` }
+            return {
+              success: false,
+              error: t('mdbSetup.fileStoragePathMissing', { name: file.name }),
+            }
           }
           if (communityVault.storageProvider === 'network') {
             if (!communityVault.networkRoot) {
-              return { success: false, error: `${file.name}: Community network vault root is missing.` }
+              return {
+                success: false,
+                error: t('mdbSetup.fileNetworkRootMissing', { name: file.name }),
+              }
             }
             const sourcePath = buildFullPath(communityVault.networkRoot, storagePath)
             logDownload('debug', 'Copying current Community revision from network vault', {
-              operationId, ...fileCtx, sourcePath, destPath: fullPath, attempt,
+              operationId,
+              ...fileCtx,
+              sourcePath,
+              destPath: fullPath,
+              attempt,
             })
             const copied = await window.electronAPI?.copyFile(sourcePath, fullPath)
             if (!copied?.success) {
-              downloadResult = { success: false, error: copied?.error || 'Failed to copy the Community revision.' }
+              logDownload('error', 'Failed to copy MDB revision', {
+                operationId,
+                ...fileCtx,
+                error: copied?.error,
+              })
+              downloadResult = {
+                success: false,
+                error: t('mdbSetup.fileRevisionCopyFailed', { name: file.name }),
+              }
             } else {
               const hashResult = await window.electronAPI?.hashFile(fullPath)
               downloadResult = hashResult?.success
-                ? { success: hashResult.hash === file.pdmData.content_hash, hash: hashResult.hash, size: hashResult.size, error: hashResult.hash === file.pdmData.content_hash ? undefined : 'Copied file hash does not match the registered revision.' }
-                : { success: false, error: hashResult?.error || 'Failed to verify copied revision.' }
+                ? {
+                    success: hashResult.hash === file.pdmData.content_hash,
+                    hash: hashResult.hash,
+                    size: hashResult.size,
+                    error:
+                      hashResult.hash === file.pdmData.content_hash
+                        ? undefined
+                        : t('mdbSetup.fileRevisionHashMismatch', { name: file.name }),
+                  }
+                : {
+                    success: false,
+                    error: t('mdbSetup.fileRevisionVerifyFailed', { name: file.name }),
+                  }
             }
           } else {
-            downloadResult = { success: false, error: `${file.name}: MDB supports Network Vault storage only.` }
+            downloadResult = {
+              success: false,
+              error: t('mdbSetup.fileNetworkVaultOnly', { name: file.name }),
+            }
           }
         } else {
           logDownload('debug', 'Getting signed URL', {
-            operationId, fileName: file.name, orgId: organization.id,
-            hash: file.pdmData.content_hash?.substring(0, 12), attempt,
+            operationId,
+            fileName: file.name,
+            orgId: organization.id,
+            hash: file.pdmData.content_hash?.substring(0, 12),
+            attempt,
           })
-          const { url, error: urlError } = await getDownloadUrl(organization.id, file.pdmData.content_hash)
+          const { url, error: urlError } = await getDownloadUrl(
+            organization.id,
+            file.pdmData.content_hash,
+          )
           if (urlError || !url) {
-            return { success: false, error: `${file.name}: ${urlError || 'Failed to get download URL - file may not exist in cloud storage'}` }
+            return {
+              success: false,
+              error: `${file.name}: ${urlError || 'Failed to get download URL - file may not exist in cloud storage'}`,
+            }
           }
-          downloadResult = await window.electronAPI?.downloadUrl(url, fullPath, file.pdmData.content_hash)
+          downloadResult = await window.electronAPI?.downloadUrl(
+            url,
+            fullPath,
+            file.pdmData.content_hash,
+          )
         }
         if (!downloadResult?.success) {
           const errorMsg = downloadResult?.error || 'Unknown error writing to disk'

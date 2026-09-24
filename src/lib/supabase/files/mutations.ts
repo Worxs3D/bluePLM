@@ -14,6 +14,7 @@ import { getCurrentUser, getCurrentUserEmail } from '../auth'
 import { withRetry } from '../../network'
 import type { Database } from '@/types/supabase'
 import { routeBackend } from '@/lib/backendAdapter'
+import { t } from '@/lib/i18n'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
@@ -300,9 +301,7 @@ export async function syncFile(
       // native transfer path is unavailable.
       return {
         file: null,
-        error: new Error(
-          'Community check-in is not available in this client build. Use the Community vault import/check-in workflow.',
-        ),
+        error: new Error(t('mdbSetup.communityCheckinUnavailable')),
         isNew: false,
       }
     },
@@ -930,8 +929,7 @@ export async function updateFileMetadata(
       if (updates.workflow_state_id) {
         return {
           success: false,
-          error:
-            'Direct workflow-state updates are not supported. Execute an available workflow transition instead.',
+          error: t('mdbSetup.directWorkflowStateUnsupported'),
         }
       }
       if (!updates.state) return { success: true, file: { id: fileId }, error: null }
@@ -1193,7 +1191,7 @@ export async function updateFolderPath(
           success: false,
           updated: 0,
           total: 0,
-          errors: ['A Community vault is required to move folder contents.'],
+          errors: [t('mdbSetup.communityVaultRequiredForMove')],
         }
       }
       try {

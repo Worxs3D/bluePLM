@@ -231,7 +231,10 @@ export const syncCommand: Command<SyncParams> = {
           title: t(`sync.likelyMoved.title${suffix}`, { count: likelyMoved.length }),
           message: t(`sync.likelyMoved.message${suffix}`, { count: likelyMoved.length }),
           items: likelyMoved.map(({ file, existingServerPath }) =>
-            t('sync.likelyMoved.item', { path: file.relativePath, existingPath: existingServerPath }),
+            t('sync.likelyMoved.item', {
+              path: file.relativePath,
+              existingPath: existingServerPath,
+            }),
           ),
           confirmText: t('sync.likelyMoved.confirmText'),
         })
@@ -458,20 +461,29 @@ export const syncCommand: Command<SyncParams> = {
               let storageRelativePath: string
               let verifiedSize: number
               if (vault.storageProvider === 'network') {
-                if (!vault.networkRoot) throw new Error('Network vault root is missing.')
+                if (!vault.networkRoot)
+                  throw new Error(t('mdbSetup.fileNetworkRootMissing', { name: file.name }))
                 storageRelativePath = communityObjectStoragePath(contentHash)
                 const stagedPath = buildFullPath(vault.networkRoot, storageRelativePath)
                 const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
                 if (!staged?.success) {
-                  throw new Error(`Failed to stage immutable revision: ${staged?.error || 'unknown copy error'}`)
+                  log.error('[Sync]', 'Failed to stage MDB revision', {
+                    fileName: file.name,
+                    error: staged?.error,
+                  })
+                  throw new Error(t('mdbSetup.fileRevisionStageFailed', { name: file.name }))
                 }
                 const stagedHash = await window.electronAPI?.hashFile(stagedPath)
                 if (!stagedHash?.success || stagedHash.hash !== contentHash) {
-                  throw new Error(stagedHash?.error || 'Staged revision hash does not match the local file.')
+                  log.error('[Sync]', 'Failed to verify staged MDB revision', {
+                    fileName: file.name,
+                    error: stagedHash?.error,
+                  })
+                  throw new Error(t('mdbSetup.fileRevisionHashMismatch', { name: file.name }))
                 }
                 verifiedSize = stagedHash.size ?? file.size
               } else {
-                throw new Error('MDB supports Network Vault storage only.')
+                throw new Error(t('mdbSetup.fileNetworkVaultOnly', { name: file.name }))
               }
 
               const imported = await importCommunityFile({
@@ -482,13 +494,24 @@ export const syncCommand: Command<SyncParams> = {
                 contentHash,
                 sizeBytes: verifiedSize,
               })
-              const { files: serverFiles, error } = await getFiles(organization.id, { vaultId: activeVaultId })
-              if (error || !serverFiles) throw error || new Error('Community import was accepted but its file record could not be read.')
+              const { files: serverFiles, error } = await getFiles(organization.id, {
+                vaultId: activeVaultId,
+              })
+              if (error || !serverFiles) {
+                log.error('[Sync]', 'MDB import record could not be read', {
+                  fileName: file.name,
+                  error,
+                })
+                throw new Error(t('mdbSetup.fileImportRecordUnavailable', { name: file.name }))
+              }
 
-              const serverFile = serverFiles.find((candidate) => candidate.file_path === canonicalPath)
-              if (!serverFile) throw new Error('Community import was accepted but its file record was not returned.')
+              const serverFile = serverFiles.find(
+                (candidate) => candidate.file_path === canonicalPath,
+              )
+              if (!serverFile)
+                throw new Error(t('mdbSetup.fileImportRecordUnavailable', { name: file.name }))
               if (!imported.created && serverFile.content_hash !== contentHash) {
-                throw new Error('A Community file already exists at this path with different content. Download and check out that file instead of importing over it.')
+                throw new Error(t('mdbSetup.fileImportConflict', { name: file.name }))
               }
               syncedFile = serverFile as PDMFile
             } catch (error) {
