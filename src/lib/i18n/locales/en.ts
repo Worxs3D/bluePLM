@@ -2,6 +2,19 @@ import type { TranslationDict } from '../types'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
+  solidworksSettings: {
+    previewMode: 'Preview mode',
+    embeddedThumbnail: 'Embedded thumbnail',
+    embeddedThumbnailDescription:
+      'Extract and show the preview image from the SolidWorks file',
+    externalEDrawings: 'eDrawings (external)',
+    externalEDrawingsDescription: 'Open files in the external eDrawings application',
+    embeddedEDrawings: 'eDrawings 3D preview (Windows, optional)',
+    embeddedEDrawingsAvailable:
+      'Interactive 3D viewer inside BluePLM. Experimental Windows feature.',
+    embeddedEDrawingsUnavailable:
+      'Requires Windows, installed eDrawings, and the optional preview module.',
+  },
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',
   },
