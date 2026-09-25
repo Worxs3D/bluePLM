@@ -533,7 +533,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setAutoStartConfig: (config: {
       autoStartEnabled: boolean
       integrationEnabled: boolean
-      dmLicenseKey?: string
+      dmLicenseKey?: string | null
       verboseLogging?: boolean
       swProgId?: string | null
     }) => ipcRenderer.invoke('solidworks:set-autostart-config', config),

@@ -715,7 +715,7 @@ declare global {
         setAutoStartConfig: (config: {
           autoStartEnabled: boolean
           integrationEnabled: boolean
-          dmLicenseKey?: string
+          dmLicenseKey?: string | null
           verboseLogging?: boolean
           /** Versioned ProgID to target; null clears the choice back to the machine default. */
           swProgId?: string | null
