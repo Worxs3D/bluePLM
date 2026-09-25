@@ -90,7 +90,7 @@ export function EDrawingsEmbeddedPreview({
   }, [filePath])
 
   return (
-    <div ref={host} className="flex-1 relative min-h-0 bg-plm-bg rounded overflow-hidden">
+    <div ref={host} className="h-full flex-1 relative min-h-0 bg-plm-bg rounded overflow-hidden">
       {state === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-plm-fg-muted gap-3">
           <Loader2 className="animate-spin" size={28} />
