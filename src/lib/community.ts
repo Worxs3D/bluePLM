@@ -88,6 +88,11 @@ export interface CommunityUser {
   createdAt: string
 }
 
+export interface CommunityUserProfile extends CommunityUser {
+  teams: Array<Pick<CommunityTeam, 'id' | 'name' | 'color' | 'icon'>>
+  workflowRoles: Array<Pick<CommunityWorkflowRole, 'id' | 'name' | 'color' | 'icon'>>
+}
+
 export interface CommunityWorkflowRole {
   id: string
   name: string
@@ -124,6 +129,22 @@ export interface CommunityTeamMember {
 }
 
 export type CommunityPermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'admin'
+
+export interface CommunityTeamPermission {
+  resource: string
+  vaultId: string | null
+  actions: CommunityPermissionAction[]
+}
+
+export interface CommunityTeamReviewer {
+  id: string
+  team_id: string
+  reviewer_type: 'user' | 'workflow_role'
+  user_id: string | null
+  workflow_role_id: string | null
+  added_at: string
+  user?: { id: string; email: string; full_name: string | null; avatar_url: string | null } | null
+}
 
 export interface CommunityFile {
   id: string
@@ -648,6 +669,10 @@ export async function getCommunityUsers(): Promise<CommunityUser[]> {
   return (await request<{ users: CommunityUser[] }>('/users')).users
 }
 
+export async function getCommunityUserProfile(userId: string): Promise<CommunityUserProfile> {
+  return (await request<{ user: CommunityUserProfile }>(`/users/${encodeURIComponent(userId)}/profile`)).user
+}
+
 export async function createCommunityUser(payload: Pick<CommunityUser, 'email' | 'displayName'> & { password: string; role?: Exclude<CommunityMembershipRole, 'owner'> }): Promise<Pick<CommunityUser, 'id' | 'email' | 'displayName' | 'role'>> {
   return request<Pick<CommunityUser, 'id' | 'email' | 'displayName' | 'role'>>('/users', { method: 'POST', body: JSON.stringify(payload) })
 }
@@ -735,6 +760,15 @@ export async function getCommunityUserPermissions(userId: string, vaultId: strin
   return Object.fromEntries(result.permissions.map((permission) => [permission.resource, permission.actions]))
 }
 
+export async function getCommunityEffectiveUserPermissions(userId: string): Promise<{
+  permissions: CommunityTeamPermission[]
+  vaultIds: string[]
+}> {
+  return request<{ permissions: CommunityTeamPermission[]; vaultIds: string[] }>(
+    `/users/${encodeURIComponent(userId)}/effective-permissions`,
+  )
+}
+
 export async function setCommunityUserPermissions(userId: string, vaultId: string | null, permissions: Record<string, CommunityPermissionAction[]>): Promise<void> {
   await request<{ success: boolean }>(`/users/${encodeURIComponent(userId)}/permissions`, {
     method: 'PUT', body: JSON.stringify({ vaultId, permissions }),
@@ -798,6 +832,47 @@ export async function getCommunityTeamVaultAccess(teamId: string): Promise<strin
 
 export async function getCommunityTeamMembers(teamId: string): Promise<CommunityTeamMember[]> {
   return (await request<{ members: CommunityTeamMember[] }>(`/teams/${encodeURIComponent(teamId)}/members`)).members
+}
+
+export async function getCommunityTeamPermissions(teamId: string): Promise<CommunityTeamPermission[]> {
+  return (await request<{ permissions: CommunityTeamPermission[] }>(
+    `/teams/${encodeURIComponent(teamId)}/permissions`,
+  )).permissions
+}
+
+export async function setCommunityTeamPermissions(
+  teamId: string,
+  permissions: CommunityTeamPermission[],
+): Promise<void> {
+  await request<{ success: boolean }>(`/teams/${encodeURIComponent(teamId)}/permissions`, {
+    method: 'PUT',
+    body: JSON.stringify({ permissions }),
+  })
+}
+
+export async function getCommunityTeamReviewers(teamId: string): Promise<CommunityTeamReviewer[]> {
+  return (await request<{ reviewers: CommunityTeamReviewer[] }>(
+    `/teams/${encodeURIComponent(teamId)}/reviewers`,
+  )).reviewers
+}
+
+export async function addCommunityTeamReviewer(
+  teamId: string,
+  reviewerType: 'user' | 'workflow_role',
+  targetId: string,
+): Promise<string> {
+  const result = await request<{ id: string }>(`/teams/${encodeURIComponent(teamId)}/reviewers`, {
+    method: 'POST',
+    body: JSON.stringify({
+      reviewerType,
+      ...(reviewerType === 'user' ? { userId: targetId } : { workflowRoleId: targetId }),
+    }),
+  })
+  return result.id
+}
+
+export async function removeCommunityTeamReviewer(reviewerId: string): Promise<void> {
+  await request<void>(`/team-reviewers/${encodeURIComponent(reviewerId)}`, { method: 'DELETE' })
 }
 
 export async function addCommunityTeamMember(teamId: string, userId: string): Promise<void> {

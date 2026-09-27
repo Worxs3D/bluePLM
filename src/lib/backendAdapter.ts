@@ -36,7 +36,7 @@ const supabaseOnly = new Set<BackendKind>(['supabase'])
  * support decision here before TypeScript will compile.
  */
 const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
-  profile: supabaseOnly,
+  profile: allBackends,
   preferences: allBackends,
   keybindings: allBackends,
   modules: allBackends,
@@ -78,6 +78,10 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
     'community-authenticator',
     'community-user-credentials',
     'editable-workflow-roles',
+    'team-permissions',
+    'team-reviewers',
+    'user-permissions',
+    'net-permissions',
     'network-vault-management',
   ]),
   supabase: new Set<BackendCapability>([

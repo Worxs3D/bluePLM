@@ -24,8 +24,7 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
-  getCommunityUsers,
-  getCommunityUserTeams,
+  getCommunityUserProfile,
 } from '@/lib/community'
 import { routeBackend } from '@/lib/backendAdapter'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
@@ -206,7 +205,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
       try {
         if (dataSource.kind === 'community') {
-          const communityUser = (await getCommunityUsers()).find((entry) => entry.id === userId)
+          const communityUser = await getCommunityUserProfile(userId)
           if (communityUser) {
             setUserData({
               id: communityUser.id,
@@ -216,8 +215,8 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
               custom_avatar_url: null,
               last_sign_in: null,
               last_online: null,
-              teams: await getCommunityUserTeams(communityUser.id),
-              workflow_roles: [],
+              teams: communityUser.teams,
+              workflow_roles: communityUser.workflowRoles,
               job_title: null,
               role: communityUser.role,
             })

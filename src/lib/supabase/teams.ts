@@ -1,9 +1,12 @@
 import { getSupabaseClient } from './client'
 import {
+  addCommunityTeamReviewer,
   getCommunityTeams,
+  getCommunityTeamReviewers,
   getCommunityUserTeams,
   getCommunityUserWorkflowRoles,
   removeCommunityUser,
+  removeCommunityTeamReviewer,
 } from '@/lib/community'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
@@ -489,11 +492,20 @@ export interface TeamReviewerRow {
 export async function getTeamReviewers(
   teamId: string,
 ): Promise<{ reviewers: TeamReviewerRow[]; error?: string }> {
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        return { reviewers: await getCommunityTeamReviewers(teamId) as TeamReviewerRow[] }
+      } catch (error) {
+        return { reviewers: [], error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await (client.from as any)('team_reviewers') // TODO: type this
-    .select(
-      `
+      const { data, error } = await (client.from as any)('team_reviewers') // TODO: type this
+        .select(
+          `
       id,
       team_id,
       reviewer_type,
@@ -501,27 +513,29 @@ export async function getTeamReviewers(
       workflow_role_id,
       added_at,
       user:users!team_reviewers_user_id_fkey(id, email, full_name, avatar_url)
-    `,
-    )
-    .eq('team_id', teamId)
-    .order('added_at')
+          `,
+        )
+        .eq('team_id', teamId)
+        .order('added_at')
 
-  if (error) {
-    return { reviewers: [], error: (error as any).message } // TODO: type this
-  }
+      if (error) {
+        return { reviewers: [], error: (error as any).message } // TODO: type this
+      }
 
-  const reviewers: TeamReviewerRow[] = ((data as any[]) || []).map((r: any) => ({
-    // TODO: type this
-    id: r.id as string,
-    team_id: r.team_id as string,
-    reviewer_type: r.reviewer_type as 'user' | 'workflow_role',
-    user_id: r.user_id as string | null,
-    workflow_role_id: r.workflow_role_id as string | null,
-    added_at: r.added_at as string,
-    user: r.user as TeamReviewerRow['user'],
-  }))
+      const reviewers: TeamReviewerRow[] = ((data as any[]) || []).map((r: any) => ({
+        // TODO: type this
+        id: r.id as string,
+        team_id: r.team_id as string,
+        reviewer_type: r.reviewer_type as 'user' | 'workflow_role',
+        user_id: r.user_id as string | null,
+        workflow_role_id: r.workflow_role_id as string | null,
+        added_at: r.added_at as string,
+        user: r.user as TeamReviewerRow['user'],
+      }))
 
-  return { reviewers }
+      return { reviewers }
+    },
+  })
 }
 
 /**
@@ -533,24 +547,35 @@ export async function addTeamReviewer(
   addedBy: string,
   opts: { userId?: string; workflowRoleId?: string } = {},
 ): Promise<{ id: string | null; error?: string }> {
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        return { id: await addCommunityTeamReviewer(teamId, reviewerType, opts.userId ?? opts.workflowRoleId ?? '') }
+      } catch (error) {
+        return { id: null, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await (client.from as any)('team_reviewers') // TODO: type this
-    .insert({
-      team_id: teamId,
-      reviewer_type: reviewerType,
-      user_id: opts.userId ?? null,
-      workflow_role_id: opts.workflowRoleId ?? null,
-      added_by: addedBy,
-    })
-    .select('id')
-    .single()
+      const { data, error } = await (client.from as any)('team_reviewers') // TODO: type this
+        .insert({
+          team_id: teamId,
+          reviewer_type: reviewerType,
+          user_id: opts.userId ?? null,
+          workflow_role_id: opts.workflowRoleId ?? null,
+          added_by: addedBy,
+        })
+        .select('id')
+        .single()
 
-  if (error) {
-    return { id: null, error: (error as any).message } // TODO: type this
-  }
+      if (error) {
+        return { id: null, error: (error as any).message } // TODO: type this
+      }
 
-  return { id: (data as any).id as string } // TODO: type this
+      return { id: (data as any).id as string } // TODO: type this
+    },
+  })
 }
 
 /**
@@ -559,15 +584,27 @@ export async function addTeamReviewer(
 export async function removeTeamReviewer(
   reviewerId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        await removeCommunityTeamReviewer(reviewerId)
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { error } = await (client.from as any)('team_reviewers').delete().eq('id', reviewerId) // TODO: type this
+      const { error } = await (client.from as any)('team_reviewers').delete().eq('id', reviewerId) // TODO: type this
 
-  if (error) {
-    return { success: false, error: error.message }
-  }
+      if (error) {
+        return { success: false, error: error.message }
+      }
 
-  return { success: true }
+      return { success: true }
+    },
+  })
 }
 
 /**
