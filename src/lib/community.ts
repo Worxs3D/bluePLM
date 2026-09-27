@@ -88,6 +88,15 @@ export interface CommunityUser {
   createdAt: string
 }
 
+export interface CommunityWorkflowRole {
+  id: string
+  name: string
+  color: string
+  icon: string
+  description: string | null
+  sort_order: number
+}
+
 export interface CommunityVault {
   id: string
   name: string
@@ -665,6 +674,47 @@ export async function setCommunityUserVaultAccess(userId: string, vaultIds: stri
 
 export async function removeCommunityUser(userId: string): Promise<void> {
   await request<void>(`/users/${encodeURIComponent(userId)}`, { method: 'DELETE' })
+}
+
+export async function getCommunityWorkflowRoles(): Promise<CommunityWorkflowRole[]> {
+  return (await request<{ roles: CommunityWorkflowRole[] }>('/workflow-roles')).roles.map((role) => ({
+    ...role,
+    sort_order: Number(role.sort_order),
+  }))
+}
+
+export async function createCommunityWorkflowRole(
+  payload: Pick<CommunityWorkflowRole, 'name' | 'color' | 'icon'> & { description?: string | null },
+): Promise<CommunityWorkflowRole> {
+  return (await request<{ role: CommunityWorkflowRole }>('/workflow-roles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })).role
+}
+
+export async function updateCommunityWorkflowRole(
+  roleId: string,
+  payload: Partial<Pick<CommunityWorkflowRole, 'name' | 'color' | 'icon' | 'description'>>,
+): Promise<CommunityWorkflowRole> {
+  return (await request<{ role: CommunityWorkflowRole }>(`/workflow-roles/${encodeURIComponent(roleId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })).role
+}
+
+export async function deleteCommunityWorkflowRole(roleId: string): Promise<void> {
+  await request<void>(`/workflow-roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' })
+}
+
+export async function getCommunityWorkflowRoleAssignments(): Promise<Record<string, string[]>> {
+  return (await request<{ assignments: Record<string, string[]> }>('/workflow-role-assignments')).assignments
+}
+
+export async function setCommunityUserWorkflowRoles(userId: string, roleIds: string[]): Promise<void> {
+  await request<{ success: boolean }>(`/users/${encodeURIComponent(userId)}/workflow-roles`, {
+    method: 'PUT',
+    body: JSON.stringify({ roleIds }),
+  })
 }
 
 export async function getCommunityUserPermissions(userId: string, vaultId: string | null): Promise<Record<string, CommunityPermissionAction[]>> {

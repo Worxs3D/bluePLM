@@ -77,6 +77,7 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
     'direct-account-provisioning',
     'community-authenticator',
     'community-user-credentials',
+    'editable-workflow-roles',
     'network-vault-management',
   ]),
   supabase: new Set<BackendCapability>([
