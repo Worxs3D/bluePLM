@@ -710,6 +710,18 @@ export async function getCommunityWorkflowRoleAssignments(): Promise<Record<stri
   return (await request<{ assignments: Record<string, string[]> }>('/workflow-role-assignments')).assignments
 }
 
+/**
+ * Load the workflow-role IDs assigned to one MDB user.
+ *
+ * The server keeps workflow roles separate from the account role.  Keep this
+ * lookup in the community adapter so session hydration and workflow checks do
+ * not accidentally fall back to the account-role mapping.
+ */
+export async function getCommunityUserWorkflowRoles(userId: string): Promise<string[]> {
+  const assignments = await getCommunityWorkflowRoleAssignments()
+  return assignments[userId] ?? []
+}
+
 export async function setCommunityUserWorkflowRoles(userId: string, roleIds: string[]): Promise<void> {
   await request<{ success: boolean }>(`/users/${encodeURIComponent(userId)}/workflow-roles`, {
     method: 'PUT',

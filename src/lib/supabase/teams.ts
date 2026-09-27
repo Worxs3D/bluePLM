@@ -1,5 +1,10 @@
 import { getSupabaseClient } from './client'
-import { getCommunityTeams, getCommunityUserTeams, removeCommunityUser } from '@/lib/community'
+import {
+  getCommunityTeams,
+  getCommunityUserTeams,
+  getCommunityUserWorkflowRoles,
+  removeCommunityUser,
+} from '@/lib/community'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
 import { mergeModuleOrder } from '../../types/modules'
@@ -201,7 +206,11 @@ export async function getUserWorkflowRoles(
 ): Promise<{ roleIds: string[]; error?: string }> {
   return routeBackend({
     mdb: async () => {
-      return { roleIds: [] }
+      try {
+        return { roleIds: await getCommunityUserWorkflowRoles(userId) }
+      } catch (error) {
+        return { roleIds: [], error: error instanceof Error ? error.message : String(error) }
+      }
     },
     supabase: async () => {
       const client = getSupabaseClient()
