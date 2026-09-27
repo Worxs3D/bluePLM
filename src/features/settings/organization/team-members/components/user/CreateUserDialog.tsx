@@ -9,11 +9,12 @@ import { supabase } from '@/lib/supabase'
 import {
   addCommunityTeamMember,
   createCommunityUser,
-  isBackendConfigured,
   setCommunityUserVaultAccess,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { TeamWithDetails, WorkflowRoleBasic } from '../../types'
+import { resolveMdbUserVaultAccess } from '../../utils'
 import type { CommunityMembershipRole } from '@/lib/community'
 
 // Types for Supabase query results
@@ -51,7 +52,7 @@ export function CreateUserDialog({
 }: CreateUserDialogProps) {
   const { t } = useTranslation()
   const { addToast } = usePDMStore()
-  const isMdbBackend = isBackendConfigured('community')
+  const isMdbBackend = isMdbBackendActive()
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
@@ -87,16 +88,9 @@ export function CreateUserDialog({
           role: accountRole,
         })
         await Promise.all(selectedTeamIds.map((teamId) => addCommunityTeamMember(teamId, created.id)))
-        // Community vault access is opt-in. Preserve the original UI's "all"
-        // default by granting every available vault when none was selected.
-        await setCommunityUserVaultAccess(
-          created.id,
-          selectedVaultIds.length > 0
-            ? selectedVaultIds
-            : accountRole === 'guest'
-              ? []
-              : vaults.map((vault) => vault.id),
-        )
+        // MDB vault access is opt-in for every non-admin role. Never turn an
+        // empty selection into an implicit grant to every current vault.
+        await setCommunityUserVaultAccess(created.id, resolveMdbUserVaultAccess(selectedVaultIds))
         addToast('success', t('mdbSetup.createdAccount', { name: created.displayName }))
         onCreated()
         onClose()
@@ -387,9 +381,7 @@ export function CreateUserDialog({
                     className={`text-sm ${selectedVaultIds.length === 0 ? 'text-plm-success' : 'text-plm-warning'}`}
                   >
                     {selectedVaultIds.length === 0
-                      ? accountRole === 'guest'
-                        ? t('mdbSetup.noGuestVaults')
-                        : t('mdbSetup.allVaults')
+                      ? t('mdbSetup.noVaultsSelected')
                       : t('mdbSetup.restrictedVaults', { selected: selectedVaultIds.length, total: vaults.length })}
                   </span>
                 </div>
@@ -420,7 +412,9 @@ export function CreateUserDialog({
                 })}
               </div>
               <p className="text-xs text-plm-fg-dim mt-1">
-                {accountRole === 'guest' ? t('mdbSetup.guestVaultAccessHelp') : t('mdbSetup.vaultAccessHelp')}
+                {accountRole === 'guest'
+                  ? t('mdbSetup.guestVaultAccessHelp')
+                  : t('mdbSetup.vaultAccessHelp')}
               </p>
             </div>
           )}

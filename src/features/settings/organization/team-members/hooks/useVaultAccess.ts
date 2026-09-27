@@ -15,15 +15,41 @@ import {
   getCommunityTeams,
   getCommunityOrgVaultAccess,
   getCommunityVaults,
-  isBackendConfigured,
   setCommunityUserVaultAccess,
   setCommunityTeamVaultAccess,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgVault } from '@/stores/types'
 import { type TeamVaultAccessJoin, castQueryResult, insertTeamVaultAccess } from './supabaseHelpers'
+
+export interface VaultAccessLoadPlan {
+  loadVaults: boolean
+  loadUserAccess: boolean
+  loadTeamAccess: boolean
+}
+
+/**
+ * Keep the effect's load policy independently testable. This initially mirrors
+ * the legacy behaviour so the regression test can demonstrate the bug before
+ * the policy is corrected.
+ */
+export function getVaultAccessLoadPlan(
+  orgId: string | null,
+  orgVaultsLoaded: boolean,
+  isLoading: boolean,
+): VaultAccessLoadPlan {
+  const hasOrganization = Boolean(orgId)
+  return {
+    loadVaults: hasOrganization && !orgVaultsLoaded && !isLoading,
+    // Access mappings are independent metadata. They must be loaded even when
+    // another screen populated the vault catalogue earlier.
+    loadUserAccess: hasOrganization,
+    loadTeamAccess: hasOrganization,
+  }
+}
 
 export function useVaultAccess(orgId: string | null) {
   // Get actions from store
@@ -52,7 +78,7 @@ export function useVaultAccess(orgId: string | null) {
 
     setOrgVaultsLoading(true)
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const communityVaults = await getCommunityVaults()
         setOrgVaults(
           communityVaults.map((vault) => ({
@@ -85,11 +111,11 @@ export function useVaultAccess(orgId: string | null) {
   const loadVaultAccess = useCallback(async () => {
     if (!orgId) return
 
-    if (isBackendConfigured('community')) {
+    if (isMdbBackendActive()) {
       try {
         setVaultAccessMap(await getCommunityOrgVaultAccess())
       } catch (error) {
-        log.error('[VaultAccess]', 'Failed to load Community vault access', { error })
+        log.error('[VaultAccess]', 'Failed to load MDB vault access', { error })
       }
       return
     }
@@ -106,7 +132,7 @@ export function useVaultAccess(orgId: string | null) {
     if (!orgId) return
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const teams = await getCommunityTeams()
         const entries = await Promise.all(
           teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
@@ -143,7 +169,7 @@ export function useVaultAccess(orgId: string | null) {
       if (!user || !orgId) return false
 
       try {
-        if (isBackendConfigured('community')) {
+        if (isMdbBackendActive()) {
           await setCommunityUserVaultAccess(userId, vaultIds)
           addToast(
             'success',
@@ -163,11 +189,11 @@ export function useVaultAccess(orgId: string | null) {
           await loadVaultAccess()
           return true
         } else {
-          addToast('error', result.error || 'Failed to update vault access')
+          addToast('error', result.error || t('mdbSetup.vaultAccessUpdateFailed'))
           return false
         }
       } catch {
-        addToast('error', 'Failed to update vault access')
+        addToast('error', t('mdbSetup.vaultAccessUpdateFailed'))
         return false
       }
     },
@@ -179,7 +205,7 @@ export function useVaultAccess(orgId: string | null) {
       if (!user) return false
 
       try {
-        if (isBackendConfigured('community')) {
+        if (isMdbBackendActive()) {
           await setCommunityTeamVaultAccess(teamId, vaultIds)
           setTeamVaultAccessMap({
             ...teamVaultAccessMap,
@@ -216,7 +242,7 @@ export function useVaultAccess(orgId: string | null) {
           t('mdbSetup.teamVaultAccessUpdated', { name: teamName || t('mdbSetup.teamLabel') }),
         )
         return true
-      } catch (_error) {
+      } catch {
         addToast('error', t('mdbSetup.vaultAccessUpdateFailed'))
         return false
       }
@@ -252,12 +278,17 @@ export function useVaultAccess(orgId: string | null) {
     [vaultAccessMap],
   )
 
-  // Load vault access on mount if not already loaded
+  // The catalogue may already have been loaded by another settings screen.
   useEffect(() => {
-    if (orgId && !orgVaultsLoaded && !isLoading) {
-      loadAll()
-    }
-  }, [orgId, orgVaultsLoaded, isLoading, loadAll])
+    const plan = getVaultAccessLoadPlan(orgId, orgVaultsLoaded, isLoading)
+    if (plan.loadVaults) void loadVaults()
+  }, [orgId, orgVaultsLoaded, isLoading, loadVaults])
+
+  // Access mappings have their own lifecycle and must never be skipped merely
+  // because the catalogue was populated earlier.
+  useEffect(() => {
+    if (orgId) void Promise.all([loadVaultAccess(), loadTeamVaultAccess()])
+  }, [orgId, loadVaultAccess, loadTeamVaultAccess])
 
   // Reload when vaultsRefreshKey changes (vault created/deleted elsewhere)
   useEffect(() => {

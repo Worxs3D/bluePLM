@@ -444,7 +444,28 @@ export async function setCommunityUserPermissions(userId: string, vaultId: strin
 }
 
 export async function getCommunityOrgVaultAccess(): Promise<Record<string, string[]>> {
-  return (await request<{ accessMap: Record<string, string[]> }>('/vaults/access')).accessMap
+  const { accessMap } = await request<{ accessMap: Record<string, string[]> }>('/vaults/access')
+  const vaultIds = (await getCommunityVaults()).map((vault) => vault.id)
+  return normalizeCommunityOrgVaultAccess(accessMap, vaultIds)
+}
+
+export function normalizeCommunityOrgVaultAccess(
+  accessMap: Record<string, string[]>,
+  vaultIds: string[],
+): Record<string, string[]> {
+  const knownVaultIds = new Set(vaultIds)
+  const keys = Object.keys(accessMap)
+  if (keys.length === 0 || keys.every((key) => knownVaultIds.has(key))) return accessMap
+
+  const normalized: Record<string, string[]> = {}
+  for (const [userId, grantedVaultIds] of Object.entries(accessMap)) {
+    for (const vaultId of grantedVaultIds) {
+      if (!knownVaultIds.has(vaultId)) continue
+      const users = normalized[vaultId] || []
+      if (!users.includes(userId)) normalized[vaultId] = [...users, userId]
+    }
+  }
+  return normalized
 }
 
 export async function getCommunityTeams(): Promise<CommunityTeam[]> {
