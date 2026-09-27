@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, Save, Shield, Users, Truck, Mail, Phone } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
 import { DEFAULT_AUTH_PROVIDERS, type AuthProviderSettings } from '@/types/pdm'
+import { getOrganizationSetting, setOrganizationSetting } from '@/lib/organizationSettings'
 
 // Google icon component
 function GoogleIcon({ size = 16 }: { size?: number }) {
@@ -89,16 +89,11 @@ export function AuthProvidersSettings() {
     const loadSettings = async () => {
       setLoading(true)
       try {
-        const { data, error } = await supabase
-          .from('organizations')
-          .select('auth_providers')
-          .eq('id', organization.id)
-          .single()
-
-        if (error) throw error
-
         // Merge with defaults to ensure all fields exist
-        const authProviders = data?.auth_providers as AuthProviderSettings | null
+        const authProviders = await getOrganizationSetting<AuthProviderSettings>(
+          'auth-providers',
+          organization.id,
+        )
         setSettings({
           users: {
             google: authProviders?.users?.google ?? true,
@@ -161,12 +156,7 @@ export function AuthProvidersSettings() {
     setSaving(true)
     savingRef.current = true
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ auth_providers: JSON.parse(JSON.stringify(settings)) })
-        .eq('id', organization.id)
-
-      if (error) throw error
+      await setOrganizationSetting('auth-providers', organization.id, settings)
       addToast('success', 'Authentication settings saved')
     } catch (error) {
       log.error('[AuthProviders]', 'Failed to save auth provider settings', { error: error })

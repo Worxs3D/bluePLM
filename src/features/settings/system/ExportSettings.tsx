@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { Loader2, Package, FileOutput, Eye, RotateCcw, User, Building2, Box } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
 import { ExportSettings as ExportSettingsType, DEFAULT_EXPORT_SETTINGS } from '@/types/pdm'
+import { getOrganizationSetting, setOrganizationSetting } from '@/lib/organizationSettings'
 
 // LocalStorage key for user preferences
 const USER_EXPORT_SETTINGS_KEY = 'blueplm_export_settings'
@@ -142,38 +142,46 @@ export function getEffectiveExportSettings(
 }
 
 export function ExportSettings() {
-  const { organization, addToast, getEffectiveRole, updateOrganization } = usePDMStore()
+  const { organization, addToast, getEffectiveRole } = usePDMStore()
   const isAdmin = getEffectiveRole() === 'admin'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<ExportSettingsType>(DEFAULT_EXPORT_SETTINGS)
+  const [orgDefault, setOrgDefault] = useState<ExportSettingsType>(DEFAULT_EXPORT_SETTINGS)
   const [hasUserOverride, setHasUserOverride] = useState(false)
 
   // Load settings - user override takes priority over org default
   useEffect(() => {
     if (!organization) return
 
-    const userSettings = getUserExportSettings()
-    if (userSettings) {
-      setSettings(userSettings)
-      setHasUserOverride(true)
-    } else {
-      const orgSettings = (organization.settings as any)?.export_settings // TODO: type this
-      if (orgSettings) {
-        setSettings({ ...DEFAULT_EXPORT_SETTINGS, ...orgSettings })
-      } else {
-        setSettings(DEFAULT_EXPORT_SETTINGS)
-      }
-      setHasUserOverride(false)
-    }
-    setLoading(false)
-  }, [organization])
+    const loadSettings = async () => {
+      setLoading(true)
+      try {
+        const savedDefault = await getOrganizationSetting<ExportSettingsType>(
+          'export',
+          organization.id,
+        )
+        const mergedDefault = { ...DEFAULT_EXPORT_SETTINGS, ...savedDefault }
+        setOrgDefault(mergedDefault)
 
-  // Get org default for comparison
-  const orgDefault = useMemo(() => {
-    const orgSettings = (organization?.settings as any)?.export_settings // TODO: type this
-    return orgSettings ? { ...DEFAULT_EXPORT_SETTINGS, ...orgSettings } : DEFAULT_EXPORT_SETTINGS
-  }, [organization?.settings])
+        const userSettings = getUserExportSettings()
+        if (userSettings) {
+          setSettings(userSettings)
+          setHasUserOverride(true)
+        } else {
+          setSettings(mergedDefault)
+          setHasUserOverride(false)
+        }
+      } catch (error) {
+        log.error('[ExportSettings]', 'Failed to load organization export settings', { error })
+        setOrgDefault(DEFAULT_EXPORT_SETTINGS)
+        setSettings(getUserExportSettings() || DEFAULT_EXPORT_SETTINGS)
+      } finally {
+        setLoading(false)
+      }
+    }
+    void loadSettings()
+  }, [organization?.id])
 
   // Generate a live preview of what the filename will look like
   const livePreview = useMemo(() => {
@@ -226,25 +234,8 @@ export function ExportSettings() {
 
     setSaving(true)
     try {
-      // Get current settings and merge
-      const currentSettings = organization.settings || {}
-      const newSettings = {
-        ...currentSettings,
-        export_settings: settings,
-      }
-
-      const { error } = await (supabase.from('organizations') as any) // TODO: type this
-        .update({ settings: newSettings })
-        .eq('id', organization.id)
-        .select()
-
-      if (error) {
-        log.error('[ExportSettings]', 'Supabase error', { error })
-        throw error
-      }
-
-      // Update local state
-      updateOrganization({ settings: newSettings } as any) // TODO: type this
+      await setOrganizationSetting('export', organization.id, settings)
+      setOrgDefault(settings)
       addToast('success', 'Organization default saved')
     } catch (error) {
       log.error('[ExportSettings]', 'Failed to save org export settings', { error: error })

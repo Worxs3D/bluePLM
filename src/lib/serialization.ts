@@ -4,6 +4,12 @@
 import { supabase } from './supabase'
 import { log } from './logger'
 import { isPathHidden, readHiddenFolderPaths } from './hiddenFolders'
+import { routeBackend } from './backendAdapter'
+import {
+  allocateCommunitySerialNumber,
+  previewCommunitySerialNumber,
+} from './community'
+import { getOrganizationSetting, setOrganizationSetting } from './organizationSettings'
 
 export interface SerializationSettings {
   enabled: boolean
@@ -70,18 +76,18 @@ const DEFAULT_SETTINGS: SerializationSettings = {
  */
 export async function getNextSerialNumber(orgId: string): Promise<string | null> {
   try {
-    // Supabase v2 RPC type inference incomplete for custom functions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase.rpc as any)('get_next_serial_number', { // TODO: type this
-      p_org_id: orgId,
+    return await routeBackend({
+      mdb: allocateCommunitySerialNumber,
+      supabase: async () => {
+        // Supabase v2 RPC type inference incomplete for custom functions
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.rpc as any)('get_next_serial_number', { // TODO: type this
+          p_org_id: orgId,
+        })
+        if (error) throw error
+        return data as string | null
+      },
     })
-
-    if (error) {
-      log.error('[Serialization]', 'Failed to get next serial number', { error })
-      throw error
-    }
-
-    return data
   } catch (error) {
     log.error('[Serialization]', 'Error getting next serial number', { error: error })
     return null
@@ -97,18 +103,18 @@ export async function getNextSerialNumber(orgId: string): Promise<string | null>
  */
 export async function previewNextSerialNumber(orgId: string): Promise<string | null> {
   try {
-    // Supabase v2 RPC type inference incomplete for custom functions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase.rpc as any)('preview_next_serial_number', { // TODO: type this
-      p_org_id: orgId,
+    return await routeBackend({
+      mdb: previewCommunitySerialNumber,
+      supabase: async () => {
+        // Supabase v2 RPC type inference incomplete for custom functions
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.rpc as any)('preview_next_serial_number', { // TODO: type this
+          p_org_id: orgId,
+        })
+        if (error) throw error
+        return data as string | null
+      },
     })
-
-    if (error) {
-      log.error('[Serialization]', 'Failed to preview serial number', { error })
-      throw error
-    }
-
-    return data
   } catch (error) {
     log.error('[Serialization]', 'Error previewing serial number', { error: error })
     return null
@@ -123,23 +129,15 @@ export async function previewNextSerialNumber(orgId: string): Promise<string | n
  */
 export async function getSerializationSettings(orgId: string): Promise<SerializationSettings> {
   try {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select('serialization_settings')
-      .eq('id', orgId)
-      .single()
-
-    if (error) {
-      log.error('[Serialization]', 'Failed to get settings', { error })
-      return DEFAULT_SETTINGS
-    }
-
-    // Supabase v2 JSONB column type inference incomplete
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settings = (data as any)?.serialization_settings // TODO: type this
+    const settings = await getOrganizationSetting<SerializationSettings>(
+      'serialization',
+      orgId,
+    )
     return {
       ...DEFAULT_SETTINGS,
-      ...(settings || {}),
+      ...settings,
+      keepout_zones: settings.keepout_zones || [],
+      auto_apply_extensions: settings.auto_apply_extensions || [],
     }
   } catch (error) {
     log.error('[Serialization]', 'Error getting settings', { error: error })
@@ -157,6 +155,7 @@ export async function getSerializationSettings(orgId: string): Promise<Serializa
 export async function updateSerializationSettings(
   orgId: string,
   settings: Partial<SerializationSettings>,
+  replaceCounter = false,
 ): Promise<boolean> {
   try {
     // First get current settings
@@ -168,17 +167,12 @@ export async function updateSerializationSettings(
       ...settings,
     }
 
-    // Supabase v2 type inference incomplete for JSONB column updates
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('organizations') as any) // TODO: type this
-      .update({ serialization_settings: updated })
-      .eq('id', orgId)
-
-    if (error) {
-      log.error('[Serialization]', 'Failed to update settings', { error })
-      return false
-    }
-
+    await setOrganizationSetting(
+      'serialization',
+      orgId,
+      updated as unknown as Record<string, unknown>,
+      { replaceCounter },
+    )
     return true
   } catch (error) {
     log.error('[Serialization]', 'Error updating settings', { error: error })

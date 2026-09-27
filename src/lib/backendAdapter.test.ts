@@ -40,6 +40,12 @@ describe('backend capabilities', () => {
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
     expect(activeBackendSupportsSettingsTab('delete-account')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('module-access')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('auth-providers')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('serialization')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('export')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('rfq')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('metadata-columns')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(false)
   })
 

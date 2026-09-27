@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, FileText, Save } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
+import { getOrganizationSetting, setOrganizationSetting } from '@/lib/organizationSettings'
 
 interface RFQSettingsData {
   default_payment_terms: string
@@ -47,20 +47,8 @@ export function RFQSettings() {
     const loadSettings = async () => {
       setLoading(true)
       try {
-        const { data, error } = await supabase
-          .from('organizations')
-          .select('rfq_settings')
-          .eq('id', organization.id)
-          .single()
-
-        if (error) throw error
-
-        const rfqData = data?.rfq_settings
-        setSettings(
-          rfqData && typeof rfqData === 'object' && !Array.isArray(rfqData)
-            ? (rfqData as unknown as RFQSettingsData)
-            : DEFAULT_RFQ_SETTINGS,
-        )
+        const rfqData = await getOrganizationSetting<RFQSettingsData>('rfq', organization.id)
+        setSettings({ ...DEFAULT_RFQ_SETTINGS, ...rfqData })
       } catch (error) {
         log.error('[RFQ]', 'Failed to load RFQ settings', { error: error })
       } finally {
@@ -92,12 +80,7 @@ export function RFQSettings() {
     setSaving(true)
     savingRef.current = true
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ rfq_settings: JSON.parse(JSON.stringify(settings)) })
-        .eq('id', organization.id)
-
-      if (error) throw error
+      await setOrganizationSetting('rfq', organization.id, settings)
       addToast('success', 'RFQ settings saved')
     } catch (error) {
       log.error('[RFQ]', 'Failed to save RFQ settings', { error: error })

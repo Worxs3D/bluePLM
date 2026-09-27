@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Globe, Loader2, Lock, Save, Users, X } from 'lucide-react'
 
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
 import { log } from '@/lib/logger'
+import { getModuleAccessAdministration, setModuleAccess } from '@/lib/moduleAccess'
 import { MODULE_GROUPS, MODULES, type ModuleGroupId, type ModuleId } from '@/types/modules'
 
 interface OrgTeam {
@@ -65,30 +65,12 @@ export function ModuleAccessSettings() {
 
     setLoading(true)
     try {
-      const [teamsResult, membersResult, accessResult] = await Promise.all([
-        supabase
-          .from('teams')
-          .select('id, name, color')
-          .eq('org_id', organization.id)
-          .order('name'),
-        supabase
-          .from('users')
-          .select('id, full_name, email')
-          .eq('org_id', organization.id)
-          .order('full_name'),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.rpc as any)('get_module_access_config'), // TODO: type this
-      ])
-
-      if (teamsResult.error) throw teamsResult.error
-      if (membersResult.error) throw membersResult.error
-      if (accessResult.error) throw accessResult.error
-
-      setTeams((teamsResult.data || []) as OrgTeam[])
-      setMembers((membersResult.data || []) as OrgMember[])
+      const result = await getModuleAccessAdministration(organization.id)
+      setTeams(result.teams)
+      setMembers(result.members)
 
       const byModule: Record<string, ModuleAllowlist> = {}
-      for (const row of (accessResult.data || []) as AccessRow[]) {
+      for (const row of result.access as AccessRow[]) {
         const entry = byModule[row.module_id] || { teamIds: [], userIds: [] }
         if (row.team_id) entry.teamIds.push(row.team_id)
         if (row.user_id) entry.userIds.push(row.user_id)
@@ -145,15 +127,7 @@ export function ModuleAccessSettings() {
     const draft = getDraft(moduleId)
     setSavingModuleId(moduleId)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('set_module_access', {
-        // TODO: type this
-        p_module_id: moduleId,
-        p_team_ids: draft.teamIds,
-        p_user_ids: draft.userIds,
-      })
-      if (error) throw error
-      if (data && data.success === false) throw new Error(data.error || 'Failed to save')
+      await setModuleAccess(moduleId, draft.teamIds, draft.userIds)
 
       setSaved((previous) => ({ ...previous, [moduleId]: draft }))
       // The admin editing this may themselves be affected once they leave the

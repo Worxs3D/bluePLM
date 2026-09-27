@@ -14,12 +14,13 @@ import {
   Send,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
 import type { FileMetadataColumn, MetadataColumnType } from '@/types/database'
-
-// Supabase v2 type inference incomplete for metadata column operations
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any // TODO: type this
+import {
+  createMetadataColumn,
+  deleteMetadataColumn,
+  getMetadataColumns,
+  updateMetadataColumn,
+} from '@/lib/metadataColumns'
 
 const TYPE_LABELS: Record<MetadataColumnType, string> = {
   text: 'Text',
@@ -169,18 +170,7 @@ export function MetadataColumnsSettings() {
 
     setIsLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('file_metadata_columns')
-        .select('*')
-        .eq('org_id', organization.id)
-        .order('sort_order')
-
-      if (error) {
-        log.error('[MetadataColumns]', 'Failed to load metadata columns', { error })
-        addToast('error', 'Failed to load metadata columns')
-      } else {
-        setColumns(data || [])
-      }
+      setColumns(await getMetadataColumns(organization.id))
     } catch (error) {
       log.error('[MetadataColumns]', 'Failed to load metadata columns', { error: error })
     } finally {
@@ -216,31 +206,25 @@ export function MetadataColumnsSettings() {
     try {
       if (editingColumn.id) {
         // Update existing column
-        const { error } = await db
-          .from('file_metadata_columns')
-          .update({
-            name: editingColumn.name.toLowerCase(),
-            label: editingColumn.label,
-            data_type: editingColumn.data_type,
-            select_options: editingColumn.select_options,
-            width: editingColumn.width,
-            visible: editingColumn.visible,
-            sortable: editingColumn.sortable,
-            required: editingColumn.required,
-            default_value: editingColumn.default_value || null,
-            updated_at: new Date().toISOString(),
-            updated_by: user.id,
-          })
-          .eq('id', editingColumn.id)
-
-        if (error) throw error
+        await updateMetadataColumn(editingColumn.id, {
+          name: editingColumn.name.toLowerCase(),
+          label: editingColumn.label,
+          data_type: editingColumn.data_type,
+          select_options: editingColumn.select_options,
+          width: editingColumn.width,
+          visible: editingColumn.visible,
+          sortable: editingColumn.sortable,
+          required: editingColumn.required,
+          default_value: editingColumn.default_value || null,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id,
+        })
         addToast('success', 'Column updated')
       } else {
         // Create new column
         const maxSortOrder = columns.length > 0 ? Math.max(...columns.map((c) => c.sort_order)) : -1
 
-        const { error } = await db.from('file_metadata_columns').insert({
-          org_id: organization.id,
+        await createMetadataColumn({
           name: editingColumn.name.toLowerCase(),
           label: editingColumn.label,
           data_type: editingColumn.data_type,
@@ -253,8 +237,6 @@ export function MetadataColumnsSettings() {
           sort_order: maxSortOrder + 1,
           created_by: user.id,
         })
-
-        if (error) throw error
         addToast('success', 'Column created')
       }
 
@@ -279,12 +261,7 @@ export function MetadataColumnsSettings() {
 
     setIsDeleting(true)
     try {
-      const { error } = await supabase
-        .from('file_metadata_columns')
-        .delete()
-        .eq('id', deletingColumn.id)
-
-      if (error) throw error
+      await deleteMetadataColumn(deletingColumn.id)
 
       addToast('success', `Column "${deletingColumn.label}" deleted`)
       await loadColumns()
@@ -299,12 +276,10 @@ export function MetadataColumnsSettings() {
 
   const handleToggleVisibility = async (column: FileMetadataColumn) => {
     try {
-      const { error } = await db
-        .from('file_metadata_columns')
-        .update({ visible: !column.visible, updated_at: new Date().toISOString() })
-        .eq('id', column.id)
-
-      if (error) throw error
+      await updateMetadataColumn(column.id, {
+        visible: !column.visible,
+        updated_at: new Date().toISOString(),
+      })
 
       setColumns(columns.map((c) => (c.id === column.id ? { ...c, visible: !c.visible } : c)))
     } catch (error) {
@@ -324,14 +299,8 @@ export function MetadataColumnsSettings() {
     try {
       // Swap sort orders
       await Promise.all([
-        db
-          .from('file_metadata_columns')
-          .update({ sort_order: otherColumn.sort_order })
-          .eq('id', column.id),
-        db
-          .from('file_metadata_columns')
-          .update({ sort_order: column.sort_order })
-          .eq('id', otherColumn.id),
+        updateMetadataColumn(column.id, { sort_order: otherColumn.sort_order }),
+        updateMetadataColumn(otherColumn.id, { sort_order: column.sort_order }),
       ])
 
       await loadColumns()

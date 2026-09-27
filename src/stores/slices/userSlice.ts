@@ -391,12 +391,10 @@ export const createUserSlice: StateCreator<
     const organizationId = get().organization?.id
 
     try {
-      const { supabase } = await import('../../lib/supabase')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('get_denied_modules') // TODO: type this
-      if (error) throw error
+      const { getDeniedModules } = await import('../../lib/moduleAccess')
+      const deniedModules = await getDeniedModules()
       if (get().user?.id !== userId || get().organization?.id !== organizationId) return
-      set({ deniedModules: (data || []) as ModuleId[] })
+      set({ deniedModules: deniedModules as ModuleId[] })
     } catch (error) {
       // Fail open: a database that predates the module_access table has no
       // restrictions to enforce, and hiding every module would be worse than

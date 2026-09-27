@@ -7,8 +7,8 @@ import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { FileMetadataColumn } from '@/types/database'
-import { supabase, isWatchingFile } from '@/lib/supabase'
-import { isBackendConfigured } from '@/lib/community'
+import { isWatchingFile } from '@/lib/supabase'
+import { getMetadataColumns } from '@/lib/metadataColumns'
 
 import { useContextMenuState } from './useContextMenuState'
 import { useDialogState } from './useDialogState'
@@ -183,28 +183,13 @@ export function useFilePaneView() {
   // Load custom metadata columns
   useEffect(() => {
     const loadCustomColumns = async () => {
-      if (isBackendConfigured('community')) {
-        setCustomMetadataColumns([])
-        return
-      }
       if (!organization?.id) {
         setCustomMetadataColumns([])
         return
       }
 
       try {
-        const { data, error } = await supabase
-          .from('file_metadata_columns')
-          .select('*')
-          .eq('org_id', organization.id)
-          .order('sort_order')
-
-        if (error) {
-          log.error('[FilePane]', 'Failed to load custom metadata columns', { error })
-          return
-        }
-
-        setCustomMetadataColumns(data || [])
+        setCustomMetadataColumns(await getMetadataColumns(organization.id))
       } catch (error) {
         log.error('[FilePane]', 'Failed to load custom metadata columns', { error: error })
       }

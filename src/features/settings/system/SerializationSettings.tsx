@@ -17,8 +17,13 @@ import {
 import { log } from '@/lib/logger'
 import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
-import { detectHighestSerialNumber, type HighestSerialScanResult } from '@/lib/serialization'
+import {
+  detectHighestSerialNumber,
+  getSerializationSettings,
+  previewNextSerialNumber,
+  updateSerializationSettings,
+  type HighestSerialScanResult,
+} from '@/lib/serialization'
 
 interface KeepoutZone {
   start: number
@@ -107,6 +112,7 @@ export function SerializationSettings() {
 
   // Track if we're currently saving to avoid overwriting with stale realtime data
   const savingRef = useRef(false)
+  const loadedCounterRef = useRef(0)
 
   // New keepout zone form
   const [newKeepout, setNewKeepout] = useState({ start: '', end: '', description: '' })
@@ -178,26 +184,16 @@ export function SerializationSettings() {
     const loadSettings = async () => {
       setLoading(true)
       try {
-        const { data, error } = await supabase
-          .from('organizations')
-          .select('serialization_settings')
-          .eq('id', organization.id)
-          .single()
-
-        if (error) throw error
-
-        const rawSettings = data?.serialization_settings
-        const savedSettings =
-          rawSettings && typeof rawSettings === 'object' && !Array.isArray(rawSettings)
-            ? (rawSettings as unknown as SerializationSettingsData)
-            : DEFAULT_SERIALIZATION_SETTINGS
+        const savedSettings = await getSerializationSettings(organization.id)
         // Ensure all fields exist with defaults
-        setSettings({
+        const merged = {
           ...DEFAULT_SERIALIZATION_SETTINGS,
           ...savedSettings,
           keepout_zones: savedSettings.keepout_zones || [],
           auto_apply_extensions: savedSettings.auto_apply_extensions || [],
-        })
+        }
+        loadedCounterRef.current = merged.current_counter
+        setSettings(merged)
       } catch (error) {
         log.error('[Serialization]', 'Failed to load settings', { error: error })
       } finally {
@@ -233,12 +229,7 @@ export function SerializationSettings() {
 
     setLoadingPreview(true)
     try {
-      const { data, error } = await (supabase.rpc as any)('preview_next_serial_number', { // TODO: type this
-        p_org_id: organization.id,
-      })
-
-      if (error) throw error
-      setPreviewNumber(data as string)
+      setPreviewNumber(await previewNextSerialNumber(organization.id))
     } catch (error) {
       log.error('[Serialization]', 'Failed to fetch preview', { error: error })
       addToast('error', 'Failed to fetch serial number preview')
@@ -257,14 +248,10 @@ export function SerializationSettings() {
     setSaving(true)
     savingRef.current = true
     try {
-      // Use safe RPC that preserves the current_counter from the database
-      // This prevents accidentally overwriting a counter incremented by another user
-      const { error } = await (supabase.rpc as any)('update_serialization_settings_safe', { // TODO: type this
-        p_org_id: organization.id,
-        p_settings: JSON.parse(JSON.stringify(settings)),
-      })
-
-      if (error) throw error
+      const replaceCounter = settings.current_counter !== loadedCounterRef.current
+      const saved = await updateSerializationSettings(organization.id, settings, replaceCounter)
+      if (!saved) throw new Error('Serialization settings were not saved.')
+      loadedCounterRef.current = settings.current_counter
       addToast('success', 'Serialization settings saved')
 
       // Refresh preview after save

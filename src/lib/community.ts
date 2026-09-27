@@ -59,6 +59,12 @@ export interface CommunityOrganization {
   documentManagerLicenseKey: string | null
 }
 
+export type CommunityOrganizationSettingSection =
+  | 'serialization'
+  | 'export'
+  | 'rfq'
+  | 'auth-providers'
+
 export interface CommunityUser {
   id: string
   email: string
@@ -397,6 +403,113 @@ export async function setCommunityDocumentManagerLicense(licenseKey: string | nu
     method: 'PATCH',
     body: JSON.stringify({ documentManagerLicenseKey: licenseKey }),
   })
+}
+
+export interface CommunityModuleAccessRow {
+  module_id: string
+  team_id: string | null
+  user_id: string | null
+}
+
+export interface CommunityMetadataColumn {
+  id: string
+  org_id: string
+  name: string
+  label: string
+  data_type: 'text' | 'number' | 'date' | 'boolean' | 'select'
+  select_options: string[]
+  width: number
+  visible: boolean
+  sortable: boolean
+  required: boolean
+  default_value: string | null
+  sort_order: number
+  created_by: string | null
+  updated_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export async function getCommunityOrganizationSetting<T extends object>(
+  section: CommunityOrganizationSettingSection,
+): Promise<T> {
+  return (await request<{ value: T }>(`/organizations/current/settings/${section}`)).value
+}
+
+export async function setCommunityOrganizationSetting<T extends object>(
+  section: CommunityOrganizationSettingSection,
+  value: T,
+  options: { replaceCounter?: boolean } = {},
+): Promise<T> {
+  return (
+    await request<{ value: T }>(`/organizations/current/settings/${section}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value, ...options }),
+    })
+  ).value
+}
+
+export async function previewCommunitySerialNumber(): Promise<string | null> {
+  return (
+    await request<{ serialNumber: string | null }>(
+      '/organizations/current/serialization/preview',
+    )
+  ).serialNumber
+}
+
+export async function allocateCommunitySerialNumber(): Promise<string | null> {
+  return (
+    await request<{ serialNumber: string | null }>(
+      '/organizations/current/serialization/next',
+      { method: 'POST' },
+    )
+  ).serialNumber
+}
+
+export async function getCommunityModuleAccessConfig(): Promise<CommunityModuleAccessRow[]> {
+  return (await request<{ access: CommunityModuleAccessRow[] }>('/module-access')).access
+}
+
+export async function setCommunityModuleAccess(
+  moduleId: string,
+  teamIds: string[],
+  userIds: string[],
+): Promise<void> {
+  await request<{ success: boolean }>(`/module-access/${encodeURIComponent(moduleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ teamIds, userIds }),
+  })
+}
+
+export async function getCommunityDeniedModules(): Promise<string[]> {
+  return (await request<{ moduleIds: string[] }>('/module-access/denied')).moduleIds
+}
+
+export async function getCommunityMetadataColumns(): Promise<CommunityMetadataColumn[]> {
+  return (await request<{ columns: CommunityMetadataColumn[] }>('/metadata-columns')).columns
+}
+
+export async function createCommunityMetadataColumn(
+  payload: Omit<CommunityMetadataColumn, 'id' | 'org_id' | 'created_at' | 'updated_at' | 'updated_by'>,
+): Promise<void> {
+  await request<{ id: string }>('/metadata-columns', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateCommunityMetadataColumn(
+  columnId: string,
+  payload: Partial<Omit<CommunityMetadataColumn, 'id' | 'org_id' | 'created_at' | 'created_by'>>,
+): Promise<void> {
+  await request<{ success: boolean }>(`/metadata-columns/${encodeURIComponent(columnId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteCommunityMetadataColumn(columnId: string): Promise<void> {
+  await request<void>(`/metadata-columns/${encodeURIComponent(columnId)}`, { method: 'DELETE' })
 }
 
 export async function getCommunityUsers(): Promise<CommunityUser[]> {
