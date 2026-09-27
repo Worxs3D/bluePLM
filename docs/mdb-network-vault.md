@@ -7,8 +7,8 @@ vault; MariaDB stores metadata, revisions, permissions, and authentication data.
 ## Reviewable server dependency
 
 The PHP server is kept as the `blueplm-mdb-php` submodule and is pinned by
-the gitlink in this branch. The pinned commit is `ffc9310a519233aa2c7bf0dd2b0527c03a3296cd`
-from the public `codex/mdb-network-vault` branch.
+the gitlink in this branch. The pinned commit is `1978d05cd6012c0d11ee9a66dd9bdbb0fc008440`
+from the review branch.
 It contains the MDB API, migrations, setup endpoint, and administration endpoints
 used by the client installer. CI and release checkout jobs use recursive submodule
 checkout so the packaged server bundle is reproducible.
@@ -16,6 +16,25 @@ checkout so the packaged server bundle is reproducible.
 No environment files, credentials, database dumps, or installed dependency
 directories are included in this repository. The installer creates the private
 `.env` on the operator's machine and transfers it only over FTPS.
+
+The installer uploads a randomly named staging bundle and a short-lived bridge,
+inspects or migrates the database through that staged code, and publishes the live
+PHP entry point last. Existing live code and its private `.env` therefore remain
+active until migration succeeds. The client requires MDB API version 2 and refuses
+an older server instead of entering a partially working session.
+
+## Settings parity
+
+The MDB path supports members and teams, individual and team vault grants, module
+access rules, company profile, serialization and part-number discovery, export and
+RFQ settings, custom metadata columns, personal and organization column layouts,
+item designations, recovery codes, and the shared SOLIDWORKS Document Manager key.
+These paths use the backend adapter and do not initialize Supabase in MDB mode.
+
+MDB authentication in this contribution is email/password with optional TOTP.
+External OAuth, phone authentication, invite-email delivery, and Google Drive are
+not implemented by the PHP server, so the corresponding configuration surfaces are
+not shown in MDB mode.
 
 ## Network Vault
 

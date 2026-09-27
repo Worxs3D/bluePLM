@@ -57,3 +57,7 @@ are green and the user has explicitly approved that external action.
 ## Deferred work
 
 Google Drive storage may be proposed later as a separate pull request after productive testing. It is not part of the network-vault MDB contribution.
+
+External OAuth providers, phone authentication, and invite-email delivery require a
+separate server-side provider and mail-transport design. The MDB contribution uses
+email/password plus optional TOTP and must not expose inactive provider controls.
