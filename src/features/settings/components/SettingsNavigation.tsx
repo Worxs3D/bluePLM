@@ -3,6 +3,7 @@ import type { IntegrationStatusValue, IntegrationId, BackupStatusValue } from '@
 import type { SettingsTab } from '@/types/settings'
 import { t } from '@/lib/i18n'
 import { logSettings } from '@/lib/userActionLogger'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 
 interface SettingsNavigationProps {
   activeTab: SettingsTab
@@ -145,10 +146,13 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
   const integrations = usePDMStore((s) => s.integrations)
   const backupStatus = usePDMStore((s) => s.backupStatus)
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  const isMdb = isMdbBackendActive()
 
   const sections = settingsSections().map((section) => ({
     ...section,
-    items: section.items.filter((item) => !item.adminOnly || isAdmin),
+    items: section.items.filter(
+      (item) => (!item.adminOnly || isAdmin) && !(isMdb && item.id === 'supabase'),
+    ),
   }))
 
   const isIntegration = (id: SettingsTab): boolean => {
