@@ -1,7 +1,9 @@
 import type { TranslationDict } from '../types'
+import { settingsPageTranslations } from './settingsPages'
 
 // Traditional Chinese translations (繁體中文)
 export const zhTW: TranslationDict = {
+  settingsPages: settingsPageTranslations['zh-TW'],
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在載入簽出者',

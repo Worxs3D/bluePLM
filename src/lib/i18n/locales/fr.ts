@@ -1,7 +1,9 @@
 import type { TranslationDict } from '../types'
+import { settingsPageTranslations } from './settingsPages'
 
 // French translations
 export const fr: TranslationDict = {
+  settingsPages: settingsPageTranslations.fr,
   checkoutDisplay: {
     you: 'Vous',
     loadingOwner: 'Chargement du propriétaire du checkout',

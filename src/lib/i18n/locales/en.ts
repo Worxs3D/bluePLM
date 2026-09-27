@@ -1,7 +1,9 @@
 import type { TranslationDict } from '../types'
+import { settingsPageTranslations } from './settingsPages'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
+  settingsPages: settingsPageTranslations.en,
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',
   },

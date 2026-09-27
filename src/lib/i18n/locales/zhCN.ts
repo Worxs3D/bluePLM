@@ -1,7 +1,9 @@
 import type { TranslationDict } from '../types'
+import { settingsPageTranslations } from './settingsPages'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
+  settingsPages: settingsPageTranslations['zh-CN'],
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在加载签出者',
