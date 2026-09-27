@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getCommunityFiles, getCommunityVaults } = vi.hoisted(() => ({
+const { getCommunityFileReferences, getCommunityFiles, getCommunityVaults, getSupabaseClient } = vi.hoisted(() => ({
+  getCommunityFileReferences: vi.fn(),
   getCommunityFiles: vi.fn(),
   getCommunityVaults: vi.fn(),
+  getSupabaseClient: vi.fn(),
 }))
 
-vi.mock('../client', () => ({ getSupabaseClient: vi.fn() }))
+vi.mock('../client', () => ({ getSupabaseClient }))
 vi.mock('@/lib/community', () => ({
-  getCommunityFileReferences: vi.fn(),
+  getCommunityFileReferences,
   getCommunityFileRevisions: vi.fn(),
   getCommunityFiles,
   getCommunityVaults,
@@ -17,11 +19,16 @@ vi.mock('@/lib/backendAdapter', () => ({
     routes.mdb(),
 }))
 
-import { getFilesLightweight } from './queries'
+import {
+  getFileReferenceDiagnostics,
+  getFilesLightweight,
+  getVaultFilesForDiagnostics,
+} from './queries'
 
-describe('Community lightweight file loading', () => {
+describe('MDB lightweight file loading', () => {
   beforeEach(() => {
     getCommunityVaults.mockResolvedValue([{ id: 'vault-1' }])
+    getCommunityFileReferences.mockResolvedValue([])
     getCommunityFiles.mockResolvedValue([
       {
         id: 'file-1',
@@ -50,5 +57,53 @@ describe('Community lightweight file loading', () => {
       _communityStorageRelativePath: '.blueplm/objects/ab/abcdef',
       part_number: 'PN-00042',
     })
+  })
+
+  it('loads reference diagnostics through the MDB backend', async () => {
+    getCommunityFileReferences.mockResolvedValue([
+      {
+        id: 'reference-1',
+        parent_file_id: 'assembly-1',
+        child_file_id: 'part-1',
+        reference_type: 'component',
+        quantity: 2,
+        configuration: 'Default',
+        child: {
+          id: 'part-1',
+          file_name: 'part.sldprt',
+          file_path: 'part.sldprt',
+          part_number: 'PN-1',
+        },
+      },
+    ])
+
+    const result = await getFileReferenceDiagnostics('assembly-1')
+
+    expect(result.error).toBeNull()
+    expect(result.references).toMatchObject([
+      {
+        id: 'reference-1',
+        parent_file_id: 'assembly-1',
+        child_file_id: 'part-1',
+        quantity: 2,
+        child: { file_name: 'part.sldprt' },
+      },
+    ])
+    expect(getCommunityFileReferences).toHaveBeenCalledWith('assembly-1', 'contains')
+    expect(getSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('loads vault path candidates through the MDB backend', async () => {
+    const result = await getVaultFilesForDiagnostics('organization-1', 'vault-1')
+
+    expect(result.error).toBeNull()
+    expect(result.files).toMatchObject([
+      {
+        id: 'file-1',
+        file_name: '04er_Rolle_V.3mf',
+        file_path: 'Rollenlager/04er_Rolle_V.3mf',
+        extension: '.3mf',
+      },
+    ])
   })
 })

@@ -1386,30 +1386,56 @@ export async function getFileReferenceDiagnostics(parentFileId: string): Promise
   references: FileReferenceDiagnostic[]
   error: any
 }> {
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const references = await getCommunityFileReferences(parentFileId, 'contains')
+        return {
+          references: references.map((reference) => ({
+            id: String(reference.id ?? ''),
+            parent_file_id: String(reference.parent_file_id ?? parentFileId),
+            child_file_id: String(reference.child_file_id ?? ''),
+            reference_type: String(reference.reference_type ?? ''),
+            quantity: Number(reference.quantity ?? 1),
+            configuration:
+              typeof reference.configuration === 'string' ? reference.configuration : null,
+            created_at: typeof reference.created_at === 'string' ? reference.created_at : '',
+            parent: (reference.parent as FileReferenceDiagnostic['parent']) ?? null,
+            child: (reference.child as FileReferenceDiagnostic['child']) ?? null,
+          })),
+          error: null,
+        }
+      } catch (error) {
+        return { references: [], error }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await client
-    .from('file_references')
-    .select(
-      `
-      id,
-      parent_file_id,
-      child_file_id,
-      reference_type,
-      quantity,
-      configuration,
-      created_at,
-      parent:files!parent_file_id(id, file_name, file_path, part_number),
-      child:files!child_file_id(id, file_name, file_path, part_number)
-    `,
-    )
-    .eq('parent_file_id', parentFileId)
-    .order('created_at', { ascending: false })
+      const { data, error } = await client
+        .from('file_references')
+        .select(
+          `
+          id,
+          parent_file_id,
+          child_file_id,
+          reference_type,
+          quantity,
+          configuration,
+          created_at,
+          parent:files!parent_file_id(id, file_name, file_path, part_number),
+          child:files!child_file_id(id, file_name, file_path, part_number)
+        `,
+        )
+        .eq('parent_file_id', parentFileId)
+        .order('created_at', { ascending: false })
 
-  return {
-    references: (data || []) as FileReferenceDiagnostic[],
-    error,
-  }
+      return {
+        references: (data || []) as FileReferenceDiagnostic[],
+        error,
+      }
+    },
+  })
 }
 
 /**
@@ -1427,18 +1453,40 @@ export async function getVaultFilesForDiagnostics(
   files: VaultFileSummary[]
   error: any
 }> {
-  const client = getSupabaseClient()
+  return routeBackend({
+    mdb: async () => {
+      try {
+        const files = await communityFilesForVaults(vaultId)
+        return {
+          files: files
+            .map((file) => ({
+              id: file.id,
+              file_name: file.file_name,
+              file_path: file.file_path,
+              extension: file.extension,
+            }))
+            .sort((left, right) => left.file_path.localeCompare(right.file_path)),
+          error: null,
+        }
+      } catch (error) {
+        return { files: [], error }
+      }
+    },
+    supabase: async () => {
+      const client = getSupabaseClient()
 
-  const { data, error } = await client
-    .from('files')
-    .select('id, file_name, file_path, extension')
-    .eq('org_id', orgId)
-    .eq('vault_id', vaultId)
-    .is('deleted_at', null)
-    .order('file_path', { ascending: true })
+      const { data, error } = await client
+        .from('files')
+        .select('id, file_name, file_path, extension')
+        .eq('org_id', orgId)
+        .eq('vault_id', vaultId)
+        .is('deleted_at', null)
+        .order('file_path', { ascending: true })
 
-  return {
-    files: (data || []) as VaultFileSummary[],
-    error,
-  }
+      return {
+        files: (data || []) as VaultFileSummary[],
+        error,
+      }
+    },
+  })
 }
