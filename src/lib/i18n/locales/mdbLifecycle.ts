@@ -168,6 +168,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     defaultVault: 'Default',
     vaultSelectionHelp:
       'Only selected vaults are accessible. Leaving all unchecked denies access to every vault.',
+    inheritedTeamVaultAccess: 'Inherited through team',
+    directVaultSelectionHelp:
+      'Checkboxes manage individual access only. Team access remains effective until the team assignment or team access changes.',
     saveAccess: 'Save access',
     workflowRoles: 'Workflow roles',
     workflowRolesHelp: 'Roles used by approval processes.',
@@ -441,6 +444,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     defaultVault: 'Standard',
     vaultSelectionHelp:
       'Nur ausgewählte Vaults sind zugänglich. Ohne Auswahl besteht kein Vault-Zugriff.',
+    inheritedTeamVaultAccess: 'Über Team geerbt',
+    directVaultSelectionHelp:
+      'Die Kontrollkästchen ändern nur den individuellen Zugriff. Teamzugriff bleibt wirksam, bis die Teamzuordnung oder der Teamzugriff geändert wird.',
     saveAccess: 'Zugriff speichern',
     workflowRoles: 'Workflow-Rollen',
     workflowRolesHelp: 'Rollen für Freigabeprozesse.',
@@ -717,6 +723,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     defaultVault: 'Predeterminado',
     vaultSelectionHelp:
       'Solo se puede acceder a los vaults seleccionados. Sin selección se deniega el acceso a todos.',
+    inheritedTeamVaultAccess: 'Heredado del equipo',
+    directVaultSelectionHelp:
+      'Las casillas solo administran el acceso individual. El acceso del equipo sigue activo hasta que cambie la asignación o el acceso del equipo.',
     saveAccess: 'Guardar acceso',
     workflowRoles: 'Roles de flujo de trabajo',
     workflowRolesHelp: 'Roles usados en procesos de aprobación.',
@@ -995,6 +1004,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     defaultVault: 'Par défaut',
     vaultSelectionHelp:
       'Seuls les coffres sélectionnés sont accessibles. Sans sélection, tout accès est refusé.',
+    inheritedTeamVaultAccess: 'Hérité de l’équipe',
+    directVaultSelectionHelp:
+      'Les cases gèrent uniquement l’accès individuel. L’accès de l’équipe reste actif jusqu’à la modification de l’affectation ou de l’accès de l’équipe.',
     saveAccess: 'Enregistrer l’accès',
     workflowRoles: 'Rôles de workflow',
     workflowRolesHelp: 'Rôles utilisés dans les processus d’approbation.',
@@ -1269,6 +1281,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     defaultVault: 'Predefinido',
     vaultSelectionHelp:
       'Apenas os cofres selecionados são acessíveis. Sem seleção, o acesso a todos é negado.',
+    inheritedTeamVaultAccess: 'Herdado da equipa',
+    directVaultSelectionHelp:
+      'As caixas gerem apenas o acesso individual. O acesso da equipa permanece ativo até a atribuição ou o acesso da equipa mudar.',
     saveAccess: 'Guardar acesso',
     workflowRoles: 'Funções de workflow',
     workflowRolesHelp: 'Funções usadas em processos de aprovação.',
@@ -1527,6 +1542,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     selectedVaults: '已选择 {{total}} 个存储库中的 {{selected}} 个',
     defaultVault: '默认',
     vaultSelectionHelp: '仅可访问选中的存储库。全部未选将拒绝所有访问。',
+    inheritedTeamVaultAccess: '通过团队继承',
+    directVaultSelectionHelp:
+      '复选框仅管理个人访问权限。团队分配或团队访问权限更改之前，团队访问权限仍然有效。',
     saveAccess: '保存访问权限',
     workflowRoles: '工作流角色',
     workflowRolesHelp: '审批流程中使用的角色。',
@@ -1776,6 +1794,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     selectedVaults: '已選擇 {{total}} 個儲存庫中的 {{selected}} 個',
     defaultVault: '預設',
     vaultSelectionHelp: '僅可存取選取的儲存庫。全部未選將拒絕所有存取。',
+    inheritedTeamVaultAccess: '透過團隊繼承',
+    directVaultSelectionHelp:
+      '核取方塊僅管理個人存取權。團隊指派或團隊存取權變更前，團隊存取權仍然有效。',
     saveAccess: '儲存存取權',
     workflowRoles: '工作流程角色',
     workflowRolesHelp: '核准流程中使用的角色。',

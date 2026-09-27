@@ -76,8 +76,9 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   const { jobTitles, assignJobTitle } = useJobTitles(orgId)
   const {
     vaults,
+    getUserDirectVaults,
+    getUserInheritedVaults,
     getUserVaultAccessCount,
-    getUserAccessibleVaults,
     saveUserVaultAccess,
   } = useVaultAccess(orgId)
 
@@ -105,6 +106,8 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
 
   // Derive props
   const isCurrentUser = user.id === currentUser?.id
+  const userTeamIds = user.teams?.map((team) => team.id) ?? []
+  const inheritedVaultAccess = user.role === 'guest' ? [] : getUserInheritedVaults(userTeamIds)
 
   // Handlers
   const handleToggleTeam = useCallback(
@@ -146,11 +149,11 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
 
   const openVaultAccessEditor = useCallback(
     (u: OrgUser) => {
-      const currentVaultIds = getUserAccessibleVaults(u.id)
+      const currentVaultIds = getUserDirectVaults(u.id)
       setEditingVaultAccessUser(u)
       setPendingVaultAccess(currentVaultIds)
     },
-    [getUserAccessibleVaults, setEditingVaultAccessUser, setPendingVaultAccess],
+    [getUserDirectVaults, setEditingVaultAccessUser, setPendingVaultAccess],
   )
 
   const saveVaultAccess = useCallback(async () => {
@@ -199,7 +202,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         }
         // Vault access
         onVaultAccess={() => openVaultAccessEditor(user)}
-        vaultAccessCount={getUserVaultAccessCount(user.id)}
+        vaultAccessCount={getUserVaultAccessCount(user.id, userTeamIds, user.role)}
         // Permissions
         onPermissions={
           isAdmin && !isBackendConfigured('community') ? () => setEditingPermissionsUser(user) : undefined
@@ -234,6 +237,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
           user={editingVaultAccessUser}
           orgVaults={vaults}
           pendingVaultAccess={pendingVaultAccess}
+          inheritedVaultAccess={inheritedVaultAccess}
           setPendingVaultAccess={setPendingVaultAccess}
           onSave={saveVaultAccess}
           onClose={() => setEditingVaultAccessUser(null)}

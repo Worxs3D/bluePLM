@@ -31,6 +31,32 @@ export interface VaultAccessLoadPlan {
   loadTeamAccess: boolean
 }
 
+export function getDirectVaultIds(
+  userId: string,
+  vaultAccessMap: Record<string, string[]>,
+): string[] {
+  return Object.keys(vaultAccessMap).filter((vaultId) => vaultAccessMap[vaultId].includes(userId))
+}
+
+export function getInheritedVaultIds(
+  teamIds: string[],
+  teamVaultAccessMap: Record<string, string[]>,
+): string[] {
+  return [...new Set(teamIds.flatMap((teamId) => teamVaultAccessMap[teamId] ?? []))]
+}
+
+export function getEffectiveVaultIds(
+  userId: string,
+  teamIds: string[],
+  role: string,
+  vaultAccessMap: Record<string, string[]>,
+  teamVaultAccessMap: Record<string, string[]>,
+): string[] {
+  const direct = getDirectVaultIds(userId, vaultAccessMap)
+  if (role === 'guest') return direct
+  return [...new Set([...direct, ...getInheritedVaultIds(teamIds, teamVaultAccessMap)])]
+}
+
 /**
  * Keep the effect's load policy independently testable. This initially mirrors
  * the legacy behaviour so the regression test can demonstrate the bug before
@@ -250,32 +276,30 @@ export function useVaultAccess(orgId: string | null) {
     [user, addToast, teamVaultAccessMap, setTeamVaultAccessMap],
   )
 
-  // Get accessible vault IDs for a user
-  const getUserAccessibleVaults = useCallback(
-    (userId: string): string[] => {
-      const accessibleVaultIds: string[] = []
-      for (const vaultId of Object.keys(vaultAccessMap)) {
-        if (vaultAccessMap[vaultId].includes(userId)) {
-          accessibleVaultIds.push(vaultId)
-        }
-      }
-      return accessibleVaultIds
-    },
+  // Get directly assigned vault IDs for editing. Team access is shown separately
+  // so saving does not accidentally convert inherited access into direct access.
+  const getUserDirectVaults = useCallback(
+    (userId: string): string[] => getDirectVaultIds(userId, vaultAccessMap),
     [vaultAccessMap],
+  )
+
+  const getUserInheritedVaults = useCallback(
+    (teamIds: string[]): string[] => getInheritedVaultIds(teamIds, teamVaultAccessMap),
+    [teamVaultAccessMap],
+  )
+
+  // Get effective vault IDs for display and access summaries.
+  const getUserAccessibleVaults = useCallback(
+    (userId: string, teamIds: string[] = [], role = 'member'): string[] =>
+      getEffectiveVaultIds(userId, teamIds, role, vaultAccessMap, teamVaultAccessMap),
+    [teamVaultAccessMap, vaultAccessMap],
   )
 
   // Get vault access count for a user
   const getUserVaultAccessCount = useCallback(
-    (userId: string): number => {
-      let count = 0
-      for (const vaultId of Object.keys(vaultAccessMap)) {
-        if (vaultAccessMap[vaultId].includes(userId)) {
-          count++
-        }
-      }
-      return count
-    },
-    [vaultAccessMap],
+    (userId: string, teamIds: string[] = [], role = 'member'): number =>
+      getEffectiveVaultIds(userId, teamIds, role, vaultAccessMap, teamVaultAccessMap).length,
+    [teamVaultAccessMap, vaultAccessMap],
   )
 
   // The catalogue may already have been loaded by another settings screen.
@@ -313,6 +337,8 @@ export function useVaultAccess(orgId: string | null) {
     loadAll,
     saveUserVaultAccess,
     saveTeamVaultAccess,
+    getUserDirectVaults,
+    getUserInheritedVaults,
     getUserAccessibleVaults,
     getUserVaultAccessCount,
   }
