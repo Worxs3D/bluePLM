@@ -69,6 +69,11 @@ export const zhTW: TranslationDict = {
     ftpTestPassed: 'FTPS 連線成功',
     ftpTestFailed: 'FTPS 連線測試失敗',
     ftpTestUnavailable: '此版本不支援 FTPS 測試',
+    importPreset: '匯入預設',
+    exportPreset: '匯出預設',
+    presetHelp: '預設只包含伺服器設定。密碼和密鑰會替換為佔位符，匯入後必須重新輸入。',
+    presetTooLarge: '預設檔案過大。',
+    presetImportFailed: '無法匯入 MDB 預設。',
     ...mdbLifecycleTranslations['zh-TW'],
   },
   checkoutDisplay: {

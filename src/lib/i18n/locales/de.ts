@@ -114,6 +114,11 @@ export const de: TranslationDict = {
     ftpTestPassed: 'FTPS-Verbindung erfolgreich',
     ftpTestFailed: 'FTPS-Verbindungstest fehlgeschlagen',
     ftpTestUnavailable: 'FTPS-Test ist in diesem Build nicht verfügbar',
+    importPreset: 'Voreinstellung importieren',
+    exportPreset: 'Voreinstellung exportieren',
+    presetHelp: 'Voreinstellungen enthalten nur Serverdaten. Passwörter und Secrets werden durch Platzhalter ersetzt und müssen nach dem Import erneut eingegeben werden.',
+    presetTooLarge: 'Die Voreinstellungsdatei ist zu groß.',
+    presetImportFailed: 'Die MDB-Voreinstellung konnte nicht importiert werden.',
     ...mdbLifecycleTranslations.de,
   },
   checkoutDisplay: {

@@ -11,6 +11,8 @@ import {
   Eye,
   EyeOff,
   Server,
+  Download,
+  Upload,
 } from 'lucide-react'
 import {
   saveConfig,
@@ -26,6 +28,11 @@ import { useTranslation } from '@/lib/i18n'
 import { copyToClipboard } from '@/lib/clipboard'
 import { log } from '@/lib/logger'
 import { clearCommunityConfig, saveCommunityConfig, validateCommunityConfig } from '@/lib/community'
+import {
+  parseMdbSetupPreset,
+  serializeMdbSetupPreset,
+  type MdbSetupPresetInput,
+} from '@/lib/mdbSetupPreset'
 
 interface SetupScreenProps {
   onConfigured: () => void
@@ -326,6 +333,88 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     maintenanceToken: mdbGenerateSecrets ? undefined : mdbMaintenanceToken,
     documentRootConfirmed: mdbDocumentRootConfirmed,
   })
+
+  const mdbSetupPresetInput = (): MdbSetupPresetInput => ({
+    publicUrl: mdbPublicUrl,
+    ftpUrl: mdbFtpUrl,
+    ftpSecurity: mdbFtpSecurity,
+    ftpRemotePath: mdbFtpPath,
+    ftpUsername: mdbFtpUser,
+    ftpPassword: mdbFtpPassword,
+    databaseHost: mdbDatabaseHost,
+    databasePort: mdbDatabasePort,
+    databaseName: mdbDatabaseName,
+    databaseUser: mdbDatabaseUser,
+    databasePassword: mdbDatabasePassword,
+    sessionSecret: mdbSessionSecret,
+    bootstrapToken: mdbBootstrapToken,
+    maintenanceToken: mdbMaintenanceToken,
+    documentRootConfirmed: mdbDocumentRootConfirmed,
+    companyName: mdbCompanyName,
+    companySlug: mdbCompanySlug,
+    ownerName: mdbOwnerName,
+    ownerEmail: mdbOwnerEmail,
+    ownerPassword: mdbOwnerPassword,
+    vaultName: mdbVaultName,
+    networkRoot: mdbNetworkRoot,
+  })
+
+  const handleExportMdbPreset = () => {
+    const blob = new Blob([serializeMdbSetupPreset(mdbSetupPresetInput())], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'blueplm-mdb-setup-preset.json'
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImportMdbPreset = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 1024 * 1024) {
+      setError(t('mdbSetup.presetTooLarge'))
+      return
+    }
+    try {
+      const imported = parseMdbSetupPreset(JSON.parse(await file.text()))
+      setMdbPublicUrl(imported.publicUrl)
+      setMdbFtpUrl(imported.ftpUrl)
+      setMdbFtpSecurity(imported.ftpSecurity)
+      setMdbFtpPath(imported.ftpRemotePath)
+      setMdbFtpUser(imported.ftpUsername)
+      setMdbFtpPassword('')
+      setMdbDatabaseHost(imported.databaseHost)
+      setMdbDatabasePort(imported.databasePort)
+      setMdbDatabaseName(imported.databaseName)
+      setMdbDatabaseUser(imported.databaseUser)
+      setMdbDatabasePassword('')
+      setMdbGenerateSecrets(true)
+      setMdbSessionSecret('')
+      setMdbBootstrapToken('')
+      setMdbMaintenanceToken('')
+      setMdbDocumentRootConfirmed(imported.documentRootConfirmed)
+      setMdbCompanyName(imported.companyName)
+      setMdbCompanySlug(imported.companySlug)
+      setMdbOwnerName(imported.ownerName)
+      setMdbOwnerEmail(imported.ownerEmail)
+      setMdbOwnerPassword('')
+      setMdbVaultName(imported.vaultName)
+      setMdbNetworkRoot(imported.networkRoot)
+      setMdbInspection(null)
+      setMdbDatabaseAction(null)
+      setMdbResetConfirmation('')
+      setMdbFtpTestResult(null)
+      setError(null)
+    } catch (importError) {
+      log.warn('[SetupScreen]', 'MDB setup preset import failed', { error: importError })
+      setError(t('mdbSetup.presetImportFailed'))
+    }
+  }
 
   const handleMdbInspect = async () => {
     if (!window.electronAPI?.inspectMdbDatabase) {
@@ -985,8 +1074,37 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
             >
               ← {t('common.back')}
             </button>
-            <h1 className="text-2xl font-bold text-plm-fg mb-2">{t('mdbSetup.newServer')}</h1>
-            <p className="text-plm-fg-muted mb-6">{t('mdbSetup.installHelp')}</p>
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <h1 className="text-2xl font-bold text-plm-fg">{t('mdbSetup.newServer')}</h1>
+                <p className="text-plm-fg-muted mt-1">{t('mdbSetup.installHelp')}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <label
+                  className="btn btn-secondary cursor-pointer flex items-center gap-2"
+                  title={t('mdbSetup.importPreset')}
+                >
+                  <Upload size={16} />
+                  {t('mdbSetup.importPreset')}
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={(event) => void handleImportMdbPreset(event)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleExportMdbPreset}
+                  className="btn btn-secondary flex items-center gap-2"
+                  title={t('mdbSetup.exportPreset')}
+                >
+                  <Download size={16} />
+                  {t('mdbSetup.exportPreset')}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-plm-fg-muted mb-6">{t('mdbSetup.presetHelp')}</p>
             <div className="space-y-5">
               <section className="bg-plm-bg-light border border-plm-border rounded-xl p-5">
                 <h2 className="font-semibold text-plm-fg">{t('mdbSetup.hostingPreparation')}</h2>

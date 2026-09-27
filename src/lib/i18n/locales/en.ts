@@ -115,6 +115,11 @@ export const en: TranslationDict = {
     ftpTestPassed: 'FTPS connection successful',
     ftpTestFailed: 'FTPS connection test failed',
     ftpTestUnavailable: 'FTPS testing is unavailable in this build',
+    importPreset: 'Import preset',
+    exportPreset: 'Export preset',
+    presetHelp: 'Presets include server settings only. Passwords and secrets are replaced with placeholders and must be entered again after import.',
+    presetTooLarge: 'The preset file is too large.',
+    presetImportFailed: 'The MDB setup preset could not be imported.',
     ...mdbLifecycleTranslations.en,
   },
   app: {

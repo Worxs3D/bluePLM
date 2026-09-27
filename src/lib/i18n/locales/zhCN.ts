@@ -69,6 +69,11 @@ export const zhCN: TranslationDict = {
     ftpTestPassed: 'FTPS 连接成功',
     ftpTestFailed: 'FTPS 连接测试失败',
     ftpTestUnavailable: '此版本不支持 FTPS 测试',
+    importPreset: '导入预设',
+    exportPreset: '导出预设',
+    presetHelp: '预设仅包含服务器设置。密码和密钥会替换为占位符，导入后必须重新输入。',
+    presetTooLarge: '预设文件过大。',
+    presetImportFailed: '无法导入 MDB 预设。',
     ...mdbLifecycleTranslations['zh-CN'],
   },
   checkoutDisplay: {

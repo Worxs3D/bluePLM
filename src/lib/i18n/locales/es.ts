@@ -69,6 +69,11 @@ export const es: TranslationDict = {
     ftpTestPassed: 'Conexión FTPS correcta',
     ftpTestFailed: 'Falló la prueba de conexión FTPS',
     ftpTestUnavailable: 'La prueba FTPS no está disponible en esta compilación',
+    importPreset: 'Importar preajuste',
+    exportPreset: 'Exportar preajuste',
+    presetHelp: 'Los preajustes solo incluyen datos del servidor. Las contraseñas y secretos se sustituyen por marcadores y deben volver a introducirse después de importar.',
+    presetTooLarge: 'El archivo de preajuste es demasiado grande.',
+    presetImportFailed: 'No se pudo importar el preajuste de MDB.',
     ...mdbLifecycleTranslations.es,
   },
   checkoutDisplay: {

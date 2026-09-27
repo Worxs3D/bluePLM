@@ -69,6 +69,11 @@ export const pt: TranslationDict = {
     ftpTestPassed: 'Ligação FTPS bem-sucedida',
     ftpTestFailed: 'Falha no teste de ligação FTPS',
     ftpTestUnavailable: 'O teste FTPS não está disponível nesta compilação',
+    importPreset: 'Importar predefinição',
+    exportPreset: 'Exportar predefinição',
+    presetHelp: 'As predefinições incluem apenas dados do servidor. As palavras-passe e os segredos são substituídos por marcadores e têm de ser introduzidos novamente após a importação.',
+    presetTooLarge: 'O ficheiro de predefinição é demasiado grande.',
+    presetImportFailed: 'Não foi possível importar a predefinição MDB.',
     ...mdbLifecycleTranslations.pt,
   },
   checkoutDisplay: {

@@ -69,6 +69,11 @@ export const fr: TranslationDict = {
     ftpTestPassed: 'Connexion FTPS réussie',
     ftpTestFailed: 'Échec du test de connexion FTPS',
     ftpTestUnavailable: 'Le test FTPS n’est pas disponible dans cette version',
+    importPreset: 'Importer le préréglage',
+    exportPreset: 'Exporter le préréglage',
+    presetHelp: 'Les préréglages contiennent uniquement les paramètres du serveur. Les mots de passe et secrets sont remplacés par des marqueurs et doivent être saisis à nouveau après importation.',
+    presetTooLarge: 'Le fichier de préréglage est trop volumineux.',
+    presetImportFailed: 'Le préréglage MDB n’a pas pu être importé.',
     ...mdbLifecycleTranslations.fr,
   },
   checkoutDisplay: {
