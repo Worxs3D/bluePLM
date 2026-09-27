@@ -231,6 +231,42 @@ export const en: TranslationDict = {
     api: 'API',
     logs: 'Logs',
     about: 'About',
+    navigation: 'Settings navigation',
+    profile: 'Profile',
+    keybindings: 'Keybindings',
+    sidebar: 'Sidebar',
+    deleteAccount: 'Delete Account',
+    supabase: 'Supabase',
+    backups: 'Backups',
+    vaults: 'Vaults',
+    membersAndTeams: 'Members & Teams',
+    moduleAccess: 'Module Access',
+    companyProfile: 'Company Profile',
+    signInMethods: 'Sign-In Methods',
+    serialization: 'Serialization',
+    exportOptions: 'Export Options',
+    fileMetadata: 'File Metadata',
+    itemDesignations: 'Item Designations',
+    rfqSettings: 'RFQ Settings',
+    recoveryCodes: 'Recovery Codes',
+    extensions: 'Extensions',
+    extensionStore: 'Extension Store',
+    googleDrive: 'Google Drive',
+    odooErp: 'Odoo ERP',
+    restApi: 'REST API',
+    webhooks: 'Webhooks',
+    system: 'System',
+    performance: 'Performance',
+    devTools: 'Dev Tools',
+    connected: 'Connected',
+    partiallyConnected: 'Partially connected',
+    offline: 'Offline',
+    notConfigured: 'Not configured',
+    comingSoon: 'Coming soon',
+    checkingStatus: 'Checking status...',
+    backupsWorking: 'Backups working',
+    needsAttention: 'Needs attention',
+    backupFailed: 'Backup failed',
   },
 
   accountSettings: {
@@ -537,8 +573,7 @@ export const en: TranslationDict = {
   explorer: {
     pendingMovesBadgeTitle_one: '{{count}} pending file move — click to review',
     pendingMovesBadgeTitle_other: '{{count}} pending file moves — click to review',
-    disconnectWarningMoved_one:
-      '{{count}} file moved, and the vault still records its old path',
+    disconnectWarningMoved_one: '{{count}} file moved, and the vault still records its old path',
     disconnectWarningMoved_other:
       '{{count}} files moved, and the vault still records their old paths',
     disconnectWarningMovedHint: 'Update the vault to match, or put the files back',
@@ -1615,7 +1650,8 @@ export const en: TranslationDict = {
     reportHeading:
       '{{count}} files sit at a local path that no longer matches what the server records for them.',
     reportEligible: '{{count}} can be renamed back to their server path now.',
-    reportBlocked: '{{count}} are checked out by other people and will be left alone unless forced:',
+    reportBlocked:
+      '{{count}} are checked out by other people and will be left alone unless forced:',
     reportHolder: '{{count}} held by {{user}}',
     unknownHolder: 'another user',
     reportConflict: '{{count}} skipped — another file already sits at the destination on disk:',
@@ -1662,7 +1698,8 @@ export const en: TranslationDict = {
   // "Processing…" (which reads as "the app is doing work") is not the only signal a user gets
   // while a write is actually blocked on their own click. See the reconcile-hang incident report.
   terminal: {
-    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationPending:
+      'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
   },
 
@@ -1767,7 +1804,7 @@ export const en: TranslationDict = {
     group: {
       repairable: 'Can be fixed now',
       needsDecision: 'Needs your decision',
-      needsDecisionNote: "Re-align will not touch any of these — they need your decision.",
+      needsDecisionNote: 'Re-align will not touch any of these — they need your decision.',
       needsDecisionEmpty: 'Nothing here needs a decision.',
       informational: 'For information',
     },

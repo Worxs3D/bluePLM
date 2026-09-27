@@ -216,6 +216,42 @@ export const es: TranslationDict = {
     api: 'API',
     logs: 'Registros',
     about: 'Acerca de',
+    navigation: 'Navegación de configuración',
+    profile: 'Perfil',
+    keybindings: 'Atajos de teclado',
+    sidebar: 'Barra lateral',
+    deleteAccount: 'Eliminar cuenta',
+    supabase: 'Supabase',
+    backups: 'Copias de seguridad',
+    vaults: 'Bóvedas',
+    membersAndTeams: 'Miembros y equipos',
+    moduleAccess: 'Acceso a módulos',
+    companyProfile: 'Perfil de la empresa',
+    signInMethods: 'Métodos de inicio de sesión',
+    serialization: 'Serialización',
+    exportOptions: 'Opciones de exportación',
+    fileMetadata: 'Metadatos de archivos',
+    itemDesignations: 'Designaciones de artículos',
+    rfqSettings: 'Configuración de RFQ',
+    recoveryCodes: 'Códigos de recuperación',
+    extensions: 'Extensiones',
+    extensionStore: 'Tienda de extensiones',
+    googleDrive: 'Google Drive',
+    odooErp: 'Odoo ERP',
+    restApi: 'API REST',
+    webhooks: 'Webhooks',
+    system: 'Sistema',
+    performance: 'Rendimiento',
+    devTools: 'Herramientas de desarrollo',
+    connected: 'Conectado',
+    partiallyConnected: 'Conectado parcialmente',
+    offline: 'Sin conexión',
+    notConfigured: 'No configurado',
+    comingSoon: 'Próximamente',
+    checkingStatus: 'Comprobando estado...',
+    backupsWorking: 'Las copias de seguridad funcionan',
+    needsAttention: 'Requiere atención',
+    backupFailed: 'Error en la copia de seguridad',
   },
 
   accountSettings: {
@@ -481,7 +517,8 @@ export const es: TranslationDict = {
   },
 
   explorer: {
-    pendingMovesBadgeTitle_one: '{{count}} movimiento de archivo pendiente — haga clic para revisar',
+    pendingMovesBadgeTitle_one:
+      '{{count}} movimiento de archivo pendiente — haga clic para revisar',
     pendingMovesBadgeTitle_other:
       '{{count}} movimientos de archivos pendientes — haga clic para revisar',
     disconnectWarningMoved_one:
@@ -692,7 +729,8 @@ export const es: TranslationDict = {
 
     dialog: {
       title: 'Realinear con el servidor',
-      subtitle: 'Compara sus archivos con el servidor y muestra las diferencias antes de cambiar nada.',
+      subtitle:
+        'Compara sus archivos con el servidor y muestra las diferencias antes de cambiar nada.',
       waitingForConfirmation: 'Esperando su confirmación para el siguiente cambio.',
     },
 
@@ -716,8 +754,7 @@ export const es: TranslationDict = {
     group: {
       repairable: 'Se puede corregir ahora',
       needsDecision: 'Requiere su decisión',
-      needsDecisionNote:
-        'El realineado no tocará ninguno de estos — requieren su decisión.',
+      needsDecisionNote: 'El realineado no tocará ninguno de estos — requieren su decisión.',
       needsDecisionEmpty: 'Nada aquí requiere una decisión.',
       informational: 'Solo información',
     },
@@ -752,15 +789,18 @@ export const es: TranslationDict = {
     outdated: {
       label_one: '{{count}} archivo con una versión más reciente en el servidor',
       label_other: '{{count}} archivos con una versión más reciente en el servidor',
-      description: 'Descarga la versión actual del servidor para reemplazar la copia local desactualizada.',
+      description:
+        'Descarga la versión actual del servidor para reemplazar la copia local desactualizada.',
     },
 
     localOnly: {
       label_one: '{{count}} archivo que solo existe en su computadora',
       label_other: '{{count}} archivos que solo existen en su computadora',
-      description: 'Nunca se registraron en la bóveda. El realineado los deja exactamente como están.',
+      description:
+        'Nunca se registraron en la bóveda. El realineado los deja exactamente como están.',
       actionButton: 'Ir a registrarlos…',
-      actionToast: 'Seleccione estos archivos en el explorador de archivos y regístrelos cuando esté listo.',
+      actionToast:
+        'Seleccione estos archivos en el explorador de archivos y regístrelos cuando esté listo.',
     },
     modified: {
       label_one: '{{count}} archivo con cambios locales aún no en el servidor',
@@ -787,7 +827,8 @@ export const es: TranslationDict = {
     ignored: {
       label_one: '{{count}} archivo que coincide con un patrón de exclusión',
       label_other: '{{count}} archivos que coinciden con un patrón de exclusión',
-      whyNote: 'El realineado nunca los toca, igual que cualquier otra sincronización de la bóveda.',
+      whyNote:
+        'El realineado nunca los toca, igual que cualquier otra sincronización de la bóveda.',
     },
     blockedCheckout: {
       label_one: '{{count}} archivo bloqueado por un registro de salida',

@@ -209,6 +209,42 @@ export const zhCN: TranslationDict = {
     api: 'API',
     logs: '日志',
     about: '关于',
+    navigation: '设置导航',
+    profile: '个人资料',
+    keybindings: '键盘快捷键',
+    sidebar: '侧边栏',
+    deleteAccount: '删除账户',
+    supabase: 'Supabase',
+    backups: '备份',
+    vaults: '保险库',
+    membersAndTeams: '成员与团队',
+    moduleAccess: '模块访问权限',
+    companyProfile: '公司资料',
+    signInMethods: '登录方式',
+    serialization: '序列化',
+    exportOptions: '导出选项',
+    fileMetadata: '文件元数据',
+    itemDesignations: '项目标识',
+    rfqSettings: '询价设置',
+    recoveryCodes: '恢复代码',
+    extensions: '扩展',
+    extensionStore: '扩展商店',
+    googleDrive: 'Google 云端硬盘',
+    odooErp: 'Odoo ERP',
+    restApi: 'REST API',
+    webhooks: 'Webhooks',
+    system: '系统',
+    performance: '性能',
+    devTools: '开发工具',
+    connected: '已连接',
+    partiallyConnected: '部分连接',
+    offline: '离线',
+    notConfigured: '未配置',
+    comingSoon: '即将推出',
+    checkingStatus: '正在检查状态...',
+    backupsWorking: '备份运行正常',
+    needsAttention: '需要注意',
+    backupFailed: '备份失败',
   },
 
   accountSettings: {
@@ -368,8 +404,10 @@ export const zhCN: TranslationDict = {
     },
     directoriesTrackedByServer: {
       // Chinese has no plural inflection - see the note above.
-      generic_one: '{{count}} folder is empty here but still listed on the server, so it was left in place',
-      generic_other: '{{count}} folders are empty here but still listed on the server, so they were left in place',
+      generic_one:
+        '{{count}} folder is empty here but still listed on the server, so it was left in place',
+      generic_other:
+        '{{count}} folders are empty here but still listed on the server, so they were left in place',
     },
     failed: {
       generic_one: '无法自动丢弃 {{count}} 个孤立文件',
@@ -573,7 +611,8 @@ export const zhCN: TranslationDict = {
     reportItem: '{{from}} → {{to}}',
     reportAndMore: '… 还有 {{count}} 个',
 
-    dryRunSummary: '仅预检：{{total}} 个文件中有 {{eligible}} 个可以重命名回服务器路径。未写入任何内容。',
+    dryRunSummary:
+      '仅预检：{{total}} 个文件中有 {{eligible}} 个可以重命名回服务器路径。未写入任何内容。',
     dryRunNote: '仅生成报告。未加 --apply 不会写入任何内容。',
 
     refused:
@@ -595,7 +634,8 @@ export const zhCN: TranslationDict = {
     createFolderFailed: '无法创建目标文件夹 — {{error}}',
 
     summaryComplete: '已将 {{count}} 个文件重命名回服务器路径。',
-    summaryPartial: '已重命名 {{total}} 个文件中的 {{succeeded}} 个 — {{leftovers}}。请再次运行以完成。',
+    summaryPartial:
+      '已重命名 {{total}} 个文件中的 {{succeeded}} 个 — {{leftovers}}。请再次运行以完成。',
     summaryFailed: '{{count}} 个失败',
     summaryNotAttempted: '{{count}} 个未尝试',
     summaryBlocked: '{{count}} 个被他人签出',
@@ -603,7 +643,8 @@ export const zhCN: TranslationDict = {
   },
 
   terminal: {
-    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationPending:
+      'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
   },
 
@@ -689,7 +730,7 @@ export const zhCN: TranslationDict = {
     group: {
       repairable: 'Can be fixed now',
       needsDecision: 'Needs your decision',
-      needsDecisionNote: "Re-align will not touch any of these — they need your decision.",
+      needsDecisionNote: 'Re-align will not touch any of these — they need your decision.',
       needsDecisionEmpty: 'Nothing here needs a decision.',
       informational: 'For information',
     },

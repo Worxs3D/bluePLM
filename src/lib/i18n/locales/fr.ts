@@ -217,6 +217,42 @@ export const fr: TranslationDict = {
     api: 'API',
     logs: 'Journaux',
     about: 'À propos',
+    navigation: 'Navigation des paramètres',
+    profile: 'Profil',
+    keybindings: 'Raccourcis clavier',
+    sidebar: 'Barre latérale',
+    deleteAccount: 'Supprimer le compte',
+    supabase: 'Supabase',
+    backups: 'Sauvegardes',
+    vaults: 'Coffres',
+    membersAndTeams: 'Membres et équipes',
+    moduleAccess: 'Accès aux modules',
+    companyProfile: 'Profil de l’entreprise',
+    signInMethods: 'Méthodes de connexion',
+    serialization: 'Sérialisation',
+    exportOptions: 'Options d’exportation',
+    fileMetadata: 'Métadonnées des fichiers',
+    itemDesignations: 'Désignations d’articles',
+    rfqSettings: 'Paramètres RFQ',
+    recoveryCodes: 'Codes de récupération',
+    extensions: 'Extensions',
+    extensionStore: 'Boutique d’extensions',
+    googleDrive: 'Google Drive',
+    odooErp: 'Odoo ERP',
+    restApi: 'API REST',
+    webhooks: 'Webhooks',
+    system: 'Système',
+    performance: 'Performances',
+    devTools: 'Outils de développement',
+    connected: 'Connecté',
+    partiallyConnected: 'Partiellement connecté',
+    offline: 'Hors ligne',
+    notConfigured: 'Non configuré',
+    comingSoon: 'Bientôt disponible',
+    checkingStatus: 'Vérification de l’état...',
+    backupsWorking: 'Les sauvegardes fonctionnent',
+    needsAttention: 'Nécessite votre attention',
+    backupFailed: 'Échec de la sauvegarde',
   },
 
   accountSettings: {
@@ -436,9 +472,9 @@ export const fr: TranslationDict = {
       item: '{{path}} \u2192 correspond au fichier existant {{existingPath}}',
       confirmText: 'Envoyer quand même',
       skippedToast_one:
-        "1 fichier ignoré car il semblait déplacé - utilisez plutôt Déplacer ou Résoudre les déplacements en attente",
+        '1 fichier ignoré car il semblait déplacé - utilisez plutôt Déplacer ou Résoudre les déplacements en attente',
       skippedToast_other:
-        "{{count}} fichiers ignorés car ils semblaient déplacés - utilisez plutôt Déplacer ou Résoudre les déplacements en attente",
+        '{{count}} fichiers ignorés car ils semblaient déplacés - utilisez plutôt Déplacer ou Résoudre les déplacements en attente',
     },
   },
 
@@ -593,7 +629,8 @@ export const fr: TranslationDict = {
       '{{count}} sont extraits par d’autres personnes et resteront intacts sauf en cas de forçage :',
     reportHolder: '{{count}} détenus par {{user}}',
     unknownHolder: 'un autre utilisateur',
-    reportConflict: '{{count}} ignorés — un autre fichier occupe déjà la destination sur le disque :',
+    reportConflict:
+      '{{count}} ignorés — un autre fichier occupe déjà la destination sur le disque :',
     reportUnverified:
       '{{count}} ignorés — le contenu du fichier ne correspond plus à ce que le serveur a enregistré pour lui, le déplacement ne peut donc pas être vérifié :',
     reportItem: '{{from}} → {{to}}',
@@ -655,7 +692,8 @@ export const fr: TranslationDict = {
     noMovesInScope: 'Aucun déplacement en attente dans ce périmètre.',
     moreFiles: '… et {{count}} de plus',
 
-    reconcileOptionTitle: 'Conserver le nouvel emplacement et mettre à jour le coffre en conséquence',
+    reconcileOptionTitle:
+      'Conserver le nouvel emplacement et mettre à jour le coffre en conséquence',
     reconcileOptionDescription:
       'Écrit le chemin de votre disque sur le serveur. Tous les autres récupèrent le nouvel emplacement à leur prochaine synchronisation.',
     adoptOptionTitle: 'Remettre les fichiers là où le coffre les situe',
@@ -721,14 +759,15 @@ export const fr: TranslationDict = {
     group: {
       repairable: 'Peut être corrigé maintenant',
       needsDecision: 'Nécessite votre décision',
-      needsDecisionNote: 'Le réalignement ne touchera à aucun de ceux-ci — ils nécessitent votre décision.',
-      needsDecisionEmpty: "Rien ici ne nécessite de décision.",
+      needsDecisionNote:
+        'Le réalignement ne touchera à aucun de ceux-ci — ils nécessitent votre décision.',
+      needsDecisionEmpty: 'Rien ici ne nécessite de décision.',
       informational: 'Pour information',
     },
 
     syncIndex: {
-      label: "Actualiser aussi le registre interne de synchronisation de BluePLM",
-      description: "Entretien uniquement — cela ne touche à aucun fichier.",
+      label: 'Actualiser aussi le registre interne de synchronisation de BluePLM',
+      description: 'Entretien uniquement — cela ne touche à aucun fichier.',
     },
 
     pendingMove: {
@@ -756,13 +795,15 @@ export const fr: TranslationDict = {
     outdated: {
       label_one: '{{count}} fichier avec une version plus récente sur le serveur',
       label_other: '{{count}} fichiers avec une version plus récente sur le serveur',
-      description: 'Télécharge la version actuelle du serveur pour remplacer la copie locale obsolète.',
+      description:
+        'Télécharge la version actuelle du serveur pour remplacer la copie locale obsolète.',
     },
 
     localOnly: {
       label_one: "{{count}} fichier qui n'existe que sur votre ordinateur",
       label_other: "{{count}} fichiers qui n'existent que sur votre ordinateur",
-      description: 'Jamais archivé dans le coffre. Le réalignement les laisse exactement tels quels.',
+      description:
+        'Jamais archivé dans le coffre. Le réalignement les laisse exactement tels quels.',
       actionButton: 'Aller les archiver…',
       actionToast:
         'Sélectionnez ces fichiers dans le navigateur de fichiers et archivez-les quand vous êtes prêt.',
@@ -777,8 +818,8 @@ export const fr: TranslationDict = {
         'Sélectionnez ces fichiers dans le navigateur de fichiers et archivez vos modifications quand vous êtes prêt.',
     },
     ghost: {
-      label_one: "{{count}} fichier extrait par vous mais absent du disque",
-      label_other: "{{count}} fichiers extraits par vous mais absents du disque",
+      label_one: '{{count}} fichier extrait par vous mais absent du disque',
+      label_other: '{{count}} fichiers extraits par vous mais absents du disque',
       description:
         "Quelque chose a supprimé le fichier après son extraction. Décidez si vous archivez un remplacement ou libérez l'extraction.",
     },
@@ -792,15 +833,14 @@ export const fr: TranslationDict = {
     ignored: {
       label_one: "{{count}} fichier correspondant à un motif d'exclusion",
       label_other: "{{count}} fichiers correspondant à un motif d'exclusion",
-      whyNote:
-        'Jamais touché par le réalignement, ni par rien d\'autre qui synchronise le coffre.',
+      whyNote: "Jamais touché par le réalignement, ni par rien d'autre qui synchronise le coffre.",
     },
     blockedCheckout: {
-      label_one: "{{count}} fichier bloqué par une extraction",
-      label_other: "{{count}} fichiers bloqués par une extraction",
-      whyNote: "Le réalignement laisse intact tout fichier sous extraction active.",
-      selfHeld_one: "Vous avez ce fichier en extraction vous-même.",
-      selfHeld_other: "Vous avez {{count}} de ces fichiers en extraction vous-même.",
+      label_one: '{{count}} fichier bloqué par une extraction',
+      label_other: '{{count}} fichiers bloqués par une extraction',
+      whyNote: 'Le réalignement laisse intact tout fichier sous extraction active.',
+      selfHeld_one: 'Vous avez ce fichier en extraction vous-même.',
+      selfHeld_other: 'Vous avez {{count}} de ces fichiers en extraction vous-même.',
       otherHeld_one: "Quelqu'un d'autre a ce fichier en extraction.",
       otherHeld_other: "Quelqu'un d'autre a {{count}} de ces fichiers en extraction.",
     },

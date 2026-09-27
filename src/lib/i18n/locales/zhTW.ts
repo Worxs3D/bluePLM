@@ -209,6 +209,42 @@ export const zhTW: TranslationDict = {
     api: 'API',
     logs: '記錄',
     about: '關於',
+    navigation: '設定導覽',
+    profile: '個人資料',
+    keybindings: '鍵盤快速鍵',
+    sidebar: '側邊欄',
+    deleteAccount: '刪除帳戶',
+    supabase: 'Supabase',
+    backups: '備份',
+    vaults: '保險庫',
+    membersAndTeams: '成員與團隊',
+    moduleAccess: '模組存取權限',
+    companyProfile: '公司資料',
+    signInMethods: '登入方式',
+    serialization: '序列化',
+    exportOptions: '匯出選項',
+    fileMetadata: '檔案中繼資料',
+    itemDesignations: '項目標示',
+    rfqSettings: '詢價設定',
+    recoveryCodes: '復原碼',
+    extensions: '擴充功能',
+    extensionStore: '擴充功能商店',
+    googleDrive: 'Google 雲端硬碟',
+    odooErp: 'Odoo ERP',
+    restApi: 'REST API',
+    webhooks: 'Webhooks',
+    system: '系統',
+    performance: '效能',
+    devTools: '開發工具',
+    connected: '已連線',
+    partiallyConnected: '部分連線',
+    offline: '離線',
+    notConfigured: '未設定',
+    comingSoon: '即將推出',
+    checkingStatus: '正在檢查狀態...',
+    backupsWorking: '備份運作正常',
+    needsAttention: '需要注意',
+    backupFailed: '備份失敗',
   },
 
   accountSettings: {
@@ -368,8 +404,10 @@ export const zhTW: TranslationDict = {
     },
     directoriesTrackedByServer: {
       // Chinese has no plural inflection - see the note above.
-      generic_one: '{{count}} folder is empty here but still listed on the server, so it was left in place',
-      generic_other: '{{count}} folders are empty here but still listed on the server, so they were left in place',
+      generic_one:
+        '{{count}} folder is empty here but still listed on the server, so it was left in place',
+      generic_other:
+        '{{count}} folders are empty here but still listed on the server, so they were left in place',
     },
     failed: {
       generic_one: '無法自動捨棄 {{count}} 個孤立檔案',
@@ -573,7 +611,8 @@ export const zhTW: TranslationDict = {
     reportItem: '{{from}} → {{to}}',
     reportAndMore: '… 還有 {{count}} 個',
 
-    dryRunSummary: '僅預檢：{{total}} 個檔案中有 {{eligible}} 個可以重新命名回伺服器路徑。未寫入任何內容。',
+    dryRunSummary:
+      '僅預檢：{{total}} 個檔案中有 {{eligible}} 個可以重新命名回伺服器路徑。未寫入任何內容。',
     dryRunNote: '僅產生報告。未加 --apply 不會寫入任何內容。',
 
     refused:
@@ -595,7 +634,8 @@ export const zhTW: TranslationDict = {
     createFolderFailed: '無法建立目的資料夾 — {{error}}',
 
     summaryComplete: '已將 {{count}} 個檔案重新命名回伺服器路徑。',
-    summaryPartial: '已重新命名 {{total}} 個檔案中的 {{succeeded}} 個 — {{leftovers}}。請再次執行以完成。',
+    summaryPartial:
+      '已重新命名 {{total}} 個檔案中的 {{succeeded}} 個 — {{leftovers}}。請再次執行以完成。',
     summaryFailed: '{{count}} 個失敗',
     summaryNotAttempted: '{{count}} 個未嘗試',
     summaryBlocked: '{{count}} 個被他人簽出',
@@ -603,7 +643,8 @@ export const zhTW: TranslationDict = {
   },
 
   terminal: {
-    confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
+    confirmationPending:
+      'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
   },
 
@@ -626,7 +667,8 @@ export const zhTW: TranslationDict = {
     reconcileOptionTitle: '保留新位置，並更新庫以符合',
     reconcileOptionDescription: '將您磁碟上的路徑寫入伺服器。其他人會在下次同步時取得新位置。',
     adoptOptionTitle: '將檔案放回庫所記錄的位置',
-    adoptOptionDescription: '將磁碟上的檔案重新命名回伺服器已記錄的路徑。不會向伺服器寫入任何內容。',
+    adoptOptionDescription:
+      '將磁碟上的檔案重新命名回伺服器已記錄的路徑。不會向伺服器寫入任何內容。',
 
     eligibleCount_one: '{{count}} 個檔案已就緒',
     eligibleCount_other: '{{count}} 個檔案已就緒',
@@ -689,7 +731,7 @@ export const zhTW: TranslationDict = {
     group: {
       repairable: 'Can be fixed now',
       needsDecision: 'Needs your decision',
-      needsDecisionNote: "Re-align will not touch any of these — they need your decision.",
+      needsDecisionNote: 'Re-align will not touch any of these — they need your decision.',
       needsDecisionEmpty: 'Nothing here needs a decision.',
       informational: 'For information',
     },

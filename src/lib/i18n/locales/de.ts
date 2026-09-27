@@ -13,7 +13,8 @@ export const de: TranslationDict = {
     otherComputer: 'anderer PC',
   },
   fileReadonly: {
-    blocked: 'Diese Datei ist auf dem Datenträger schreibgeschützt, daher wurde nichts geschrieben.',
+    blocked:
+      'Diese Datei ist auf dem Datenträger schreibgeschützt, daher wurde nichts geschrieben.',
     unknown:
       'Es ließ sich nicht feststellen, ob diese Datei schreibgeschützt ist, daher wurde nichts geschrieben.',
     stillCheckedOut: 'Ausgecheckt, aber auf dem Datenträger weiterhin schreibgeschützt: {{names}}',
@@ -221,6 +222,42 @@ export const de: TranslationDict = {
     api: 'API',
     logs: 'Protokolle',
     about: 'Über',
+    navigation: 'Einstellungsnavigation',
+    profile: 'Profil',
+    keybindings: 'Tastenkürzel',
+    sidebar: 'Seitenleiste',
+    deleteAccount: 'Konto löschen',
+    supabase: 'Supabase',
+    backups: 'Sicherungen',
+    vaults: 'Tresore',
+    membersAndTeams: 'Mitglieder & Teams',
+    moduleAccess: 'Modulzugriff',
+    companyProfile: 'Unternehmensprofil',
+    signInMethods: 'Anmeldemethoden',
+    serialization: 'Serialisierung',
+    exportOptions: 'Exportoptionen',
+    fileMetadata: 'Dateimetadaten',
+    itemDesignations: 'Artikelbezeichnungen',
+    rfqSettings: 'RFQ-Einstellungen',
+    recoveryCodes: 'Wiederherstellungscodes',
+    extensions: 'Erweiterungen',
+    extensionStore: 'Erweiterungs-Store',
+    googleDrive: 'Google Drive',
+    odooErp: 'Odoo ERP',
+    restApi: 'REST-API',
+    webhooks: 'Webhooks',
+    system: 'System',
+    performance: 'Leistung',
+    devTools: 'Entwicklungswerkzeuge',
+    connected: 'Verbunden',
+    partiallyConnected: 'Teilweise verbunden',
+    offline: 'Offline',
+    notConfigured: 'Nicht konfiguriert',
+    comingSoon: 'Demnächst verfügbar',
+    checkingStatus: 'Status wird geprüft ...',
+    backupsWorking: 'Sicherungen funktionieren',
+    needsAttention: 'Überprüfung erforderlich',
+    backupFailed: 'Sicherung fehlgeschlagen',
   },
 
   accountSettings: {
@@ -584,7 +621,8 @@ export const de: TranslationDict = {
   adoptServerPaths: {
     notSignedIn: 'Bitte zuerst anmelden',
     noVault: 'Kein Tresor verbunden',
-    nothingToAdopt: 'Keine Datei wartet darauf, auf den vom Server erfassten Pfad zurückbenannt zu werden',
+    nothingToAdopt:
+      'Keine Datei wartet darauf, auf den vom Server erfassten Pfad zurückbenannt zu werden',
 
     reportHeading:
       '{{count}} Dateien befinden sich an einem lokalen Pfad, der nicht mehr dem entspricht, was der Server für sie erfasst.',
@@ -593,7 +631,8 @@ export const de: TranslationDict = {
       '{{count}} sind von anderen Personen ausgecheckt und werden unverändert gelassen, sofern nicht erzwungen:',
     reportHolder: '{{count}} gehalten von {{user}}',
     unknownHolder: 'einem anderen Benutzer',
-    reportConflict: '{{count}} übersprungen — am Zielort liegt bereits eine andere Datei auf der Festplatte:',
+    reportConflict:
+      '{{count}} übersprungen — am Zielort liegt bereits eine andere Datei auf der Festplatte:',
     reportUnverified:
       '{{count}} übersprungen — der Inhalt der Datei stimmt nicht mehr mit dem überein, was der Server für sie aufgezeichnet hat; das Verschieben kann nicht überprüft werden:',
     reportItem: '{{from}} → {{to}}',
@@ -758,22 +797,21 @@ export const de: TranslationDict = {
     outdated: {
       label_one: '{{count}} Datei mit einer neueren Version auf dem Server',
       label_other: '{{count}} Dateien mit einer neueren Version auf dem Server',
-      description: 'Lädt die aktuelle Serverversion herunter und ersetzt die veraltete lokale Kopie.',
+      description:
+        'Lädt die aktuelle Serverversion herunter und ersetzt die veraltete lokale Kopie.',
     },
 
     localOnly: {
       label_one: '{{count}} Datei, die nur auf Ihrem Computer existiert',
       label_other: '{{count}} Dateien, die nur auf Ihrem Computer existieren',
-      description:
-        'Nie in den Tresor eingecheckt. Der Abgleich lässt diese Dateien unverändert.',
+      description: 'Nie in den Tresor eingecheckt. Der Abgleich lässt diese Dateien unverändert.',
       actionButton: 'Jetzt einchecken…',
       actionToast:
         'Wählen Sie diese Dateien im Datei-Browser aus und checken Sie sie ein, wenn Sie bereit sind.',
     },
     modified: {
       label_one: '{{count}} Datei mit lokalen Änderungen, die noch nicht auf dem Server sind',
-      label_other:
-        '{{count}} Dateien mit lokalen Änderungen, die noch nicht auf dem Server sind',
+      label_other: '{{count}} Dateien mit lokalen Änderungen, die noch nicht auf dem Server sind',
       description:
         'Ihre Änderungen bleiben erhalten. Der Abgleich verwirft lokale Änderungen niemals — checken Sie sie ein, um das Update zu teilen.',
       actionButton: 'Ihre Änderungen einchecken…',
@@ -782,8 +820,7 @@ export const de: TranslationDict = {
     },
     ghost: {
       label_one: '{{count}} Datei, die von Ihnen ausgecheckt, aber auf der Festplatte fehlt',
-      label_other:
-        '{{count}} Dateien, die von Ihnen ausgecheckt, aber auf der Festplatte fehlen',
+      label_other: '{{count}} Dateien, die von Ihnen ausgecheckt, aber auf der Festplatte fehlen',
       description:
         'Etwas hat die Datei entfernt, nachdem Sie sie ausgecheckt hatten. Entscheiden Sie, ob Sie einen Ersatz einchecken oder das Auschecken aufheben.',
     },
@@ -797,7 +834,8 @@ export const de: TranslationDict = {
     ignored: {
       label_one: '{{count}} Datei, die einem Ignorier-Muster entspricht',
       label_other: '{{count}} Dateien, die einem Ignorier-Muster entsprechen',
-      whyNote: 'Wird vom Abgleich nie berührt, ebenso wie von allem anderen, das den Tresor synchronisiert.',
+      whyNote:
+        'Wird vom Abgleich nie berührt, ebenso wie von allem anderen, das den Tresor synchronisiert.',
     },
     blockedCheckout: {
       label_one: '{{count}} Datei durch eine Auscheckung blockiert',
