@@ -418,6 +418,12 @@ export interface CommunityModuleAccessRow {
   user_id: string | null
 }
 
+export interface CommunityColumnDefault {
+  id: string
+  width: number
+  visible: boolean
+}
+
 export interface CommunityMetadataColumn {
   id: string
   org_id: string
@@ -501,6 +507,32 @@ export async function setCommunityModuleAccess(
   await request<{ success: boolean }>(`/module-access/${encodeURIComponent(moduleId)}`, {
     method: 'PUT',
     body: JSON.stringify({ teamIds, userIds }),
+  })
+}
+
+export async function getCommunityOrganizationColumnDefaults(): Promise<CommunityColumnDefault[]> {
+  return (await request<{ columnDefaults: CommunityColumnDefault[] }>('/column-defaults/organization')).columnDefaults
+}
+
+export async function setCommunityOrganizationColumnDefaults(columnDefaults: CommunityColumnDefault[]): Promise<void> {
+  await request<{ columnDefaults: CommunityColumnDefault[] }>('/column-defaults/organization', {
+    method: 'PUT', body: JSON.stringify({ columnDefaults }),
+  })
+}
+
+export async function forceCommunityOrganizationColumnDefaults(columnDefaults: CommunityColumnDefault[]): Promise<void> {
+  await request<{ columnDefaults: CommunityColumnDefault[] }>('/column-defaults/organization/force', {
+    method: 'POST', body: JSON.stringify({ columnDefaults }),
+  })
+}
+
+export async function getCommunityUserColumnDefaults(): Promise<CommunityColumnDefault[]> {
+  return (await request<{ columnDefaults: CommunityColumnDefault[] }>('/column-defaults/user')).columnDefaults
+}
+
+export async function setCommunityUserColumnDefaults(columnDefaults: CommunityColumnDefault[]): Promise<void> {
+  await request<{ columnDefaults: CommunityColumnDefault[] }>('/column-defaults/user', {
+    method: 'PUT', body: JSON.stringify({ columnDefaults }),
   })
 }
 

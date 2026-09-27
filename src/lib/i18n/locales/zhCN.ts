@@ -1,8 +1,10 @@
 import type { TranslationDict } from '../types'
 import { mdbLifecycleTranslations } from './mdbLifecycle'
+import { settingsPageTranslations } from './settingsPages'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
+  settingsPages: settingsPageTranslations['zh-CN'],
   mdbSetup: {
     title: 'BluePLM MDB',
     chooseConnection: '连接现有安装或设置新安装。',
@@ -416,6 +418,23 @@ export const zhCN: TranslationDict = {
     confirmPlaceholder: '输入“{{value}}”以确认',
     deleting: '正在删除账户...',
     deletePermanently: '永久删除我的账户',
+  },
+
+  accountSettings: {
+    notSignedIn: '未登录',
+    profile: '个人资料',
+    noName: '无姓名',
+    role: '角色',
+    sessions: '会话',
+    sessionsDescription: '您当前已登录的设备',
+    loadingSessions: '正在加载会话...',
+    noActiveSessions: '没有活动会话',
+    thisDevice: '此设备',
+    unknown: '未知',
+    justNow: '刚刚',
+    minutesAgo: '{{count}} 分钟前',
+    signOut: '退出登录',
+    signOutDevice: '在此设备上退出登录',
   },
 
   preferences: {

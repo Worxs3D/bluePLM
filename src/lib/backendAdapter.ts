@@ -4,7 +4,7 @@ import type { SettingsTab } from '@/types/settings'
 import type { ModuleId } from '@/types/modules'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
-export type BackendCapability = 'solidworks-license-management'
+export type BackendCapability = 'solidworks-license-management' | 'metadata-column-defaults'
 
 export interface BackendRoutes<TMdb, TSupabase> {
   mdb: () => TMdb
@@ -52,8 +52,14 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
 }
 
 const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> = {
-  community: new Set<BackendCapability>(['solidworks-license-management']),
-  supabase: new Set<BackendCapability>(['solidworks-license-management']),
+  community: new Set<BackendCapability>([
+    'solidworks-license-management',
+    'metadata-column-defaults',
+  ]),
+  supabase: new Set<BackendCapability>([
+    'solidworks-license-management',
+    'metadata-column-defaults',
+  ]),
 }
 
 /**

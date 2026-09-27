@@ -27,12 +27,14 @@ describe('backend capabilities', () => {
     activateBackend('community')
 
     expect(activeBackendSupports('solidworks-license-management')).toBe(true)
+    expect(activeBackendSupports('metadata-column-defaults')).toBe(true)
   })
 
   it('keeps SOLIDWORKS license management available in Supabase mode', () => {
     activateBackend('supabase')
 
     expect(activeBackendSupports('solidworks-license-management')).toBe(true)
+    expect(activeBackendSupports('metadata-column-defaults')).toBe(true)
   })
 
   it('exposes only settings with an MDB implementation in community mode', () => {

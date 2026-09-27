@@ -1,8 +1,10 @@
 import type { TranslationDict } from '../types'
 import { mdbLifecycleTranslations } from './mdbLifecycle'
+import { settingsPageTranslations } from './settingsPages'
 
 // Traditional Chinese translations (繁體中文)
 export const zhTW: TranslationDict = {
+  settingsPages: settingsPageTranslations['zh-TW'],
   mdbSetup: {
     title: 'BluePLM MDB',
     chooseConnection: '連接現有安裝或設定新安裝。',
@@ -416,6 +418,23 @@ export const zhTW: TranslationDict = {
     confirmPlaceholder: '輸入「{{value}}」以確認',
     deleting: '正在刪除帳戶...',
     deletePermanently: '永久刪除我的帳戶',
+  },
+
+  accountSettings: {
+    notSignedIn: '尚未登入',
+    profile: '個人資料',
+    noName: '未設定姓名',
+    role: '角色',
+    sessions: '工作階段',
+    sessionsDescription: '您目前已登入的裝置',
+    loadingSessions: '正在載入工作階段...',
+    noActiveSessions: '沒有使用中的工作階段',
+    thisDevice: '此裝置',
+    unknown: '未知',
+    justNow: '剛剛',
+    minutesAgo: '{{count}} 分鐘前',
+    signOut: '登出',
+    signOutDevice: '在此裝置上登出',
   },
 
   preferences: {

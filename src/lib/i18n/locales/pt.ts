@@ -1,8 +1,10 @@
 import type { TranslationDict } from '../types'
 import { mdbLifecycleTranslations } from './mdbLifecycle'
+import { settingsPageTranslations } from './settingsPages'
 
 // Portuguese translations (Português)
 export const pt: TranslationDict = {
+  settingsPages: settingsPageTranslations.pt,
   mdbSetup: {
     title: 'BluePLM MDB',
     chooseConnection: 'Ligue-se a uma instalação existente ou configure uma nova.',
@@ -427,6 +429,23 @@ export const pt: TranslationDict = {
     confirmPlaceholder: 'Escreva «{{value}}» para confirmar',
     deleting: 'A eliminar a conta...',
     deletePermanently: 'Eliminar permanentemente a minha conta',
+  },
+
+  accountSettings: {
+    notSignedIn: 'Sessão não iniciada',
+    profile: 'Perfil',
+    noName: 'Sem nome',
+    role: 'Função',
+    sessions: 'Sessões',
+    sessionsDescription: 'Dispositivos em que tem sessão iniciada',
+    loadingSessions: 'A carregar sessões...',
+    noActiveSessions: 'Nenhuma sessão ativa',
+    thisDevice: 'Este dispositivo',
+    unknown: 'Desconhecido',
+    justNow: 'Agora mesmo',
+    minutesAgo: 'há {{count}} min',
+    signOut: 'Terminar sessão',
+    signOutDevice: 'Terminar sessão neste dispositivo',
   },
 
   preferences: {

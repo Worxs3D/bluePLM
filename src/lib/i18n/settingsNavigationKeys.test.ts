@@ -154,7 +154,6 @@ describe('settings navigation translations', () => {
       expect(value.trim(), `${locale}:${key}`).not.toBe('')
     }
   })
-
   it.each(LOCALES)('defines every item designation settings key for %s', (locale) => {
     for (const key of ITEM_DESIGNATION_SETTINGS_KEYS) {
       const value = getTranslation(locale, key)
