@@ -38,6 +38,9 @@ import {
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
 import {
   CommunityTotpRequiredError,
+  getCommunityRegistrationStatus,
+  registerCommunity,
+  registerCommunityWithRecoveryCode,
   signInCommunity,
   verifyCommunityTotp,
 } from '@/lib/community'
@@ -139,6 +142,11 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   const [isNewAccount, setIsNewAccount] = useState(false)
   const [authName, setAuthName] = useState('')
   const [authError, setAuthError] = useState<string | null>(null)
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const [mdbRegistrationEnabled, setMdbRegistrationEnabled] = useState(false)
+  const [isMdbRegistration, setIsMdbRegistration] = useState(false)
+  const [isMdbEmergencyRegistration, setIsMdbEmergencyRegistration] = useState(false)
+  const [mdbRecoveryCode, setMdbRecoveryCode] = useState('')
   const [communityTotpChallenge, setCommunityTotpChallenge] = useState<string | null>(null)
   const [communityTotpCode, setCommunityTotpCode] = useState('')
   const [orgVaults, setOrgVaults] = useState<Vault[]>([])
@@ -148,6 +156,8 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
   // Auth providers settings (fetched from org settings for sign-in screen)
   const [orgAuthProviders, setOrgAuthProviders] = useState<AuthProviders | null>(null)
+
+  const isMdbRegistrationFlow = isMdbRegistration || isMdbEmergencyRegistration
 
   // Vault setup dialog state
   const [setupVault, setSetupVault] = useState<Vault | null>(null)
@@ -184,6 +194,16 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
       }
     }
     fetchAuthProviders()
+  }, [user, isOfflineMode])
+
+  useEffect(() => {
+    if (!isMdbBackendActive() || user || isOfflineMode) return
+    getCommunityRegistrationStatus()
+      .then((status) => setMdbRegistrationEnabled(status.enabled))
+      .catch((error) => {
+        log.warn('[WelcomeScreen]', 'Failed to load MDB registration settings', { error: String(error) })
+        setMdbRegistrationEnabled(false)
+      })
   }, [user, isOfflineMode])
 
   // Auto-select an enabled auth method when providers are loaded
@@ -306,7 +326,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
           (vaultsData as any[]).map(async (vault: any) => { // TODO: type this
             // Fetch file count and total size using pagination (Supabase default limit is 1000)
             const PAGE_SIZE = 1000
-            let allFileSizes: number[] = []
+            const allFileSizes: number[] = []
             let offset = 0
             let hasMore = true
 
@@ -722,7 +742,11 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     setIsOtpSent(false)
     setIsNewAccount(false)
     setAuthName('')
+    setIsMdbRegistration(false)
+    setIsMdbEmergencyRegistration(false)
+    setMdbRecoveryCode('')
     setAuthError(null)
+    setAuthNotice(null)
   }
 
   // Clear all saved data and start fresh (goes back to setup screen)
@@ -765,8 +789,20 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   }
 
   const handleCommunitySignIn = async () => {
-    if (!communityTotpChallenge && (!authEmail.trim() || !authPassword)) {
+    if (!communityTotpChallenge && (!authEmail.trim() || !authPassword || (isMdbRegistrationFlow && !authName.trim()))) {
       setAuthError(t('mdbSetup.enterCredentials'))
+      return
+    }
+    if (isMdbEmergencyRegistration && !mdbRecoveryCode.trim()) {
+      setAuthError(t('mdbSetup.emergencyRecoveryCodeRequired'))
+      return
+    }
+    if (isMdbRegistrationFlow && authPassword.length < 12) {
+      setAuthError(t('mdbSetup.registrationPasswordHelp'))
+      return
+    }
+    if (isMdbRegistrationFlow && authPassword !== authPasswordConfirm) {
+      setAuthError(t('welcome.passwordMismatch'))
       return
     }
     if (communityTotpChallenge && !/^\d{6}$/.test(communityTotpCode.trim())) {
@@ -776,8 +812,25 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
     setIsSigningIn(true)
     setAuthError(null)
+    setAuthNotice(null)
     try {
-      if (communityTotpChallenge) {
+      if (isMdbEmergencyRegistration) {
+        await registerCommunityWithRecoveryCode(authEmail.trim(), authName.trim(), authPassword, mdbRecoveryCode.trim())
+        setIsMdbEmergencyRegistration(false)
+        setIsMdbRegistration(false)
+        setMdbRecoveryCode('')
+        setAuthPassword('')
+        setAuthPasswordConfirm('')
+        setAuthName('')
+        setAuthNotice(t('mdbSetup.emergencyRegistrationSuccess'))
+      } else if (isMdbRegistration) {
+        await registerCommunity(authEmail.trim(), authName.trim(), authPassword)
+        setIsMdbRegistration(false)
+        setAuthPassword('')
+        setAuthPasswordConfirm('')
+        setAuthName('')
+        setAuthNotice(t('mdbSetup.registrationPending'))
+      } else if (communityTotpChallenge) {
         await verifyCommunityTotp(communityTotpChallenge, communityTotpCode.trim())
       } else {
         await signInCommunity(authEmail.trim(), authPassword)
@@ -1042,8 +1095,18 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
         >
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-plm-fg">BluePLM</h1>
-            <p className="text-plm-fg-muted">{t('mdbSetup.signInHelp')}</p>
+            <p className="text-plm-fg-muted">{t(isMdbEmergencyRegistration ? 'mdbSetup.emergencyRegistrationHelp' : isMdbRegistration ? 'mdbSetup.registrationHelp' : 'mdbSetup.signInHelp')}</p>
           </div>
+          {isMdbRegistrationFlow && <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">{t('welcome.fullName')}</span>
+            <input
+              autoComplete="name"
+              type="text"
+              value={authName}
+              onChange={(event) => setAuthName(event.target.value)}
+              className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+            />
+          </label>}
           {!communityTotpChallenge && <label className="block space-y-1.5">
             <span className="text-sm text-plm-fg-muted">{t('mdbSetup.email')}</span>
             <input
@@ -1057,11 +1120,31 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
           {!communityTotpChallenge && <label className="block space-y-1.5">
             <span className="text-sm text-plm-fg-muted">{t('mdbSetup.password')}</span>
             <input
-              autoComplete="current-password"
+              autoComplete={isMdbRegistrationFlow ? 'new-password' : 'current-password'}
               type="password"
               value={authPassword}
               onChange={(event) => setAuthPassword(event.target.value)}
               className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+            />
+          </label>}
+          {isMdbRegistrationFlow && <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">{t('welcome.confirmPassword')}</span>
+            <input
+              autoComplete="new-password"
+              type="password"
+              value={authPasswordConfirm}
+              onChange={(event) => setAuthPasswordConfirm(event.target.value)}
+              className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none"
+            />
+          </label>}
+          {isMdbEmergencyRegistration && <label className="block space-y-1.5">
+            <span className="text-sm text-plm-fg-muted">{t('mdbSetup.emergencyRecoveryCode')}</span>
+            <input
+              autoComplete="one-time-code"
+              type="text"
+              value={mdbRecoveryCode}
+              onChange={(event) => setMdbRecoveryCode(event.target.value.toUpperCase())}
+              className="w-full bg-plm-bg-light border border-plm-border rounded-lg px-4 py-3 text-plm-fg focus:border-plm-accent focus:outline-none font-mono"
             />
           </label>}
           {communityTotpChallenge && (
@@ -1081,9 +1164,37 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
             </label>
           )}
           {authError && <p className="text-sm text-red-400">{authError}</p>}
+          {authNotice && <p className="text-sm text-plm-success">{authNotice}</p>}
           <button type="submit" disabled={isSigningIn} className="w-full btn btn-primary btn-lg justify-center">
-            {isSigningIn ? <><Loader2 size={20} className="animate-spin" />{t('mdbSetup.signingIn')}</> : t('mdbSetup.signIn')}
+            {isSigningIn ? <><Loader2 size={20} className="animate-spin" />{t(isMdbEmergencyRegistration ? 'mdbSetup.emergencyRegistering' : isMdbRegistration ? 'mdbSetup.registering' : 'mdbSetup.signingIn')}</> : t(isMdbEmergencyRegistration ? 'mdbSetup.emergencyRegister' : isMdbRegistration ? 'mdbSetup.register' : 'mdbSetup.signIn')}
           </button>
+          {mdbRegistrationEnabled && !isMdbEmergencyRegistration && !communityTotpChallenge && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsMdbRegistration((current) => !current)
+                setAuthError(null)
+                setAuthNotice(null)
+              }}
+              className="w-full text-sm text-plm-fg-muted hover:text-plm-fg"
+            >
+              {t(isMdbRegistration ? 'mdbSetup.backToSignIn' : 'mdbSetup.createAccount')}
+            </button>
+          )}
+          {!communityTotpChallenge && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsMdbEmergencyRegistration((current) => !current)
+                setIsMdbRegistration(false)
+                setAuthError(null)
+                setAuthNotice(null)
+              }}
+              className="w-full text-sm text-plm-fg-muted hover:text-plm-fg"
+            >
+              {t(isMdbEmergencyRegistration ? 'mdbSetup.backToSignIn' : 'mdbSetup.emergencyRegisterAction')}
+            </button>
+          )}
           {onChangeOrg && (
             <button type="button" onClick={() => void onChangeOrg()} className="w-full text-sm text-plm-fg-muted hover:text-plm-fg">
               {t('mdbSetup.changeBackend')}

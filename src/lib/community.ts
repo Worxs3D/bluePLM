@@ -50,6 +50,20 @@ export interface CommunityPrincipal {
   createdAt: string
 }
 
+export interface CommunityRegistrationStatus {
+  enabled: boolean
+  organizationId: string | null
+  organizationName: string | null
+}
+
+export interface CommunityRegistrationRequest {
+  id: string
+  email: string
+  displayName: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: string
+}
+
 export interface CommunityOrganization {
   id: string
   name: string
@@ -360,6 +374,56 @@ export async function signInCommunity(email: string, password: string): Promise<
   if (!config) throw new Error('MariaDB backend is not configured.')
   saveCommunityConfig({ ...config, accessToken: result.token })
   return await getCommunityPrincipal()
+}
+
+export async function getCommunityRegistrationStatus(): Promise<CommunityRegistrationStatus> {
+  return request<CommunityRegistrationStatus>('/auth/registration', {}, false)
+}
+
+export async function registerCommunity(
+  email: string,
+  displayName: string,
+  password: string,
+): Promise<{ status: 'pending' }> {
+  return request<{ status: 'pending' }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, displayName, password }),
+  }, false)
+}
+
+export async function registerCommunityWithRecoveryCode(
+  email: string,
+  displayName: string,
+  password: string,
+  recoveryCode: string,
+): Promise<CommunityPrincipal> {
+  const result = await request<{ token: string }>('/auth/recovery-register', {
+    method: 'POST',
+    body: JSON.stringify({ email, displayName, password, recoveryCode }),
+  }, false)
+  if (!result.token) throw new Error('The MDB backend returned an invalid recovery registration response.')
+  const config = loadCommunityConfig()
+  if (!config) throw new Error('MariaDB backend is not configured.')
+  saveCommunityConfig({ ...config, accessToken: result.token })
+  return getCommunityPrincipal()
+}
+
+export async function getCommunityRegistrationRequests(): Promise<CommunityRegistrationRequest[]> {
+  return (await request<{ requests: CommunityRegistrationRequest[] }>('/registration-requests')).requests
+}
+
+export async function approveCommunityRegistration(
+  requestId: string,
+  role: Exclude<CommunityMembershipRole, 'owner'>,
+): Promise<CommunityUser> {
+  return (await request<{ user: CommunityUser }>(`/registration-requests/${encodeURIComponent(requestId)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ role }),
+  })).user
+}
+
+export async function rejectCommunityRegistration(requestId: string): Promise<void> {
+  await request<void>(`/registration-requests/${encodeURIComponent(requestId)}/reject`, { method: 'POST' })
 }
 
 export async function verifyCommunityTotp(challengeToken: string, code: string): Promise<CommunityPrincipal> {

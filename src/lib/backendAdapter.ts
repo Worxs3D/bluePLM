@@ -44,7 +44,9 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   'team-members': allBackends,
   'module-access': allBackends,
   'company-profile': allBackends,
-  'auth-providers': supabaseOnly,
+  // MDB persists these settings through its organization-settings API. Keep
+  // the original panel visible and editable for both supported backends.
+  'auth-providers': allBackends,
   serialization: allBackends,
   export: allBackends,
   rfq: allBackends,
@@ -150,7 +152,6 @@ export function getActiveBackendSettingsTabAvailability(
   const backend = getActiveBackendKind()
   if (!backend) return 'incompatible'
   if (settingsTabBackends[tab].has(backend)) return 'supported'
-  if (backend === 'community' && tab === 'auth-providers') return 'in-development'
   return 'incompatible'
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, Save, Shield, Users, Truck, Mail, Phone } from 'lucide-react'
+import { Loader2, Save, Shield, Users, Truck, Mail, Phone, UserPlus } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { DEFAULT_AUTH_PROVIDERS, type AuthProviderSettings } from '@/types/pdm'
@@ -97,6 +97,7 @@ export function AuthProvidersSettings() {
           organization.id,
         )
         setSettings({
+          selfRegistration: authProviders?.selfRegistration ?? false,
           users: {
             google: authProviders?.users?.google ?? true,
             email: authProviders?.users?.email ?? true,
@@ -127,6 +128,7 @@ export function AuthProvidersSettings() {
     if (org?.auth_providers) {
       const authProviders = org.auth_providers as AuthProviderSettings
       setSettings({
+        selfRegistration: authProviders?.selfRegistration ?? false,
         users: {
           google: authProviders?.users?.google ?? true,
           email: authProviders?.users?.email ?? true,
@@ -235,6 +237,16 @@ export function AuthProvidersSettings() {
         </div>
         <p className="text-sm text-plm-fg-muted mb-4">
           {t('settingsPages.authProviders.teamDescription')}
+        </p>
+
+        <ProviderToggle
+          label={t('settingsPages.authProviders.selfRegistration')}
+          icon={<UserPlus size={18} />}
+          enabled={settings.selfRegistration}
+          onChange={(enabled) => setSettings((previous) => ({ ...previous, selfRegistration: enabled }))}
+        />
+        <p className="text-xs text-plm-fg-dim mt-2 mb-4">
+          {t('settingsPages.authProviders.selfRegistrationDescription')}
         </p>
 
         <div className="space-y-3">

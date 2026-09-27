@@ -609,6 +609,8 @@ export interface Organization {
 
 // Auth provider settings for controlling which sign-in methods are allowed
 export interface AuthProviderSettings {
+  /** Open registration creates a pending request without role or permissions. */
+  selfRegistration: boolean
   users: {
     google: boolean
     email: boolean
@@ -623,6 +625,7 @@ export interface AuthProviderSettings {
 
 // Default auth provider settings (all enabled)
 export const DEFAULT_AUTH_PROVIDERS: AuthProviderSettings = {
+  selfRegistration: false,
   users: { google: true, email: true, phone: true },
   suppliers: { google: true, email: true, phone: true },
 }

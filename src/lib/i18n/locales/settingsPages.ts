@@ -43,6 +43,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: 'Failed to load authentication settings',
       saveFailed: 'Failed to save authentication settings',
       saved: 'Authentication settings saved',
+      selfRegistration: 'Allow self-registration',
+      selfRegistrationDescription:
+        'New accounts remain pending without a role, team, vault access, or workflow permissions until an administrator approves them.',
       userMethodRequired: 'At least one sign-in method must be enabled for users',
       supplierMethodRequired: 'At least one sign-in method must be enabled for suppliers',
       teamMembers: 'Team Members',
@@ -116,6 +119,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: 'Anmeldeeinstellungen konnten nicht geladen werden',
       saveFailed: 'Anmeldeeinstellungen konnten nicht gespeichert werden',
       saved: 'Anmeldeeinstellungen gespeichert',
+      selfRegistration: 'Selbstregistrierung erlauben',
+      selfRegistrationDescription:
+        'Neue Konten bleiben ohne Rolle, Team-, Tresor- oder Workflow-Rechte ausstehend, bis ein Administrator sie freigibt.',
       userMethodRequired: 'Für Benutzer muss mindestens eine Anmeldemethode aktiviert sein',
       supplierMethodRequired: 'Für Lieferanten muss mindestens eine Anmeldemethode aktiviert sein',
       teamMembers: 'Teammitglieder',
