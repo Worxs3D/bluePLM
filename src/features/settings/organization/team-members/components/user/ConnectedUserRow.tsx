@@ -214,7 +214,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
           if (canManageUserPermissions) setEditingPermissionsUser(user)
           else setShowUnavailableFeature(true)
         } : undefined}
-        // Community credentials are managed directly by the Community PHP API.
+        // MDB credentials are managed directly by the MariaDB PHP API.
         // Do not expose this action in a Supabase installation (or for oneself,
         // because a password/email update intentionally revokes its sessions).
         onManageCredentials={

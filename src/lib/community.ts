@@ -1,15 +1,15 @@
 /**
- * Community-backend session and configuration bridge.
+ * MariaDB-backend session and configuration bridge.
  *
  * The upstream Supabase implementation remains isolated behind its own module
  * while callers are moved one domain at a time to this HTTP API. No Supabase
- * key is used in Community mode.
+ * key is used in MDB mode.
  */
 import { activateBackend } from './backend'
 import { isMdbBackendActive } from './backendAdapter'
 
 
-export const COMMUNITY_API_VERSION = 2
+export const MDB_API_VERSION = 2
 
 const STORAGE_KEY = 'blueplm-community-config'
 const CHECKOUTS_STORAGE_KEY = 'blueplm-community-checkouts'
@@ -304,7 +304,7 @@ export function onCommunityAuthChange(listener: AuthListener): () => void {
 
 async function request<T>(path: string, init: RequestInit = {}, needsAuth = true): Promise<T> {
   const config = loadCommunityConfig()
-  if (!config) throw new Error('Community backend is not configured.')
+  if (!config) throw new Error('MariaDB backend is not configured.')
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (init.body) headers.set('Content-Type', 'application/json')
@@ -317,7 +317,12 @@ async function request<T>(path: string, init: RequestInit = {}, needsAuth = true
   try {
     const response = await fetch(new URL(path, `${config.serverUrl}/`), { ...init, headers, signal: controller.signal })
     const body = await response.json().catch(() => ({})) as T & { error?: string; message?: string }
-    if (!response.ok) throw new Error(body.message ?? body.error ?? `Backend request failed (${response.status}).`)
+    if (!response.ok) {
+      if (needsAuth && response.status === 401 && config.accessToken) {
+        saveCommunityConfig({ ...config, accessToken: undefined })
+      }
+      throw new Error(body.message ?? body.error ?? `Backend request failed (${response.status}).`)
+    }
     return body
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -335,9 +340,9 @@ export async function validateCommunityConfig(serverUrl: string): Promise<{ vali
     const response = await fetch(new URL('/health', `${normalized}/`))
     if (!response.ok) return { valid: false, error: `Backend returned HTTP ${response.status}.` }
     const body = await response.json() as { supabase?: boolean; apiVersion?: number }
-    if (body.supabase !== false) return { valid: false, error: 'This is not a BluePLM Community backend.' }
-    if (!Number.isInteger(body.apiVersion) || body.apiVersion! < COMMUNITY_API_VERSION) {
-      return { valid: false, error: `The MariaDB backend is outdated. Install API version ${COMMUNITY_API_VERSION} or newer.` }
+    if (body.supabase !== false) return { valid: false, error: 'This is not a BluePLM MariaDB backend.' }
+    if (!Number.isInteger(body.apiVersion) || body.apiVersion! < MDB_API_VERSION) {
+      return { valid: false, error: `The MariaDB backend is outdated. Install API version ${MDB_API_VERSION} or newer.` }
     }
     return { valid: true }
   } catch (error) {
@@ -352,7 +357,7 @@ export async function signInCommunity(email: string, password: string): Promise<
   }
   if (!result.token) throw new Error('The MDB backend returned an invalid login response.')
   const config = loadCommunityConfig()
-  if (!config) throw new Error('Community backend is not configured.')
+  if (!config) throw new Error('MariaDB backend is not configured.')
   saveCommunityConfig({ ...config, accessToken: result.token })
   return await getCommunityPrincipal()
 }
@@ -363,7 +368,7 @@ export async function verifyCommunityTotp(challengeToken: string, code: string):
     body: JSON.stringify({ challengeToken, code }),
   }, false)
   const config = loadCommunityConfig()
-  if (!config) throw new Error('Community backend is not configured.')
+  if (!config) throw new Error('MariaDB backend is not configured.')
   saveCommunityConfig({ ...config, accessToken: result.token })
   return getCommunityPrincipal()
 }

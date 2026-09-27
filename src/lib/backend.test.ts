@@ -59,7 +59,7 @@ describe('backend profile', () => {
     expect(getActiveBackendKind()).toBe('community')
   })
 
-  it('does not expose inactive Supabase credentials in Community mode', () => {
+  it('does not expose inactive Supabase credentials in MDB mode', () => {
     localStorage.setItem('blueplm-supabase-config', JSON.stringify({ url: 'https://example.test', anonKey: 'key' }))
     saveCommunityConfig({ version: 1, serverUrl: 'https://community.example.test' })
 

@@ -222,7 +222,7 @@ export function useAuth() {
       return
     }
 
-    // Community mode intentionally does not emulate Supabase's auth event
+    // MDB mode intentionally does not emulate Supabase's auth event
     // protocol. Hydrating it here keeps the Electron shell on the same store
     // contract while the data domains are migrated independently.
     if (isMdbBackendActive()) {
@@ -233,14 +233,14 @@ export function useAuth() {
         setAuthInitialized(false)
         try {
           const config = loadCommunityConfig()
-          if (!config) throw new Error('Community backend is not configured.')
+          if (!config) throw new Error('MariaDB backend is not configured.')
           const compatibility = await validateCommunityConfig(config.serverUrl)
           if (!compatibility.valid) {
-            log.error('[Auth]', 'Community backend compatibility check failed', {
+            log.error('[Auth]', 'MDB backend compatibility check failed', {
               error: compatibility.error,
             })
             addToast('error', t('mdbSetup.backendConnectionFailed'))
-            throw new Error(compatibility.error ?? 'Community backend is incompatible.')
+            throw new Error(compatibility.error ?? 'MariaDB backend is incompatible.')
           }
           const [principal, organization] = await Promise.all([
             getCommunityPrincipal(),

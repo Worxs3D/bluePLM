@@ -15,8 +15,8 @@ interface EditCommunityUserCredentialsDialogProps {
 }
 
 /**
- * Community-only account editor. Credentials are deliberately kept outside of
- * the Supabase invitation/profile flow so a Community installation never
+ * MDB-only account editor. Credentials are deliberately kept outside of
+ * the Supabase invitation/profile flow so a MariaDB installation never
  * needs a Supabase session or API key to manage its users.
  */
 export function EditCommunityUserCredentialsDialog({

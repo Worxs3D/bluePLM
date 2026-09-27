@@ -40,7 +40,7 @@ export async function getItemDesignations(orgId: string): Promise<ItemDesignatio
       try {
         return (await getCommunityItemDesignations()).map(toDesignation)
       } catch (error) {
-        log.error('[ItemDesignations]', 'Failed to load Community item designations', { error })
+        log.error('[ItemDesignations]', 'Failed to load MDB item designations', { error })
         return []
       }
     },
@@ -115,7 +115,7 @@ export async function getItemDesignationAssignments(
         for (const row of await getCommunityItemDesignationAssignments(vaultId))
           result.set(row.part_number, row.designation_id)
       } catch (error) {
-        log.error('[ItemDesignations]', 'Failed to load Community designation assignments', {
+        log.error('[ItemDesignations]', 'Failed to load MDB designation assignments', {
           error,
         })
       }

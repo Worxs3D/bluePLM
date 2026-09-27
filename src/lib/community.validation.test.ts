@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { COMMUNITY_API_VERSION, validateCommunityConfig } from './community'
+import { MDB_API_VERSION, validateCommunityConfig } from './community'
 
-describe('Community backend compatibility', () => {
+describe('MariaDB backend compatibility', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -16,7 +16,7 @@ describe('Community backend compatibility', () => {
             ok: true,
             runtime: 'php',
             supabase: false,
-            apiVersion: COMMUNITY_API_VERSION,
+            apiVersion: MDB_API_VERSION,
           }),
           { status: 200 },
         ),
@@ -40,7 +40,7 @@ describe('Community backend compatibility', () => {
 
     await expect(validateCommunityConfig('https://mdb.example.test')).resolves.toEqual({
       valid: false,
-      error: `The MariaDB backend is outdated. Install API version ${COMMUNITY_API_VERSION} or newer.`,
+      error: `The MariaDB backend is outdated. Install API version ${MDB_API_VERSION} or newer.`,
     })
   })
 
@@ -48,7 +48,7 @@ describe('Community backend compatibility', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ supabase: true, apiVersion: COMMUNITY_API_VERSION }), {
+        new Response(JSON.stringify({ supabase: true, apiVersion: MDB_API_VERSION }), {
           status: 200,
         }),
       ),
@@ -56,7 +56,7 @@ describe('Community backend compatibility', () => {
 
     await expect(validateCommunityConfig('https://mdb.example.test')).resolves.toEqual({
       valid: false,
-      error: 'This is not a BluePLM Community backend.',
+      error: 'This is not a BluePLM MariaDB backend.',
     })
   })
 })

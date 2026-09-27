@@ -45,7 +45,7 @@ export async function signInWithGoogle() {
     mdb: async () => {
       return {
         data: null,
-        error: new Error('Google sign-in is not configured for the Community backend.'),
+        error: new Error('Google sign-in is not configured for the MariaDB backend.'),
       }
     },
     supabase: async () => {
@@ -268,7 +268,7 @@ export async function signInWithPhone(phone: string) {
     mdb: async () => {
       return {
         data: null,
-        error: new Error('Phone sign-in is not configured for the Community backend.'),
+        error: new Error('Phone sign-in is not configured for the MariaDB backend.'),
       }
     },
     supabase: async () => {
@@ -306,7 +306,7 @@ export async function verifyPhoneOTP(phone: string, token: string) {
     mdb: async () => {
       return {
         data: null,
-        error: new Error('Phone sign-in is not configured for the Community backend.'),
+        error: new Error('Phone sign-in is not configured for the MariaDB backend.'),
       }
     },
     supabase: async () => {

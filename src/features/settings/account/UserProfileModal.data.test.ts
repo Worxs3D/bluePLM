@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { selectUserProfileDataSource } from './UserProfileModal.data'
 
 describe('selectUserProfileDataSource', () => {
-  it('does not initialize Supabase while the Community backend is active', () => {
+  it('does not initialize Supabase while the MDB backend is active', () => {
     const getClient = vi.fn(() => {
-      throw new Error('Supabase is inactive while the Community backend is selected.')
+      throw new Error('Supabase is inactive while the MariaDB backend is selected.')
     })
 
     expect(selectUserProfileDataSource(true, getClient)).toEqual({ kind: 'community' })

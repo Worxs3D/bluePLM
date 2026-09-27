@@ -101,7 +101,7 @@ export function reconfigureSupabase(config: SupabaseConfig): void {
 // Get the current Supabase client (creates placeholder if not configured)
 export function getSupabaseClient(): SupabaseClient<Database> {
   if (getActiveBackendKind() === 'community') {
-    throw new Error('Supabase is inactive while the BluePLM Community backend is selected.')
+    throw new Error('Supabase is inactive while the BluePLM MariaDB backend is selected.')
   }
   if (!supabaseClient) {
     initializeClient()

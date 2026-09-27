@@ -90,7 +90,7 @@ export async function getItemImages(orgId: string): Promise<Map<string, ItemImag
           }),
         )
       } catch (error) {
-        log.error('[ItemImages]', 'Failed to load Community item images', { error })
+        log.error('[ItemImages]', 'Failed to load MDB item images', { error })
       }
       return result
     },
