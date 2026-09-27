@@ -428,6 +428,32 @@ export const en: TranslationDict = {
     revokeCode: 'Revoke Code',
   },
 
+  deleteAccount: {
+    notSignedIn: 'Not signed in',
+    failed: 'Failed to delete account: {{error}}',
+    unexpectedError: 'An unexpected error occurred while deleting your account.',
+    deleted: 'Account deleted',
+    title: 'Delete Account',
+    subtitle: 'Permanently remove your account and data',
+    whatHappens: 'What happens when you delete your account:',
+    profileDeleted: 'Your user profile will be permanently deleted',
+    removedFromOrganization: 'You will be removed from your organization',
+    teamMembershipsRemoved: 'All your team memberships will be removed',
+    sessionsTerminated: 'All your active sessions will be terminated',
+    checkoutsReleased: 'Any files you have checked out will be released',
+    auditHistoryPreserved:
+      'Activity history and file versions you created will be preserved for audit purposes',
+    irreversible: 'This action is irreversible',
+    irreversibleDescription:
+      'Once you delete your account, there is no way to recover it. You will need to create a new account and be invited to your organizations again.',
+    requestDelete: 'I want to delete my account',
+    confirmPrefix: 'To confirm, type',
+    confirmSuffix: 'below:',
+    confirmPlaceholder: 'Type “{{value}}” to confirm',
+    deleting: 'Deleting account...',
+    deletePermanently: 'Delete my account permanently',
+  },
+
   // Log viewer
   logs: {
     loadFailed: 'Unable to load log files',

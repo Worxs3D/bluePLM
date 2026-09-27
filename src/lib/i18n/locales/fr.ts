@@ -407,6 +407,32 @@ export const fr: TranslationDict = {
     revokeCode: 'Révoquer le code',
   },
 
+  deleteAccount: {
+    notSignedIn: 'Non connecté',
+    failed: 'Impossible de supprimer le compte : {{error}}',
+    unexpectedError: 'Une erreur inattendue s’est produite lors de la suppression du compte.',
+    deleted: 'Compte supprimé',
+    title: 'Supprimer le compte',
+    subtitle: 'Supprimer définitivement votre compte et vos données',
+    whatHappens: 'Conséquences de la suppression de votre compte :',
+    profileDeleted: 'Votre profil utilisateur sera définitivement supprimé',
+    removedFromOrganization: 'Vous serez retiré de votre organisation',
+    teamMembershipsRemoved: 'Toutes vos appartenances aux équipes seront supprimées',
+    sessionsTerminated: 'Toutes vos sessions actives seront fermées',
+    checkoutsReleased: 'Tous les fichiers que vous avez extraits seront libérés',
+    auditHistoryPreserved:
+      'L’historique des activités et les versions de fichiers que vous avez créées seront conservés à des fins d’audit',
+    irreversible: 'Cette action est irréversible',
+    irreversibleDescription:
+      'Après la suppression, votre compte ne pourra pas être récupéré. Vous devrez créer un nouveau compte et être invité à nouveau dans vos organisations.',
+    requestDelete: 'Je souhaite supprimer mon compte',
+    confirmPrefix: 'Pour confirmer, saisissez',
+    confirmSuffix: 'ci-dessous :',
+    confirmPlaceholder: 'Saisissez « {{value}} » pour confirmer',
+    deleting: 'Suppression du compte...',
+    deletePermanently: 'Supprimer définitivement mon compte',
+  },
+
   preferences: {
     title: 'Préférences',
     applicationUpdates: "Mises à jour de l'application",

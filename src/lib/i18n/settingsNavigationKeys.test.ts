@@ -122,6 +122,30 @@ const RECOVERY_CODE_KEYS = [
   'recoveryCodes.revokeCode',
 ] as const
 
+const DELETE_ACCOUNT_KEYS = [
+  'deleteAccount.notSignedIn',
+  'deleteAccount.failed',
+  'deleteAccount.unexpectedError',
+  'deleteAccount.deleted',
+  'deleteAccount.title',
+  'deleteAccount.subtitle',
+  'deleteAccount.whatHappens',
+  'deleteAccount.profileDeleted',
+  'deleteAccount.removedFromOrganization',
+  'deleteAccount.teamMembershipsRemoved',
+  'deleteAccount.sessionsTerminated',
+  'deleteAccount.checkoutsReleased',
+  'deleteAccount.auditHistoryPreserved',
+  'deleteAccount.irreversible',
+  'deleteAccount.irreversibleDescription',
+  'deleteAccount.requestDelete',
+  'deleteAccount.confirmPrefix',
+  'deleteAccount.confirmSuffix',
+  'deleteAccount.confirmPlaceholder',
+  'deleteAccount.deleting',
+  'deleteAccount.deletePermanently',
+] as const
+
 describe('settings navigation translations', () => {
   it.each(LOCALES)('defines every navigation and status key for %s', (locale) => {
     for (const key of SETTINGS_NAVIGATION_KEYS) {
@@ -147,6 +171,15 @@ describe('settings navigation translations', () => {
         count: 2,
         description: 'DESC',
       })
+      expect(value, `${locale}:${key}`).not.toBe(key)
+      expect(value.trim(), `${locale}:${key}`).not.toBe('')
+      expect(value, `${locale}:${key}`).not.toContain('{{')
+    }
+  })
+
+  it.each(LOCALES)('defines every account deletion key for %s', (locale) => {
+    for (const key of DELETE_ACCOUNT_KEYS) {
+      const value = getTranslation(locale, key, { error: 'ERR', value: 'VALUE' })
       expect(value, `${locale}:${key}`).not.toBe(key)
       expect(value.trim(), `${locale}:${key}`).not.toBe('')
       expect(value, `${locale}:${key}`).not.toContain('{{')

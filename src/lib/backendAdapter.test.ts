@@ -39,6 +39,7 @@ describe('backend capabilities', () => {
 
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('delete-account')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(false)
   })
 

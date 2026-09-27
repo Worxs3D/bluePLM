@@ -17,6 +17,7 @@ const sharedSettingsTabs = [
   'vaults',
   'team-members',
   'company-profile',
+  'delete-account',
   'item-designations',
   'recovery-codes',
   'solidworks',
@@ -42,7 +43,6 @@ const supabaseOnlySettingsTabs = [
   'api',
   'supabase',
   'vault-audit',
-  'delete-account',
   'extension-store',
 ] as const satisfies readonly SettingsTab[]
 

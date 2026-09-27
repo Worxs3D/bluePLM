@@ -403,6 +403,32 @@ export const pt: TranslationDict = {
     revokeCode: 'Revogar código',
   },
 
+  deleteAccount: {
+    notSignedIn: 'Sessão não iniciada',
+    failed: 'Não foi possível eliminar a conta: {{error}}',
+    unexpectedError: 'Ocorreu um erro inesperado ao eliminar a sua conta.',
+    deleted: 'Conta eliminada',
+    title: 'Eliminar conta',
+    subtitle: 'Eliminar permanentemente a sua conta e os seus dados',
+    whatHappens: 'O que acontece quando elimina a sua conta:',
+    profileDeleted: 'O seu perfil de utilizador será eliminado permanentemente',
+    removedFromOrganization: 'Será removido da sua organização',
+    teamMembershipsRemoved: 'Todas as suas associações a equipas serão removidas',
+    sessionsTerminated: 'Todas as suas sessões ativas serão terminadas',
+    checkoutsReleased: 'Todos os ficheiros que retirou serão libertados',
+    auditHistoryPreserved:
+      'O histórico de atividades e as versões de ficheiros que criou serão preservados para fins de auditoria',
+    irreversible: 'Esta ação é irreversível',
+    irreversibleDescription:
+      'Depois de eliminar a conta, não será possível recuperá-la. Terá de criar uma nova conta e ser novamente convidado para as suas organizações.',
+    requestDelete: 'Quero eliminar a minha conta',
+    confirmPrefix: 'Para confirmar, escreva',
+    confirmSuffix: 'abaixo:',
+    confirmPlaceholder: 'Escreva «{{value}}» para confirmar',
+    deleting: 'A eliminar a conta...',
+    deletePermanently: 'Eliminar permanentemente a minha conta',
+  },
+
   preferences: {
     title: 'Preferências',
     applicationUpdates: 'Atualizações da Aplicação',

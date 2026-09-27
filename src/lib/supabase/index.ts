@@ -25,6 +25,7 @@ export {
   checkIfSupplierAccount,
   getSupplierContact,
   signOut,
+  deleteCurrentAccount,
   getCurrentUser,
   getCurrentSession,
   getCurrentUserEmail,

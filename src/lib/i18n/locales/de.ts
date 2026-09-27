@@ -418,6 +418,32 @@ export const de: TranslationDict = {
     revokeCode: 'Code widerrufen',
   },
 
+  deleteAccount: {
+    notSignedIn: 'Nicht angemeldet',
+    failed: 'Konto konnte nicht gelöscht werden: {{error}}',
+    unexpectedError: 'Beim Löschen deines Kontos ist ein unerwarteter Fehler aufgetreten.',
+    deleted: 'Konto gelöscht',
+    title: 'Konto löschen',
+    subtitle: 'Dein Konto und deine Daten dauerhaft entfernen',
+    whatHappens: 'Folgendes geschieht beim Löschen deines Kontos:',
+    profileDeleted: 'Dein Benutzerprofil wird dauerhaft gelöscht',
+    removedFromOrganization: 'Du wirst aus deiner Organisation entfernt',
+    teamMembershipsRemoved: 'Alle deine Teammitgliedschaften werden entfernt',
+    sessionsTerminated: 'Alle deine aktiven Sitzungen werden beendet',
+    checkoutsReleased: 'Alle von dir ausgecheckten Dateien werden freigegeben',
+    auditHistoryPreserved:
+      'Von dir erstellte Aktivitätsverläufe und Dateiversionen bleiben für Prüfzwecke erhalten',
+    irreversible: 'Diese Aktion kann nicht rückgängig gemacht werden',
+    irreversibleDescription:
+      'Nach dem Löschen kann dein Konto nicht wiederhergestellt werden. Du musst ein neues Konto erstellen und erneut in deine Organisationen eingeladen werden.',
+    requestDelete: 'Ich möchte mein Konto löschen',
+    confirmPrefix: 'Gib zur Bestätigung',
+    confirmSuffix: 'unten ein:',
+    confirmPlaceholder: '„{{value}}“ zur Bestätigung eingeben',
+    deleting: 'Konto wird gelöscht ...',
+    deletePermanently: 'Mein Konto dauerhaft löschen',
+  },
+
   preferences: {
     title: 'Einstellungen',
     applicationUpdates: 'Anwendungsaktualisierungen',

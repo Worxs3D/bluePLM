@@ -1,6 +1,7 @@
 import { getSupabaseClient, authLog, getCurrentConfigValues, setSessionResolver } from './client'
 import {
   communityAccessToken,
+  deleteCommunityAccount,
   getCommunityPrincipal,
   signInCommunity,
   signOutCommunity,
@@ -463,6 +464,24 @@ export async function signOut() {
 
       const { error } = await client.auth.signOut()
       return { error }
+    },
+  })
+}
+
+/** Delete the current account through the selected backend without probing the inactive SDK. */
+export async function deleteCurrentAccount(): Promise<{ error: Error | null }> {
+  return routeBackend({
+    mdb: async () => {
+      try {
+        await deleteCommunityAccount()
+        return { error: null }
+      } catch (error) {
+        return { error: error instanceof Error ? error : new Error(String(error)) }
+      }
+    },
+    supabase: async () => {
+      const { error } = await getSupabaseClient().rpc('delete_user_account')
+      return { error: error ? new Error(error.message) : null }
     },
   })
 }
