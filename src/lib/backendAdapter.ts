@@ -4,7 +4,19 @@ import type { SettingsTab } from '@/types/settings'
 import type { ModuleId } from '@/types/modules'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
-export type BackendCapability = 'solidworks-license-management' | 'metadata-column-defaults'
+export type BackendCapability =
+  | 'solidworks-license-management'
+  | 'metadata-column-defaults'
+  | 'direct-account-provisioning'
+  | 'organization-invite-settings'
+  | 'editable-workflow-roles'
+  | 'job-titles'
+  | 'team-permissions'
+  | 'team-reviewers'
+  | 'community-authenticator'
+  | 'community-user-credentials'
+  | 'user-permissions'
+  | 'net-permissions'
 export type SettingsTabAvailability = 'supported' | 'in-development' | 'incompatible'
 
 export interface BackendRoutes<TMdb, TSupabase> {
@@ -56,10 +68,20 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
   community: new Set<BackendCapability>([
     'solidworks-license-management',
     'metadata-column-defaults',
+    'direct-account-provisioning',
+    'community-authenticator',
+    'community-user-credentials',
   ]),
   supabase: new Set<BackendCapability>([
     'solidworks-license-management',
     'metadata-column-defaults',
+    'organization-invite-settings',
+    'editable-workflow-roles',
+    'job-titles',
+    'team-permissions',
+    'team-reviewers',
+    'user-permissions',
+    'net-permissions',
   ]),
 }
 

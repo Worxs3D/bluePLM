@@ -33,7 +33,8 @@ import { UserRow } from './UserRow'
 import { UserVaultAccessDialog } from './UserVaultAccessDialog'
 import { EditCommunityUserCredentialsDialog } from './EditCommunityUserCredentialsDialog'
 import { UserProfileModal } from '@/features/settings/account'
-import { isBackendConfigured } from '@/lib/community'
+import { activeBackendSupports } from '@/lib/backendAdapter'
+import { BackendAvailabilityDialog } from '../../../../components/BackendAvailabilityNotice'
 import type { OrgUser } from '../../types'
 
 export interface ConnectedUserRowProps {
@@ -64,6 +65,9 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
   const isRealAdmin = currentUser?.role === 'admin'
+  const canViewNetPermissions = activeBackendSupports('net-permissions')
+  const canManageUserPermissions = activeBackendSupports('user-permissions')
+  const canManageCommunityCredentials = activeBackendSupports('community-user-credentials')
 
   // Data hooks (these are cached, so calling them in each row is efficient)
   const { teams } = useTeams(orgId)
@@ -103,6 +107,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   // Local state for job title editing
   const [, setEditingJobTitleUser] = useState<OrgUser | null>(null)
   const [editingCredentialsUser, setEditingCredentialsUser] = useState<OrgUser | null>(null)
+  const [showUnavailableFeature, setShowUnavailableFeature] = useState(false)
 
   // Derive props
   const isCurrentUser = user.id === currentUser?.id
@@ -187,9 +192,10 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         compact={compact}
         // Profile & View actions
         onViewProfile={() => setViewingUserId(user.id)}
-        onViewNetPermissions={
-          !isBackendConfigured('community') ? () => setViewingPermissionsUser(user) : undefined
-        }
+        onViewNetPermissions={() => {
+          if (canViewNetPermissions) setViewingPermissionsUser(user)
+          else setShowUnavailableFeature(true)
+        }}
         // Simulate permissions (impersonation)
         onSimulatePermissions={() => startUserImpersonation(user.id)}
         isSimulating={impersonatedUser?.id === user.id}
@@ -204,14 +210,15 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         onVaultAccess={() => openVaultAccessEditor(user)}
         vaultAccessCount={getUserVaultAccessCount(user.id, userTeamIds, user.role)}
         // Permissions
-        onPermissions={
-          isAdmin && !isBackendConfigured('community') ? () => setEditingPermissionsUser(user) : undefined
-        }
+        onPermissions={isAdmin ? () => {
+          if (canManageUserPermissions) setEditingPermissionsUser(user)
+          else setShowUnavailableFeature(true)
+        } : undefined}
         // Community credentials are managed directly by the Community PHP API.
         // Do not expose this action in a Supabase installation (or for oneself,
         // because a password/email update intentionally revokes its sessions).
         onManageCredentials={
-          isAdmin && !isCurrentUser && isBackendConfigured('community')
+          isAdmin && !isCurrentUser && canManageCommunityCredentials
             ? () => setEditingCredentialsUser(user)
             : undefined
         }
@@ -249,6 +256,12 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
           user={editingCredentialsUser}
           onClose={() => setEditingCredentialsUser(null)}
           onUpdated={loadMembers}
+        />
+      )}
+      {showUnavailableFeature && (
+        <BackendAvailabilityDialog
+          availability="incompatible"
+          onClose={() => setShowUnavailableFeature(false)}
         />
       )}
     </>

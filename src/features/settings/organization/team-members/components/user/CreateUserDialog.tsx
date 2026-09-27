@@ -11,7 +11,7 @@ import {
   createCommunityUser,
   setCommunityUserVaultAccess,
 } from '@/lib/community'
-import { isMdbBackendActive } from '@/lib/backendAdapter'
+import { activeBackendSupports } from '@/lib/backendAdapter'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { TeamWithDetails, WorkflowRoleBasic } from '../../types'
 import { resolveMdbUserVaultAccess } from '../../utils'
@@ -52,7 +52,7 @@ export function CreateUserDialog({
 }: CreateUserDialogProps) {
   const { t } = useTranslation()
   const { addToast } = usePDMStore()
-  const isMdbBackend = isMdbBackendActive()
+  const isMdbBackend = activeBackendSupports('direct-account-provisioning')
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')

@@ -1,9 +1,9 @@
 import { lazy, Suspense } from 'react'
-import { CircleSlash2, Construction, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import type { SettingsTab } from '@/types/settings'
 import { ExtensionStoreView } from '@/features/extensions'
 import { getActiveBackendSettingsTabAvailability } from '@/lib/backendAdapter'
-import { useTranslation } from '@/lib/i18n'
+import { BackendAvailabilityNotice } from './BackendAvailabilityNotice'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
@@ -116,41 +116,12 @@ function SettingsLoading() {
   )
 }
 
-function UnavailableSettingsPanel({
-  availability,
-}: {
-  availability: 'in-development' | 'incompatible'
-}) {
-  const { t } = useTranslation()
-  const inDevelopment = availability === 'in-development'
-  const Icon = inDevelopment ? Construction : CircleSlash2
-  return (
-    <div className="rounded-xl border border-plm-border bg-plm-bg p-8 text-center">
-      <Icon size={32} className="mx-auto mb-4 text-plm-fg-muted" />
-      <h2 className="text-lg font-semibold text-plm-fg">
-        {t(
-          inDevelopment
-            ? 'settingsPages.availability.inDevelopmentTitle'
-            : 'settingsPages.availability.incompatibleTitle',
-        )}
-      </h2>
-      <p className="mt-2 text-sm text-plm-fg-muted">
-        {t(
-          inDevelopment
-            ? 'settingsPages.availability.inDevelopmentDescription'
-            : 'settingsPages.availability.incompatibleDescription',
-        )}
-      </p>
-    </div>
-  )
-}
-
 export function SettingsContent({ activeTab }: SettingsContentProps) {
   const availability = getActiveBackendSettingsTabAvailability(activeTab)
 
   const renderContent = () => {
     if (availability !== 'supported') {
-      return <UnavailableSettingsPanel availability={availability} />
+      return <BackendAvailabilityNotice availability={availability} />
     }
     switch (activeTab) {
       case 'profile':

@@ -33,8 +33,9 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { getCurrentConfig, supabase } from '@/lib/supabase'
 import { generateOrgCode } from '@/lib/supabaseConfig'
 import { subscribeToMemberChanges } from '@/lib/realtime'
-import { isBackendConfigured } from '@/lib/community'
+import { activeBackendSupports } from '@/lib/backendAdapter'
 import { usePDMStore } from '@/stores/pdmStore'
+import { BackendAvailabilityNotice } from '../components/BackendAvailabilityNotice'
 
 // Import components and hooks from team-members
 import {
@@ -72,7 +73,9 @@ export function TeamMembersSettings() {
   const { user, organization, getEffectiveRole, apiServerUrl, addToast } = usePDMStore()
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
-  const isCommunityBackend = isBackendConfigured('community')
+  const supportsInviteSettings = activeBackendSupports('organization-invite-settings')
+  const canEditWorkflowRoles = activeBackendSupports('editable-workflow-roles')
+  const supportsJobTitles = activeBackendSupports('job-titles')
 
   // Track if we're currently saving to avoid overwriting with stale realtime data
   const savingRef = useRef(false)
@@ -323,7 +326,7 @@ export function TeamMembersSettings() {
   // ===== EMAIL DOMAIN EFFECTS =====
   // Load email domain settings
   useEffect(() => {
-    if (!organization?.id || isCommunityBackend) {
+    if (!organization?.id || !supportsInviteSettings) {
       setLoadingEmailSettings(false)
       return
     }
@@ -351,7 +354,7 @@ export function TeamMembersSettings() {
     }
 
     loadEmailSettings()
-  }, [organization?.id, isCommunityBackend])
+  }, [organization?.id, supportsInviteSettings])
 
   // Sync with realtime organization changes (when another admin updates settings)
   useEffect(() => {
@@ -386,7 +389,7 @@ export function TeamMembersSettings() {
   // ===== REALTIME SUBSCRIPTION =====
   // Subscribe to member attribute changes (teams, roles, titles) for instant sync
   useEffect(() => {
-    if (isCommunityBackend) return
+    if (!supportsInviteSettings) return
     if (!orgId) return
 
     const unsubscribe = subscribeToMemberChanges(orgId, (changeType, _eventType, _userId) => {
@@ -409,7 +412,7 @@ export function TeamMembersSettings() {
     })
 
     return unsubscribe
-  }, [orgId, isCommunityBackend, loadMembers, loadTeams, loadWorkflowRoles, loadJobTitles])
+  }, [orgId, supportsInviteSettings, loadMembers, loadTeams, loadWorkflowRoles, loadJobTitles])
 
   // ===== RENDER =====
   if (!organization) {
@@ -469,7 +472,7 @@ export function TeamMembersSettings() {
               Add Team
             </button>
           )}
-          {isAdmin && !isCommunityBackend && activeTab === 'roles' && (
+          {isAdmin && canEditWorkflowRoles && activeTab === 'roles' && (
             <button
               onClick={() => setShowCreateWorkflowRoleDialog(true)}
               className="btn btn-primary btn-sm flex items-center gap-1"
@@ -479,7 +482,7 @@ export function TeamMembersSettings() {
               Add Role
             </button>
           )}
-          {isAdmin && !isCommunityBackend && activeTab === 'titles' && (
+          {isAdmin && supportsJobTitles && activeTab === 'titles' && (
             <button
               onClick={() => openCreateJobTitle()}
               className="btn btn-primary btn-sm flex items-center gap-1"
@@ -493,7 +496,7 @@ export function TeamMembersSettings() {
       </div>
 
       {/* Organization Access Settings (Admin only) */}
-      {isAdmin && !isCommunityBackend && (
+      {isAdmin && supportsInviteSettings && (
         <div className="bg-plm-bg rounded-lg border border-plm-border divide-y divide-plm-border">
           {/* Organization Code - Inline with copy */}
           <div className="flex items-center justify-between p-3">
@@ -682,8 +685,7 @@ export function TeamMembersSettings() {
             </span>
           )}
         </button>
-        {!isCommunityBackend && (
-          <button
+        <button
             onClick={() => setActiveTab('roles')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${
               activeTab === 'roles'
@@ -702,10 +704,8 @@ export function TeamMembersSettings() {
                 {workflowRoles.length}
               </span>
             )}
-          </button>
-        )}
-        {!isCommunityBackend && (
-          <button
+        </button>
+        <button
             onClick={() => setActiveTab('titles')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${
               activeTab === 'titles'
@@ -724,8 +724,7 @@ export function TeamMembersSettings() {
                 {jobTitles.length}
               </span>
             )}
-          </button>
-        )}
+        </button>
       </div>
 
       {/* Search */}
@@ -769,17 +768,20 @@ export function TeamMembersSettings() {
               }}
             />
           )}
-          {!isCommunityBackend && activeTab === 'roles' && (
+          {activeTab === 'roles' && (
             <RolesTab
               searchQuery={searchQuery}
               onShowCreateRoleDialog={() => setShowCreateWorkflowRoleDialog(true)}
             />
           )}
-          {!isCommunityBackend && activeTab === 'titles' && (
+          {supportsJobTitles && activeTab === 'titles' && (
             <TitlesTab
               searchQuery={searchQuery}
               onShowCreateTitleDialog={() => openCreateJobTitle()}
             />
+          )}
+          {!supportsJobTitles && activeTab === 'titles' && (
+            <BackendAvailabilityNotice availability="incompatible" />
           )}
         </div>
       )}

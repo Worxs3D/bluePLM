@@ -30,7 +30,7 @@ import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { getMachineId } from '@/lib/backup'
 import { useTranslation } from '@/lib/i18n'
 import { ContributionHistory } from '../system/ContributionHistory'
-import { isBackendConfigured } from '@/lib/community'
+import { activeBackendSupports } from '@/lib/backendAdapter'
 import { CommunityAuthenticatorSettings } from './CommunityAuthenticatorSettings'
 
 interface UserSession {
@@ -313,7 +313,7 @@ export function AccountSettings() {
         </div>
       </section>
 
-      {isBackendConfigured('community') && <CommunityAuthenticatorSettings />}
+      {activeBackendSupports('community-authenticator') && <CommunityAuthenticatorSettings />}
 
       {/* Contribution History */}
       <ContributionHistory />
