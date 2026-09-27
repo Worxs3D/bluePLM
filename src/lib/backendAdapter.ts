@@ -3,63 +3,56 @@ import type { BackendKind } from './backend'
 import type { SettingsTab } from '@/types/settings'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
-export type BackendCapability = 'solidworks-license-management' | `settings:${SettingsTab}`
+export type BackendCapability = 'solidworks-license-management'
 
 export interface BackendRoutes<TMdb, TSupabase> {
   mdb: () => TMdb
   supabase: () => TSupabase
 }
 
-const sharedSettingsTabs = [
-  'preferences',
-  'keybindings',
-  'modules',
-  'vaults',
-  'team-members',
-  'company-profile',
-  'delete-account',
-  'item-designations',
-  'recovery-codes',
-  'solidworks',
-  'google-drive',
-  'performance',
-  'logs',
-  'dev-tools',
-  'about',
-] as const satisfies readonly SettingsTab[]
+const allBackends = new Set<BackendKind>(['community', 'supabase'])
+const supabaseOnly = new Set<BackendKind>(['supabase'])
 
-const supabaseOnlySettingsTabs = [
-  'profile',
-  'module-access',
-  'auth-providers',
-  'serialization',
-  'export',
-  'rfq',
-  'metadata-columns',
-  'backup',
-  'odoo',
-  'slack',
-  'webhooks',
-  'api',
-  'supabase',
-  'vault-audit',
-  'extension-store',
-] as const satisfies readonly SettingsTab[]
-
-function settingsCapabilities(tabs: readonly SettingsTab[]): BackendCapability[] {
-  return tabs.map((tab) => `settings:${tab}` as const)
+/**
+ * Exhaustive feature matrix: adding a SettingsTab requires an explicit backend
+ * support decision here before TypeScript will compile.
+ */
+const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
+  profile: supabaseOnly,
+  preferences: allBackends,
+  keybindings: allBackends,
+  modules: allBackends,
+  vaults: allBackends,
+  'team-members': allBackends,
+  'module-access': supabaseOnly,
+  'company-profile': allBackends,
+  'auth-providers': supabaseOnly,
+  serialization: supabaseOnly,
+  export: supabaseOnly,
+  rfq: supabaseOnly,
+  'metadata-columns': supabaseOnly,
+  'item-designations': allBackends,
+  backup: supabaseOnly,
+  solidworks: allBackends,
+  'google-drive': allBackends,
+  odoo: supabaseOnly,
+  slack: supabaseOnly,
+  webhooks: supabaseOnly,
+  api: supabaseOnly,
+  supabase: supabaseOnly,
+  'recovery-codes': allBackends,
+  'vault-audit': supabaseOnly,
+  performance: allBackends,
+  logs: allBackends,
+  'dev-tools': allBackends,
+  about: allBackends,
+  'delete-account': allBackends,
+  'extension-store': supabaseOnly,
 }
 
 const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> = {
-  community: new Set<BackendCapability>([
-    ...settingsCapabilities(sharedSettingsTabs),
-    'solidworks-license-management',
-  ]),
-  supabase: new Set<BackendCapability>([
-    ...settingsCapabilities(sharedSettingsTabs),
-    ...settingsCapabilities(supabaseOnlySettingsTabs),
-    'solidworks-license-management',
-  ]),
+  community: new Set<BackendCapability>(['solidworks-license-management']),
+  supabase: new Set<BackendCapability>(['solidworks-license-management']),
 }
 
 /**
@@ -110,5 +103,6 @@ export function activeBackendSupports(capability: BackendCapability): boolean {
 
 /** Keep Settings navigation availability behind the backend adapter seam. */
 export function activeBackendSupportsSettingsTab(tab: SettingsTab): boolean {
-  return activeBackendSupports(`settings:${tab}`)
+  const backend = getActiveBackendKind()
+  return backend ? settingsTabBackends[tab].has(backend) : false
 }
