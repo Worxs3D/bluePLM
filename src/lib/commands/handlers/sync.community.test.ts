@@ -25,10 +25,16 @@ vi.mock('@/lib/community', () => ({
   communityObjectStoragePath: (...args: unknown[]) => communityObjectStoragePath(...args),
 }))
 
-vi.mock('@/lib/logger', () => ({ log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
-vi.mock('../../../stores/pdmStore', () => ({ usePDMStore: { getState: () => ({ ignoreSolidworksTempFiles: false }) } }))
+vi.mock('@/lib/logger', () => ({
+  log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
+vi.mock('../../../stores/pdmStore', () => ({
+  usePDMStore: { getState: () => ({ ignoreSolidworksTempFiles: false }) },
+}))
 vi.mock('../../fileOperationTracker', () => ({
-  FileOperationTracker: { start: () => ({ startStep: () => 'step', endStep: () => {}, endOperation: () => {} }) },
+  FileOperationTracker: {
+    start: () => ({ startStep: () => 'step', endStep: () => {}, endOperation: () => {} }),
+  },
 }))
 vi.mock('../../cache/localSyncIndex', () => ({ addToSyncIndex: vi.fn(() => Promise.resolve()) }))
 
@@ -36,7 +42,7 @@ const { syncCommand } = await import('./sync')
 
 const hash = 'a'.repeat(64)
 
-function newFile(): LocalFile {
+function newFile(partNumber?: string): LocalFile {
   return {
     name: 'bracket.sldprt',
     path: 'C:/BluePLM-Work/bracket.sldprt',
@@ -45,6 +51,7 @@ function newFile(): LocalFile {
     extension: '.sldprt',
     size: 42,
     modifiedTime: new Date().toISOString(),
+    pendingMetadata: partNumber ? { part_number: partNumber } : undefined,
   } as LocalFile
 }
 
@@ -71,7 +78,10 @@ function context(file: LocalFile): CommandContext {
 describe('syncCommand Community first check-in', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getCommunityVault.mockResolvedValue({ storageProvider: 'network', networkRoot: '\\\\vault-host\\blueplm' })
+    getCommunityVault.mockResolvedValue({
+      storageProvider: 'network',
+      networkRoot: '\\\\vault-host\\blueplm',
+    })
     communityObjectStoragePath.mockReturnValue(`.blueplm/objects/aa/${hash}`)
     copyFile.mockResolvedValue({ success: true })
     hashFile.mockResolvedValue({ success: true, hash, size: 42 })
@@ -98,11 +108,22 @@ describe('syncCommand Community first check-in', () => {
       canonicalPath: 'Parts/bracket.sldprt',
       storageRelativePath: `.blueplm/objects/aa/${hash}`,
       fileName: 'bracket.sldprt',
+      partNumber: null,
       contentHash: hash,
       sizeBytes: 42,
     })
     expect(syncFile).not.toHaveBeenCalled()
     expect(result).toMatchObject({ success: true, total: 1, succeeded: 1, failed: 0 })
+  })
+
+  it('persists the resolved part number with the MDB file record', async () => {
+    const file = newFile('PN-00042')
+
+    await syncCommand.execute({ files: [file] }, context(file))
+
+    expect(importCommunityFile).toHaveBeenCalledWith(
+      expect.objectContaining({ partNumber: 'PN-00042' }),
+    )
   })
 
   it('does not register a file when the staged revision cannot be verified', async () => {

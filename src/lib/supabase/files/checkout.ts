@@ -227,6 +227,7 @@ export async function checkinFile(
           contentHash: options.newContentHash,
           sizeBytes: options.newFileSize,
           comment: options.comment,
+          partNumber: options.pendingMetadata?.part_number,
         })
         return {
           success: true,
@@ -236,11 +237,15 @@ export async function checkinFile(
             revision: String(result.revision),
             content_hash: options.newContentHash ?? null,
             file_size: options.newFileSize ?? null,
+            part_number:
+              options.pendingMetadata?.part_number === undefined
+                ? undefined
+                : options.pendingMetadata.part_number,
             checked_out_by: null,
             checked_out_at: null,
           },
           contentChanged: true,
-          metadataChanged: false,
+          metadataChanged: options.pendingMetadata?.part_number !== undefined,
           inspectionChanged: false,
           machineMismatchWarning: null,
         }

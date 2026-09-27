@@ -26,10 +26,13 @@ import {
   getCommunityOrganization,
   getCommunityPrincipal,
   isBackendConfigured,
+  loadCommunityConfig,
   onCommunityAuthChange,
   signOutCommunity,
+  validateCommunityConfig,
 } from '@/lib/community'
 import type { Organization } from '@/types/pdm'
+import { t } from '@/lib/i18n'
 
 const STATUS_MESSAGE_CLEAR_MS = 3_000
 const CONNECT_TIMEOUT_MS = 90_000
@@ -230,6 +233,16 @@ export function useAuth() {
         const epoch = ++hydrationEpoch
         setAuthInitialized(false)
         try {
+          const config = loadCommunityConfig()
+          if (!config) throw new Error('Community backend is not configured.')
+          const compatibility = await validateCommunityConfig(config.serverUrl)
+          if (!compatibility.valid) {
+            log.error('[Auth]', 'Community backend compatibility check failed', {
+              error: compatibility.error,
+            })
+            addToast('error', t('mdbSetup.backendConnectionFailed'))
+            throw new Error(compatibility.error ?? 'Community backend is incompatible.')
+          }
           const [principal, organization] = await Promise.all([
             getCommunityPrincipal(),
             getCommunityOrganization(),

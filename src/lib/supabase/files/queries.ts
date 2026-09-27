@@ -40,7 +40,7 @@ function communityFileToPdm(file: CommunityFile, vaultId: string) {
     file_name: file.fileName,
     extension,
     file_type: null,
-    part_number: null,
+    part_number: file.partNumber,
     description: null,
     revision: String(file.currentRevision),
     version: file.currentRevision,

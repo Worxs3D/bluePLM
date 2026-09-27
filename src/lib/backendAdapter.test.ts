@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { activateBackend, clearBackendProfile } from './backend'
 import {
   activeBackendSupports,
+  activeBackendSupportsModule,
   activeBackendSupportsSettingsTab,
   mapMdbRole,
   routeBackend,
@@ -41,11 +42,14 @@ describe('backend capabilities', () => {
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
     expect(activeBackendSupportsSettingsTab('delete-account')).toBe(true)
     expect(activeBackendSupportsSettingsTab('module-access')).toBe(true)
-    expect(activeBackendSupportsSettingsTab('auth-providers')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('auth-providers')).toBe(false)
     expect(activeBackendSupportsSettingsTab('serialization')).toBe(true)
     expect(activeBackendSupportsSettingsTab('export')).toBe(true)
     expect(activeBackendSupportsSettingsTab('rfq')).toBe(true)
     expect(activeBackendSupportsSettingsTab('metadata-columns')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('google-drive')).toBe(false)
+    expect(activeBackendSupportsModule('google-drive')).toBe(false)
+    expect(activeBackendSupportsModule('explorer')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(false)
   })
 
@@ -55,6 +59,9 @@ describe('backend capabilities', () => {
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(true)
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('auth-providers')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('google-drive')).toBe(true)
+    expect(activeBackendSupportsModule('google-drive')).toBe(true)
   })
 
   it('maps MDB viewer and guest accounts to the least-privileged client role', () => {

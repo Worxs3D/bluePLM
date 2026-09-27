@@ -8,6 +8,8 @@ vi.mock('electron', () => ({
 import {
   ftpAccessOptions,
   ftpBase,
+  installerBridge,
+  orderBundleRelativePaths,
   resolveSecrets,
   type MdbProvisionRequest,
 } from './mdbInstaller'
@@ -65,15 +67,49 @@ describe('MDB installer transport', () => {
   })
 
   it('maps the selected FTPS mode to the secure basic-ftp transport', () => {
-    expect(ftpAccessOptions(ftpBase('ftps://ftp.example.test:21', 'explicit'), 'explicit')).toEqual({
-      host: 'ftp.example.test',
-      port: 21,
-      secure: true,
-    })
-    expect(ftpAccessOptions(ftpBase('ftps://ftp.example.test:990', 'implicit'), 'implicit')).toEqual({
+    expect(ftpAccessOptions(ftpBase('ftps://ftp.example.test:21', 'explicit'), 'explicit')).toEqual(
+      {
+        host: 'ftp.example.test',
+        port: 21,
+        secure: true,
+      },
+    )
+    expect(
+      ftpAccessOptions(ftpBase('ftps://ftp.example.test:990', 'implicit'), 'implicit'),
+    ).toEqual({
       host: 'ftp.example.test',
       port: 990,
       secure: 'implicit',
     })
+  })
+})
+
+describe('MDB staged deployment', () => {
+  it('publishes the front controller last', () => {
+    expect(
+      orderBundleRelativePaths([
+        'public/index.php',
+        'src/Runtime.php',
+        'migrations/001_init.sql',
+        'public/admin/index.php',
+      ]),
+    ).toEqual([
+      'migrations/001_init.sql',
+      'public/admin/index.php',
+      'src/Runtime.php',
+      'public/index.php',
+    ])
+  })
+
+  it('limits the temporary bridge to authenticated installer routes', () => {
+    const bridge = installerBridge('blueplm-stage-0123456789abcdef01234567')
+    expect(bridge).toContain("'/installer/database-status'")
+    expect(bridge).toContain("'/installer/commit'")
+    expect(bridge).toContain("$_SERVER['BLUEPLM_LIVE_ROOT']")
+    expect(bridge).not.toContain('installationToken')
+  })
+
+  it('rejects a stage name that could escape the deployment root', () => {
+    expect(() => installerBridge('../outside')).toThrow('Invalid installer stage name')
   })
 })

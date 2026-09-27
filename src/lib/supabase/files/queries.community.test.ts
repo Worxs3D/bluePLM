@@ -27,6 +27,7 @@ describe('Community lightweight file loading', () => {
         id: 'file-1',
         canonicalPath: 'Rollenlager/04er_Rolle_V.3mf',
         fileName: '04er_Rolle_V.3mf',
+        partNumber: 'PN-00042',
         storageRelativePath: '.blueplm/objects/ab/abcdef',
         currentRevision: 1,
         state: 'released',
@@ -47,6 +48,7 @@ describe('Community lightweight file loading', () => {
     expect(result.files?.[0]).toMatchObject({
       storage_relative_path: '.blueplm/objects/ab/abcdef',
       _communityStorageRelativePath: '.blueplm/objects/ab/abcdef',
+      part_number: 'PN-00042',
     })
   })
 })

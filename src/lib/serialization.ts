@@ -7,6 +7,8 @@ import { isPathHidden, readHiddenFolderPaths } from './hiddenFolders'
 import { routeBackend } from './backendAdapter'
 import {
   allocateCommunitySerialNumber,
+  communitySerialNumberExists,
+  getCommunitySerialInventory,
   previewCommunitySerialNumber,
 } from './community'
 import { getOrganizationSetting, setOrganizationSetting } from './organizationSettings'
@@ -81,7 +83,8 @@ export async function getNextSerialNumber(orgId: string): Promise<string | null>
       supabase: async () => {
         // Supabase v2 RPC type inference incomplete for custom functions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase.rpc as any)('get_next_serial_number', { // TODO: type this
+        const { data, error } = await (supabase.rpc as any)('get_next_serial_number', {
+          // TODO: type this
           p_org_id: orgId,
         })
         if (error) throw error
@@ -108,7 +111,8 @@ export async function previewNextSerialNumber(orgId: string): Promise<string | n
       supabase: async () => {
         // Supabase v2 RPC type inference incomplete for custom functions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase.rpc as any)('preview_next_serial_number', { // TODO: type this
+        const { data, error } = await (supabase.rpc as any)('preview_next_serial_number', {
+          // TODO: type this
           p_org_id: orgId,
         })
         if (error) throw error
@@ -129,10 +133,7 @@ export async function previewNextSerialNumber(orgId: string): Promise<string | n
  */
 export async function getSerializationSettings(orgId: string): Promise<SerializationSettings> {
   try {
-    const settings = await getOrganizationSetting<SerializationSettings>(
-      'serialization',
-      orgId,
-    )
+    const settings = await getOrganizationSetting<SerializationSettings>('serialization', orgId)
     return {
       ...DEFAULT_SETTINGS,
       ...settings,
@@ -305,19 +306,20 @@ export function matchesSerialFormat(
  */
 export async function serialNumberExists(orgId: string, serialNumber: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('files')
-      .select('id')
-      .eq('org_id', orgId)
-      .eq('part_number', serialNumber)
-      .limit(1)
+    return await routeBackend({
+      mdb: () => communitySerialNumberExists(serialNumber),
+      supabase: async () => {
+        const { data, error } = await supabase
+          .from('files')
+          .select('id')
+          .eq('org_id', orgId)
+          .eq('part_number', serialNumber)
+          .limit(1)
 
-    if (error) {
-      log.error('[Serialization]', 'Failed to check serial number existence', { error })
-      return false // Assume doesn't exist on error
-    }
-
-    return (data?.length ?? 0) > 0
+        if (error) throw error
+        return (data?.length ?? 0) > 0
+      },
+    })
   } catch (error) {
     log.error('[Serialization]', 'Error checking serial number', { error: error })
     return false
@@ -636,24 +638,29 @@ export async function detectHighestSerialNumber(
   orgId: string,
 ): Promise<HighestSerialScanResult | null> {
   try {
-    const [settings, hiddenPaths] = await Promise.all([
-      getSerializationSettings(orgId),
-      getAdminOnlyFolders(orgId),
-    ])
-
-    // Fetch all part numbers from the organization
-    const { data, error } = await supabase
-      .from('files')
-      .select('part_number, file_path')
-      .eq('org_id', orgId)
-      .not('part_number', 'is', null)
-
-    if (error) {
-      log.error('[Serialization]', 'Failed to scan files', { error })
-      return null
-    }
-
-    const rows = (data || []) as { part_number: string | null; file_path: string | null }[]
+    const settings = await getSerializationSettings(orgId)
+    const { rows, hiddenPaths } = await routeBackend({
+      mdb: async () => ({
+        rows: (await getCommunitySerialInventory()).map((file) => ({
+          part_number: file.partNumber,
+          file_path: file.filePath,
+        })),
+        hiddenPaths: [] as string[],
+      }),
+      supabase: async () => {
+        const hiddenPaths = await getAdminOnlyFolders(orgId)
+        const { data, error } = await supabase
+          .from('files')
+          .select('part_number, file_path')
+          .eq('org_id', orgId)
+          .not('part_number', 'is', null)
+        if (error) throw error
+        return {
+          rows: (data || []) as { part_number: string | null; file_path: string | null }[],
+          hiddenPaths,
+        }
+      },
+    })
     const partNumbers: string[] = []
     let skippedHidden = 0
 

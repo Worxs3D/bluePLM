@@ -10,6 +10,8 @@ import { isBackendConfigured } from './backendAdapter'
 
 export { isBackendConfigured } from './backendAdapter'
 
+export const COMMUNITY_API_VERSION = 2
+
 const STORAGE_KEY = 'blueplm-community-config'
 const CHECKOUTS_STORAGE_KEY = 'blueplm-community-checkouts'
 
@@ -105,6 +107,7 @@ export interface CommunityFile {
   id: string
   canonicalPath: string
   fileName: string
+  partNumber: string | null
   storageRelativePath: string
   currentRevision: number
   state: string
@@ -332,8 +335,12 @@ export async function validateCommunityConfig(serverUrl: string): Promise<{ vali
     const normalized = normalizeServerUrl(serverUrl)
     const response = await fetch(new URL('/health', `${normalized}/`))
     if (!response.ok) return { valid: false, error: `Backend returned HTTP ${response.status}.` }
-    const body = await response.json() as { supabase?: boolean }
-    return body.supabase === false ? { valid: true } : { valid: false, error: 'This is not a BluePLM Community backend.' }
+    const body = await response.json() as { supabase?: boolean; apiVersion?: number }
+    if (body.supabase !== false) return { valid: false, error: 'This is not a BluePLM Community backend.' }
+    if (!Number.isInteger(body.apiVersion) || body.apiVersion! < COMMUNITY_API_VERSION) {
+      return { valid: false, error: `The MariaDB backend is outdated. Install API version ${COMMUNITY_API_VERSION} or newer.` }
+    }
+    return { valid: true }
   } catch (error) {
     return { valid: false, error: error instanceof Error ? error.message : 'Backend is unreachable.' }
   }
@@ -464,6 +471,22 @@ export async function allocateCommunitySerialNumber(): Promise<string | null> {
       { method: 'POST' },
     )
   ).serialNumber
+}
+
+export async function communitySerialNumberExists(serialNumber: string): Promise<boolean> {
+  return (
+    await request<{ exists: boolean }>(
+      `/organizations/current/serialization/exists?serial=${encodeURIComponent(serialNumber)}`,
+    )
+  ).exists
+}
+
+export async function getCommunitySerialInventory(): Promise<Array<{ partNumber: string; filePath: string }>> {
+  return (
+    await request<{ files: Array<{ partNumber: string; filePath: string }> }>(
+      '/organizations/current/serialization/files',
+    )
+  ).files
 }
 
 export async function getCommunityModuleAccessConfig(): Promise<CommunityModuleAccessRow[]> {
@@ -657,6 +680,7 @@ export async function importCommunityFile(payload: {
   canonicalPath: string
   storageRelativePath: string
   fileName: string
+  partNumber?: string | null
   contentHash: string
   sizeBytes: number
 }): Promise<{ id: string; created: boolean }> {
@@ -1169,7 +1193,7 @@ export async function checkoutCommunityFile(fileId: string, clientWorkingPath: s
 
 export async function checkinCommunityFile(
   fileId: string,
-  payload: { storageRelativePath: string; contentHash?: string; sizeBytes?: number; comment?: string },
+  payload: { storageRelativePath: string; contentHash?: string; sizeBytes?: number; comment?: string; partNumber?: string | null },
 ): Promise<{ revision: number }> {
   const checkout = loadCommunityCheckouts()[fileId]
   if (!checkout?.token) throw new Error('This file has no Community checkout on this client.')

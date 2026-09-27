@@ -153,7 +153,9 @@ export function ftpBase(raw: string, security: MdbFtpsSecurity): URL {
     url.search ||
     url.hash
   )
-    fail('Use an ftps:// server URL with the port matching the selected TLS mode and without credentials.')
+    fail(
+      'Use an ftps:// server URL with the port matching the selected TLS mode and without credentials.',
+    )
   return url
 }
 
@@ -245,6 +247,69 @@ async function removeRemoteFile(
   }
 }
 
+async function removeRemoteDirectory(
+  ftp: URL,
+  security: MdbFtpsSecurity,
+  destination: string,
+  username: string,
+  password: string,
+): Promise<void> {
+  const client = new Client(30_000)
+  client.ftp.verbose = false
+  const base = ftp.pathname.replace(/\/$/, '')
+  const remote = `${base}/${destination}`.replaceAll('//', '/')
+  try {
+    await client.access({
+      ...ftpAccessOptions(ftp, security),
+      user: username,
+      password,
+    })
+    await client.removeDir(remote)
+  } finally {
+    client.close()
+  }
+}
+
+async function replaceRemoteFile(
+  ftp: URL,
+  security: MdbFtpsSecurity,
+  source: string,
+  destination: string,
+  username: string,
+  password: string,
+): Promise<void> {
+  const client = new Client(30_000)
+  client.ftp.verbose = false
+  const base = ftp.pathname.replace(/\/$/, '')
+  const sourceRemote = `${base}/${source}`.replaceAll('//', '/')
+  const destinationRemote = `${base}/${destination}`.replaceAll('//', '/')
+  const backupRemote = `${destinationRemote}.blueplm-backup`
+  let movedExisting = false
+  try {
+    await client.access({
+      ...ftpAccessOptions(ftp, security),
+      user: username,
+      password,
+    })
+    await client.remove(backupRemote, true)
+    try {
+      await client.rename(destinationRemote, backupRemote)
+      movedExisting = true
+    } catch {
+      // The destination does not exist on a first installation.
+    }
+    try {
+      await client.rename(sourceRemote, destinationRemote)
+    } catch (error) {
+      if (movedExisting) await client.rename(backupRemote, destinationRemote).catch(() => undefined)
+      throw error
+    }
+    if (movedExisting) await client.remove(backupRemote, true)
+  } finally {
+    client.close()
+  }
+}
+
 async function testFtpConnection(
   request: MdbFtpTestRequest,
 ): Promise<{ success: boolean; error?: string }> {
@@ -307,15 +372,19 @@ function environment(
 
 async function installerRequest<T>(
   publicUrl: URL,
+  bridgeName: string,
   route: '/installer/database-status' | '/installer/commit',
   payload: Record<string, unknown>,
 ): Promise<T> {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   try {
-    const response = await fetch(new URL(route, publicUrl), {
+    const response = await fetch(new URL(bridgeName, publicUrl), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-BluePLM-Installer-Route': route,
+      },
       signal: abort.signal,
       body: JSON.stringify(payload),
     })
@@ -335,11 +404,47 @@ async function installerRequest<T>(
   }
 }
 
+export function orderBundleRelativePaths(relativePaths: string[]): string[] {
+  return [...relativePaths].sort((left, right) => {
+    if (left === 'public/index.php') return 1
+    if (right === 'public/index.php') return -1
+    return left.localeCompare(right)
+  })
+}
+
+export function installerBridge(stageName: string): string {
+  if (!/^blueplm-stage-[a-f0-9]{24}$/.test(stageName)) fail('Invalid installer stage name.')
+  return `<?php
+declare(strict_types=1);
+$route = $_SERVER['HTTP_X_BLUEPLM_INSTALLER_ROUTE'] ?? '';
+if (!in_array($route, ['/installer/database-status', '/installer/commit'], true)) {
+    http_response_code(404);
+    exit;
+}
+$liveRoot = dirname(__DIR__);
+$entry = $liveRoot . '/${stageName}/public/index.php';
+if (!is_file($entry)) {
+    http_response_code(503);
+    exit;
+}
+$_SERVER['REQUEST_URI'] = $route;
+$_SERVER['BLUEPLM_LIVE_ROOT'] = $liveRoot;
+require $entry;
+`
+}
+
 async function prepareInstaller(request: MdbProvisionRequest): Promise<{
   publicUrl: URL
   installationToken: string
   generated?: MdbProvisionResult['generatedSecrets']
-  cleanupPendingEnvironment: () => Promise<void>
+  bridgeName: string
+  root: string
+  targetRoot: string
+  stageRoot: string
+  ftp: URL
+  ftpUsername: string
+  ftpPassword: string
+  cleanup: () => Promise<void>
 }> {
   if (!request.documentRootConfirmed) {
     fail(
@@ -353,90 +458,156 @@ async function prepareInstaller(request: MdbProvisionRequest): Promise<{
   const ftpUsername = singleLine(request.ftpUsername, 'FTP username', 512)
   const ftpPassword = singleLine(request.ftpPassword, 'FTP password')
   const targetRoot = remotePath(request.ftpRemotePath)
-  const pendingEnvironment = `${targetRoot}/.env.install`
-  const cleanupPendingEnvironment = async () => {
-    await removeRemoteFile(
+  const nonce = randomBytes(12).toString('hex')
+  const stageName = `blueplm-stage-${nonce}`
+  const bridgeName = `blueplm-installer-${nonce}.php`
+  const stageRoot = [targetRoot, stageName].filter(Boolean).join('/')
+  const bridgeRemote = [targetRoot, 'public', bridgeName].filter(Boolean).join('/')
+  const pendingEnvironment = `${stageRoot}/.env.install`
+  const temp = await fs.mkdtemp(path.join(app.getPath('temp'), 'blueplm-mdb-installer-'))
+  const localEnvironmentPath = path.join(temp, '.env')
+  const localBridgePath = path.join(temp, bridgeName)
+  let cleaned = false
+  const cleanup = async () => {
+    if (cleaned) return
+    cleaned = true
+    await removeRemoteFile(ftp, request.ftpSecurity, bridgeRemote, ftpUsername, ftpPassword).catch(
+      () => undefined,
+    )
+    await removeRemoteDirectory(
       ftp,
       request.ftpSecurity,
-      pendingEnvironment,
+      stageRoot,
       ftpUsername,
       ftpPassword,
-    )
+    ).catch(() => undefined)
+    await fs.rm(temp, { recursive: true, force: true })
   }
   const { secrets, generated } = resolveSecrets(request)
   const installationToken = randomBytes(32).toString('base64url')
-  const allowedRoots = ['src', 'public', 'migrations']
-  const files = (
-    await Promise.all(allowedRoots.map((folder) => listFiles(path.join(root, folder))))
-  ).flat()
-  for (const file of files) {
-    const relative = path.relative(root, file).replaceAll('\\', '/')
-    await upload(
-      ftp,
-      request.ftpSecurity,
-      `${targetRoot}/${relative}`,
-      file,
-      ftpUsername,
-      ftpPassword,
-    )
-  }
-  const temp = await fs.mkdtemp(path.join(app.getPath('temp'), 'blueplm-mdb-env-'))
-  const envPath = path.join(temp, '.env')
   try {
-    await fs.writeFile(envPath, environment(request, secrets, publicUrl, installationToken), {
-      mode: 0o600,
-    })
+    const allowedRoots = ['src', 'public', 'migrations']
+    const files = (
+      await Promise.all(allowedRoots.map((folder) => listFiles(path.join(root, folder))))
+    ).flat()
+    for (const file of files) {
+      const relative = path.relative(root, file).replaceAll('\\', '/')
+      await upload(
+        ftp,
+        request.ftpSecurity,
+        `${stageRoot}/${relative}`,
+        file,
+        ftpUsername,
+        ftpPassword,
+      )
+    }
+    await fs.writeFile(
+      localEnvironmentPath,
+      environment(request, secrets, publicUrl, installationToken),
+      { mode: 0o600 },
+    )
     await upload(
       ftp,
       request.ftpSecurity,
       pendingEnvironment,
-      envPath,
+      localEnvironmentPath,
       ftpUsername,
       ftpPassword,
     )
-  } finally {
-    await fs.rm(temp, { recursive: true, force: true })
+    await fs.writeFile(localBridgePath, installerBridge(stageName), { mode: 0o600 })
+    await upload(ftp, request.ftpSecurity, bridgeRemote, localBridgePath, ftpUsername, ftpPassword)
+  } catch (error) {
+    await cleanup()
+    throw error
   }
-  return { publicUrl, installationToken, generated, cleanupPendingEnvironment }
+  return {
+    publicUrl,
+    installationToken,
+    generated,
+    bridgeName,
+    root,
+    targetRoot,
+    stageRoot,
+    ftp,
+    ftpUsername,
+    ftpPassword,
+    cleanup,
+  }
+}
+
+async function publishInstaller(
+  request: MdbProvisionRequest,
+  prepared: Awaited<ReturnType<typeof prepareInstaller>>,
+  promoteEnvironment: boolean,
+): Promise<void> {
+  const allowedRoots = ['src', 'public', 'migrations']
+  const files = (
+    await Promise.all(allowedRoots.map((folder) => listFiles(path.join(prepared.root, folder))))
+  ).flat()
+  const byRelative = new Map(
+    files.map((file) => [path.relative(prepared.root, file).replaceAll('\\', '/'), file]),
+  )
+  if (promoteEnvironment) {
+    await replaceRemoteFile(
+      prepared.ftp,
+      request.ftpSecurity,
+      `${prepared.stageRoot}/.env`,
+      `${prepared.targetRoot}/.env`,
+      prepared.ftpUsername,
+      prepared.ftpPassword,
+    )
+  }
+  for (const relative of orderBundleRelativePaths([...byRelative.keys()])) {
+    await upload(
+      prepared.ftp,
+      request.ftpSecurity,
+      `${prepared.targetRoot}/${relative}`,
+      byRelative.get(relative)!,
+      prepared.ftpUsername,
+      prepared.ftpPassword,
+    )
+  }
 }
 
 async function inspectDatabase(request: MdbProvisionRequest): Promise<MdbInspectionResult> {
-  let cleanupPendingEnvironment: (() => Promise<void>) | undefined
+  let cleanup: (() => Promise<void>) | undefined
   try {
     const prepared = await prepareInstaller(request)
-    cleanupPendingEnvironment = prepared.cleanupPendingEnvironment
+    cleanup = prepared.cleanup
     const result = await installerRequest<{ database: MdbDatabaseInspection }>(
       prepared.publicUrl,
+      prepared.bridgeName,
       '/installer/database-status',
       { installationToken: prepared.installationToken },
     )
     return { success: true, database: result.database }
   } catch (error) {
-    await cleanupPendingEnvironment?.().catch(() => undefined)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'MDB database inspection failed.',
     }
+  } finally {
+    await cleanup?.().catch(() => undefined)
   }
 }
 
 async function provision(request: MdbProvisionRequest): Promise<MdbProvisionResult> {
-  let cleanupPendingEnvironment: (() => Promise<void>) | undefined
+  let cleanup: (() => Promise<void>) | undefined
   try {
     if (!request.databaseAction)
       fail('Inspect the database and choose an installation action first.')
     const prepared = await prepareInstaller(request)
-    cleanupPendingEnvironment = prepared.cleanupPendingEnvironment
-    const result = await installerRequest<{ token?: string | null }>(
-      prepared.publicUrl,
-      '/installer/commit',
-      {
-        installationToken: prepared.installationToken,
-        action: request.databaseAction,
-        confirmation: request.resetConfirmation,
-        bootstrap: request.bootstrap,
-      },
-    )
+    cleanup = prepared.cleanup
+    const result = await installerRequest<{
+      token?: string | null
+      promoteEnvironment?: boolean
+    }>(prepared.publicUrl, prepared.bridgeName, '/installer/commit', {
+      installationToken: prepared.installationToken,
+      action: request.databaseAction,
+      confirmation: request.resetConfirmation,
+      bootstrap: request.bootstrap,
+    })
+    await publishInstaller(request, prepared, result.promoteEnvironment === true)
     return {
       success: true,
       serverUrl: prepared.publicUrl.toString().replace(/\/$/, ''),
@@ -445,11 +616,12 @@ async function provision(request: MdbProvisionRequest): Promise<MdbProvisionResu
       generatedSecrets: request.databaseAction === 'migrate' ? undefined : prepared.generated,
     }
   } catch (error) {
-    await cleanupPendingEnvironment?.().catch(() => undefined)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'MDB installation could not be completed.',
     }
+  } finally {
+    await cleanup?.().catch(() => undefined)
   }
 }
 

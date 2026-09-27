@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { SettingsTab } from '@/types/settings'
 import { ExtensionStoreView } from '@/features/extensions'
+import { activeBackendSupportsSettingsTab } from '@/lib/backendAdapter'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
@@ -115,8 +116,15 @@ function SettingsLoading() {
 }
 
 export function SettingsContent({ activeTab }: SettingsContentProps) {
+  // A persisted tab can be rendered once before SettingsNavigation redirects it.
+  // Resolve the fallback synchronously so an unsupported panel never mounts and
+  // cannot call the inactive backend during that render.
+  const effectiveTab: SettingsTab = activeBackendSupportsSettingsTab(activeTab)
+    ? activeTab
+    : 'vaults'
+
   const renderContent = () => {
-    switch (activeTab) {
+    switch (effectiveTab) {
       case 'profile':
         return <ProfileSettings />
       case 'preferences':
@@ -184,7 +192,7 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
   }
 
   // Logs view needs full width for the log viewer
-  if (activeTab === 'logs') {
+  if (effectiveTab === 'logs') {
     return (
       <div className="flex-1 overflow-hidden bg-plm-bg p-4">
         <Suspense fallback={<SettingsLoading />}>{renderContent()}</Suspense>

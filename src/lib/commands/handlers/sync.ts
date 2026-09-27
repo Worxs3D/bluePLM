@@ -491,6 +491,7 @@ export const syncCommand: Command<SyncParams> = {
                 canonicalPath,
                 storageRelativePath,
                 fileName: file.name,
+                partNumber: metadata.partNumber,
                 contentHash,
                 sizeBytes: verifiedSize,
               })

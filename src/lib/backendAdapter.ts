@@ -1,6 +1,7 @@
 import { getActiveBackendKind } from './backend'
 import type { BackendKind } from './backend'
 import type { SettingsTab } from '@/types/settings'
+import type { ModuleId } from '@/types/modules'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
 export type BackendCapability = 'solidworks-license-management'
@@ -26,7 +27,7 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   'team-members': allBackends,
   'module-access': allBackends,
   'company-profile': allBackends,
-  'auth-providers': allBackends,
+  'auth-providers': supabaseOnly,
   serialization: allBackends,
   export: allBackends,
   rfq: allBackends,
@@ -34,7 +35,7 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   'item-designations': allBackends,
   backup: supabaseOnly,
   solidworks: allBackends,
-  'google-drive': allBackends,
+  'google-drive': supabaseOnly,
   odoo: supabaseOnly,
   slack: supabaseOnly,
   webhooks: supabaseOnly,
@@ -105,4 +106,9 @@ export function activeBackendSupports(capability: BackendCapability): boolean {
 export function activeBackendSupportsSettingsTab(tab: SettingsTab): boolean {
   const backend = getActiveBackendKind()
   return backend ? settingsTabBackends[tab].has(backend) : false
+}
+
+/** Keep backend-specific application modules behind the same adapter boundary. */
+export function activeBackendSupportsModule(moduleId: ModuleId): boolean {
+  return getActiveBackendKind() !== 'community' || moduleId !== 'google-drive'
 }
