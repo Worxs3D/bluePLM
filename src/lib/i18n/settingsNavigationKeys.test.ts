@@ -60,6 +60,68 @@ const ITEM_DESIGNATION_SETTINGS_KEYS = [
   'itemDesignationSettings.deleteFailed',
 ] as const
 
+const RECOVERY_CODE_KEYS = [
+  'recoveryCodes.loadFailed',
+  'recoveryCodes.generateFailed',
+  'recoveryCodes.copyFailed',
+  'recoveryCodes.confirmWrittenDown',
+  'recoveryCodes.revoked',
+  'recoveryCodes.revokeFailed',
+  'recoveryCodes.deleted',
+  'recoveryCodes.deleteFailed',
+  'recoveryCodes.statusUsed',
+  'recoveryCodes.statusRevoked',
+  'recoveryCodes.statusExpired',
+  'recoveryCodes.statusActive',
+  'recoveryCodes.unknownDate',
+  'recoveryCodes.adminOnly',
+  'recoveryCodes.title',
+  'recoveryCodes.subtitle',
+  'recoveryCodes.generateCode',
+  'recoveryCodes.securityTitle',
+  'recoveryCodes.securityDescription',
+  'recoveryCodes.emptyTitle',
+  'recoveryCodes.emptyDescription',
+  'recoveryCodes.createdAt',
+  'recoveryCodes.expiresAt',
+  'recoveryCodes.usedAt',
+  'recoveryCodes.revokedAt',
+  'recoveryCodes.revoke',
+  'recoveryCodes.generateDialogTitle',
+  'recoveryCodes.generateDialogSubtitle',
+  'recoveryCodes.oneTimeWarning',
+  'recoveryCodes.descriptionOptional',
+  'recoveryCodes.descriptionPlaceholder',
+  'recoveryCodes.descriptionHelp',
+  'recoveryCodes.expiresIn',
+  'recoveryCodes.days',
+  'recoveryCodes.months',
+  'recoveryCodes.years',
+  'recoveryCodes.generating',
+  'recoveryCodes.writeDownTitle',
+  'recoveryCodes.onlyTimeShown',
+  'recoveryCodes.yourCode',
+  'recoveryCodes.copyToClipboard',
+  'recoveryCodes.nextStepsTitle',
+  'recoveryCodes.nextStepWrite',
+  'recoveryCodes.nextStepStore',
+  'recoveryCodes.nextStepTell',
+  'recoveryCodes.nextStepAvoidDigital',
+  'recoveryCodes.useTitle',
+  'recoveryCodes.useDescription',
+  'recoveryCodes.acknowledgement',
+  'recoveryCodes.doneClose',
+  'recoveryCodes.confirmSaved',
+  'recoveryCodes.revokeDialogTitle',
+  'recoveryCodes.revokeDialogSubtitle',
+  'recoveryCodes.revokeConfirmNamed',
+  'recoveryCodes.revokeConfirm',
+  'recoveryCodes.reasonOptional',
+  'recoveryCodes.reasonPlaceholder',
+  'recoveryCodes.revoking',
+  'recoveryCodes.revokeCode',
+] as const
+
 describe('settings navigation translations', () => {
   it.each(LOCALES)('defines every navigation and status key for %s', (locale) => {
     for (const key of SETTINGS_NAVIGATION_KEYS) {
@@ -74,6 +136,20 @@ describe('settings navigation translations', () => {
       const value = getTranslation(locale, key)
       expect(value, `${locale}:${key}`).not.toBe(key)
       expect(value.trim(), `${locale}:${key}`).not.toBe('')
+    }
+  })
+
+  it.each(LOCALES)('defines every recovery code key for %s', (locale) => {
+    for (const key of RECOVERY_CODE_KEYS) {
+      const value = getTranslation(locale, key, {
+        error: 'ERR',
+        date: 'DATE',
+        count: 2,
+        description: 'DESC',
+      })
+      expect(value, `${locale}:${key}`).not.toBe(key)
+      expect(value.trim(), `${locale}:${key}`).not.toBe('')
+      expect(value, `${locale}:${key}`).not.toContain('{{')
     }
   })
 })

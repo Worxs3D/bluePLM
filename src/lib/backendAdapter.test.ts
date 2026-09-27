@@ -38,8 +38,8 @@ describe('backend capabilities', () => {
     activateBackend('community')
 
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(false)
-    expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(false)
   })
 
   it('keeps the complete settings surface available in Supabase mode', () => {
