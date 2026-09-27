@@ -324,6 +324,20 @@ export const es: TranslationDict = {
     backupFailed: 'Error en la copia de seguridad',
   },
 
+  itemDesignationSettings: {
+    title: 'Designaciones de artículos',
+    description:
+      'Gestiona la lista de designaciones de artículos (por ejemplo, pieza, ensamblaje o ensamblaje embalado). Aparecen en el explorador de artículos y se pueden asignar por artículo.',
+    add: 'Añadir designación',
+    name: 'Nombre de la designación',
+    none: 'Aún no se han definido designaciones.',
+    deleteConfirm:
+      '¿Eliminar esta designación? Los artículos que la utilicen volverán a su valor predeterminado.',
+    noPermission: 'No tienes permiso para gestionar designaciones de artículos.',
+    saveFailed: 'No se pudo guardar la designación',
+    deleteFailed: 'No se pudo eliminar la designación',
+  },
+
   preferences: {
     title: 'Preferencias',
     applicationUpdates: 'Actualizaciones de la aplicación',

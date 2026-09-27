@@ -335,6 +335,20 @@ export const de: TranslationDict = {
     backupFailed: 'Sicherung fehlgeschlagen',
   },
 
+  itemDesignationSettings: {
+    title: 'Artikelbezeichnungen',
+    description:
+      'Verwalte die Liste der Artikelbezeichnungen (z. B. Teil, Baugruppe oder verpackte Baugruppe). Sie erscheinen im Artikelbrowser und können einzelnen Artikeln zugewiesen werden.',
+    add: 'Bezeichnung hinzufügen',
+    name: 'Name der Bezeichnung',
+    none: 'Noch keine Bezeichnungen definiert.',
+    deleteConfirm:
+      'Diese Bezeichnung löschen? Verwendende Artikel werden auf den Standard zurückgesetzt.',
+    noPermission: 'Du hast keine Berechtigung, Artikelbezeichnungen zu verwalten.',
+    saveFailed: 'Bezeichnung konnte nicht gespeichert werden',
+    deleteFailed: 'Bezeichnung konnte nicht gelöscht werden',
+  },
+
   preferences: {
     title: 'Einstellungen',
     applicationUpdates: 'Anwendungsaktualisierungen',

@@ -325,6 +325,20 @@ export const fr: TranslationDict = {
     backupFailed: 'Échec de la sauvegarde',
   },
 
+  itemDesignationSettings: {
+    title: 'Désignations d’articles',
+    description:
+      'Gérez la liste des désignations d’articles (par exemple pièce, assemblage ou assemblage emballé). Elles apparaissent dans le navigateur d’articles et peuvent être attribuées par article.',
+    add: 'Ajouter une désignation',
+    name: 'Nom de la désignation',
+    none: 'Aucune désignation définie pour le moment.',
+    deleteConfirm:
+      'Supprimer cette désignation ? Les articles qui l’utilisent reprendront leur valeur par défaut.',
+    noPermission: 'Vous n’avez pas l’autorisation de gérer les désignations d’articles.',
+    saveFailed: 'Impossible d’enregistrer la désignation',
+    deleteFailed: 'Impossible de supprimer la désignation',
+  },
+
   preferences: {
     title: 'Préférences',
     applicationUpdates: "Mises à jour de l'application",

@@ -316,6 +316,19 @@ export const zhCN: TranslationDict = {
     backupFailed: '备份失败',
   },
 
+  itemDesignationSettings: {
+    title: '项目标识',
+    description:
+      '管理项目标识列表（例如零件、装配体或包装装配体）。这些标识会显示在项目浏览器中，并可分配给各个项目。',
+    add: '添加标识',
+    name: '标识名称',
+    none: '尚未定义任何标识。',
+    deleteConfirm: '删除此标识？使用该标识的项目将恢复为默认值。',
+    noPermission: '您没有管理项目标识的权限。',
+    saveFailed: '无法保存标识',
+    deleteFailed: '无法删除标识',
+  },
+
   preferences: {
     title: '偏好设置',
     applicationUpdates: '应用程序更新',

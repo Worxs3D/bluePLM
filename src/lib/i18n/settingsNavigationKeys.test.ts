@@ -48,9 +48,29 @@ const SETTINGS_NAVIGATION_KEYS = [
   'settings.backupFailed',
 ] as const
 
+const ITEM_DESIGNATION_SETTINGS_KEYS = [
+  'itemDesignationSettings.title',
+  'itemDesignationSettings.description',
+  'itemDesignationSettings.add',
+  'itemDesignationSettings.name',
+  'itemDesignationSettings.none',
+  'itemDesignationSettings.deleteConfirm',
+  'itemDesignationSettings.noPermission',
+  'itemDesignationSettings.saveFailed',
+  'itemDesignationSettings.deleteFailed',
+] as const
+
 describe('settings navigation translations', () => {
   it.each(LOCALES)('defines every navigation and status key for %s', (locale) => {
     for (const key of SETTINGS_NAVIGATION_KEYS) {
+      const value = getTranslation(locale, key)
+      expect(value, `${locale}:${key}`).not.toBe(key)
+      expect(value.trim(), `${locale}:${key}`).not.toBe('')
+    }
+  })
+
+  it.each(LOCALES)('defines every item designation settings key for %s', (locale) => {
+    for (const key of ITEM_DESIGNATION_SETTINGS_KEYS) {
       const value = getTranslation(locale, key)
       expect(value, `${locale}:${key}`).not.toBe(key)
       expect(value.trim(), `${locale}:${key}`).not.toBe('')

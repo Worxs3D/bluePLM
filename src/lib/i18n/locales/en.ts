@@ -347,6 +347,19 @@ export const en: TranslationDict = {
     backupFailed: 'Backup failed',
   },
 
+  itemDesignationSettings: {
+    title: 'Item Designations',
+    description:
+      'Manage the list of item designations (e.g. Part, Assembly, Packed Assembly). These appear in the Item Browser and can be assigned per item.',
+    add: 'Add designation',
+    name: 'Designation name',
+    none: 'No designations defined yet.',
+    deleteConfirm: 'Delete this designation? Items using it will revert to their default.',
+    noPermission: 'You do not have permission to manage item designations.',
+    saveFailed: 'Failed to save designation',
+    deleteFailed: 'Failed to delete designation',
+  },
+
   // Log viewer
   logs: {
     loadFailed: 'Unable to load log files',

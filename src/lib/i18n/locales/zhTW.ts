@@ -316,6 +316,19 @@ export const zhTW: TranslationDict = {
     backupFailed: '備份失敗',
   },
 
+  itemDesignationSettings: {
+    title: '項目標示',
+    description:
+      '管理項目標示清單（例如零件、組合件或包裝組合件）。這些標示會顯示在項目瀏覽器中，並可指派給各個項目。',
+    add: '新增標示',
+    name: '標示名稱',
+    none: '尚未定義任何標示。',
+    deleteConfirm: '刪除此標示？使用該標示的項目將恢復為預設值。',
+    noPermission: '您沒有管理項目標示的權限。',
+    saveFailed: '無法儲存標示',
+    deleteFailed: '無法刪除標示',
+  },
+
   preferences: {
     title: '偏好設定',
     applicationUpdates: '應用程式更新',

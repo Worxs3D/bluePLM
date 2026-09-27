@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { activateBackend, clearBackendProfile } from './backend'
-import { activeBackendSupports, mapMdbRole, routeBackend } from './backendAdapter'
+import {
+  activeBackendSupports,
+  activeBackendSupportsSettingsTab,
+  mapMdbRole,
+  routeBackend,
+} from './backendAdapter'
 
 const storage = new Map<string, string>()
 vi.stubGlobal('localStorage', {
@@ -17,16 +22,32 @@ describe('backend capabilities', () => {
     clearBackendProfile()
   })
 
-  it('does not expose Supabase-only SOLIDWORKS license management in MDB mode', () => {
+  it('exposes SOLIDWORKS license management in MDB mode through its adapter', () => {
     activateBackend('community')
 
-    expect(activeBackendSupports('solidworks-license-management')).toBe(false)
+    expect(activeBackendSupports('solidworks-license-management')).toBe(true)
   })
 
   it('keeps SOLIDWORKS license management available in Supabase mode', () => {
     activateBackend('supabase')
 
     expect(activeBackendSupports('solidworks-license-management')).toBe(true)
+  })
+
+  it('exposes only settings with an MDB implementation in community mode', () => {
+    activateBackend('community')
+
+    expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('profile')).toBe(false)
+    expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(false)
+  })
+
+  it('keeps the complete settings surface available in Supabase mode', () => {
+    activateBackend('supabase')
+
+    expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('profile')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
   })
 
   it('maps MDB viewer and guest accounts to the least-privileged client role', () => {
