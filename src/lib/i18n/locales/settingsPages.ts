@@ -1,4 +1,6 @@
 import { settingsExportTranslations } from './settingsExport'
+import { settingsMetadataTranslations } from './settingsMetadata'
+import { settingsSerializationTranslations } from './settingsSerialization'
 import type { TranslationValue } from '../types'
 
 type SettingsPageLocale = 'en' | 'de' | 'es' | 'fr' | 'pt' | 'zh-CN' | 'zh-TW'
@@ -7,6 +9,8 @@ type SettingsPageTranslations = Record<string, TranslationValue>
 export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTranslations> = {
   en: {
     export: settingsExportTranslations.en,
+    metadata: settingsMetadataTranslations.en,
+    serialization: settingsSerializationTranslations.en,
     noOrganization: 'No organization connected',
     saveSettings: 'Save Settings',
     moduleAccess: {
@@ -69,6 +73,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   de: {
     export: settingsExportTranslations.de,
+    metadata: settingsMetadataTranslations.de,
+    serialization: settingsSerializationTranslations.de,
     noOrganization: 'Keine Organisation verbunden',
     saveSettings: 'Einstellungen speichern',
     moduleAccess: {
@@ -132,6 +138,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   es: {
     export: settingsExportTranslations.es,
+    metadata: settingsMetadataTranslations.es,
+    serialization: settingsSerializationTranslations.es,
     noOrganization: 'No hay ninguna organización conectada',
     saveSettings: 'Guardar ajustes',
     moduleAccess: {
@@ -199,6 +207,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   fr: {
     export: settingsExportTranslations.fr,
+    metadata: settingsMetadataTranslations.fr,
+    serialization: settingsSerializationTranslations.fr,
     noOrganization: 'Aucune organisation connectée',
     saveSettings: 'Enregistrer les paramètres',
     moduleAccess: {
@@ -267,6 +277,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   pt: {
     export: settingsExportTranslations.pt,
+    metadata: settingsMetadataTranslations.pt,
+    serialization: settingsSerializationTranslations.pt,
     noOrganization: 'Nenhuma organização ligada',
     saveSettings: 'Guardar definições',
     moduleAccess: {
@@ -333,6 +345,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   'zh-CN': {
     export: settingsExportTranslations['zh-CN'],
+    metadata: settingsMetadataTranslations['zh-CN'],
+    serialization: settingsSerializationTranslations['zh-CN'],
     noOrganization: '未连接组织',
     saveSettings: '保存设置',
     moduleAccess: {
@@ -393,6 +407,8 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
   },
   'zh-TW': {
     export: settingsExportTranslations['zh-TW'],
+    metadata: settingsMetadataTranslations['zh-TW'],
+    serialization: settingsSerializationTranslations['zh-TW'],
     noOrganization: '未連接組織',
     saveSettings: '儲存設定',
     moduleAccess: {
