@@ -23,10 +23,10 @@ import {
   createCommunityEco,
   getCommunityEcoFiles,
   getCommunityEcos,
-  isBackendConfigured,
   removeCommunityFileFromEco,
   updateCommunityEcoStatus,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -128,7 +128,7 @@ export function ECOView() {
       setECOsLoading(true)
 
       try {
-        if (isBackendConfigured('community')) {
+        if (isMdbBackendActive()) {
           setECOs((await getCommunityEcos()) as ECO[])
           return
         }
@@ -215,7 +215,7 @@ export function ECOView() {
     setLoadingFiles(ecoId)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const files = await getCommunityEcoFiles(ecoId)
         setEcoFiles((prev) => ({ ...prev, [ecoId]: files }))
         return
@@ -297,7 +297,7 @@ export function ECOView() {
     setIsCreating(true)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const data = await createCommunityEco({
           ecoNumber: newEcoNumber.trim(),
           title: newEcoTitle.trim() || null,
@@ -381,7 +381,7 @@ export function ECOView() {
         return
       }
 
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await Promise.all(fileIds.map((fileId) => addCommunityFileToEco(fileId, tagEcoId)))
         const eco = ecos.find((e) => e.id === tagEcoId)
         if (eco) updateECO(tagEcoId, { file_count: (eco.file_count || 0) + fileIds.length })
@@ -440,7 +440,7 @@ export function ECOView() {
   // Remove file from ECO
   const handleRemoveFileFromECO = async (fileEcoId: string, ecoId: string) => {
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const file = ecoFiles[ecoId]?.find((entry) => entry.id === fileEcoId)
         if (!file) throw new Error('ECO file mapping not found.')
         await removeCommunityFileFromEco(file.file_id, ecoId)
@@ -485,7 +485,7 @@ export function ECOView() {
     if (!user) return
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await updateCommunityEcoStatus(ecoId, newStatus)
         updateECO(ecoId, { status: newStatus })
         addToast(

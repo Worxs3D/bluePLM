@@ -27,11 +27,11 @@ import {
   createCommunityDeviation,
   getCommunityDeviationFiles,
   getCommunityDeviations,
-  isBackendConfigured,
   removeCommunityDeviationFile,
   setCommunityDeviationFiles,
   updateCommunityDeviationStatus,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import type { Database } from '@/types/supabase'
 import { t } from '@/lib/i18n'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -211,7 +211,7 @@ export function DeviationsView() {
       setIsLoading(true)
 
       try {
-        if (isBackendConfigured('community')) {
+        if (isMdbBackendActive()) {
           setDeviations((await getCommunityDeviations()).map(communityDeviationToView))
           return
         }
@@ -303,7 +303,7 @@ export function DeviationsView() {
     setLoadingFiles(deviationId)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const files = await getCommunityDeviationFiles(deviationId)
         setDeviationFiles((prev) => ({ ...prev, [deviationId]: files }))
         return
@@ -390,7 +390,7 @@ export function DeviationsView() {
     setIsCreating(true)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         const data = await createCommunityDeviation({
           deviationNumber: newDeviationNumber.trim(),
           title: newDeviationTitle.trim(),
@@ -499,7 +499,7 @@ export function DeviationsView() {
         return
       }
 
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await setCommunityDeviationFiles(
           tagDeviationId,
           fileData.map((file) => ({
@@ -611,7 +611,7 @@ export function DeviationsView() {
   // Remove file from deviation
   const handleRemoveFileFromDeviation = async (fileDeviationId: string, deviationId: string) => {
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await removeCommunityDeviationFile(fileDeviationId)
         setDeviationFiles((prev) => ({
           ...prev,
@@ -772,7 +772,7 @@ export function DeviationsView() {
         }
       })
 
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await setCommunityDeviationFiles(
           dropDeviationId,
           insertData.map((file) => ({
@@ -877,7 +877,7 @@ export function DeviationsView() {
     if (!user) return
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         await updateCommunityDeviationStatus(deviationId, newStatus)
         setDeviations((prev) =>
           prev.map((d) =>

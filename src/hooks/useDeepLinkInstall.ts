@@ -10,7 +10,8 @@
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
-import { isBackendConfigured, resolveCommunityShareLink } from '@/lib/community'
+import { resolveCommunityShareLink } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { buildFullPath } from '@/lib/utils/path'
 import { t } from '@/lib/i18n'
 
@@ -73,7 +74,7 @@ export function useDeepLinkInstall(): void {
     const api = window.electronAPI
     if (!api?.onDeepLinkShare) return
     return api.onDeepLinkShare(async ({ token }) => {
-      if (!isBackendConfigured('community')) {
+      if (!isMdbBackendActive()) {
         addToast('warning', t('mdbSetup.shareRequiresMdb'))
         return
       }

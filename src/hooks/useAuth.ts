@@ -17,7 +17,7 @@ import {
 import { logUserAction } from '@/lib/userActionLogger'
 import { clearConfig } from '@/lib/supabaseConfig'
 import { clearBackendProfile } from '@/lib/backend'
-import { mapMdbRole } from '@/lib/backendAdapter'
+import { isMdbBackendActive, mapMdbRole } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
 import {
@@ -25,7 +25,6 @@ import {
   clearCommunityConfig,
   getCommunityOrganization,
   getCommunityPrincipal,
-  isBackendConfigured,
   loadCommunityConfig,
   onCommunityAuthChange,
   signOutCommunity,
@@ -157,7 +156,7 @@ export function useAuth() {
 
   // Track if Supabase is configured (can change at runtime)
   const [supabaseReady, setSupabaseReady] = useState(
-    () => isSupabaseConfigured() || isBackendConfigured('community'),
+    () => isSupabaseConfigured() || isMdbBackendActive(),
   )
   const [sessionGeneration, setSessionGeneration] = useState(0)
   const sessionBoundaryRef = useRef<AuthSessionBoundary>({
@@ -203,7 +202,7 @@ export function useAuth() {
     advanceSession('SIGNED_OUT', null)
     // Sign out and clear only the selected backend. An inactive adapter must
     // not be initialized merely because the user returns to backend setup.
-    if (isBackendConfigured('community')) {
+    if (isMdbBackendActive()) {
       signOutCommunity()
       clearCommunityConfig()
     } else {
@@ -226,7 +225,7 @@ export function useAuth() {
     // Community mode intentionally does not emulate Supabase's auth event
     // protocol. Hydrating it here keeps the Electron shell on the same store
     // contract while the data domains are migrated independently.
-    if (isBackendConfigured('community')) {
+    if (isMdbBackendActive()) {
       let active = true
       let hydrationEpoch = 0
       const hydrateCommunitySession = async () => {

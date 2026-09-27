@@ -51,7 +51,8 @@ import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { swRefsToFileReferences } from '../../solidworks/referenceRows'
 import type { SWServiceReference } from '../../solidworks/types'
-import { getCommunityVault, isBackendConfigured } from '@/lib/community'
+import { getCommunityVault } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
@@ -1275,7 +1276,7 @@ export const checkinCommand: Command<CheckinParams> = {
           // Upload new content to storage if hash changed
           // This ensures the file blob exists before updating the database
           if (contentChanged && orgId) {
-            if (isBackendConfigured('community')) {
+            if (isMdbBackendActive()) {
               try {
                 const vaultId = file.pdmData?.vault_id
                 if (!vaultId || !file.pdmData?.id) {

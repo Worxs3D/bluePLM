@@ -17,7 +17,8 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { Supplier } from '@/stores/types'
 import { supabase } from '@/lib/supabase'
-import { getCommunitySuppliers, isBackendConfigured } from '@/lib/community'
+import { getCommunitySuppliers } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 
 function getApiUrl(organization: { settings?: { api_url?: string } } | null): string | null {
@@ -50,7 +51,7 @@ export function SuppliersView() {
     setSuppliersLoading(true)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         setSuppliers((await getCommunitySuppliers()) as Supplier[])
         return
       }
@@ -83,7 +84,7 @@ export function SuppliersView() {
     setSyncing(true)
 
     try {
-      if (isBackendConfigured('community')) {
+      if (isMdbBackendActive()) {
         addToast('warning', t('mdbSetup.erpSyncUnavailable'))
         return
       }

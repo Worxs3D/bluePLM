@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getPendingReviewsForUser } from '@/lib/supabase'
-import { isBackendConfigured } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 
 /**
@@ -14,7 +14,7 @@ export function useNotificationCounts() {
   const setPendingReviewCount = usePDMStore((s) => s.setPendingReviewCount)
 
   useEffect(() => {
-    if (isBackendConfigured('community')) {
+    if (isMdbBackendActive()) {
       setPendingReviewCount(0)
       return
     }

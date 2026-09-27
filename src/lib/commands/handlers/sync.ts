@@ -26,8 +26,8 @@ import {
   communityObjectStoragePath,
   getCommunityVault,
   importCommunityFile,
-  isBackendConfigured,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 
 // Helper to check if file is a SolidWorks temp lock file (~$filename.sldxxx)
 function isSolidworksTempFile(name: string): boolean {
@@ -454,7 +454,7 @@ export const syncCommand: Command<SyncParams> = {
           let syncError: unknown = null
           let syncedFile: PDMFile | null = null
 
-          if (isBackendConfigured('community')) {
+          if (isMdbBackendActive()) {
             try {
               const vault = await getCommunityVault(activeVaultId)
               const canonicalPath = file.relativePath.replace(/\\/g, '/').replace(/^\/+/, '')

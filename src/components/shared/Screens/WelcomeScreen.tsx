@@ -38,10 +38,10 @@ import {
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
 import {
   CommunityTotpRequiredError,
-  isBackendConfigured,
   signInCommunity,
   verifyCommunityTotp,
 } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
 import { logClick, logAuth } from '@/lib/userActionLogger'
@@ -164,7 +164,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // Fetch org auth providers on mount and when user signs out (for pre-login sign-in method visibility)
   // We refetch when user becomes null to ensure we have fresh settings after sign-out
   useEffect(() => {
-    if (isBackendConfigured('community')) return
+    if (isMdbBackendActive()) return
     // Only fetch when showing sign-in screen (user is null and not in offline mode)
     if (user || isOfflineMode) return
 
@@ -1030,7 +1030,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   // ============================================
   // CONNECTING SCREEN (shown after sign-in while loading organization)
   // ============================================
-  if (isBackendConfigured('community') && !user && !isOfflineMode && !isAuthConnecting) {
+  if (isMdbBackendActive() && !user && !isOfflineMode && !isAuthConnecting) {
     return (
       <div className="flex-1 flex items-center justify-center bg-plm-bg overflow-auto">
         <form

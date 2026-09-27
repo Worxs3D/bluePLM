@@ -16,7 +16,7 @@ import { checkSchemaCompatibility, shouldCheckSupabaseSchema } from '@/lib/schem
 import { checkApiVersion } from '@/lib/apiVersion'
 import { shouldRunVaultLoad } from './vaultLoadPolicy'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
-import { isBackendConfigured } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { clearSwReferencesCache } from '@/lib/solidworks'
 import { syncDrawingReferencesInBackground } from '@/lib/solidworks/drawingReferenceSync'
 import { hashCheckoutIdentifier } from '@/types/pdm'
@@ -308,7 +308,7 @@ export function App() {
         !organization ||
         !user ||
         connectedVaults.length === 0 ||
-        isBackendConfigured('community')
+        isMdbBackendActive()
       )
         return
 
@@ -385,7 +385,7 @@ export function App() {
         !organization?.id ||
         isOfflineMode ||
         schemaCheckDoneRef.current ||
-        !shouldCheckSupabaseSchema(isBackendConfigured('community'))
+        !shouldCheckSupabaseSchema(isMdbBackendActive())
       )
         return
 

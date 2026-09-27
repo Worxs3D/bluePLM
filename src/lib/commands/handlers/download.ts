@@ -15,7 +15,8 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
-import { getCommunityVault, isBackendConfigured, type CommunityVault } from '@/lib/community'
+import { getCommunityVault, type CommunityVault } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 
 // Number of retry attempts for failed downloads
@@ -177,7 +178,7 @@ export const downloadCommand: Command<DownloadParams> = {
     const organization = ctx.organization!
     const vaultPath = ctx.vaultPath!
     const operationId = `download-${Date.now()}`
-    const communityMode = isBackendConfigured('community')
+    const communityMode = isMdbBackendActive()
     let communityVault: CommunityVault | null = null
     if (communityMode) {
       try {

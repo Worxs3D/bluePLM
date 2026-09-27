@@ -13,7 +13,7 @@ import {
 } from '@/lib/realtime'
 import { buildFullPath } from '@/lib/commands/types'
 import { log } from '@/lib/logger'
-import { isBackendConfigured } from '@/lib/community'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
@@ -169,7 +169,7 @@ export function useRealtimeSubscriptions(
     // generic subscription layer also contains a no-op safety net, but this
     // guard prevents the whole Supabase-only notification pipeline from being
     // initialized on a Community client.
-    if (!organization || isOfflineMode || isBackendConfigured('community')) return
+    if (!organization || isOfflineMode || isMdbBackendActive()) return
 
     const { addCloudFile, updateFilePdmData, removeCloudFile, addToast } = usePDMStore.getState()
 

@@ -6,9 +6,8 @@
  * key is used in Community mode.
  */
 import { activateBackend } from './backend'
-import { isBackendConfigured } from './backendAdapter'
+import { isMdbBackendActive } from './backendAdapter'
 
-export { isBackendConfigured } from './backendAdapter'
 
 export const COMMUNITY_API_VERSION = 2
 
@@ -295,7 +294,7 @@ export function clearCommunityConfig(): void {
 }
 
 export function isCommunityServerConfigured(): boolean {
-  return isBackendConfigured('community') && loadCommunityConfig() !== null
+  return isMdbBackendActive() && loadCommunityConfig() !== null
 }
 
 export function onCommunityAuthChange(listener: AuthListener): () => void {

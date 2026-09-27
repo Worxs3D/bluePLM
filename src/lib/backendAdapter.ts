@@ -125,11 +125,6 @@ export function isMdbBackendActive(): boolean {
   return getActiveBackendKind() === 'community'
 }
 
-/** Central backend capability check used by legacy feature call-sites. */
-export function isBackendConfigured(kind: 'community' | 'supabase'): boolean {
-  return getActiveBackendKind() === kind
-}
-
 /**
  * Keep backend-specific feature availability behind the adapter seam so UI
  * components never have to probe an inactive SDK client.
