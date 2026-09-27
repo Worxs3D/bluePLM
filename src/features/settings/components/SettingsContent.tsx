@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
-import { Loader2 } from 'lucide-react'
+import { CircleSlash2, Construction, Loader2 } from 'lucide-react'
 import type { SettingsTab } from '@/types/settings'
 import { ExtensionStoreView } from '@/features/extensions'
-import { activeBackendSupportsSettingsTab } from '@/lib/backendAdapter'
+import { getActiveBackendSettingsTabAvailability } from '@/lib/backendAdapter'
+import { useTranslation } from '@/lib/i18n'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
@@ -115,16 +116,43 @@ function SettingsLoading() {
   )
 }
 
+function UnavailableSettingsPanel({
+  availability,
+}: {
+  availability: 'in-development' | 'incompatible'
+}) {
+  const { t } = useTranslation()
+  const inDevelopment = availability === 'in-development'
+  const Icon = inDevelopment ? Construction : CircleSlash2
+  return (
+    <div className="rounded-xl border border-plm-border bg-plm-bg p-8 text-center">
+      <Icon size={32} className="mx-auto mb-4 text-plm-fg-muted" />
+      <h2 className="text-lg font-semibold text-plm-fg">
+        {t(
+          inDevelopment
+            ? 'settingsPages.availability.inDevelopmentTitle'
+            : 'settingsPages.availability.incompatibleTitle',
+        )}
+      </h2>
+      <p className="mt-2 text-sm text-plm-fg-muted">
+        {t(
+          inDevelopment
+            ? 'settingsPages.availability.inDevelopmentDescription'
+            : 'settingsPages.availability.incompatibleDescription',
+        )}
+      </p>
+    </div>
+  )
+}
+
 export function SettingsContent({ activeTab }: SettingsContentProps) {
-  // A persisted tab can be rendered once before SettingsNavigation redirects it.
-  // Resolve the fallback synchronously so an unsupported panel never mounts and
-  // cannot call the inactive backend during that render.
-  const effectiveTab: SettingsTab = activeBackendSupportsSettingsTab(activeTab)
-    ? activeTab
-    : 'vaults'
+  const availability = getActiveBackendSettingsTabAvailability(activeTab)
 
   const renderContent = () => {
-    switch (effectiveTab) {
+    if (availability !== 'supported') {
+      return <UnavailableSettingsPanel availability={availability} />
+    }
+    switch (activeTab) {
       case 'profile':
         return <ProfileSettings />
       case 'preferences':
@@ -192,7 +220,7 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
   }
 
   // Logs view needs full width for the log viewer
-  if (effectiveTab === 'logs') {
+  if (activeTab === 'logs' && availability === 'supported') {
     return (
       <div className="flex-1 overflow-hidden bg-plm-bg p-4">
         <Suspense fallback={<SettingsLoading />}>{renderContent()}</Suspense>

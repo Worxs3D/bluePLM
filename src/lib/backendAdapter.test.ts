@@ -5,6 +5,7 @@ import {
   activeBackendSupports,
   activeBackendSupportsModule,
   activeBackendSupportsSettingsTab,
+  getActiveBackendSettingsTabAvailability,
   mapMdbRole,
   routeBackend,
 } from './backendAdapter'
@@ -37,7 +38,7 @@ describe('backend capabilities', () => {
     expect(activeBackendSupports('metadata-column-defaults')).toBe(true)
   })
 
-  it('exposes only settings with an MDB implementation in community mode', () => {
+  it('classifies MDB settings without removing them from the original menu', () => {
     activateBackend('community')
 
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
@@ -45,11 +46,13 @@ describe('backend capabilities', () => {
     expect(activeBackendSupportsSettingsTab('delete-account')).toBe(true)
     expect(activeBackendSupportsSettingsTab('module-access')).toBe(true)
     expect(activeBackendSupportsSettingsTab('auth-providers')).toBe(false)
+    expect(getActiveBackendSettingsTabAvailability('auth-providers')).toBe('in-development')
     expect(activeBackendSupportsSettingsTab('serialization')).toBe(true)
     expect(activeBackendSupportsSettingsTab('export')).toBe(true)
     expect(activeBackendSupportsSettingsTab('rfq')).toBe(true)
     expect(activeBackendSupportsSettingsTab('metadata-columns')).toBe(true)
     expect(activeBackendSupportsSettingsTab('google-drive')).toBe(false)
+    expect(getActiveBackendSettingsTabAvailability('google-drive')).toBe('incompatible')
     expect(activeBackendSupportsModule('google-drive')).toBe(false)
     expect(activeBackendSupportsModule('explorer')).toBe(true)
     expect(activeBackendSupportsSettingsTab('profile')).toBe(false)

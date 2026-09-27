@@ -1185,7 +1185,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                         .replace('{pending}', String(mdbInspection.pendingMigrations))}
                     </p>
                   </div>
-                  {mdbInspection.state === 'managed' && (
+                  {(mdbInspection.state === 'managed' || mdbInspection.state === 'legacy') && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <button
                         type="button"
@@ -1206,7 +1206,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                       </button>
                     </div>
                   )}
-                  {(mdbInspection.state === 'legacy' || mdbInspection.state === 'foreign') && (
+                  {mdbInspection.state === 'foreign' && (
                     <button
                       type="button"
                       onClick={() => setMdbDatabaseAction('reset')}

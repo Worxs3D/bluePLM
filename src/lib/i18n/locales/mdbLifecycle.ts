@@ -238,7 +238,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseDetected: 'Existing MariaDB state',
     databaseEmpty: 'The database is empty and ready for a new installation.',
     databaseManaged: 'A versioned BluePLM database was found and can be migrated safely.',
-    databaseLegacy: 'An older BluePLM schema was found. Automatic migration is not safe.',
+    databaseLegacy:
+      'An older BluePLM schema was found. You can migrate it in place or erase it and reinstall.',
     databaseForeign:
       'The database contains tables that do not belong to a recognized BluePLM installation.',
     databaseSummary: '{tables} table(s), {pending} pending migration(s)',
@@ -516,7 +517,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseManaged:
       'Eine versionierte BluePLM-Datenbank wurde erkannt und kann sicher migriert werden.',
     databaseLegacy:
-      'Ein älteres BluePLM-Schema wurde erkannt. Eine automatische Migration ist nicht sicher.',
+      'Ein älteres BluePLM-Schema wurde erkannt. Du kannst es direkt migrieren oder löschen und neu installieren.',
     databaseForeign:
       'Die Datenbank enthält Tabellen, die keiner bekannten BluePLM-Installation entsprechen.',
     databaseSummary: '{tables} Tabelle(n), {pending} ausstehende Migration(en)',
@@ -791,7 +792,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseEmpty: 'La base de datos está vacía y lista para una instalación nueva.',
     databaseManaged:
       'Se encontró una base de datos BluePLM versionada que se puede migrar de forma segura.',
-    databaseLegacy: 'Se encontró un esquema BluePLM antiguo. La migración automática no es segura.',
+    databaseLegacy:
+      'Se encontró un esquema BluePLM antiguo. Puedes migrarlo directamente o borrarlo y reinstalar.',
     databaseForeign:
       'La base de datos contiene tablas que no pertenecen a una instalación BluePLM reconocida.',
     databaseSummary: '{tables} tabla(s), {pending} migración(es) pendiente(s)',
@@ -1069,7 +1071,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseManaged:
       'Une base BluePLM versionnée a été trouvée et peut être migrée en toute sécurité.',
     databaseLegacy:
-      'Un ancien schéma BluePLM a été trouvé. La migration automatique n’est pas sûre.',
+      'Un ancien schéma BluePLM a été trouvé. Vous pouvez le migrer directement ou l’effacer et réinstaller.',
     databaseForeign:
       'La base contient des tables qui n’appartiennent pas à une installation BluePLM reconnue.',
     databaseSummary: '{tables} table(s), {pending} migration(s) en attente',
@@ -1339,7 +1341,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseEmpty: 'A base de dados está vazia e pronta para uma nova instalação.',
     databaseManaged:
       'Foi encontrada uma base BluePLM versionada que pode ser migrada com segurança.',
-    databaseLegacy: 'Foi encontrado um esquema BluePLM antigo. A migração automática não é segura.',
+    databaseLegacy:
+      'Foi encontrado um esquema BluePLM antigo. Pode migrá-lo diretamente ou eliminá-lo e reinstalar.',
     databaseForeign:
       'A base contém tabelas que não pertencem a uma instalação BluePLM reconhecida.',
     databaseSummary: '{tables} tabela(s), {pending} migração(ões) pendente(s)',
@@ -1590,7 +1593,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseDetected: '现有 MariaDB 状态',
     databaseEmpty: '数据库为空，可以进行全新安装。',
     databaseManaged: '已找到带版本记录的 BluePLM 数据库，可以安全迁移。',
-    databaseLegacy: '已找到旧版 BluePLM 架构，无法安全自动迁移。',
+    databaseLegacy: '已找到旧版 BluePLM 架构。您可以直接迁移，或清空后重新安装。',
     databaseForeign: '数据库包含不属于已识别 BluePLM 安装的表。',
     databaseSummary: '{tables} 个表，{pending} 个待执行迁移',
     migrateExisting: '迁移现有安装',
@@ -1839,7 +1842,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseDetected: '現有 MariaDB 狀態',
     databaseEmpty: '資料庫為空，可進行全新安裝。',
     databaseManaged: '已找到有版本記錄的 BluePLM 資料庫，可安全遷移。',
-    databaseLegacy: '已找到舊版 BluePLM 架構，無法安全自動遷移。',
+    databaseLegacy: '已找到舊版 BluePLM 架構。您可以直接遷移，或清空後重新安裝。',
     databaseForeign: '資料庫包含不屬於已識別 BluePLM 安裝的資料表。',
     databaseSummary: '{tables} 個資料表，{pending} 個待執行遷移',
     migrateExisting: '遷移現有安裝',

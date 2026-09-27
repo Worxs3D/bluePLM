@@ -1,10 +1,8 @@
-import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { IntegrationStatusValue, IntegrationId, BackupStatusValue } from '@/stores/types'
 import type { SettingsTab } from '@/types/settings'
 import { t } from '@/lib/i18n'
 import { logSettings } from '@/lib/userActionLogger'
-import { activeBackendSupportsSettingsTab } from '@/lib/backendAdapter'
 
 interface SettingsNavigationProps {
   activeTab: SettingsTab
@@ -150,16 +148,8 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
 
   const sections = settingsSections().map((section) => ({
     ...section,
-    items: section.items.filter(
-      (item) => (!item.adminOnly || isAdmin) && activeBackendSupportsSettingsTab(item.id),
-    ),
+    items: section.items.filter((item) => !item.adminOnly || isAdmin),
   }))
-
-  // A client may switch backends while Settings is open or carry a persisted
-  // tab that the selected backend does not implement.
-  useEffect(() => {
-    if (!activeBackendSupportsSettingsTab(activeTab)) onTabChange('vaults')
-  }, [activeTab, onTabChange])
 
   const isIntegration = (id: SettingsTab): boolean => {
     return (integrationIds as readonly string[]).includes(id)

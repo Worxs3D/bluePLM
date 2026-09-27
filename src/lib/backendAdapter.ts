@@ -5,6 +5,7 @@ import type { ModuleId } from '@/types/modules'
 
 export type ClientRole = 'admin' | 'engineer' | 'viewer'
 export type BackendCapability = 'solidworks-license-management' | 'metadata-column-defaults'
+export type SettingsTabAvailability = 'supported' | 'in-development' | 'incompatible'
 
 export interface BackendRoutes<TMdb, TSupabase> {
   mdb: () => TMdb
@@ -110,8 +111,22 @@ export function activeBackendSupports(capability: BackendCapability): boolean {
 
 /** Keep Settings navigation availability behind the backend adapter seam. */
 export function activeBackendSupportsSettingsTab(tab: SettingsTab): boolean {
+  return getActiveBackendSettingsTabAvailability(tab) === 'supported'
+}
+
+/**
+ * Keep the original Settings information architecture visible for every backend.
+ * Unsupported panels render an explicit state instead of disappearing or probing
+ * an inactive provider SDK.
+ */
+export function getActiveBackendSettingsTabAvailability(
+  tab: SettingsTab,
+): SettingsTabAvailability {
   const backend = getActiveBackendKind()
-  return backend ? settingsTabBackends[tab].has(backend) : false
+  if (!backend) return 'incompatible'
+  if (settingsTabBackends[tab].has(backend)) return 'supported'
+  if (backend === 'community' && tab === 'auth-providers') return 'in-development'
+  return 'incompatible'
 }
 
 /** Keep backend-specific application modules behind the same adapter boundary. */

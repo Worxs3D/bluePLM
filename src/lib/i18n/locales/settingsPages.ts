@@ -13,6 +13,12 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations.en,
     noOrganization: 'No organization connected',
     saveSettings: 'Save Settings',
+    availability: {
+      inDevelopmentTitle: 'In development',
+      inDevelopmentDescription: 'This setting is not available for the selected backend yet.',
+      incompatibleTitle: 'Not compatible',
+      incompatibleDescription: 'This setting is not supported by the selected backend.',
+    },
     moduleAccess: {
       title: 'Module Access',
       description:
@@ -77,6 +83,14 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations.de,
     noOrganization: 'Keine Organisation verbunden',
     saveSettings: 'Einstellungen speichern',
+    availability: {
+      inDevelopmentTitle: 'In Entwicklung',
+      inDevelopmentDescription:
+        'Diese Einstellung ist für das ausgewählte Backend noch nicht verfügbar.',
+      incompatibleTitle: 'Nicht kompatibel',
+      incompatibleDescription:
+        'Diese Einstellung wird vom ausgewählten Backend nicht unterstützt.',
+    },
     moduleAccess: {
       title: 'Modulzugriff',
       description:
@@ -142,6 +156,13 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations.es,
     noOrganization: 'No hay ninguna organización conectada',
     saveSettings: 'Guardar ajustes',
+    availability: {
+      inDevelopmentTitle: 'En desarrollo',
+      inDevelopmentDescription:
+        'Esta configuración aún no está disponible para el backend seleccionado.',
+      incompatibleTitle: 'No compatible',
+      incompatibleDescription: 'El backend seleccionado no admite esta configuración.',
+    },
     moduleAccess: {
       title: 'Acceso a módulos',
       description:
@@ -211,6 +232,13 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations.fr,
     noOrganization: 'Aucune organisation connectée',
     saveSettings: 'Enregistrer les paramètres',
+    availability: {
+      inDevelopmentTitle: 'En développement',
+      inDevelopmentDescription:
+        'Ce paramètre n’est pas encore disponible pour le backend sélectionné.',
+      incompatibleTitle: 'Non compatible',
+      incompatibleDescription: 'Ce paramètre n’est pas pris en charge par le backend sélectionné.',
+    },
     moduleAccess: {
       title: 'Accès aux modules',
       description:
@@ -281,6 +309,13 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations.pt,
     noOrganization: 'Nenhuma organização ligada',
     saveSettings: 'Guardar definições',
+    availability: {
+      inDevelopmentTitle: 'Em desenvolvimento',
+      inDevelopmentDescription:
+        'Esta definição ainda não está disponível para o backend selecionado.',
+      incompatibleTitle: 'Não compatível',
+      incompatibleDescription: 'Esta definição não é suportada pelo backend selecionado.',
+    },
     moduleAccess: {
       title: 'Acesso a módulos',
       description:
@@ -349,6 +384,12 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations['zh-CN'],
     noOrganization: '未连接组织',
     saveSettings: '保存设置',
+    availability: {
+      inDevelopmentTitle: '开发中',
+      inDevelopmentDescription: '此设置尚未对所选后端开放。',
+      incompatibleTitle: '不兼容',
+      incompatibleDescription: '所选后端不支持此设置。',
+    },
     moduleAccess: {
       title: '模块访问权限',
       description:
@@ -411,6 +452,12 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     serialization: settingsSerializationTranslations['zh-TW'],
     noOrganization: '未連接組織',
     saveSettings: '儲存設定',
+    availability: {
+      inDevelopmentTitle: '開發中',
+      inDevelopmentDescription: '此設定尚未對所選後端開放。',
+      incompatibleTitle: '不相容',
+      incompatibleDescription: '所選後端不支援此設定。',
+    },
     moduleAccess: {
       title: '模組存取權限',
       description:
