@@ -37,7 +37,7 @@ import {
   type CommunityRegistrationRequest,
 } from '@/lib/community'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
-import { useTranslation } from '@/lib/i18n'
+import { getTranslation, useTranslation } from '@/lib/i18n'
 import {
   useMembers,
   useTeams,
@@ -61,7 +61,7 @@ export interface UsersTabProps {
 export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabProps) {
   // Get user/org info from store
   const { organization, getEffectiveRole, apiServerUrl, startUserImpersonation, addToast } = usePDMStore()
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   const orgId = organization?.id ?? null
   const isAdmin = ['admin', 'owner'].includes(getEffectiveRole())
 
@@ -97,13 +97,14 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
         requests.map((request) => [request.id, previous[request.id] ?? 'viewer']),
       ))
     } catch (error) {
-      console.warn('[UsersTab] Failed to load MDB registration requests', error)
-      addToast('error', t('mdbSetup.registrationRequestsLoadFailed'))
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn('[UsersTab] Failed to load MDB registration requests:', message)
+      addToast('error', getTranslation(language, 'mdbSetup.registrationRequestsLoadFailed'))
       setRegistrationRequests([])
     } finally {
       setIsLoadingRegistrationRequests(false)
     }
-  }, [addToast, isAdmin, t])
+  }, [addToast, isAdmin, language])
 
   useEffect(() => {
     void loadRegistrationRequests()
