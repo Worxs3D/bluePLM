@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { isBackendConfigured } from '@/lib/community'
+import { routeBackend } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { PendingMember, PendingMemberFormData } from '../types'
@@ -36,23 +36,15 @@ export function useInvites(orgId: string | null) {
 
     setPendingMembersLoading(true)
     try {
-      // Community creates password accounts directly. It does not use the
-      // Supabase pending-invitation table, so leave this optional list empty.
-      if (isBackendConfigured('community')) {
-        setPendingMembers([])
-        return
-      }
-      const { data, error } = await supabase
-        .from('pending_org_members')
-        .select('*')
-        .eq('org_id', orgId)
-        .is('claimed_at', null)
-        .order('invited_at', { ascending: false })
-
-      if (error) throw error
-
-      // Cast to our PendingMember type
-      const members = castQueryResult<PendingMember[]>(data || [])
+      const members = await routeBackend({
+        mdb: async () => [] as PendingMember[],
+        supabase: async () => {
+          const { data, error } = await supabase.from('pending_org_members').select('*')
+            .eq('org_id', orgId).is('claimed_at', null).order('invited_at', { ascending: false })
+          if (error) throw error
+          return castQueryResult<PendingMember[]>(data || [])
+        },
+      })
       log.info('[Invites]', 'Loaded pending members', { count: members.length })
       setPendingMembers(members)
     } catch (error) {

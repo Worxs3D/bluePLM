@@ -60,4 +60,6 @@ Google Drive storage may be proposed later as a separate pull request after prod
 
 External OAuth providers, phone authentication, and invite-email delivery require a
 separate server-side provider and mail-transport design. The MDB contribution uses
-email/password plus optional TOTP and must not expose inactive provider controls.
+email/password plus optional TOTP. The original Settings navigation remains visible;
+opening an unavailable surface shows a localized "in development" or "incompatible"
+state and must not initialize or execute controls for the inactive provider.

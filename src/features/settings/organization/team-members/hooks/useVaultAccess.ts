@@ -18,7 +18,7 @@ import {
   setCommunityUserVaultAccess,
   setCommunityTeamVaultAccess,
 } from '@/lib/community'
-import { isMdbBackendActive } from '@/lib/backendAdapter'
+import { routeBackend } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -104,10 +104,10 @@ export function useVaultAccess(orgId: string | null) {
 
     setOrgVaultsLoading(true)
     try {
-      if (isMdbBackendActive()) {
-        const communityVaults = await getCommunityVaults()
-        setOrgVaults(
-          communityVaults.map((vault) => ({
+      const loadedVaults = await routeBackend({
+        mdb: async () => {
+          const communityVaults = await getCommunityVaults()
+          return communityVaults.map((vault) => ({
             id: vault.id,
             name: vault.name,
             slug: vault.id,
@@ -115,19 +115,20 @@ export function useVaultAccess(orgId: string | null) {
             storage_bucket: 'network-vault',
             is_default: false,
             created_at: vault.createdAt,
-          })),
-        )
-        return
-      }
-      const { data, error } = await supabase
-        .from('vaults')
-        .select('*')
-        .eq('org_id', orgId)
-        .order('is_default', { ascending: false })
-        .order('name')
-
-      if (error) throw error
-      setOrgVaults(castQueryResult<OrgVault[]>(data || []))
+          }))
+        },
+        supabase: async () => {
+          const { data, error } = await supabase
+            .from('vaults')
+            .select('*')
+            .eq('org_id', orgId)
+            .order('is_default', { ascending: false })
+            .order('name')
+          if (error) throw error
+          return castQueryResult<OrgVault[]>(data || [])
+        },
+      })
+      setOrgVaults(loadedVaults)
     } catch (error) {
       log.error('[VaultAccess]', 'Failed to load org vaults', { error: error })
       setOrgVaultsLoading(false)
@@ -137,20 +138,18 @@ export function useVaultAccess(orgId: string | null) {
   const loadVaultAccess = useCallback(async () => {
     if (!orgId) return
 
-    if (isMdbBackendActive()) {
-      try {
-        setVaultAccessMap(await getCommunityOrgVaultAccess())
-      } catch (error) {
-        log.error('[VaultAccess]', 'Failed to load MDB vault access', { error })
-      }
-      return
-    }
-
-    const { accessMap, error } = await getOrgVaultAccess(orgId)
-    if (error) {
-      log.error('[VaultAccess]', 'Failed to load vault access', { error })
-    } else {
+    try {
+      const accessMap = await routeBackend({
+        mdb: () => getCommunityOrgVaultAccess(),
+        supabase: async () => {
+          const result = await getOrgVaultAccess(orgId)
+          if (result.error) throw result.error
+          return result.accessMap
+        },
+      })
       setVaultAccessMap(accessMap)
+    } catch (error) {
+      log.error('[VaultAccess]', 'Failed to load vault access', { error })
     }
   }, [orgId, setVaultAccessMap])
 
@@ -158,28 +157,25 @@ export function useVaultAccess(orgId: string | null) {
     if (!orgId) return
 
     try {
-      if (isMdbBackendActive()) {
-        const teams = await getCommunityTeams()
-        const entries = await Promise.all(
-          teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
-        )
-        setTeamVaultAccessMap(Object.fromEntries(entries))
-        return
-      }
-      const { data, error } = await supabase.from('team_vault_access').select('team_id, vault_id')
-
-      if (error) throw error
-
-      const typedData = castQueryResult<TeamVaultAccessJoin[]>(data || [])
-
-      // Build team -> vault[] map
-      const accessMap: Record<string, string[]> = {}
-      for (const row of typedData) {
-        if (!accessMap[row.team_id]) {
-          accessMap[row.team_id] = []
-        }
-        accessMap[row.team_id].push(row.vault_id)
-      }
+      const accessMap = await routeBackend({
+        mdb: async () => {
+          const teams = await getCommunityTeams()
+          const entries = await Promise.all(
+            teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
+          )
+          return Object.fromEntries(entries)
+        },
+        supabase: async () => {
+          const { data, error } = await supabase.from('team_vault_access').select('team_id, vault_id')
+          if (error) throw error
+          const result: Record<string, string[]> = {}
+          for (const row of castQueryResult<TeamVaultAccessJoin[]>(data || [])) {
+            if (!result[row.team_id]) result[row.team_id] = []
+            result[row.team_id].push(row.vault_id)
+          }
+          return result
+        },
+      })
       setTeamVaultAccessMap(accessMap)
     } catch (error) {
       log.error('[VaultAccess]', 'Failed to load team vault access', { error: error })
@@ -195,18 +191,18 @@ export function useVaultAccess(orgId: string | null) {
       if (!user || !orgId) return false
 
       try {
-        if (isMdbBackendActive()) {
-          await setCommunityUserVaultAccess(userId, vaultIds)
-          addToast(
-            'success',
-            t('mdbSetup.userVaultAccessUpdated', { name: userName || t('mdbSetup.userLabel') }),
-          )
-          await loadVaultAccess()
-          return true
-        }
-        const result = await setUserVaultAccess(userId, vaultIds, user.id, orgId)
-
-        if (result.success) {
+        const saved = await routeBackend({
+          mdb: async () => {
+            await setCommunityUserVaultAccess(userId, vaultIds)
+            return true
+          },
+          supabase: async () => {
+            const result = await setUserVaultAccess(userId, vaultIds, user.id, orgId)
+            if (!result.success) throw new Error(result.error || t('mdbSetup.vaultAccessUpdateFailed'))
+            return true
+          },
+        })
+        if (saved) {
           addToast(
             'success',
             t('mdbSetup.userVaultAccessUpdated', { name: userName || t('mdbSetup.userLabel') }),
@@ -214,12 +210,10 @@ export function useVaultAccess(orgId: string | null) {
           // Reload vault access to get updated map
           await loadVaultAccess()
           return true
-        } else {
-          addToast('error', result.error || t('mdbSetup.vaultAccessUpdateFailed'))
-          return false
         }
-      } catch {
-        addToast('error', t('mdbSetup.vaultAccessUpdateFailed'))
+        return false
+      } catch (error) {
+        addToast('error', error instanceof Error ? error.message : t('mdbSetup.vaultAccessUpdateFailed'))
         return false
       }
     },
@@ -231,31 +225,21 @@ export function useVaultAccess(orgId: string | null) {
       if (!user) return false
 
       try {
-        if (isMdbBackendActive()) {
-          await setCommunityTeamVaultAccess(teamId, vaultIds)
-          setTeamVaultAccessMap({
-            ...teamVaultAccessMap,
-            [teamId]: vaultIds,
-          })
-          addToast(
-            'success',
-            t('mdbSetup.teamVaultAccessUpdated', { name: teamName || t('mdbSetup.teamLabel') }),
-          )
-          return true
-        }
-        // Delete existing access
-        await supabase.from('team_vault_access').delete().eq('team_id', teamId)
-
-        // Insert new access
-        if (vaultIds.length > 0) {
-          await insertTeamVaultAccess(
-            vaultIds.map((vaultId) => ({
-              team_id: teamId,
-              vault_id: vaultId,
-              granted_by: user.id,
-            })),
-          )
-        }
+        await routeBackend({
+          mdb: () => setCommunityTeamVaultAccess(teamId, vaultIds),
+          supabase: async () => {
+            await supabase.from('team_vault_access').delete().eq('team_id', teamId)
+            if (vaultIds.length > 0) {
+              await insertTeamVaultAccess(
+                vaultIds.map((vaultId) => ({
+                  team_id: teamId,
+                  vault_id: vaultId,
+                  granted_by: user.id,
+                })),
+              )
+            }
+          },
+        })
 
         // Update store with new team vault access
         setTeamVaultAccessMap({

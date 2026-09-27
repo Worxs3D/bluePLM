@@ -7,7 +7,7 @@ vault; MariaDB stores metadata, revisions, permissions, and authentication data.
 ## Reviewable server dependency
 
 The PHP server is kept as the `blueplm-mdb-php` submodule and is pinned by
-the gitlink in this branch. The pinned commit is `1978d05cd6012c0d11ee9a66dd9bdbb0fc008440`
+the gitlink in this branch. The pinned commit is `5dcaa1cf9d933a91e90173a3e6a1bc1ef2f78e70`
 from the review branch.
 It contains the MDB API, migrations, setup endpoint, and administration endpoints
 used by the client installer. CI and release checkout jobs use recursive submodule
@@ -33,8 +33,9 @@ These paths use the backend adapter and do not initialize Supabase in MDB mode.
 
 MDB authentication in this contribution is email/password with optional TOTP.
 External OAuth, phone authentication, invite-email delivery, and Google Drive are
-not implemented by the PHP server, so the corresponding configuration surfaces are
-not shown in MDB mode.
+not implemented by the PHP server. Their original Settings entries remain visible in
+MDB mode and open a localized "in development" or "incompatible" state without
+initializing the inactive provider.
 
 ## Network Vault
 
