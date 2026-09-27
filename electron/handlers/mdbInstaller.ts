@@ -270,46 +270,6 @@ async function removeRemoteDirectory(
   }
 }
 
-async function replaceRemoteFile(
-  ftp: URL,
-  security: MdbFtpsSecurity,
-  source: string,
-  destination: string,
-  username: string,
-  password: string,
-): Promise<void> {
-  const client = new Client(30_000)
-  client.ftp.verbose = false
-  const base = ftp.pathname.replace(/\/$/, '')
-  const sourceRemote = `${base}/${source}`.replaceAll('//', '/')
-  const destinationRemote = `${base}/${destination}`.replaceAll('//', '/')
-  const backupRemote = `${destinationRemote}.blueplm-backup`
-  let movedExisting = false
-  try {
-    await client.access({
-      ...ftpAccessOptions(ftp, security),
-      user: username,
-      password,
-    })
-    await client.remove(backupRemote, true)
-    try {
-      await client.rename(destinationRemote, backupRemote)
-      movedExisting = true
-    } catch {
-      // The destination does not exist on a first installation.
-    }
-    try {
-      await client.rename(sourceRemote, destinationRemote)
-    } catch (error) {
-      if (movedExisting) await client.rename(backupRemote, destinationRemote).catch(() => undefined)
-      throw error
-    }
-    if (movedExisting) await client.remove(backupRemote, true)
-  } finally {
-    client.close()
-  }
-}
-
 async function testFtpConnection(
   request: MdbFtpTestRequest,
 ): Promise<{ success: boolean; error?: string }> {
@@ -402,14 +362,6 @@ async function installerRequest<T>(
   } finally {
     clearTimeout(timer)
   }
-}
-
-export function orderBundleRelativePaths(relativePaths: string[]): string[] {
-  return [...relativePaths].sort((left, right) => {
-    if (left === 'public/index.php') return 1
-    if (right === 'public/index.php') return -1
-    return left.localeCompare(right)
-  })
 }
 
 export function installerBridge(stageName: string): string {
@@ -540,33 +492,92 @@ async function publishInstaller(
   prepared: Awaited<ReturnType<typeof prepareInstaller>>,
   promoteEnvironment: boolean,
 ): Promise<void> {
-  const allowedRoots = ['src', 'public', 'migrations']
-  const files = (
-    await Promise.all(allowedRoots.map((folder) => listFiles(path.join(prepared.root, folder))))
-  ).flat()
-  const byRelative = new Map(
-    files.map((file) => [path.relative(prepared.root, file).replaceAll('\\', '/'), file]),
-  )
-  if (promoteEnvironment) {
-    await replaceRemoteFile(
-      prepared.ftp,
-      request.ftpSecurity,
-      `${prepared.stageRoot}/.env`,
-      `${prepared.targetRoot}/.env`,
-      prepared.ftpUsername,
-      prepared.ftpPassword,
+  const client = new Client(30_000)
+  client.ftp.verbose = false
+  const base = prepared.ftp.pathname.replace(/\/$/, '')
+  try {
+    await client.access({
+      ...ftpAccessOptions(prepared.ftp, request.ftpSecurity),
+      user: prepared.ftpUsername,
+      password: prepared.ftpPassword,
+    })
+    await swapRemoteDeployment(
+      client,
+      `${base}/${prepared.targetRoot}`.replaceAll('//', '/'),
+      `${base}/${prepared.stageRoot}`.replaceAll('//', '/'),
+      promoteEnvironment,
     )
+  } finally {
+    client.close()
   }
-  for (const relative of orderBundleRelativePaths([...byRelative.keys()])) {
-    await upload(
-      prepared.ftp,
-      request.ftpSecurity,
-      `${prepared.targetRoot}/${relative}`,
-      byRelative.get(relative)!,
-      prepared.ftpUsername,
-      prepared.ftpPassword,
-    )
+}
+
+type DeploymentClient = Pick<Client, 'cd' | 'ensureDir' | 'list' | 'removeDir' | 'rename'>
+
+function remoteJoin(root: string, name: string): string {
+  return `${root.replace(/\/$/, '')}/${name}`.replaceAll('//', '/')
+}
+
+async function remoteEntryExists(client: DeploymentClient, remotePath: string): Promise<boolean> {
+  const slash = remotePath.lastIndexOf('/')
+  const parent = slash > 0 ? remotePath.slice(0, slash) : '/'
+  const name = remotePath.slice(slash + 1)
+  return (await client.list(parent)).some((entry) => entry.name === name)
+}
+
+/**
+ * Publish a complete staged release while the public entry point is offline.
+ * Every rename stays on the same FTP filesystem. If a promotion fails, all
+ * already moved components are returned to the stage and the previous live
+ * tree is restored before the error escapes.
+ */
+export async function swapRemoteDeployment(
+  client: DeploymentClient,
+  targetRoot: string,
+  stageRoot: string,
+  promoteEnvironment: boolean,
+): Promise<void> {
+  const stageName = stageRoot.slice(stageRoot.lastIndexOf('/') + 1)
+  if (!/^blueplm-stage-[a-f0-9]{24}$/.test(stageName)) fail('Invalid installer stage name.')
+  const backupRoot = remoteJoin(targetRoot, `.blueplm-backup-${stageName.slice(14)}`)
+  await client.ensureDir(backupRoot)
+  await client.cd('/')
+
+  const components = ['src', 'migrations', ...(promoteEnvironment ? ['.env'] : []), 'public']
+  const existing: string[] = []
+  const promoted: string[] = []
+  try {
+    // Removing public first creates a short maintenance window. No request can
+    // execute while src, migrations, or the private environment are changing.
+    for (const component of ['public', 'src', 'migrations', ...(promoteEnvironment ? ['.env'] : [])]) {
+      const live = remoteJoin(targetRoot, component)
+      if (!(await remoteEntryExists(client, live))) continue
+      await client.rename(live, remoteJoin(backupRoot, component))
+      existing.push(component)
+    }
+
+    // Restore the public entry point only after every dependency is live.
+    for (const component of components) {
+      await client.rename(remoteJoin(stageRoot, component), remoteJoin(targetRoot, component))
+      promoted.push(component)
+    }
+  } catch (error) {
+    for (const component of [...promoted].reverse()) {
+      await client
+        .rename(remoteJoin(targetRoot, component), remoteJoin(stageRoot, component))
+        .catch(() => undefined)
+    }
+    for (const component of [...existing].reverse()) {
+      await client
+        .rename(remoteJoin(backupRoot, component), remoteJoin(targetRoot, component))
+        .catch(() => undefined)
+    }
+    throw error
   }
+
+  // A stale backup is harmless; failure to remove it must not turn a completed
+  // activation into a reported deployment failure.
+  await client.removeDir(backupRoot).catch(() => undefined)
 }
 
 async function inspectDatabase(request: MdbProvisionRequest): Promise<MdbInspectionResult> {

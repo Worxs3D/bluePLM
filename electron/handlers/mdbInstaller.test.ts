@@ -9,8 +9,8 @@ import {
   ftpAccessOptions,
   ftpBase,
   installerBridge,
-  orderBundleRelativePaths,
   resolveSecrets,
+  swapRemoteDeployment,
   type MdbProvisionRequest,
 } from './mdbInstaller'
 
@@ -85,20 +85,72 @@ describe('MDB installer transport', () => {
 })
 
 describe('MDB staged deployment', () => {
-  it('publishes the front controller last', () => {
-    expect(
-      orderBundleRelativePaths([
-        'public/index.php',
-        'src/Runtime.php',
-        'migrations/001_init.sql',
-        'public/admin/index.php',
-      ]),
-    ).toEqual([
-      'migrations/001_init.sql',
-      'public/admin/index.php',
-      'src/Runtime.php',
-      'public/index.php',
-    ])
+  class FakeDeploymentClient {
+    entries = new Map<string, string>()
+    failRenameFrom: string | null = null
+
+    async cd(): Promise<string> {
+      return '/'
+    }
+    async ensureDir(remotePath: string): Promise<string> {
+      this.entries.set(remotePath, 'directory')
+      return remotePath
+    }
+    async list(parent: string): Promise<Array<{ name: string }>> {
+      const prefix = `${parent.replace(/\/$/, '')}/`
+      return [...this.entries.keys()]
+        .filter((entry) => entry.startsWith(prefix) && !entry.slice(prefix.length).includes('/'))
+        .map((entry) => ({ name: entry.slice(prefix.length) }))
+    }
+    async rename(source: string, destination: string): Promise<void> {
+      if (source === this.failRenameFrom) throw new Error('simulated FTP rename failure')
+      const value = this.entries.get(source)
+      if (!value) throw new Error(`missing ${source}`)
+      this.entries.delete(source)
+      this.entries.set(destination, value)
+    }
+    async removeDir(remotePath: string): Promise<void> {
+      for (const entry of [...this.entries.keys()]) {
+        if (entry === remotePath || entry.startsWith(`${remotePath}/`)) this.entries.delete(entry)
+      }
+    }
+  }
+
+  function deploymentFixture() {
+    const client = new FakeDeploymentClient()
+    const target = '/blueplm'
+    const stage = '/blueplm/blueplm-stage-0123456789abcdef01234567'
+    client.entries.set(`${target}/public`, 'old-public')
+    client.entries.set(`${target}/src`, 'old-src')
+    client.entries.set(`${target}/migrations`, 'old-migrations')
+    client.entries.set(`${target}/.env`, 'old-env')
+    client.entries.set(`${stage}/public`, 'new-public')
+    client.entries.set(`${stage}/src`, 'new-src')
+    client.entries.set(`${stage}/migrations`, 'new-migrations')
+    return { client, target, stage }
+  }
+
+  it('activates all dependencies before restoring the public entry point', async () => {
+    const { client, target, stage } = deploymentFixture()
+    await swapRemoteDeployment(client as never, target, stage, false)
+
+    expect(client.entries.get(`${target}/src`)).toBe('new-src')
+    expect(client.entries.get(`${target}/migrations`)).toBe('new-migrations')
+    expect(client.entries.get(`${target}/public`)).toBe('new-public')
+    expect(client.entries.get(`${target}/.env`)).toBe('old-env')
+  })
+
+  it('rolls every component back when an FTP rename fails during activation', async () => {
+    const { client, target, stage } = deploymentFixture()
+    client.failRenameFrom = `${stage}/migrations`
+
+    await expect(swapRemoteDeployment(client as never, target, stage, false)).rejects.toThrow(
+      'simulated FTP rename failure',
+    )
+    expect(client.entries.get(`${target}/src`)).toBe('old-src')
+    expect(client.entries.get(`${target}/migrations`)).toBe('old-migrations')
+    expect(client.entries.get(`${target}/public`)).toBe('old-public')
+    expect(client.entries.get(`${stage}/src`)).toBe('new-src')
   })
 
   it('limits the temporary bridge to authenticated installer routes', () => {
