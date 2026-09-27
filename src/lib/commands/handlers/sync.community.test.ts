@@ -19,11 +19,11 @@ const getCommunityVault = vi.fn()
 const importCommunityFile = vi.fn()
 const communityObjectStoragePath = vi.fn()
 vi.mock('@/lib/community', () => ({
-  isBackendConfigured: () => true,
   getCommunityVault: (...args: unknown[]) => getCommunityVault(...args),
   importCommunityFile: (...args: unknown[]) => importCommunityFile(...args),
   communityObjectStoragePath: (...args: unknown[]) => communityObjectStoragePath(...args),
 }))
+vi.mock('@/lib/backendAdapter', () => ({ isMdbBackendActive: () => true }))
 
 vi.mock('@/lib/logger', () => ({
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
