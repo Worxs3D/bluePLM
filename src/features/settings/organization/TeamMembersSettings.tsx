@@ -58,6 +58,7 @@ import {
   useOrgCode,
   // Dialog components
   CreateUserDialog,
+  RemoveUserDialog,
   TeamFormDialog,
   WorkflowRoleFormDialog,
   JobTitleFormDialog,
@@ -82,7 +83,7 @@ export function TeamMembersSettings() {
 
   // ===== DATA HOOKS =====
   const { teams, isLoading: teamsLoading, loadTeams, createTeam } = useTeams(orgId)
-  const { members: orgUsers, isLoading: membersLoading, loadMembers } = useMembers(orgId)
+  const { members: orgUsers, isLoading: membersLoading, loadMembers, removeMember } = useMembers(orgId)
   const { loadPendingMembers } = useInvites(orgId)
   const {
     workflowRoles,
@@ -124,7 +125,14 @@ export function TeamMembersSettings() {
     resetTeamForm,
   } = useTeamDialogs()
 
-  const { showCreateUserDialog, setShowCreateUserDialog } = useUserDialogs()
+  const {
+    showCreateUserDialog,
+    setShowCreateUserDialog,
+    removingUser,
+    setRemovingUser,
+    isRemoving,
+    setIsRemoving,
+  } = useUserDialogs()
 
   const {
     showCreateWorkflowRoleDialog,
@@ -197,6 +205,18 @@ export function TeamMembersSettings() {
       setIsCreatingTitle(false)
     }
   }
+
+  const handleRemoveUser = useCallback(async () => {
+    if (!removingUser) return
+
+    setIsRemoving(true)
+    try {
+      const removed = await removeMember(removingUser.id)
+      if (removed) setRemovingUser(null)
+    } finally {
+      setIsRemoving(false)
+    }
+  }, [removeMember, removingUser, setIsRemoving, setRemovingUser])
 
   // Generate org code for invite dialog
   const getOrgCodeForDialog = () => {
@@ -806,6 +826,16 @@ export function TeamMembersSettings() {
           workflowRoles={workflowRoles}
           apiUrl={apiServerUrl}
           orgCode={getOrgCodeForDialog()}
+        />
+      )}
+
+      {removingUser && (
+        <RemoveUserDialog
+          user={removingUser}
+          onClose={() => setRemovingUser(null)}
+          onConfirm={() => void handleRemoveUser()}
+          isRemoving={isRemoving}
+          isSelf={removingUser.id === user?.id}
         />
       )}
 
