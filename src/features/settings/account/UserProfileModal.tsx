@@ -26,8 +26,8 @@ import { getSupabaseClient } from '@/lib/supabase'
 import {
   getCommunityUsers,
   getCommunityUserTeams,
-  isBackendConfigured,
 } from '@/lib/community'
+import { routeBackend } from '@/lib/backendAdapter'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { selectUserProfileDataSource } from './UserProfileModal.data'
 
@@ -197,10 +197,10 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
     const loadUserData = async () => {
       setIsLoading(true)
-      const dataSource = selectUserProfileDataSource(
-        isBackendConfigured('community'),
-        getDb,
-      )
+      const dataSource = routeBackend({
+        mdb: () => selectUserProfileDataSource(true, getDb),
+        supabase: () => selectUserProfileDataSource(false, getDb),
+      })
       const oneYearAgo = new Date()
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
 

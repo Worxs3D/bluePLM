@@ -9,9 +9,9 @@ import { supabase } from '@/lib/supabase'
 import {
   getCommunityUserPermissions,
   getCommunityVaults,
-  isBackendConfigured,
   setCommunityUserPermissions,
 } from '@/lib/community'
+import { routeBackend } from '@/lib/backendAdapter'
 import type { OrgUser, Vault } from '../../types'
 import { t } from '@/lib/i18n'
 import type { PermissionAction } from '@/types/permissions'
@@ -61,8 +61,8 @@ export function UserPermissionsDialog({
         return
       }
       try {
-        if (isBackendConfigured('community')) {
-          setVaults(
+        const loadedVaults = await routeBackend({
+          mdb: async (): Promise<Vault[]> =>
             (await getCommunityVaults()).map((vault) => ({
               id: vault.id,
               name: vault.name,
@@ -72,18 +72,18 @@ export function UserPermissionsDialog({
               is_default: false,
               created_at: vault.createdAt,
             })),
-          )
-          return
-        }
-        const { data, error } = await supabase
-          .from('vaults')
-          .select('id, name, slug')
-          .eq('org_id', organization.id)
-          .order('name')
+          supabase: async (): Promise<Vault[]> => {
+            const { data, error } = await supabase
+              .from('vaults')
+              .select('id, name, slug')
+              .eq('org_id', organization.id)
+              .order('name')
 
-        if (error) throw error
-        const typedData = (data || []) as unknown as VaultQueryResult[]
-        setVaults(typedData as Vault[])
+            if (error) throw error
+            return ((data || []) as unknown as VaultQueryResult[]) as Vault[]
+          },
+        })
+        setVaults(loadedVaults)
       } catch (error) {
         log.error('[UserPermissions]', 'Failed to load vaults', { error: error })
       } finally {
@@ -100,32 +100,22 @@ export function UserPermissionsDialog({
   const loadPermissions = async () => {
     setIsLoading(true)
     try {
-      if (isBackendConfigured('community')) {
-        const permsMap = await getCommunityUserPermissions(user.id, selectedVaultId)
-        setPermissions(permsMap)
-        setOriginalPermissions(permsMap)
-        return
-      }
-      // Build query - filter by vault_id
-      let query = supabase.from('user_permissions').select('*').eq('user_id', user.id)
-
-      if (selectedVaultId === null) {
-        // "All Vaults" - only load global permissions
-        query = query.is('vault_id', null)
-      } else {
-        // Specific vault
-        query = query.eq('vault_id', selectedVaultId)
-      }
-
-      const { data, error } = await query
-
-      if (error) throw error
-
-      const typedPerms = (data || []) as unknown as UserPermissionResult[]
-      const permsMap: Record<string, PermissionAction[]> = {}
-      for (const perm of typedPerms) {
-        permsMap[perm.resource] = perm.actions
-      }
+      const permsMap = await routeBackend({
+        mdb: () => getCommunityUserPermissions(user.id, selectedVaultId),
+        supabase: async (): Promise<Record<string, PermissionAction[]>> => {
+          let query = supabase.from('user_permissions').select('*').eq('user_id', user.id)
+          query = selectedVaultId === null
+            ? query.is('vault_id', null)
+            : query.eq('vault_id', selectedVaultId)
+          const { data, error } = await query
+          if (error) throw error
+          const mapped: Record<string, PermissionAction[]> = {}
+          for (const permission of (data || []) as unknown as UserPermissionResult[]) {
+            mapped[permission.resource] = permission.actions
+          }
+          return mapped
+        },
+      })
 
       setPermissions(permsMap)
       setOriginalPermissions(permsMap)
@@ -141,47 +131,33 @@ export function UserPermissionsDialog({
 
     setIsSaving(true)
     try {
-      if (isBackendConfigured('community')) {
-        await setCommunityUserPermissions(user.id, selectedVaultId, permissions)
-        const vaultName = selectedVaultId
-          ? vaults.find((vault) => vault.id === selectedVaultId)?.name ||
-            t('mdbSetup.selectedVault')
-          : t('mdbSetup.allVaultsLabel')
-        addToast(
-          'success',
-          t('mdbSetup.permissionsSaved', { name: user.full_name || user.email, vault: vaultName }),
-        )
-        onClose()
-        return
-      }
-      // Delete existing permissions for this vault scope
-      let deleteQuery = supabase.from('user_permissions').delete().eq('user_id', user.id)
+      await routeBackend({
+        mdb: () => setCommunityUserPermissions(user.id, selectedVaultId, permissions),
+        supabase: async () => {
+          let deleteQuery = supabase.from('user_permissions').delete().eq('user_id', user.id)
+          deleteQuery = selectedVaultId === null
+            ? deleteQuery.is('vault_id', null)
+            : deleteQuery.eq('vault_id', selectedVaultId)
+          const { error: deleteError } = await deleteQuery
+          if (deleteError) throw deleteError
 
-      if (selectedVaultId === null) {
-        deleteQuery = deleteQuery.is('vault_id', null)
-      } else {
-        deleteQuery = deleteQuery.eq('vault_id', selectedVaultId)
-      }
-
-      await deleteQuery
-
-      // Insert new permissions
-      const newPerms = Object.entries(permissions)
-        .filter(([_, actions]) => actions.length > 0)
-        .map(([resource, actions]) => ({
-          user_id: user.id,
-          resource,
-          vault_id: selectedVaultId,
-          actions,
-          granted_by: currentUserId,
-        }))
-
-      if (newPerms.length > 0) {
-        // Supabase v2 type inference incomplete for user_permissions table
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase as any).from('user_permissions').insert(newPerms) // TODO: type this
-        if (error) throw error
-      }
+          const newPerms = Object.entries(permissions)
+            .filter(([_, actions]) => actions.length > 0)
+            .map(([resource, actions]) => ({
+              user_id: user.id,
+              resource,
+              vault_id: selectedVaultId,
+              actions,
+              granted_by: currentUserId,
+            }))
+          if (newPerms.length > 0) {
+            // Supabase v2 type inference incomplete for user_permissions table
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase as any).from('user_permissions').insert(newPerms) // TODO: type this
+            if (error) throw error
+          }
+        },
+      })
 
       const vaultName = selectedVaultId
         ? vaults.find((v) => v.id === selectedVaultId)?.name || t('mdbSetup.selectedVault')

@@ -17,6 +17,10 @@ export type BackendCapability =
   | 'community-user-credentials'
   | 'user-permissions'
   | 'net-permissions'
+  | 'company-logo-management'
+  | 'organization-address-management'
+  | 'network-vault-management'
+  | 'cloud-vault-management'
 export type SettingsTabAvailability = 'supported' | 'in-development' | 'incompatible'
 
 export interface BackendRoutes<TMdb, TSupabase> {
@@ -71,6 +75,7 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
     'direct-account-provisioning',
     'community-authenticator',
     'community-user-credentials',
+    'network-vault-management',
   ]),
   supabase: new Set<BackendCapability>([
     'solidworks-license-management',
@@ -82,6 +87,9 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
     'team-reviewers',
     'user-permissions',
     'net-permissions',
+    'company-logo-management',
+    'organization-address-management',
+    'cloud-vault-management',
   ]),
 }
 

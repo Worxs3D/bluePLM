@@ -21,11 +21,12 @@ import { usePDMStore } from '@/stores/pdmStore'
 import {
   getCommunityOrganizationAddresses,
   getCommunityOrganizationProfile,
-  isBackendConfigured,
   updateCommunityOrganizationProfile,
 } from '@/lib/community'
+import { activeBackendSupports, routeBackend } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
+import { BackendAvailabilityDialog } from '../components/BackendAvailabilityNotice'
 
 interface CompanyProfile {
   logo_url: string | null
@@ -72,6 +73,8 @@ const emptyAddress: Omit<OrgAddress, 'id' | 'org_id'> = {
 export function CompanyProfileSettings() {
   const { organization, addToast, getEffectiveRole } = usePDMStore()
   const isAdmin = getEffectiveRole() === 'admin'
+  const supportsLogoManagement = activeBackendSupports('company-logo-management')
+  const supportsAddressManagement = activeBackendSupports('organization-address-management')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -101,6 +104,7 @@ export function CompanyProfileSettings() {
 
   // Delete confirmation modal state
   const [deleteConfirmAddress, setDeleteConfirmAddress] = useState<OrgAddress | null>(null)
+  const [showUnavailableFeature, setShowUnavailableFeature] = useState(false)
 
   // Load current profile
   useEffect(() => {
@@ -109,52 +113,35 @@ export function CompanyProfileSettings() {
     const loadProfile = async () => {
       setLoading(true)
       try {
-        if (isBackendConfigured('community')) {
-          const data = await getCommunityOrganizationProfile()
-          setProfile({
-            logo_url: null,
-            logo_storage_path: data?.logo_storage_path ?? null,
-            phone: data?.phone ?? null,
-            website: data?.website ?? null,
-            contact_email: data?.contact_email ?? null,
-          })
-          return
-        }
-        const { data, error } = await supabase
-          .from('organizations')
-          .select('logo_url, logo_storage_path, phone, website, contact_email')
-          .eq('id', organization.id)
-          .single()
-
-        if (error) throw error
-
-        log.debug('[CompanyProfile]', 'Loaded from DB', {
-          logo_url: data?.logo_url?.substring(0, 50) + '...',
-          logo_storage_path: data?.logo_storage_path,
+        const loadedProfile = await routeBackend({
+          mdb: async (): Promise<CompanyProfile> => {
+            const data = await getCommunityOrganizationProfile()
+            return {
+              logo_url: null, logo_storage_path: data?.logo_storage_path ?? null,
+              phone: data?.phone ?? null, website: data?.website ?? null,
+              contact_email: data?.contact_email ?? null,
+            }
+          },
+          supabase: async (): Promise<CompanyProfile> => {
+            const { data, error } = await supabase.from('organizations')
+              .select('logo_url, logo_storage_path, phone, website, contact_email')
+              .eq('id', organization.id).single()
+            if (error) throw error
+            let logoUrl = data?.logo_url || null
+            if (data?.logo_storage_path) {
+              const { data: signedData, error: signedError } = await supabase.storage
+                .from('vault').createSignedUrl(data.logo_storage_path, 60 * 60 * 24 * 365)
+              if (signedError) log.error('[CompanyProfile]', 'Failed to create signed URL', { error: signedError })
+              else if (signedData?.signedUrl) logoUrl = signedData.signedUrl
+            }
+            return {
+              logo_url: logoUrl, logo_storage_path: data?.logo_storage_path || null,
+              phone: data?.phone || null, website: data?.website || null,
+              contact_email: data?.contact_email || null,
+            }
+          },
         })
-
-        // If we have a storage path, get a fresh signed URL
-        let logoUrl = data?.logo_url || null
-        if (data?.logo_storage_path) {
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from('vault')
-            .createSignedUrl(data.logo_storage_path, 60 * 60 * 24 * 365) // 1 year
-
-          if (signedError) {
-            log.error('[CompanyProfile]', 'Failed to create signed URL', { error: signedError })
-          } else if (signedData?.signedUrl) {
-            log.debug('[CompanyProfile]', 'Generated fresh signed URL')
-            logoUrl = signedData.signedUrl
-          }
-        }
-
-        setProfile({
-          logo_url: logoUrl,
-          logo_storage_path: data?.logo_storage_path || null,
-          phone: data?.phone || null,
-          website: data?.website || null,
-          contact_email: data?.contact_email || null,
-        })
+        setProfile(loadedProfile)
       } catch (error) {
         log.error('[CompanyProfile]', 'Failed to load company profile', { error: error })
       } finally {
@@ -172,26 +159,15 @@ export function CompanyProfileSettings() {
     const loadAddresses = async () => {
       setLoadingAddresses(true)
       try {
-        if (isBackendConfigured('community')) {
-          const addresses = await getCommunityOrganizationAddresses()
-          setBillingAddresses(
-            addresses.filter((address) => address.address_type === 'billing') as OrgAddress[],
-          )
-          setShippingAddresses(
-            addresses.filter((address) => address.address_type === 'shipping') as OrgAddress[],
-          )
-          return
-        }
-        const { data, error } = await supabase
-          .from('organization_addresses')
-          .select('*')
-          .eq('org_id', organization.id)
-          .order('is_default', { ascending: false })
-          .order('label')
-
-        if (error) throw error
-
-        const addresses = (data || []) as OrgAddress[]
+        const addresses = await routeBackend({
+          mdb: async () => await getCommunityOrganizationAddresses() as OrgAddress[],
+          supabase: async () => {
+            const { data, error } = await supabase.from('organization_addresses').select('*')
+              .eq('org_id', organization.id).order('is_default', { ascending: false }).order('label')
+            if (error) throw error
+            return (data || []) as OrgAddress[]
+          },
+        })
         setBillingAddresses(addresses.filter((a) => a.address_type === 'billing'))
         setShippingAddresses(addresses.filter((a) => a.address_type === 'shipping'))
       } catch (error) {
@@ -238,6 +214,11 @@ export function CompanyProfileSettings() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !organization?.id) return
+    if (!supportsLogoManagement) {
+      e.target.value = ''
+      setShowUnavailableFeature(true)
+      return
+    }
 
     // Validate file
     if (!file.type.startsWith('image/')) {
@@ -306,6 +287,10 @@ export function CompanyProfileSettings() {
   // Remove logo
   const handleRemoveLogo = async () => {
     if (!organization?.id) return
+    if (!supportsLogoManagement) {
+      setShowUnavailableFeature(true)
+      return
+    }
 
     try {
       // Delete from storage if exists
@@ -344,26 +329,20 @@ export function CompanyProfileSettings() {
     setSaving(true)
     savingRef.current = true
     try {
-      if (isBackendConfigured('community')) {
-        await updateCommunityOrganizationProfile({
-          phone: profile.phone || null,
-          website: profile.website || null,
+      await routeBackend({
+        mdb: () => updateCommunityOrganizationProfile({
+          phone: profile.phone || null, website: profile.website || null,
           contactEmail: profile.contact_email || null,
-        })
-        addToast('success', t('mdbSetup.companyProfileSaved'))
-        return
-      }
-      // Use RPC function (direct updates not allowed due to RLS)
-      const { error } = await (supabase.rpc as any)('update_org_branding', {
-        // TODO: type this
-        p_org_id: organization.id,
-        p_phone: profile.phone || null,
-        p_website: profile.website || null,
-        p_contact_email: profile.contact_email || null,
+        }),
+        supabase: async () => {
+          const { error } = await (supabase.rpc as any)('update_org_branding', {
+            p_org_id: organization.id, p_phone: profile.phone || null,
+            p_website: profile.website || null, p_contact_email: profile.contact_email || null,
+          })
+          if (error) throw error
+        },
       })
-
-      if (error) throw error
-      addToast('success', 'Contact information saved')
+      addToast('success', t('mdbSetup.companyProfileSaved'))
     } catch (error) {
       log.error('[CompanyProfile]', 'Failed to save contact info', { error: error })
       addToast('error', 'Failed to save contact information')
@@ -383,6 +362,10 @@ export function CompanyProfileSettings() {
 
   // Open address modal for new address
   const openNewAddressModal = (type: 'billing' | 'shipping') => {
+    if (!supportsAddressManagement) {
+      setShowUnavailableFeature(true)
+      return
+    }
     setEditingAddress(null)
     setAddressForm({
       ...emptyAddress,
@@ -395,6 +378,10 @@ export function CompanyProfileSettings() {
 
   // Open address modal for editing
   const openEditAddressModal = (address: OrgAddress) => {
+    if (!supportsAddressManagement) {
+      setShowUnavailableFeature(true)
+      return
+    }
     setEditingAddress(address)
     setAddressForm({
       address_type: address.address_type,
@@ -417,6 +404,11 @@ export function CompanyProfileSettings() {
   // Save address
   const handleSaveAddress = async () => {
     if (!organization?.id) return
+    if (!supportsAddressManagement) {
+      setShowAddressModal(false)
+      setShowUnavailableFeature(true)
+      return
+    }
     if (
       !addressForm.label.trim() ||
       !addressForm.address_line1.trim() ||
@@ -531,12 +523,21 @@ export function CompanyProfileSettings() {
 
   // Delete address - show confirmation modal
   const handleDeleteAddress = (address: OrgAddress) => {
+    if (!supportsAddressManagement) {
+      setShowUnavailableFeature(true)
+      return
+    }
     setDeleteConfirmAddress(address)
   }
 
   // Confirm and execute address deletion
   const confirmDeleteAddress = async () => {
     if (!deleteConfirmAddress) return
+    if (!supportsAddressManagement) {
+      setDeleteConfirmAddress(null)
+      setShowUnavailableFeature(true)
+      return
+    }
 
     setDeletingAddressId(deleteConfirmAddress.id)
     try {
@@ -591,6 +592,10 @@ export function CompanyProfileSettings() {
 
   // Set address as default
   const handleSetDefault = async (address: OrgAddress) => {
+    if (!supportsAddressManagement) {
+      setShowUnavailableFeature(true)
+      return
+    }
     try {
       const { error } = await supabase
         .from('organization_addresses')
@@ -1150,6 +1155,13 @@ export function CompanyProfileSettings() {
             </div>
           </div>
         </div>
+      )}
+
+      {showUnavailableFeature && (
+        <BackendAvailabilityDialog
+          availability="incompatible"
+          onClose={() => setShowUnavailableFeature(false)}
+        />
       )}
     </div>
   )

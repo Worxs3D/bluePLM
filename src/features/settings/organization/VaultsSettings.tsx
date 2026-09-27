@@ -31,7 +31,8 @@ import { executeCommand } from '@/lib/commands'
 import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialogs'
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { RealignSection } from './realign'
-import { createCommunityVault, isBackendConfigured } from '@/lib/community'
+import { createCommunityVault } from '@/lib/community'
+import { activeBackendSupports, routeBackend } from '@/lib/backendAdapter'
 import { clearVaultCache } from '@/lib/cache/vaultFileCache'
 import { useTranslation } from '@/lib/i18n'
 
@@ -91,6 +92,8 @@ export function VaultsSettings() {
   } = usePDMStore()
 
   const isAdmin = getEffectiveRole() === 'admin'
+  const supportsNetworkVaults = activeBackendSupports('network-vault-management')
+  const supportsCloudVaults = activeBackendSupports('cloud-vault-management')
 
   const [platform, setPlatform] = useState<string>('win32')
   const [orgVaults, setOrgVaults] = useState<Vault[]>([])
@@ -221,7 +224,8 @@ export function VaultsSettings() {
     const storageBucket = `vault-${organization.slug}-${slug}`
 
     try {
-      if (isBackendConfigured('community')) {
+      const mappedVault = await routeBackend({
+        mdb: async (): Promise<Vault | null> => {
         const networkRoot = newVaultStorageRoot.trim()
         if (
           newVaultStorageProvider === 'network' &&
@@ -229,12 +233,12 @@ export function VaultsSettings() {
         ) {
           if (!newVaultNetworkUsername.trim() || !newVaultNetworkPassword) {
             addToast('error', t('mdbSetup.networkCredentialsBothOrEmpty'))
-            return
+            return null
           }
           const api = window.electronAPI
           if (!api) {
             addToast('error', t('mdbSetup.networkCredentialsDesktopOnly'))
-            return
+            return null
           }
           const credentialResult = await api.saveNetworkVaultCredential({
             networkRoot,
@@ -248,7 +252,7 @@ export function VaultsSettings() {
               error: credentialResult.error,
             })
             addToast('error', t('mdbSetup.networkCredentialSaveFailed'))
-            return
+            return null
           }
         }
         const vault = await createCommunityVault({
@@ -256,7 +260,7 @@ export function VaultsSettings() {
           storageProvider: 'network',
           networkRoot,
         })
-        const mappedVault: Vault = {
+        return {
           id: vault.id,
           name: vault.name,
           slug: vault.id,
@@ -266,19 +270,9 @@ export function VaultsSettings() {
           storageProvider: vault.storageProvider,
           networkRoot: vault.networkRoot,
         }
-        addToast('success', t('mdbSetup.vaultCreated', { name }))
-        setOrgVaults([...orgVaults, mappedVault])
-        setIsCreatingVault(false)
-        setNewVaultName('')
-        setNewVaultDescription('')
-        setNewVaultStorageRoot('')
-        setNewVaultNetworkUsername('')
-        setNewVaultNetworkPassword('')
-        setNewVaultStorageProvider('network')
-        triggerVaultsRefresh()
-        return
-      }
-      const { data: vault, error } = await supabase
+        },
+        supabase: async (): Promise<Vault | null> => {
+          const { data: vault, error } = await supabase
         .from('vaults')
         .insert({
           org_id: organization.id,
@@ -292,21 +286,23 @@ export function VaultsSettings() {
         .select()
         .single()
 
-      if (error) {
-        log.error('[VaultsSettings]', 'Failed to create vault', { error })
-        addToast('error', `Failed to create vault: ${error.message}`)
-        return
-      }
+          if (error) {
+            log.error('[VaultsSettings]', 'Failed to create vault', { error })
+            addToast('error', `Failed to create vault: ${error.message}`)
+            return null
+          }
+          return {
+            ...vault,
+            description: vault.description ?? null,
+            is_default: vault.is_default ?? false,
+            created_at: vault.created_at ?? new Date().toISOString(),
+            storage_bucket: vault.storage_bucket ?? undefined,
+          }
+        },
+      })
+      if (!mappedVault) return
 
       addToast('success', t('mdbSetup.vaultCreated', { name }))
-      // Map Supabase nullables to app types with defaults
-      const mappedVault: Vault = {
-        ...vault,
-        description: vault.description ?? null,
-        is_default: vault.is_default ?? false,
-        created_at: vault.created_at ?? new Date().toISOString(),
-        storage_bucket: vault.storage_bucket ?? undefined,
-      }
       setOrgVaults([...orgVaults, mappedVault])
       setIsCreatingVault(false)
       setNewVaultName('')
@@ -864,7 +860,7 @@ export function VaultsSettings() {
               autoFocus
             />
           </div>
-          {!isBackendConfigured('community') && (
+          {supportsCloudVaults && (
             <div className="space-y-2">
               <label className="text-sm text-plm-fg-muted">
                 {t('mdbSetup.vaultDescriptionOptional')}
@@ -878,7 +874,7 @@ export function VaultsSettings() {
               />
             </div>
           )}
-          {isBackendConfigured('community') && (
+          {supportsNetworkVaults && (
             <>
               <div className="space-y-2">
                 <label className="text-sm text-plm-fg-muted">{t('mdbSetup.storageProvider')}</label>
@@ -949,7 +945,7 @@ export function VaultsSettings() {
               onClick={handleCreateVault}
               disabled={
                 !newVaultName.trim() ||
-                (isBackendConfigured('community') && !newVaultStorageRoot.trim()) ||
+                (supportsNetworkVaults && !newVaultStorageRoot.trim()) ||
                 isSavingVault
               }
               className="btn btn-primary btn-sm"
@@ -1102,7 +1098,7 @@ export function VaultsSettings() {
                     </button>
                   )}
 
-                  {isBackendConfigured('community') &&
+                  {supportsNetworkVaults &&
                     platform === 'win32' &&
                     vault.storageProvider === 'network' &&
                     vault.networkRoot && (
