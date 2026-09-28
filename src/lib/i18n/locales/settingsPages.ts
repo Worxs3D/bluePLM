@@ -195,6 +195,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: 'No se pudieron cargar los ajustes de autenticación',
       saveFailed: 'No se pudieron guardar los ajustes de autenticación',
       saved: 'Ajustes de autenticación guardados',
+      selfRegistration: 'Permitir el autorregistro',
+      selfRegistrationDescription:
+        'Las cuentas nuevas quedan pendientes sin rol, equipo, acceso a bóvedas ni permisos de flujo de trabajo hasta que un administrador las apruebe.',
       userMethodRequired:
         'Debe habilitarse al menos un método de inicio de sesión para los usuarios',
       supplierMethodRequired:
@@ -271,6 +274,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: 'Impossible de charger les paramètres d’authentification',
       saveFailed: 'Impossible d’enregistrer les paramètres d’authentification',
       saved: 'Paramètres d’authentification enregistrés',
+      selfRegistration: 'Autoriser l’auto-inscription',
+      selfRegistrationDescription:
+        'Les nouveaux comptes restent en attente sans rôle, équipe, accès aux coffres ni autorisations de workflow jusqu’à leur approbation par un administrateur.',
       userMethodRequired:
         'Au moins une méthode de connexion doit être activée pour les utilisateurs',
       supplierMethodRequired:
@@ -347,6 +353,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: 'Não foi possível carregar as definições de autenticação',
       saveFailed: 'Não foi possível guardar as definições de autenticação',
       saved: 'Definições de autenticação guardadas',
+      selfRegistration: 'Permitir o auto-registo',
+      selfRegistrationDescription:
+        'As novas contas permanecem pendentes sem função, equipa, acesso a cofres ou permissões de fluxo de trabalho até que um administrador as aprove.',
       userMethodRequired:
         'Tem de estar ativo pelo menos um método de início de sessão para os utilizadores',
       supplierMethodRequired:
@@ -420,6 +429,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: '无法加载身份验证设置',
       saveFailed: '无法保存身份验证设置',
       saved: '身份验证设置已保存',
+      selfRegistration: '允许自主注册',
+      selfRegistrationDescription:
+        '新账户在管理员批准前保持待处理状态，不会获得角色、团队、保险库访问权限或工作流权限。',
       userMethodRequired: '必须为用户启用至少一种登录方式',
       supplierMethodRequired: '必须为供应商启用至少一种登录方式',
       teamMembers: '团队成员',
@@ -488,6 +500,9 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       loadFailed: '無法載入驗證設定',
       saveFailed: '無法儲存驗證設定',
       saved: '驗證設定已儲存',
+      selfRegistration: '允許自行註冊',
+      selfRegistrationDescription:
+        '新帳戶在管理員核准前會保持待處理狀態，不會取得角色、團隊、Vault 存取權或工作流程權限。',
       userMethodRequired: '必須為使用者啟用至少一種登入方式',
       supplierMethodRequired: '必須為供應商啟用至少一種登入方式',
       teamMembers: '團隊成員',
