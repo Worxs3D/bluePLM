@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient, useAdminRecoveryCode, supabase } from '@/lib/supabase'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { ContributionHistory } from '../system/ContributionHistory'
 
@@ -64,6 +65,10 @@ export function ProfileSettings() {
 
   // Handle avatar upload
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isMdbBackendActive()) {
+      addToast('info', 'Profile picture uploads are not available for the MariaDB backend yet')
+      return
+    }
     const file = e.target.files?.[0]
     if (!file || !user || !organization?.id) return
 
@@ -132,6 +137,10 @@ export function ProfileSettings() {
 
   // Remove custom avatar
   const handleRemoveAvatar = async () => {
+    if (isMdbBackendActive()) {
+      addToast('info', 'Profile picture uploads are not available for the MariaDB backend yet')
+      return
+    }
     if (!user || !organization?.id) return
 
     setUploadingAvatar(true)
@@ -168,6 +177,11 @@ export function ProfileSettings() {
   // Load user's ECOs
   useEffect(() => {
     if (!user || !organization) return
+    if (isMdbBackendActive()) {
+      setUserECOs([])
+      setIsLoadingECOs(false)
+      return
+    }
 
     const loadECOs = async () => {
       setIsLoadingECOs(true)
@@ -240,6 +254,11 @@ export function ProfileSettings() {
   // Load user's RFQs
   useEffect(() => {
     if (!user || !organization) return
+    if (isMdbBackendActive()) {
+      setUserRFQs([])
+      setIsLoadingRFQs(false)
+      return
+    }
 
     const loadRFQs = async () => {
       setIsLoadingRFQs(true)
