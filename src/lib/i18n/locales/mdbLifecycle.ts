@@ -230,6 +230,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     bootstrapComment: 'bootstrap token — automatically retired after setup and cannot be reused',
     databaseInspectionUnavailable: 'Database inspection is unavailable in this build.',
     databaseInspectionFailed: 'The MariaDB database could not be inspected.',
+    documentRootConfirmationRequired:
+      'Confirm that the domain document root points to the uploaded public/ directory before inspecting the database.',
     installerUnavailable: 'The MDB installer is unavailable in this build.',
     inspectBeforeContinue: 'Inspect the database and choose an action before continuing.',
     installationFailed: 'MDB installation could not be completed.',
@@ -509,6 +511,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
       'Bootstrap-Token — nach der Einrichtung automatisch entfernt und nicht wiederverwendbar',
     databaseInspectionUnavailable: 'Die Datenbankprüfung ist in diesem Build nicht verfügbar.',
     databaseInspectionFailed: 'Die MariaDB-Datenbank konnte nicht geprüft werden.',
+    documentRootConfirmationRequired:
+      'Bestätige zuerst, dass der Dokumentenstamm der Domain auf den hochgeladenen public/-Ordner zeigt.',
     installerUnavailable: 'Der MDB-Installer ist in diesem Build nicht verfügbar.',
     inspectBeforeContinue: 'Prüfe zuerst die Datenbank und wähle anschließend eine Aktion.',
     installationFailed: 'Die MDB-Installation konnte nicht abgeschlossen werden.',
@@ -790,6 +794,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseInspectionUnavailable:
       'La inspección de la base de datos no está disponible en esta compilación.',
     databaseInspectionFailed: 'No se pudo inspeccionar la base de datos MariaDB.',
+    documentRootConfirmationRequired:
+      'Confirma primero que la raíz de documentos del dominio apunta a la carpeta public/ subida.',
     installerUnavailable: 'El instalador MDB no está disponible en esta compilación.',
     inspectBeforeContinue: 'Inspecciona la base de datos y elige una acción antes de continuar.',
     installationFailed: 'No se pudo completar la instalación de MDB.',
@@ -1071,6 +1077,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseInspectionUnavailable:
       'L’inspection de la base de données n’est pas disponible dans cette version.',
     databaseInspectionFailed: 'La base de données MariaDB n’a pas pu être inspectée.',
+    documentRootConfirmationRequired:
+      'Confirmez d’abord que la racine documentaire du domaine pointe vers le dossier public/ téléversé.',
     installerUnavailable: 'L’installateur MDB n’est pas disponible dans cette version.',
     inspectBeforeContinue:
       'Inspectez la base de données et choisissez une action avant de continuer.',
@@ -1347,6 +1355,8 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     databaseInspectionUnavailable:
       'A inspeção da base de dados não está disponível nesta compilação.',
     databaseInspectionFailed: 'Não foi possível inspecionar a base MariaDB.',
+    documentRootConfirmationRequired:
+      'Confirme primeiro que a raiz de documentos do domínio aponta para a pasta public/ carregada.',
     installerUnavailable: 'O instalador MDB não está disponível nesta compilação.',
     inspectBeforeContinue: 'Inspecione a base de dados e escolha uma ação antes de continuar.',
     installationFailed: 'Não foi possível concluir a instalação MDB.',
@@ -1605,6 +1615,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     bootstrapComment: '引导令牌 — 设置后自动停用，不能重复使用',
     databaseInspectionUnavailable: '此版本不支持数据库检查。',
     databaseInspectionFailed: '无法检查 MariaDB 数据库。',
+    documentRootConfirmationRequired: '请先确认域名文档根目录指向已上传的 public/ 文件夹。',
     installerUnavailable: '此版本不支持 MDB 安装程序。',
     inspectBeforeContinue: '请先检查数据库并选择操作。',
     installationFailed: '无法完成 MDB 安装。',
@@ -1858,6 +1869,7 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     bootstrapComment: '啟動權杖 — 設定後自動停用，無法重複使用',
     databaseInspectionUnavailable: '此版本不支援資料庫檢查。',
     databaseInspectionFailed: '無法檢查 MariaDB 資料庫。',
+    documentRootConfirmationRequired: '請先確認網域文件根目錄指向已上傳的 public/ 資料夾。',
     installerUnavailable: '此版本不支援 MDB 安裝程式。',
     inspectBeforeContinue: '請先檢查資料庫並選擇操作。',
     installationFailed: '無法完成 MDB 安裝。',

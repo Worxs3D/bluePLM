@@ -141,6 +141,7 @@ const keys = [
   'saveAccess',
   'databaseInspectionUnavailable',
   'databaseInspectionFailed',
+  'documentRootConfirmationRequired',
   'installerUnavailable',
   'inspectBeforeContinue',
   'installationFailed',

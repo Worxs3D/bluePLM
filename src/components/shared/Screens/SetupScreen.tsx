@@ -421,6 +421,10 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       setError(t('mdbSetup.databaseInspectionUnavailable'))
       return
     }
+    if (!mdbDocumentRootConfirmed) {
+      setError(t('mdbSetup.documentRootConfirmationRequired'))
+      return
+    }
     setIsValidating(true)
     setError(null)
     setMdbInspection(null)
@@ -439,6 +443,10 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
   const handleMdbProvision = async () => {
     if (!window.electronAPI?.provisionMdb) {
       setError(t('mdbSetup.installerUnavailable'))
+      return
+    }
+    if (!mdbDocumentRootConfirmed) {
+      setError(t('mdbSetup.documentRootConfirmationRequired'))
       return
     }
     if (!mdbInspection || !mdbDatabaseAction) {
