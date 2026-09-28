@@ -296,6 +296,7 @@ export const fr: TranslationDict = {
     about: 'À propos',
     navigation: 'Navigation des paramètres',
     profile: 'Profil',
+    mdbProfilePictureUnavailable: 'L’envoi de photos de profil n’est pas encore disponible pour le backend MariaDB',
     keybindings: 'Raccourcis clavier',
     sidebar: 'Barre latérale',
     deleteAccount: 'Supprimer le compte',

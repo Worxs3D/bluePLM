@@ -343,6 +343,7 @@ export const de: TranslationDict = {
     about: 'Über',
     navigation: 'Einstellungsnavigation',
     profile: 'Profil',
+    mdbProfilePictureUnavailable: 'Profilbild-Uploads sind für das MariaDB-Backend noch nicht verfügbar',
     keybindings: 'Tastenkürzel',
     sidebar: 'Seitenleiste',
     deleteAccount: 'Konto löschen',

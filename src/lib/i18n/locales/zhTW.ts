@@ -287,6 +287,7 @@ export const zhTW: TranslationDict = {
     about: '關於',
     navigation: '設定導覽',
     profile: '個人資料',
+    mdbProfilePictureUnavailable: 'MariaDB 後端目前尚不支援上傳個人頭像',
     keybindings: '鍵盤快速鍵',
     sidebar: '側邊欄',
     deleteAccount: '刪除帳戶',

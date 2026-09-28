@@ -287,6 +287,7 @@ export const zhCN: TranslationDict = {
     about: '关于',
     navigation: '设置导航',
     profile: '个人资料',
+    mdbProfilePictureUnavailable: 'MariaDB 后端暂不支持上传头像',
     keybindings: '键盘快捷键',
     sidebar: '侧边栏',
     deleteAccount: '删除账户',
