@@ -72,7 +72,6 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
 
 const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> = {
   community: new Set<BackendCapability>([
-    'solidworks-license-management',
     'metadata-column-defaults',
     'direct-account-provisioning',
     'community-authenticator',

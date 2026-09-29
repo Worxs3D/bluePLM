@@ -24,10 +24,10 @@ describe('backend capabilities', () => {
     clearBackendProfile()
   })
 
-  it('exposes SOLIDWORKS license management in MDB mode through its adapter', () => {
+  it('does not expose the Supabase-only SOLIDWORKS license manager in MDB mode', () => {
     activateBackend('community')
 
-    expect(activeBackendSupports('solidworks-license-management')).toBe(true)
+    expect(activeBackendSupports('solidworks-license-management')).toBe(false)
     expect(activeBackendSupports('metadata-column-defaults')).toBe(true)
   })
 
