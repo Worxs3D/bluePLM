@@ -15,13 +15,13 @@ vi.mock('../../supabase', () => ({
   upsertFileReferences: vi.fn(),
 }))
 
-const getCommunityVault = vi.fn()
-const importCommunityFile = vi.fn()
-const communityObjectStoragePath = vi.fn()
-vi.mock('@/lib/community', () => ({
-  getCommunityVault: (...args: unknown[]) => getCommunityVault(...args),
-  importCommunityFile: (...args: unknown[]) => importCommunityFile(...args),
-  communityObjectStoragePath: (...args: unknown[]) => communityObjectStoragePath(...args),
+const getMdbVault = vi.fn()
+const importMdbFile = vi.fn()
+const mdbObjectStoragePath = vi.fn()
+vi.mock('@/lib/mdb', () => ({
+  getMdbVault: (...args: unknown[]) => getMdbVault(...args),
+  importMdbFile: (...args: unknown[]) => importMdbFile(...args),
+  mdbObjectStoragePath: (...args: unknown[]) => mdbObjectStoragePath(...args),
 }))
 vi.mock('@/lib/backendAdapter', () => ({ isMdbBackendActive: () => true }))
 
@@ -75,17 +75,17 @@ function context(file: LocalFile): CommandContext {
   } as unknown as CommandContext
 }
 
-describe('syncCommand Community first check-in', () => {
+describe('syncCommand MDB first check-in', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getCommunityVault.mockResolvedValue({
+    getMdbVault.mockResolvedValue({
       storageProvider: 'network',
       networkRoot: '\\\\vault-host\\blueplm',
     })
-    communityObjectStoragePath.mockReturnValue(`.blueplm/objects/aa/${hash}`)
+    mdbObjectStoragePath.mockReturnValue(`.blueplm/objects/aa/${hash}`)
     copyFile.mockResolvedValue({ success: true })
     hashFile.mockResolvedValue({ success: true, hash, size: 42 })
-    importCommunityFile.mockResolvedValue({ id: 'file-1', created: true })
+    importMdbFile.mockResolvedValue({ id: 'file-1', created: true })
     getFiles.mockResolvedValue({
       files: [{ id: 'file-1', file_path: 'Parts/bracket.sldprt', content_hash: hash, version: 1 }],
       error: null,
@@ -103,7 +103,7 @@ describe('syncCommand Community first check-in', () => {
       'C:/BluePLM-Work/bracket.sldprt',
       `\\\\vault-host\\blueplm\\.blueplm\\objects\\aa\\${hash}`,
     )
-    expect(importCommunityFile).toHaveBeenCalledWith({
+    expect(importMdbFile).toHaveBeenCalledWith({
       vaultId: 'vault-1',
       canonicalPath: 'Parts/bracket.sldprt',
       storageRelativePath: `.blueplm/objects/aa/${hash}`,
@@ -121,7 +121,7 @@ describe('syncCommand Community first check-in', () => {
 
     await syncCommand.execute({ files: [file] }, context(file))
 
-    expect(importCommunityFile).toHaveBeenCalledWith(
+    expect(importMdbFile).toHaveBeenCalledWith(
       expect.objectContaining({ partNumber: 'PN-00042' }),
     )
   })
@@ -134,7 +134,7 @@ describe('syncCommand Community first check-in', () => {
 
     const result = await syncCommand.execute({ files: [file] }, context(file))
 
-    expect(importCommunityFile).not.toHaveBeenCalled()
+    expect(importMdbFile).not.toHaveBeenCalled()
     expect(result).toMatchObject({ success: false, total: 1, succeeded: 0, failed: 1 })
   })
 })

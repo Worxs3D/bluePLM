@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './client'
-import { getCommunityActivity, getCommunityFileActivity } from '@/lib/community'
+import { getMdbActivity, getMdbFileActivity } from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -10,7 +10,7 @@ export async function getRecentActivity(orgId: string, limit = 50) {
   return routeBackend({
     mdb: async () => {
       try {
-        return { activity: await getCommunityActivity(limit), error: null }
+        return { activity: await getMdbActivity(limit), error: null }
       } catch (error) {
         return { activity: null, error: error instanceof Error ? error : new Error(String(error)) }
       }
@@ -38,7 +38,7 @@ export async function getFileActivity(fileId: string, limit = 20) {
   return routeBackend({
     mdb: async () => {
       try {
-        return { activity: await getCommunityFileActivity(fileId, limit), error: null }
+        return { activity: await getMdbFileActivity(fileId, limit), error: null }
       } catch (error) {
         return { activity: null, error: error instanceof Error ? error : new Error(String(error)) }
       }

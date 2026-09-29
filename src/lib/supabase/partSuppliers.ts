@@ -4,12 +4,12 @@ import { log } from '../logger'
 import type { PartSupplier } from '@/stores/types'
 import type { Database } from '@/types/supabase'
 import {
-  createCommunityPartSupplier,
-  getCommunityPartSuppliers,
-  removeCommunityPartSupplier,
-  setCommunityPreferredPartSupplier,
-  updateCommunityPartSupplier,
-} from '@/lib/community'
+  createMdbPartSupplier,
+  getMdbPartSuppliers,
+  removeMdbPartSupplier,
+  setMdbPreferredPartSupplier,
+  updateMdbPartSupplier,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 type PartSupplierInput = {
@@ -27,7 +27,7 @@ type PartSupplierInput = {
   notes?: string | null
 }
 
-function toCommunityInput(data: PartSupplierInput) {
+function toMdbInput(data: PartSupplierInput) {
   return {
     supplierPartNumber: data.supplier_part_number,
     supplierDescription: data.supplier_description,
@@ -53,7 +53,7 @@ export async function getPartSuppliers(
   try {
     return routeBackend({
       mdb: async () => {
-        return { data: (await getCommunityPartSuppliers(fileId)) as PartSupplier[], error: null }
+        return { data: (await getMdbPartSuppliers(fileId)) as PartSupplier[], error: null }
       },
       supabase: async () => {
         const { data, error } = await supabase
@@ -137,10 +137,10 @@ export async function addPartSupplier(
     return routeBackend({
       mdb: async () => {
         return {
-          data: (await createCommunityPartSupplier(
+          data: (await createMdbPartSupplier(
             fileId,
             supplierId,
-            toCommunityInput(data),
+            toMdbInput(data),
           )) as PartSupplier,
           error: null,
         }
@@ -241,7 +241,7 @@ export async function updatePartSupplier(
   try {
     return routeBackend({
       mdb: async () => {
-        await updateCommunityPartSupplier(partSupplierId, toCommunityInput(data))
+        await updateMdbPartSupplier(partSupplierId, toMdbInput(data))
         return { success: true, error: null }
       },
       supabase: async () => {
@@ -299,7 +299,7 @@ export async function setPreferredPartSupplier(
   try {
     return routeBackend({
       mdb: async () => {
-        await setCommunityPreferredPartSupplier(fileId, partSupplierId)
+        await setMdbPreferredPartSupplier(fileId, partSupplierId)
         return { success: true, error: null }
       },
       supabase: async () => {
@@ -352,7 +352,7 @@ export async function removePartSupplier(
   try {
     return routeBackend({
       mdb: async () => {
-        await removeCommunityPartSupplier(partSupplierId)
+        await removeMdbPartSupplier(partSupplierId)
         return { success: true, error: null }
       },
       supabase: async () => {
@@ -388,7 +388,7 @@ export async function deletePartSupplier(
   try {
     return routeBackend({
       mdb: async () => {
-        await removeCommunityPartSupplier(partSupplierId)
+        await removeMdbPartSupplier(partSupplierId)
         return { success: true, error: null }
       },
       supabase: async () => {

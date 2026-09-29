@@ -3,29 +3,29 @@ import { Copy, KeyRound, Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
-  confirmCommunityTotpEnrollment,
-  disableCommunityTotp,
-  getCommunityTotpStatus,
-  startCommunityTotpEnrollment,
-  type CommunityTotpEnrollment,
-} from '@/lib/community'
+  confirmMdbTotpEnrollment,
+  disableMdbTotp,
+  getMdbTotpStatus,
+  startMdbTotpEnrollment,
+  type MdbTotpEnrollment,
+} from '@/lib/mdb'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
 
-export function CommunityAuthenticatorSettings() {
+export function MdbAuthenticatorSettings() {
   const { t } = useTranslation()
   const { addToast } = usePDMStore()
   const [isLoading, setIsLoading] = useState(true)
   const [enabled, setEnabled] = useState(false)
-  const [enrollment, setEnrollment] = useState<CommunityTotpEnrollment | null>(null)
+  const [enrollment, setEnrollment] = useState<MdbTotpEnrollment | null>(null)
   const [code, setCode] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    void getCommunityTotpStatus()
+    void getMdbTotpStatus()
       .then((status) => setEnabled(status.enabled))
       .catch((error) => {
-        log.error('[CommunityAuthenticatorSettings]', 'Failed to load authenticator status', {
+        log.error('[MdbAuthenticatorSettings]', 'Failed to load authenticator status', {
           error,
         })
         addToast('error', t('mdbSetup.authenticatorLoadFailed'))
@@ -36,10 +36,10 @@ export function CommunityAuthenticatorSettings() {
   const startEnrollment = async () => {
     setIsSaving(true)
     try {
-      setEnrollment(await startCommunityTotpEnrollment())
+      setEnrollment(await startMdbTotpEnrollment())
       setCode('')
     } catch (error) {
-      log.error('[CommunityAuthenticatorSettings]', 'Failed to start authenticator setup', {
+      log.error('[MdbAuthenticatorSettings]', 'Failed to start authenticator setup', {
         error,
       })
       addToast('error', t('mdbSetup.authenticatorStartFailed'))
@@ -52,13 +52,13 @@ export function CommunityAuthenticatorSettings() {
     if (!enrollment || !/^\d{6}$/.test(code)) return
     setIsSaving(true)
     try {
-      await confirmCommunityTotpEnrollment(enrollment.enrollmentToken, code)
+      await confirmMdbTotpEnrollment(enrollment.enrollmentToken, code)
       setEnabled(true)
       setEnrollment(null)
       setCode('')
       addToast('success', t('mdbSetup.authenticatorEnabled'))
     } catch (error) {
-      log.error('[CommunityAuthenticatorSettings]', 'Failed to confirm authenticator setup', {
+      log.error('[MdbAuthenticatorSettings]', 'Failed to confirm authenticator setup', {
         error,
       })
       addToast('error', t('mdbSetup.authenticatorConfirmFailed'))
@@ -71,12 +71,12 @@ export function CommunityAuthenticatorSettings() {
     if (!/^\d{6}$/.test(code)) return
     setIsSaving(true)
     try {
-      await disableCommunityTotp(code)
+      await disableMdbTotp(code)
       setEnabled(false)
       setCode('')
       addToast('success', t('mdbSetup.authenticatorDisabled'))
     } catch (error) {
-      log.error('[CommunityAuthenticatorSettings]', 'Failed to disable authenticator', { error })
+      log.error('[MdbAuthenticatorSettings]', 'Failed to disable authenticator', { error })
       addToast('error', t('mdbSetup.authenticatorDisableFailed'))
     } finally {
       setIsSaving(false)

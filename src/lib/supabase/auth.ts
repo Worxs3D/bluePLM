@@ -1,11 +1,11 @@
 import { getSupabaseClient, authLog, getCurrentConfigValues, setSessionResolver } from './client'
 import {
-  communityAccessToken,
-  deleteCommunityAccount,
-  getCommunityPrincipal,
-  signInCommunity,
-  signOutCommunity,
-} from '@/lib/community'
+  mdbAccessToken,
+  deleteMdbAccount,
+  getMdbPrincipal,
+  signInMdb,
+  signOutMdb,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // Store the current access token (set by setupSessionListener)
@@ -18,7 +18,7 @@ export function setCurrentAccessToken(token: string | null) {
 export function getCurrentAccessToken(): string | null {
   return routeBackend({
     mdb: () => {
-      return communityAccessToken()
+      return mdbAccessToken()
     },
     supabase: () => {
       return currentAccessToken
@@ -178,7 +178,7 @@ export async function signInWithEmail(email: string, password: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await signInCommunity(email, password)
+        const principal = await signInMdb(email, password)
         const user = {
           id: principal.userId,
           email: principal.email,
@@ -186,7 +186,7 @@ export async function signInWithEmail(email: string, password: string) {
           user_metadata: { full_name: principal.displayName, name: principal.displayName },
         }
         return {
-          data: { user, session: { access_token: communityAccessToken(), user } },
+          data: { user, session: { access_token: mdbAccessToken(), user } },
           error: null,
         }
       } catch (error) {
@@ -223,7 +223,7 @@ export async function signUpWithEmail(email: string, password: string, fullName?
     mdb: async () => {
       return {
         data: null,
-        error: new Error('Community accounts are created by an organization administrator.'),
+        error: new Error('MDB accounts are created by an organization administrator.'),
       }
     },
     supabase: async () => {
@@ -438,7 +438,7 @@ export async function signOut() {
   return routeBackend({
     mdb: async () => {
       clearCachedUserEmail()
-      signOutCommunity()
+      signOutMdb()
       return { error: null }
     },
     supabase: async () => {
@@ -473,7 +473,7 @@ export async function deleteCurrentAccount(): Promise<{ error: Error | null }> {
   return routeBackend({
     mdb: async () => {
       try {
-        await deleteCommunityAccount()
+        await deleteMdbAccount()
         return { error: null }
       } catch (error) {
         return { error: error instanceof Error ? error : new Error(String(error)) }
@@ -490,7 +490,7 @@ export async function getCurrentUser() {
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         return {
           user: {
             id: principal.userId,
@@ -519,10 +519,10 @@ export async function getCurrentSession() {
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         return {
           session: {
-            access_token: communityAccessToken(),
+            access_token: mdbAccessToken(),
             user: {
               id: principal.userId,
               email: principal.email,

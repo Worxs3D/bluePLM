@@ -11,13 +11,13 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { supabase, getOrgVaultAccess, setUserVaultAccess } from '@/lib/supabase'
 import {
-  getCommunityTeamVaultAccess,
-  getCommunityTeams,
-  getCommunityOrgVaultAccess,
-  getCommunityVaults,
-  setCommunityUserVaultAccess,
-  setCommunityTeamVaultAccess,
-} from '@/lib/community'
+  getMdbTeamVaultAccess,
+  getMdbTeams,
+  getMdbOrgVaultAccess,
+  getMdbVaults,
+  setMdbUserVaultAccess,
+  setMdbTeamVaultAccess,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
@@ -106,8 +106,8 @@ export function useVaultAccess(orgId: string | null) {
     try {
       const loadedVaults = await routeBackend({
         mdb: async () => {
-          const communityVaults = await getCommunityVaults()
-          return communityVaults.map((vault) => ({
+          const mdbVaults = await getMdbVaults()
+          return mdbVaults.map((vault) => ({
             id: vault.id,
             name: vault.name,
             slug: vault.id,
@@ -140,7 +140,7 @@ export function useVaultAccess(orgId: string | null) {
 
     try {
       const accessMap = await routeBackend({
-        mdb: () => getCommunityOrgVaultAccess(),
+        mdb: () => getMdbOrgVaultAccess(),
         supabase: async () => {
           const result = await getOrgVaultAccess(orgId)
           if (result.error) throw result.error
@@ -159,9 +159,9 @@ export function useVaultAccess(orgId: string | null) {
     try {
       const accessMap = await routeBackend({
         mdb: async () => {
-          const teams = await getCommunityTeams()
+          const teams = await getMdbTeams()
           const entries = await Promise.all(
-            teams.map(async (team) => [team.id, await getCommunityTeamVaultAccess(team.id)] as const),
+            teams.map(async (team) => [team.id, await getMdbTeamVaultAccess(team.id)] as const),
           )
           return Object.fromEntries(entries)
         },
@@ -193,7 +193,7 @@ export function useVaultAccess(orgId: string | null) {
       try {
         const saved = await routeBackend({
           mdb: async () => {
-            await setCommunityUserVaultAccess(userId, vaultIds)
+            await setMdbUserVaultAccess(userId, vaultIds)
             return true
           },
           supabase: async () => {
@@ -226,7 +226,7 @@ export function useVaultAccess(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => setCommunityTeamVaultAccess(teamId, vaultIds),
+          mdb: () => setMdbTeamVaultAccess(teamId, vaultIds),
           supabase: async () => {
             await supabase.from('team_vault_access').delete().eq('team_id', teamId)
             if (vaultIds.length > 0) {

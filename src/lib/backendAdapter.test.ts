@@ -25,7 +25,7 @@ describe('backend capabilities', () => {
   })
 
   it('does not expose the Supabase-only SOLIDWORKS license manager in MDB mode', () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
     expect(activeBackendSupports('solidworks-license-management')).toBe(false)
     expect(activeBackendSupports('metadata-column-defaults')).toBe(true)
@@ -39,7 +39,7 @@ describe('backend capabilities', () => {
   })
 
   it('classifies MDB settings without removing them from the original menu', () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
@@ -82,7 +82,7 @@ describe('backend capabilities', () => {
   it('executes only the selected backend implementation', () => {
     const mdb = vi.fn(() => 'mdb')
     const supabase = vi.fn(() => 'supabase')
-    activateBackend('community')
+    activateBackend('mdb')
 
     expect(routeBackend({ mdb, supabase })).toBe('mdb')
     expect(mdb).toHaveBeenCalledOnce()

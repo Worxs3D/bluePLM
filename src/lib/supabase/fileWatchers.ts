@@ -1,11 +1,11 @@
 import { getSupabaseClient } from './client'
 import {
-  getCommunityCheckoutOwner,
-  getCommunityWatchedFiles,
-  isWatchingCommunityFile,
-  unwatchCommunityFile,
-  watchCommunityFile,
-} from '@/lib/community'
+  getMdbCheckoutOwner,
+  getMdbWatchedFiles,
+  isWatchingMdbFile,
+  unwatchMdbFile,
+  watchMdbFile,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 /**
@@ -18,7 +18,7 @@ export async function getCheckedOutByUser(fileId: string): Promise<{
   return routeBackend({
     mdb: async () => {
       try {
-        return { user: await getCommunityCheckoutOwner(fileId) }
+        return { user: await getMdbCheckoutOwner(fileId) }
       } catch (error) {
         return { user: null, error: error instanceof Error ? error.message : String(error) }
       }
@@ -72,7 +72,7 @@ export async function watchFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await watchCommunityFile(fileId, options ?? {})
+        await watchMdbFile(fileId, options ?? {})
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -115,7 +115,7 @@ export async function unwatchFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await unwatchCommunityFile(fileId)
+        await unwatchMdbFile(fileId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -149,7 +149,7 @@ export async function isWatchingFile(
   return routeBackend({
     mdb: async () => {
       try {
-        return { watching: await isWatchingCommunityFile(fileId) }
+        return { watching: await isWatchingMdbFile(fileId) }
       } catch (error) {
         return { watching: false, error: error instanceof Error ? error.message : String(error) }
       }
@@ -180,7 +180,7 @@ export async function getWatchedFiles(userId: string): Promise<{ files: any[]; e
   return routeBackend({
     mdb: async () => {
       try {
-        const watchers = await getCommunityWatchedFiles()
+        const watchers = await getMdbWatchedFiles()
         return {
           files: watchers.map((watcher) => ({
             ...watcher,

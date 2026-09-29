@@ -20,7 +20,7 @@ import {
 import { PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS, ALL_RESOURCES } from '@/types/permissions'
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
-import { getCommunityEffectiveUserPermissions } from '@/lib/community'
+import { getMdbEffectiveUserPermissions } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { getEffectiveAvatarUrl } from '@/lib/utils'
 import { PERMISSION_RESOURCE_GROUPS } from '../../constants'
@@ -80,7 +80,7 @@ export function ViewNetPermissionsModal({
     const loadVaultAccess = async () => {
       if (isMdbBackendActive()) {
         try {
-          const { vaultIds } = await getCommunityEffectiveUserPermissions(user.id)
+          const { vaultIds } = await getMdbEffectiveUserPermissions(user.id)
           setUserVaultIds(vaultIds)
         } catch (error) {
           log.error('[ViewNetPermissions]', 'Failed to load vault access', { error })
@@ -113,7 +113,7 @@ export function ViewNetPermissionsModal({
       setIsLoading(true)
       try {
         if (isMdbBackendActive()) {
-          const { permissions: loaded } = await getCommunityEffectiveUserPermissions(user.id)
+          const { permissions: loaded } = await getMdbEffectiveUserPermissions(user.id)
           const finalPerms: Record<string, PermissionAction[]> = {}
           const vaultPerms: Record<string, Record<string, PermissionAction[]>> = {}
           for (const permission of loaded) {

@@ -165,10 +165,10 @@ export function useRealtimeSubscriptions(
   }, [requestSilentRefresh])
 
   useEffect(() => {
-    // Community uses the PHP API and does not expose Supabase Realtime. The
+    // MDB uses the PHP API and does not expose Supabase Realtime. The
     // generic subscription layer also contains a no-op safety net, but this
     // guard prevents the whole Supabase-only notification pipeline from being
-    // initialized on a Community client.
+    // initialized on a MDB client.
     if (!organization || isOfflineMode || isMdbBackendActive()) return
 
     const { addCloudFile, updateFilePdmData, removeCloudFile, addToast } = usePDMStore.getState()

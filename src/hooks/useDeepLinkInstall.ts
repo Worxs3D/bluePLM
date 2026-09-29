@@ -10,7 +10,7 @@
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
-import { resolveCommunityShareLink } from '@/lib/community'
+import { resolveMdbShareLink } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { buildFullPath } from '@/lib/utils/path'
 import { t } from '@/lib/i18n'
@@ -79,7 +79,7 @@ export function useDeepLinkInstall(): void {
         return
       }
       try {
-        const { file } = await resolveCommunityShareLink(token)
+        const { file } = await resolveMdbShareLink(token)
         if (file.vaultId !== activeVaultId || !vaultPath) {
           addToast('info', t('mdbSetup.sharedFileConnectVault', { name: file.fileName }))
           return

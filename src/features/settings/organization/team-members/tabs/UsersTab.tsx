@@ -31,11 +31,11 @@ import {
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
-  approveCommunityRegistration,
-  getCommunityRegistrationRequests,
-  rejectCommunityRegistration,
-  type CommunityRegistrationRequest,
-} from '@/lib/community'
+  approveMdbRegistration,
+  getMdbRegistrationRequests,
+  rejectMdbRegistration,
+  type MdbRegistrationRequest,
+} from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { getTranslation, useTranslation } from '@/lib/i18n'
 import {
@@ -82,7 +82,7 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
 
   // MDB self-registration requests are intentionally separate from pre-created invites.
-  const [registrationRequests, setRegistrationRequests] = useState<CommunityRegistrationRequest[]>([])
+  const [registrationRequests, setRegistrationRequests] = useState<MdbRegistrationRequest[]>([])
   const [registrationRoles, setRegistrationRoles] = useState<Record<string, 'admin' | 'member' | 'viewer' | 'guest'>>({})
   const [isLoadingRegistrationRequests, setIsLoadingRegistrationRequests] = useState(false)
   const [registrationAction, setRegistrationAction] = useState<string | null>(null)
@@ -91,7 +91,7 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
     if (!isMdbBackendActive() || !isAdmin) return
     setIsLoadingRegistrationRequests(true)
     try {
-      const requests = await getCommunityRegistrationRequests()
+      const requests = await getMdbRegistrationRequests()
       setRegistrationRequests(requests)
       setRegistrationRoles((previous) => Object.fromEntries(
         requests.map((request) => [request.id, previous[request.id] ?? 'viewer']),
@@ -110,10 +110,10 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
     void loadRegistrationRequests()
   }, [loadRegistrationRequests])
 
-  const handleApproveRegistration = useCallback(async (request: CommunityRegistrationRequest) => {
+  const handleApproveRegistration = useCallback(async (request: MdbRegistrationRequest) => {
     setRegistrationAction(`${request.id}:approve`)
     try {
-      await approveCommunityRegistration(request.id, registrationRoles[request.id] ?? 'viewer')
+      await approveMdbRegistration(request.id, registrationRoles[request.id] ?? 'viewer')
       await loadRegistrationRequests()
       addToast('success', t('mdbSetup.registrationRequestApproved'))
     } catch (error) {
@@ -123,10 +123,10 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
     }
   }, [addToast, loadRegistrationRequests, registrationRoles, t])
 
-  const handleRejectRegistration = useCallback(async (request: CommunityRegistrationRequest) => {
+  const handleRejectRegistration = useCallback(async (request: MdbRegistrationRequest) => {
     setRegistrationAction(`${request.id}:reject`)
     try {
-      await rejectCommunityRegistration(request.id)
+      await rejectMdbRegistration(request.id)
       await loadRegistrationRequests()
       addToast('success', t('mdbSetup.registrationRequestRejected'))
     } catch (error) {

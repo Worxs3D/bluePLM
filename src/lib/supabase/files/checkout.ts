@@ -5,10 +5,10 @@ import { getSupabaseClient } from '../client'
 import { getCurrentUserEmail } from '../auth'
 import type { Database } from '@/types/supabase'
 import {
-  cancelCommunityCheckout,
-  checkinCommunityFile,
-  checkoutCommunityFile,
-} from '@/lib/community'
+  cancelMdbCheckout,
+  checkinMdbFile,
+  checkoutMdbFile,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
@@ -117,7 +117,7 @@ export async function checkoutFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await checkoutCommunityFile(fileId, options?.clientWorkingPath || '', options?.vaultId)
+        await checkoutMdbFile(fileId, options?.clientWorkingPath || '', options?.vaultId)
         return { success: true, file: undefined, error: null }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -196,8 +196,8 @@ export async function checkinFile(
     // Performance optimizations for batch operations:
     machineId?: string // Pre-fetched machine ID to avoid N IPC calls for N files
     skipMachineMismatchCheck?: boolean // Skip the SELECT query for batch operations
-    /** Immutable network-vault revision staged by the Electron Community workflow. */
-    communityStorageRelativePath?: string
+    /** Immutable network-vault revision staged by the Electron MDB workflow. */
+    mdbStorageRelativePath?: string
   },
 ): Promise<{
   success: boolean
@@ -211,8 +211,8 @@ export async function checkinFile(
   return routeBackend({
     mdb: async () => {
       try {
-        if (!options?.communityStorageRelativePath) {
-          await cancelCommunityCheckout(fileId)
+        if (!options?.mdbStorageRelativePath) {
+          await cancelMdbCheckout(fileId)
           return {
             success: true,
             file: { id: fileId, checked_out_by: null, checked_out_at: null },
@@ -222,8 +222,8 @@ export async function checkinFile(
             machineMismatchWarning: null,
           }
         }
-        const result = await checkinCommunityFile(fileId, {
-          storageRelativePath: options.communityStorageRelativePath,
+        const result = await checkinMdbFile(fileId, {
+          storageRelativePath: options.mdbStorageRelativePath,
           contentHash: options.newContentHash,
           sizeBytes: options.newFileSize,
           comment: options.comment,
@@ -508,7 +508,7 @@ export async function undoCheckout(fileId: string, userId: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        await cancelCommunityCheckout(fileId)
+        await cancelMdbCheckout(fileId)
         return { success: true, error: null }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }

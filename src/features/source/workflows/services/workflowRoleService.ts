@@ -1,5 +1,5 @@
 import { routeBackend } from '@/lib/backendAdapter'
-import { getCommunityWorkflowRoles } from '@/lib/community'
+import { getMdbWorkflowRoles } from '@/lib/mdb'
 import { supabase } from '@/lib/supabase'
 
 import type { WorkflowRoleBasic } from '../types'
@@ -7,7 +7,7 @@ import type { WorkflowRoleBasic } from '../types'
 /** Load workflow-role choices without exposing provider selection to dialogs. */
 export function getWorkflowRoleOptions(organizationId: string): Promise<WorkflowRoleBasic[]> {
   return routeBackend({
-    mdb: async () => (await getCommunityWorkflowRoles()).map(({ id, name, color, icon }) => ({ id, name, color, icon })),
+    mdb: async () => (await getMdbWorkflowRoles()).map(({ id, name, color, icon }) => ({ id, name, color, icon })),
     supabase: async () => {
       const { data, error } = await supabase
         .from('workflow_roles')

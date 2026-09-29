@@ -1,9 +1,9 @@
 import { getSupabaseClient } from './client'
 import {
-  getCommunityItemDefinition,
-  getCommunityItemWorkflowStages,
-  updateCommunityItemDefinition,
-} from '@/lib/community'
+  getMdbItemDefinition,
+  getMdbItemWorkflowStages,
+  updateMdbItemDefinition,
+} from '@/lib/mdb'
 
 import { log } from '@/lib/logger'
 import type { Json } from '@/types/supabase'
@@ -31,9 +31,9 @@ export async function getItemDefinitionSettings(orgId: string): Promise<ItemDefi
   return routeBackend({
     mdb: async () => {
       try {
-        return normalizeDefinition(await getCommunityItemDefinition())
+        return normalizeDefinition(await getMdbItemDefinition())
       } catch (error) {
-        log.error('[ItemDefinition]', 'Failed to load Community settings', { error })
+        log.error('[ItemDefinition]', 'Failed to load MDB settings', { error })
         return { ...DEFAULT_ITEM_DEFINITION }
       }
     },
@@ -61,10 +61,10 @@ export async function updateItemDefinitionSettings(
   return routeBackend({
     mdb: async () => {
       try {
-        await updateCommunityItemDefinition(settings)
+        await updateMdbItemDefinition(settings)
         return { error: null }
       } catch (error) {
-        log.error('[ItemDefinition]', 'Failed to save Community settings', { error })
+        log.error('[ItemDefinition]', 'Failed to save MDB settings', { error })
         return { error: error as Error }
       }
     },
@@ -90,9 +90,9 @@ export async function getOrgWorkflowStages(orgId: string): Promise<ItemWorkflowS
   return routeBackend({
     mdb: async () => {
       try {
-        return await getCommunityItemWorkflowStages()
+        return await getMdbItemWorkflowStages()
       } catch (error) {
-        log.error('[ItemDefinition]', 'Failed to load Community workflow stages', { error })
+        log.error('[ItemDefinition]', 'Failed to load MDB workflow stages', { error })
         return []
       }
     },

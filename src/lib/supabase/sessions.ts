@@ -2,13 +2,13 @@ import { getSupabaseClient } from './client'
 import { log } from '@/lib/logger'
 import type { Database } from '@/types/supabase'
 import {
-  endCommunityDeviceSession,
-  endRemoteCommunityDeviceSession,
-  getCommunityDeviceSessions,
-  getCommunityOnlineUsers,
-  heartbeatCommunityDeviceSession,
-  registerCommunityDeviceSession,
-} from '@/lib/community'
+  endMdbDeviceSession,
+  endRemoteMdbDeviceSession,
+  getMdbDeviceSessions,
+  getMdbOnlineUsers,
+  heartbeatMdbDeviceSession,
+  registerMdbDeviceSession,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -65,7 +65,7 @@ export async function registerDeviceSession(
   return routeBackend({
     mdb: async () => {
       try {
-        const session = await registerCommunityDeviceSession({
+        const session = await registerMdbDeviceSession({
           machineId,
           machineName,
           platform,
@@ -247,9 +247,9 @@ export async function sendSessionHeartbeat(
   return routeBackend({
     mdb: async () => {
       try {
-        return await heartbeatCommunityDeviceSession(machineId)
+        return await heartbeatMdbDeviceSession(machineId)
       } catch (error) {
-        log.error('[Session]', 'Community heartbeat failed', { error })
+        log.error('[Session]', 'MDB heartbeat failed', { error })
         return true
       }
     },
@@ -385,7 +385,7 @@ export async function endDeviceSession(userId: string): Promise<void> {
   return routeBackend({
     mdb: async () => {
       try {
-        await endCommunityDeviceSession(machineId)
+        await endMdbDeviceSession(machineId)
       } finally {
         stopSessionHeartbeat()
       }
@@ -412,7 +412,7 @@ export async function endRemoteSession(
   return routeBackend({
     mdb: async () => {
       try {
-        await endRemoteCommunityDeviceSession(sessionId)
+        await endRemoteMdbDeviceSession(sessionId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -445,7 +445,7 @@ export async function getActiveSessions(
   return routeBackend({
     mdb: async () => {
       try {
-        const sessions = await getCommunityDeviceSessions()
+        const sessions = await getMdbDeviceSessions()
         return {
           sessions: sessions.map((session) => ({
             ...session,
@@ -489,7 +489,7 @@ export async function isMachineOnline(userId: string, machineId: string): Promis
   return routeBackend({
     mdb: async () => {
       try {
-        return (await getCommunityDeviceSessions()).some(
+        return (await getMdbDeviceSessions()).some(
           (session) => session.machine_id === machineId && Boolean(session.is_active),
         )
       } catch {
@@ -599,7 +599,7 @@ export async function getOrgOnlineUsers(
   return routeBackend({
     mdb: async () => {
       try {
-        const users = await getCommunityOnlineUsers()
+        const users = await getMdbOnlineUsers()
         return { users }
       } catch (error) {
         return { users: [], error: error instanceof Error ? error.message : String(error) }

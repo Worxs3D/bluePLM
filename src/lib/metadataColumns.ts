@@ -1,11 +1,11 @@
 import type { FileMetadataColumn } from '@/types/database'
 import { routeBackend } from './backendAdapter'
 import {
-  createCommunityMetadataColumn,
-  deleteCommunityMetadataColumn,
-  getCommunityMetadataColumns,
-  updateCommunityMetadataColumn,
-} from './community'
+  createMdbMetadataColumn,
+  deleteMdbMetadataColumn,
+  getMdbMetadataColumns,
+  updateMdbMetadataColumn,
+} from './mdb'
 import { supabase } from './supabase'
 
 type MetadataColumnCreate = Omit<
@@ -20,7 +20,7 @@ const db = supabase as any // TODO: type custom metadata mutations in the genera
 
 export async function getMetadataColumns(organizationId: string): Promise<FileMetadataColumn[]> {
   return routeBackend({
-    mdb: async () => (await getCommunityMetadataColumns()) as FileMetadataColumn[],
+    mdb: async () => (await getMdbMetadataColumns()) as FileMetadataColumn[],
     supabase: async () => {
       const { data, error } = await supabase
         .from('file_metadata_columns')
@@ -35,7 +35,7 @@ export async function getMetadataColumns(organizationId: string): Promise<FileMe
 
 export async function createMetadataColumn(payload: MetadataColumnCreate): Promise<void> {
   return routeBackend({
-    mdb: () => createCommunityMetadataColumn(payload),
+    mdb: () => createMdbMetadataColumn(payload),
     supabase: async () => {
       const { error } = await db.from('file_metadata_columns').insert(payload)
       if (error) throw error
@@ -48,7 +48,7 @@ export async function updateMetadataColumn(
   payload: MetadataColumnUpdate,
 ): Promise<void> {
   return routeBackend({
-    mdb: () => updateCommunityMetadataColumn(columnId, payload),
+    mdb: () => updateMdbMetadataColumn(columnId, payload),
     supabase: async () => {
       const { error } = await db.from('file_metadata_columns').update(payload).eq('id', columnId)
       if (error) throw error
@@ -58,7 +58,7 @@ export async function updateMetadataColumn(
 
 export async function deleteMetadataColumn(columnId: string): Promise<void> {
   return routeBackend({
-    mdb: () => deleteCommunityMetadataColumn(columnId),
+    mdb: () => deleteMdbMetadataColumn(columnId),
     supabase: async () => {
       const { error } = await supabase.from('file_metadata_columns').delete().eq('id', columnId)
       if (error) throw error

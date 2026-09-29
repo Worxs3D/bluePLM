@@ -19,10 +19,10 @@ import {
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
-  getCommunityOrganizationAddresses,
-  getCommunityOrganizationProfile,
-  updateCommunityOrganizationProfile,
-} from '@/lib/community'
+  getMdbOrganizationAddresses,
+  getMdbOrganizationProfile,
+  updateMdbOrganizationProfile,
+} from '@/lib/mdb'
 import { activeBackendSupports, routeBackend } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
@@ -115,7 +115,7 @@ export function CompanyProfileSettings() {
       try {
         const loadedProfile = await routeBackend({
           mdb: async (): Promise<CompanyProfile> => {
-            const data = await getCommunityOrganizationProfile()
+            const data = await getMdbOrganizationProfile()
             return {
               logo_url: null, logo_storage_path: data?.logo_storage_path ?? null,
               phone: data?.phone ?? null, website: data?.website ?? null,
@@ -160,7 +160,7 @@ export function CompanyProfileSettings() {
       setLoadingAddresses(true)
       try {
         const addresses = await routeBackend({
-          mdb: async () => await getCommunityOrganizationAddresses() as OrgAddress[],
+          mdb: async () => await getMdbOrganizationAddresses() as OrgAddress[],
           supabase: async () => {
             const { data, error } = await supabase.from('organization_addresses').select('*')
               .eq('org_id', organization.id).order('is_default', { ascending: false }).order('label')
@@ -330,7 +330,7 @@ export function CompanyProfileSettings() {
     savingRef.current = true
     try {
       await routeBackend({
-        mdb: () => updateCommunityOrganizationProfile({
+        mdb: () => updateMdbOrganizationProfile({
           phone: profile.phone || null, website: profile.website || null,
           contactEmail: profile.contact_email || null,
         }),

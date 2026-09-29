@@ -24,8 +24,8 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
-  getCommunityUserProfile,
-} from '@/lib/community'
+  getMdbUserProfile,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { selectUserProfileDataSource } from './UserProfileModal.data'
@@ -204,21 +204,21 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
 
       try {
-        if (dataSource.kind === 'community') {
-          const communityUser = await getCommunityUserProfile(userId)
-          if (communityUser) {
+        if (dataSource.kind === 'mdb') {
+          const mdbUser = await getMdbUserProfile(userId)
+          if (mdbUser) {
             setUserData({
-              id: communityUser.id,
-              email: communityUser.email,
-              full_name: communityUser.displayName,
+              id: mdbUser.id,
+              email: mdbUser.email,
+              full_name: mdbUser.displayName,
               avatar_url: null,
               custom_avatar_url: null,
               last_sign_in: null,
               last_online: null,
-              teams: communityUser.teams,
-              workflow_roles: communityUser.workflowRoles,
+              teams: mdbUser.teams,
+              workflow_roles: mdbUser.workflowRoles,
               job_title: null,
-              role: communityUser.role,
+              role: mdbUser.role,
             })
           }
           return

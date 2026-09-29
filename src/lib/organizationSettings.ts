@@ -1,12 +1,12 @@
 import { routeBackend } from './backendAdapter'
 import {
-  getCommunityOrganizationSetting,
-  setCommunityOrganizationSetting,
-  type CommunityOrganizationSettingSection,
-} from './community'
+  getMdbOrganizationSetting,
+  setMdbOrganizationSetting,
+  type MdbOrganizationSettingSection,
+} from './mdb'
 import { supabase } from './supabase'
 
-export type OrganizationSettingSection = CommunityOrganizationSettingSection
+export type OrganizationSettingSection = MdbOrganizationSettingSection
 
 const directColumns: Record<Exclude<OrganizationSettingSection, 'export'>, string> = {
   serialization: 'serialization_settings',
@@ -19,7 +19,7 @@ export async function getOrganizationSetting<T extends object>(
   organizationId: string,
 ): Promise<T> {
   return routeBackend({
-    mdb: () => getCommunityOrganizationSetting<T>(section),
+    mdb: () => getMdbOrganizationSetting<T>(section),
     supabase: async () => {
       if (section === 'export') {
         const { data, error } = await supabase
@@ -53,7 +53,7 @@ export async function setOrganizationSetting<T extends object>(
   options: { replaceCounter?: boolean } = {},
 ): Promise<T> {
   return routeBackend({
-    mdb: () => setCommunityOrganizationSetting(section, value, options),
+    mdb: () => setMdbOrganizationSetting(section, value, options),
     supabase: async () => {
       if (section === 'serialization') {
         const { error } = await (supabase.rpc as any)('update_serialization_settings_safe', {

@@ -1,11 +1,11 @@
 import { getSupabaseClient } from './client'
 import {
-  getCommunityOrgVaultAccess,
-  getCommunityPrincipal,
-  getCommunityUserVaultAccess,
-  getCommunityVaults,
-  setCommunityUserVaultAccess,
-} from '@/lib/community'
+  getMdbOrgVaultAccess,
+  getMdbPrincipal,
+  getMdbUserVaultAccess,
+  getMdbVaults,
+  setMdbUserVaultAccess,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -22,10 +22,10 @@ export async function getUserVaultAccess(
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.role !== 'owner' && principal.role !== 'admin')
           return { vaultIds: [], error: 'Administrator role required.' }
-        const accessMap = await getCommunityOrgVaultAccess()
+        const accessMap = await getMdbOrgVaultAccess()
         return {
           vaultIds: Object.entries(accessMap)
             .filter(([, users]) => users.includes(userId))
@@ -63,10 +63,10 @@ export async function getOrgVaultAccess(orgId: string): Promise<{
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.organizationId !== orgId)
           return { accessMap: {}, error: 'Organization is outside the active session.' }
-        return { accessMap: await getCommunityOrgVaultAccess() }
+        return { accessMap: await getMdbOrgVaultAccess() }
       } catch (error) {
         return { accessMap: {}, error: error instanceof Error ? error.message : String(error) }
       }
@@ -127,7 +127,7 @@ export async function grantVaultAccess(
       try {
         const access = await getUserVaultAccess(userId)
         if (access.error) return { success: false, error: access.error }
-        await setCommunityUserVaultAccess(userId, [...new Set([...access.vaultIds, vaultId])])
+        await setMdbUserVaultAccess(userId, [...new Set([...access.vaultIds, vaultId])])
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -167,7 +167,7 @@ export async function revokeVaultAccess(
       try {
         const access = await getUserVaultAccess(userId)
         if (access.error) return { success: false, error: access.error }
-        await setCommunityUserVaultAccess(
+        await setMdbUserVaultAccess(
           userId,
           access.vaultIds.filter((id) => id !== vaultId),
         )
@@ -207,10 +207,10 @@ export async function setUserVaultAccess(
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.organizationId !== orgId)
           return { success: false, error: 'Organization is outside the active session.' }
-        await setCommunityUserVaultAccess(userId, vaultIds)
+        await setMdbUserVaultAccess(userId, vaultIds)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -302,7 +302,7 @@ export async function getEffectiveUserVaultAccess(
   return routeBackend({
     mdb: async () => {
       try {
-        return { vaultIds: await getCommunityUserVaultAccess(userId) }
+        return { vaultIds: await getMdbUserVaultAccess(userId) }
       } catch (error) {
         return { vaultIds: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -348,11 +348,11 @@ export async function getAccessibleVaults(
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.userId !== userId || principal.organizationId !== orgId) {
           return { vaults: [], error: 'User is outside the active organization.' }
         }
-        const vaults = await getCommunityVaults()
+        const vaults = await getMdbVaults()
         return {
           vaults: vaults.map((vault) => ({
             id: vault.id,

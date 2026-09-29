@@ -1,12 +1,12 @@
 import { getSupabaseClient } from './client'
 import { log } from '@/lib/logger'
 import {
-  createCommunityRecoveryCode,
-  deleteCommunityRecoveryCode,
-  listCommunityRecoveryCodes,
-  revokeCommunityRecoveryCode,
-  useCommunityRecoveryCode as submitCommunityRecoveryCode,
-} from '@/lib/community'
+  createMdbRecoveryCode,
+  deleteMdbRecoveryCode,
+  listMdbRecoveryCodes,
+  revokeMdbRecoveryCode,
+  useMdbRecoveryCode as submitMdbRecoveryCode,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ===========================================
@@ -90,7 +90,7 @@ export async function generateAdminRecoveryCode(
   return routeBackend({
     mdb: async () => {
       try {
-        const result = await createCommunityRecoveryCode(description, expiresInDays)
+        const result = await createMdbRecoveryCode(description, expiresInDays)
         return { success: true, ...result }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -145,7 +145,7 @@ export async function listAdminRecoveryCodes(
   return routeBackend({
     mdb: async () => {
       try {
-        return { codes: (await listCommunityRecoveryCodes()) as unknown as AdminRecoveryCode[] }
+        return { codes: (await listMdbRecoveryCodes()) as unknown as AdminRecoveryCode[] }
       } catch (error) {
         return { codes: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -197,7 +197,7 @@ export async function revokeAdminRecoveryCode(
   return routeBackend({
     mdb: async () => {
       try {
-        await revokeCommunityRecoveryCode(codeId, reason)
+        await revokeMdbRecoveryCode(codeId, reason)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -237,7 +237,7 @@ export async function deleteAdminRecoveryCode(
   return routeBackend({
     mdb: async () => {
       try {
-        await deleteCommunityRecoveryCode(codeId)
+        await deleteMdbRecoveryCode(codeId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -269,7 +269,7 @@ export async function useAdminRecoveryCode(
   return routeBackend({
     mdb: async () => {
       try {
-        return await submitCommunityRecoveryCode(code)
+        return await submitMdbRecoveryCode(code)
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
       }

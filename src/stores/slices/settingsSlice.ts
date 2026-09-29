@@ -12,12 +12,12 @@ import type { KeybindingAction, Keybinding, KeybindingsConfig } from '../../type
 import { supabase } from '../../lib/supabase'
 import { routeBackend } from '../../lib/backendAdapter'
 import {
-  forceCommunityOrganizationColumnDefaults,
-  getCommunityOrganizationColumnDefaults,
-  getCommunityUserColumnDefaults,
-  setCommunityOrganizationColumnDefaults,
-  setCommunityUserColumnDefaults,
-} from '../../lib/community'
+  forceMdbOrganizationColumnDefaults,
+  getMdbOrganizationColumnDefaults,
+  getMdbUserColumnDefaults,
+  setMdbOrganizationColumnDefaults,
+  setMdbUserColumnDefaults,
+} from '../../lib/mdb'
 
 const defaultColumns: ColumnConfig[] = [
   { id: 'name', label: 'Name', width: 280, visible: true, sortable: true },
@@ -528,7 +528,7 @@ export const createSettingsSlice: StateCreator<
       }))
 
       await routeBackend({
-        mdb: () => setCommunityOrganizationColumnDefaults(columnDefaults),
+        mdb: () => setMdbOrganizationColumnDefaults(columnDefaults),
         supabase: async () => {
           const { error } = await (supabase.rpc as any)('set_org_column_defaults', {
             // TODO: type this
@@ -552,7 +552,7 @@ export const createSettingsSlice: StateCreator<
 
     try {
       const data = await routeBackend({
-        mdb: getCommunityOrganizationColumnDefaults,
+        mdb: getMdbOrganizationColumnDefaults,
         supabase: async () => {
           const { data, error } = await (supabase.rpc as any)('get_org_column_defaults', {
             // TODO: type this
@@ -613,7 +613,7 @@ export const createSettingsSlice: StateCreator<
       }))
 
       await routeBackend({
-        mdb: () => forceCommunityOrganizationColumnDefaults(columnDefaults),
+        mdb: () => forceMdbOrganizationColumnDefaults(columnDefaults),
         supabase: async () => {
           const { error } = await (supabase.rpc as any)('force_org_column_defaults', {
             // TODO: type this
@@ -644,7 +644,7 @@ export const createSettingsSlice: StateCreator<
       }))
 
       await routeBackend({
-        mdb: () => setCommunityUserColumnDefaults(columnDefaults),
+        mdb: () => setMdbUserColumnDefaults(columnDefaults),
         supabase: async () => {
           const { error } = await (supabase.rpc as any)('set_user_column_defaults', {
             // TODO: type this
@@ -667,7 +667,7 @@ export const createSettingsSlice: StateCreator<
 
     try {
       const data = await routeBackend({
-        mdb: getCommunityUserColumnDefaults,
+        mdb: getMdbUserColumnDefaults,
         supabase: async () => {
           const { data, error } = await (supabase.rpc as any)('get_user_column_defaults', {}) // TODO: type this
           if (error) throw error

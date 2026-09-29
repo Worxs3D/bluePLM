@@ -7,15 +7,15 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
 import {
-  addCommunityTeamMember,
-  createCommunityUser,
-  setCommunityUserVaultAccess,
-} from '@/lib/community'
+  addMdbTeamMember,
+  createMdbUser,
+  setMdbUserVaultAccess,
+} from '@/lib/mdb'
 import { activeBackendSupports } from '@/lib/backendAdapter'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { TeamWithDetails, WorkflowRoleBasic } from '../../types'
 import { resolveMdbUserVaultAccess } from '../../utils'
-import type { CommunityMembershipRole } from '@/lib/community'
+import type { MdbMembershipRole } from '@/lib/mdb'
 
 // Types for Supabase query results
 interface UserOrgCheckResult {
@@ -57,7 +57,7 @@ export function CreateUserDialog({
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [initialPassword, setInitialPassword] = useState('')
-  const [accountRole, setAccountRole] = useState<Exclude<CommunityMembershipRole, 'owner'>>('member')
+  const [accountRole, setAccountRole] = useState<Exclude<MdbMembershipRole, 'owner'>>('member')
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
   const [selectedVaultIds, setSelectedVaultIds] = useState<string[]>([])
   const [selectedWorkflowRoleIds, setSelectedWorkflowRoleIds] = useState<string[]>([])
@@ -81,16 +81,16 @@ export function CreateUserDialog({
           addToast('error', t('mdbSetup.passwordTooShort'))
           return
         }
-        const created = await createCommunityUser({
+        const created = await createMdbUser({
           email: email.toLowerCase().trim(),
           displayName: fullName.trim(),
           password: initialPassword,
           role: accountRole,
         })
-        await Promise.all(selectedTeamIds.map((teamId) => addCommunityTeamMember(teamId, created.id)))
+        await Promise.all(selectedTeamIds.map((teamId) => addMdbTeamMember(teamId, created.id)))
         // MDB vault access is opt-in for every non-admin role. Never turn an
         // empty selection into an implicit grant to every current vault.
-        await setCommunityUserVaultAccess(created.id, resolveMdbUserVaultAccess(selectedVaultIds))
+        await setMdbUserVaultAccess(created.id, resolveMdbUserVaultAccess(selectedVaultIds))
         addToast('success', t('mdbSetup.createdAccount', { name: created.displayName }))
         onCreated()
         onClose()
@@ -302,7 +302,7 @@ export function CreateUserDialog({
                 <label className="block text-sm text-plm-fg-muted mb-1.5">{t('mdbSetup.accountRole')}</label>
                 <select
                   value={accountRole}
-                  onChange={(event) => setAccountRole(event.target.value as Exclude<CommunityMembershipRole, 'owner'>)}
+                  onChange={(event) => setAccountRole(event.target.value as Exclude<MdbMembershipRole, 'owner'>)}
                   className="w-full px-3 py-2 bg-plm-bg border border-plm-border rounded-lg text-plm-fg focus:outline-none focus:border-plm-accent"
                 >
                   <option value="admin">{t('mdbSetup.membershipRoleAdmin')}</option>

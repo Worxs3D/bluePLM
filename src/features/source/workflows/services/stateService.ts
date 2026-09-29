@@ -10,11 +10,11 @@
  */
 import { supabase } from '@/lib/supabase'
 import {
-  createCommunityWorkflowState,
-  deleteCommunityWorkflowState,
-  getCommunityWorkflowStates,
-  updateCommunityWorkflowState,
-} from '@/lib/community'
+  createMdbWorkflowState,
+  deleteMdbWorkflowState,
+  getMdbWorkflowStates,
+  updateMdbWorkflowState,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import type { Database } from '@/types/database'
 import type { WorkflowState } from '@/types/workflow'
@@ -36,7 +36,7 @@ export const stateService = {
   async getByWorkflow(workflowId: string): Promise<StateServiceResult<WorkflowState[]>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await getCommunityWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
+        try { return { data: await getMdbWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow states.') } }
       },
       supabase: async () => {
@@ -66,7 +66,7 @@ export const stateService = {
   ): Promise<StateServiceResult<WorkflowState>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await createCommunityWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
+        try { return { data: await createMdbWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow state.') } }
       },
       supabase: async () => {
@@ -85,7 +85,7 @@ export const stateService = {
   ): Promise<StateServiceResult<WorkflowState>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await updateCommunityWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
+        try { return { data: await updateMdbWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
       },
       supabase: async () => {
@@ -105,7 +105,7 @@ export const stateService = {
   ): Promise<StateServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await updateCommunityWorkflowState(stateId, { position_x: positionX, position_y: positionY }); return { data: undefined, error: null } }
+        try { await updateMdbWorkflowState(stateId, { position_x: positionX, position_y: positionY }); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
       },
       supabase: async () => {
@@ -121,7 +121,7 @@ export const stateService = {
   async delete(stateId: string): Promise<StateServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await deleteCommunityWorkflowState(stateId); return { data: undefined, error: null } }
+        try { await deleteMdbWorkflowState(stateId); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow state.') } }
       },
       supabase: async () => {
@@ -140,7 +140,7 @@ export const stateService = {
     return routeBackend({
       mdb: async () => {
         try {
-          await Promise.all(updates.map(({ id, position_x, position_y }) => updateCommunityWorkflowState(id, { position_x, position_y })))
+          await Promise.all(updates.map(({ id, position_x, position_y }) => updateMdbWorkflowState(id, { position_x, position_y })))
           return { data: undefined, error: null }
         } catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow states.') } }
       },

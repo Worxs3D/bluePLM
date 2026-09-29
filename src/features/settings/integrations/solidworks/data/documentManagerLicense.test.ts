@@ -4,12 +4,12 @@ import { activateBackend, clearBackendProfile } from '@/lib/backend'
 import type { OrgSettings } from '@/types/pdm'
 
 const mocks = vi.hoisted(() => ({
-  setCommunityDocumentManagerLicense: vi.fn(),
+  setMdbDocumentManagerLicense: vi.fn(),
   from: vi.fn(),
 }))
 
-vi.mock('@/lib/community', () => ({
-  setCommunityDocumentManagerLicense: mocks.setCommunityDocumentManagerLicense,
+vi.mock('@/lib/mdb', () => ({
+  setMdbDocumentManagerLicense: mocks.setMdbDocumentManagerLicense,
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -45,7 +45,7 @@ describe('Document Manager license persistence', () => {
   })
 
   it('uses the MDB endpoint without touching Supabase in MDB mode', async () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
     const result = await persistDocumentManagerLicense({
       organizationId: 'org-1',
@@ -53,13 +53,13 @@ describe('Document Manager license persistence', () => {
       licenseKey: 'dm-license',
     })
 
-    expect(mocks.setCommunityDocumentManagerLicense).toHaveBeenCalledWith('dm-license')
+    expect(mocks.setMdbDocumentManagerLicense).toHaveBeenCalledWith('dm-license')
     expect(mocks.from).not.toHaveBeenCalled()
     expect(result.solidworks_dm_license_key).toBe('dm-license')
   })
 
   it('clears the MDB key without touching Supabase', async () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
     const result = await persistDocumentManagerLicense({
       organizationId: 'org-1',
@@ -67,7 +67,7 @@ describe('Document Manager license persistence', () => {
       licenseKey: null,
     })
 
-    expect(mocks.setCommunityDocumentManagerLicense).toHaveBeenCalledWith(null)
+    expect(mocks.setMdbDocumentManagerLicense).toHaveBeenCalledWith(null)
     expect(mocks.from).not.toHaveBeenCalled()
     expect(result.solidworks_dm_license_key).toBeUndefined()
   })
@@ -96,7 +96,7 @@ describe('Document Manager license persistence', () => {
       licenseKey: 'dm-license',
     })
 
-    expect(mocks.setCommunityDocumentManagerLicense).not.toHaveBeenCalled()
+    expect(mocks.setMdbDocumentManagerLicense).not.toHaveBeenCalled()
     expect(mocks.from).toHaveBeenNthCalledWith(1, 'organizations')
     expect(mocks.from).toHaveBeenNthCalledWith(2, 'organizations')
     expect(result.solidworks_dm_license_key).toBe('dm-license')

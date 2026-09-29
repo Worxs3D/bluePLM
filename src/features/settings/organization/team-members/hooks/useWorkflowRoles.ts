@@ -13,13 +13,13 @@ import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { routeBackend } from '@/lib/backendAdapter'
 import {
-  createCommunityWorkflowRole,
-  deleteCommunityWorkflowRole,
-  getCommunityWorkflowRoleAssignments,
-  getCommunityWorkflowRoles,
-  setCommunityUserWorkflowRoles,
-  updateCommunityWorkflowRole,
-} from '@/lib/community'
+  createMdbWorkflowRole,
+  deleteMdbWorkflowRole,
+  getMdbWorkflowRoleAssignments,
+  getMdbWorkflowRoles,
+  setMdbUserWorkflowRoles,
+  updateMdbWorkflowRole,
+} from '@/lib/mdb'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { WorkflowRoleBasic, WorkflowRoleFormData } from '../types'
@@ -58,8 +58,8 @@ export function useWorkflowRoles(orgId: string | null) {
       const loaded = await routeBackend({
         mdb: async () => {
           const [roles, assignments] = await Promise.all([
-            getCommunityWorkflowRoles(),
-            getCommunityWorkflowRoleAssignments(),
+            getMdbWorkflowRoles(),
+            getMdbWorkflowRoleAssignments(),
           ])
           return { roles: roles as WorkflowRoleBasic[], assignments }
         },
@@ -103,7 +103,7 @@ export function useWorkflowRoles(orgId: string | null) {
       try {
         await routeBackend({
           mdb: async () => {
-            await createCommunityWorkflowRole({
+            await createMdbWorkflowRole({
               name: formData.name.trim(),
               color: formData.color,
               icon: formData.icon,
@@ -143,7 +143,7 @@ export function useWorkflowRoles(orgId: string | null) {
       try {
         await routeBackend({
           mdb: async () => {
-            await updateCommunityWorkflowRole(roleId, {
+            await updateMdbWorkflowRole(roleId, {
               name: formData.name.trim(),
               color: formData.color,
               icon: formData.icon,
@@ -189,7 +189,7 @@ export function useWorkflowRoles(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => deleteCommunityWorkflowRole(roleId),
+          mdb: () => deleteMdbWorkflowRole(roleId),
           supabase: async () => {
             const { error } = await supabase.from('workflow_roles').delete().eq('id', roleId)
             if (error) throw error
@@ -225,7 +225,7 @@ export function useWorkflowRoles(orgId: string | null) {
           ? [...new Set([...currentRoleIds, roleId])]
           : currentRoleIds.filter((id) => id !== roleId)
         await routeBackend({
-          mdb: () => setCommunityUserWorkflowRoles(userId, nextRoleIds),
+          mdb: () => setMdbUserWorkflowRoles(userId, nextRoleIds),
           supabase: async () => {
             if (isAdding) {
               const { error } = await insertUserWorkflowRole({
@@ -266,7 +266,7 @@ export function useWorkflowRoles(orgId: string | null) {
     ): Promise<boolean> => {
       try {
         await routeBackend({
-          mdb: () => setCommunityUserWorkflowRoles(userId, roleIds),
+          mdb: () => setMdbUserWorkflowRoles(userId, roleIds),
           supabase: async () => {
             await supabase.from('user_workflow_roles').delete().eq('user_id', userId)
             if (roleIds.length > 0) {

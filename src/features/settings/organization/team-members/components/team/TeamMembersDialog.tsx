@@ -6,10 +6,10 @@ import { Users, UserPlus, Search, Plus, X, Loader2 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
 import {
-  addCommunityTeamMember,
-  getCommunityTeamMembers,
-  removeCommunityTeamMember,
-} from '@/lib/community'
+  addMdbTeamMember,
+  getMdbTeamMembers,
+  removeMdbTeamMember,
+} from '@/lib/mdb'
 import { mapMdbRole, routeBackend } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -52,8 +52,8 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
     try {
       const loadedMembers = await routeBackend({
         mdb: async () => {
-          const communityMembers = await getCommunityTeamMembers(team.id)
-          return communityMembers.map((member): TeamMember => ({
+          const mdbMembers = await getMdbTeamMembers(team.id)
+          return mdbMembers.map((member): TeamMember => ({
             id: `${team.id}:${member.userId}`,
             team_id: team.id,
             user_id: member.userId,
@@ -109,7 +109,7 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
     setIsAdding(true)
     try {
       await routeBackend({
-        mdb: () => addCommunityTeamMember(team.id, userToAdd.id),
+        mdb: () => addMdbTeamMember(team.id, userToAdd.id),
         supabase: async () => {
           const { error } = await insertTeamMember({
             team_id: team.id, user_id: userToAdd.id, added_by: userId,
@@ -133,7 +133,7 @@ export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembe
   const removeMember = async (member: TeamMember) => {
     try {
       await routeBackend({
-        mdb: () => removeCommunityTeamMember(team.id, member.user_id),
+        mdb: () => removeMdbTeamMember(team.id, member.user_id),
         supabase: async () => {
           const { error } = await supabase.from('team_members').delete().eq('id', member.id)
           if (error) throw error

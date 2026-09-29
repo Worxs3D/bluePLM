@@ -21,15 +21,15 @@ import { isMdbBackendActive, mapMdbRole } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
 import {
-  communityAccessToken,
-  clearCommunityConfig,
-  getCommunityOrganization,
-  getCommunityPrincipal,
-  loadCommunityConfig,
-  onCommunityAuthChange,
-  signOutCommunity,
-  validateCommunityConfig,
-} from '@/lib/community'
+  mdbAccessToken,
+  clearMdbConfig,
+  getMdbOrganization,
+  getMdbPrincipal,
+  loadMdbConfig,
+  onMdbAuthChange,
+  signOutMdb,
+  validateMdbConfig,
+} from '@/lib/mdb'
 import type { Organization } from '@/types/pdm'
 import { t } from '@/lib/i18n'
 
@@ -203,8 +203,8 @@ export function useAuth() {
     // Sign out and clear only the selected backend. An inactive adapter must
     // not be initialized merely because the user returns to backend setup.
     if (isMdbBackendActive()) {
-      signOutCommunity()
-      clearCommunityConfig()
+      signOutMdb()
+      clearMdbConfig()
     } else {
       await signOut()
       clearConfig()
@@ -228,13 +228,13 @@ export function useAuth() {
     if (isMdbBackendActive()) {
       let active = true
       let hydrationEpoch = 0
-      const hydrateCommunitySession = async () => {
+      const hydrateMdbSession = async () => {
         const epoch = ++hydrationEpoch
         setAuthInitialized(false)
         try {
-          const config = loadCommunityConfig()
+          const config = loadMdbConfig()
           if (!config) throw new Error('MariaDB backend is not configured.')
-          const compatibility = await validateCommunityConfig(config.serverUrl)
+          const compatibility = await validateMdbConfig(config.serverUrl)
           if (!compatibility.valid) {
             log.error('[Auth]', 'MDB backend compatibility check failed', {
               error: compatibility.error,
@@ -243,15 +243,15 @@ export function useAuth() {
             throw new Error(compatibility.error ?? 'MariaDB backend is incompatible.')
           }
           const [principal, organization] = await Promise.all([
-            getCommunityPrincipal(),
-            getCommunityOrganization(),
+            getMdbPrincipal(),
+            getMdbOrganization(),
           ])
           if (!active || epoch !== hydrationEpoch) return
           const mappedRole = mapMdbRole(principal.role)
           if (!mappedRole || !principal.createdAt)
-            throw new Error('Community principal has an invalid role or creation date')
+            throw new Error('MDB principal has an invalid role or creation date')
           const { boundary } = advanceSession('SIGNED_IN', principal.userId)
-          setCurrentAccessToken(communityAccessToken())
+          setCurrentAccessToken(mdbAccessToken())
           setUser({
             id: principal.userId,
             email: principal.email,
@@ -300,9 +300,9 @@ export function useAuth() {
         }
       }
 
-      void hydrateCommunitySession()
-      const unsubscribe = onCommunityAuthChange(() => {
-        void hydrateCommunitySession()
+      void hydrateMdbSession()
+      const unsubscribe = onMdbAuthChange(() => {
+        void hydrateMdbSession()
       })
       return () => {
         active = false

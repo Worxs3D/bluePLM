@@ -17,7 +17,7 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { Supplier } from '@/stores/types'
 import { supabase } from '@/lib/supabase'
-import { getCommunitySuppliers } from '@/lib/community'
+import { getMdbSuppliers } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 
@@ -52,7 +52,7 @@ export function SuppliersView() {
 
     try {
       if (isMdbBackendActive()) {
-        setSuppliers((await getCommunitySuppliers()) as Supplier[])
+        setSuppliers((await getMdbSuppliers()) as Supplier[])
         return
       }
       const query = supabase

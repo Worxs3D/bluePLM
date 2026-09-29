@@ -12,9 +12,9 @@
  */
 import { supabase } from '@/lib/supabase'
 import {
-  updateCommunityWorkflowState,
-  updateCommunityWorkflowTransition,
-} from '@/lib/community'
+  updateMdbWorkflowState,
+  updateMdbWorkflowTransition,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import type { Json } from '@/types/database'
 import type { WorkflowState, WorkflowTransition } from '@/types/workflow'
@@ -234,8 +234,8 @@ function scheduleWrite(
       mdb: () => {
         void (async () => {
           try {
-            if (table === 'workflow_states') await updateCommunityWorkflowState(id, merged)
-            else await updateCommunityWorkflowTransition(id, merged)
+            if (table === 'workflow_states') await updateMdbWorkflowState(id, merged)
+            else await updateMdbWorkflowTransition(id, merged)
           } catch (error) {
             onError(error instanceof Error ? error : new Error('Failed to save workflow layout.'))
           }

@@ -7,7 +7,7 @@ import { getSupabaseClient } from '../client'
 import { getCurrentUserEmail } from '../auth'
 import { getNextRevision } from '../../../types/pdm'
 import type { PDMFile } from '../../../types/pdm'
-import { getCommunityRollbackTarget } from '@/lib/community'
+import { getMdbRollbackTarget } from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 /**
@@ -25,7 +25,7 @@ export async function rollbackToVersion(
   return routeBackend({
     mdb: async () => {
       try {
-        return await getCommunityRollbackTarget(fileId, targetVersion, comment)
+        return await getMdbRollbackTarget(fileId, targetVersion, comment)
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
       }

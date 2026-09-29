@@ -7,7 +7,7 @@ describe('selectUserProfileDataSource', () => {
       throw new Error('Supabase is inactive while the MariaDB backend is selected.')
     })
 
-    expect(selectUserProfileDataSource(true, getClient)).toEqual({ kind: 'community' })
+    expect(selectUserProfileDataSource(true, getClient)).toEqual({ kind: 'mdb' })
     expect(getClient).not.toHaveBeenCalled()
   })
 

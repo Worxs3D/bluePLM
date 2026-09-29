@@ -51,7 +51,7 @@ import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { swRefsToFileReferences } from '../../solidworks/referenceRows'
 import type { SWServiceReference } from '../../solidworks/types'
-import { getCommunityVault } from '@/lib/community'
+import { getMdbVault } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 
 // SolidWorks file extensions that support metadata extraction
@@ -1267,7 +1267,7 @@ export const checkinCommand: Command<CheckinParams> = {
         // custom_properties travels with it and checkinFile sends the complete configuration
         // maps. Sending pending alone is what used to erase the rest of them.
         const metadataToUse = file.pendingMetadata
-        let communityStorageRelativePath: string | undefined
+        let mdbStorageRelativePath: string | undefined
 
         if (fileHash) {
           // Check if content actually changed from what's in storage
@@ -1285,7 +1285,7 @@ export const checkinCommand: Command<CheckinParams> = {
                     error: t('mdbSetup.fileVaultMetadataIncomplete', { name: file.name }),
                   }
                 }
-                const vault = await getCommunityVault(vaultId)
+                const vault = await getMdbVault(vaultId)
                 if (vault.storageProvider === 'network') {
                   if (!vault.networkRoot) {
                     return {
@@ -1296,8 +1296,8 @@ export const checkinCommand: Command<CheckinParams> = {
                   // Match BluePLM's Supabase model: every check-in is an immutable,
                   // content-addressed object. file_revisions points to this object;
                   // the user-facing canonical path remains independent of history.
-                  communityStorageRelativePath = `.blueplm/objects/${fileHash.slice(0, 2).toLowerCase()}/${fileHash.toLowerCase()}`
-                  const stagedPath = buildFullPath(vault.networkRoot, communityStorageRelativePath)
+                  mdbStorageRelativePath = `.blueplm/objects/${fileHash.slice(0, 2).toLowerCase()}/${fileHash.toLowerCase()}`
+                  const stagedPath = buildFullPath(vault.networkRoot, mdbStorageRelativePath)
                   const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
                   if (!staged?.success) {
                     logCheckin('error', 'Failed to stage MDB revision', {
@@ -1329,7 +1329,7 @@ export const checkinCommand: Command<CheckinParams> = {
                     }
                   }
                   fileSize = stagedHash.size ?? fileSize
-                  logCheckin('info', 'Staged immutable Community revision', {
+                  logCheckin('info', 'Staged immutable MDB revision', {
                     operationId,
                     fileName: file.name,
                     stagedPath,
@@ -1516,7 +1516,7 @@ export const checkinCommand: Command<CheckinParams> = {
             comment: file.pendingCheckinNote,
             machineId,
             skipMachineMismatchCheck: true,
-            communityStorageRelativePath,
+            mdbStorageRelativePath,
           })
           recordSubstepTiming('checkinAPI', performance.now() - checkinAPIStart)
 

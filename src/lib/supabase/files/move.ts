@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../client'
 import { CONCURRENT_OPERATIONS, processWithConcurrency } from '../../concurrency'
-import { moveCommunityFile } from '@/lib/community'
+import { moveMdbFile } from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -30,7 +30,7 @@ export async function moveFileOnServer(
   return routeBackend({
     mdb: async () => {
       try {
-        await moveCommunityFile(fileId, newFilePath, newFileName)
+        await moveMdbFile(fileId, newFilePath, newFileName)
         return {
           success: true,
           file: { id: fileId, file_path: newFilePath, file_name: newFileName },

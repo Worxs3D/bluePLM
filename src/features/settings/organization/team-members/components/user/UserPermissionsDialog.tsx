@@ -7,10 +7,10 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
 import {
-  getCommunityUserPermissions,
-  getCommunityVaults,
-  setCommunityUserPermissions,
-} from '@/lib/community'
+  getMdbUserPermissions,
+  getMdbVaults,
+  setMdbUserPermissions,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import type { OrgUser, Vault } from '../../types'
 import { t } from '@/lib/i18n'
@@ -63,7 +63,7 @@ export function UserPermissionsDialog({
       try {
         const loadedVaults = await routeBackend({
           mdb: async (): Promise<Vault[]> =>
-            (await getCommunityVaults()).map((vault) => ({
+            (await getMdbVaults()).map((vault) => ({
               id: vault.id,
               name: vault.name,
               slug: vault.id,
@@ -101,7 +101,7 @@ export function UserPermissionsDialog({
     setIsLoading(true)
     try {
       const permsMap = await routeBackend({
-        mdb: () => getCommunityUserPermissions(user.id, selectedVaultId),
+        mdb: () => getMdbUserPermissions(user.id, selectedVaultId),
         supabase: async (): Promise<Record<string, PermissionAction[]>> => {
           let query = supabase.from('user_permissions').select('*').eq('user_id', user.id)
           query = selectedVaultId === null
@@ -132,7 +132,7 @@ export function UserPermissionsDialog({
     setIsSaving(true)
     try {
       await routeBackend({
-        mdb: () => setCommunityUserPermissions(user.id, selectedVaultId, permissions),
+        mdb: () => setMdbUserPermissions(user.id, selectedVaultId, permissions),
         supabase: async () => {
           let deleteQuery = supabase.from('user_permissions').delete().eq('user_id', user.id)
           deleteQuery = selectedVaultId === null

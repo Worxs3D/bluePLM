@@ -1,5 +1,5 @@
 export type UserProfileDataSource<TClient> =
-  | { kind: 'community' }
+  | { kind: 'mdb' }
   | { kind: 'supabase'; client: TClient }
 
 /**
@@ -9,9 +9,9 @@ export type UserProfileDataSource<TClient> =
  * Supabase client while the MDB backend is active throws immediately.
  */
 export function selectUserProfileDataSource<TClient>(
-  communityBackend: boolean,
+  mdbBackend: boolean,
   getClient: () => TClient,
 ): UserProfileDataSource<TClient> {
-  if (communityBackend) return { kind: 'community' }
+  if (mdbBackend) return { kind: 'mdb' }
   return { kind: 'supabase', client: getClient() }
 }

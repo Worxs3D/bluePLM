@@ -6,15 +6,15 @@
  */
 import { supabase } from '@/lib/supabase'
 import {
-  createCommunityWorkflowGate,
-  createCommunityWorkflowTransition,
-  deleteCommunityWorkflowGate,
-  deleteCommunityWorkflowTransition,
-  getCommunityWorkflowGates,
-  getCommunityWorkflowTransitions,
-  updateCommunityWorkflowGate,
-  updateCommunityWorkflowTransition,
-} from '@/lib/community'
+  createMdbWorkflowGate,
+  createMdbWorkflowTransition,
+  deleteMdbWorkflowGate,
+  deleteMdbWorkflowTransition,
+  getMdbWorkflowGates,
+  getMdbWorkflowTransitions,
+  updateMdbWorkflowGate,
+  updateMdbWorkflowTransition,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import type { Database } from '@/types/database'
 import type { WorkflowTransition, WorkflowGate } from '@/types/workflow'
@@ -44,7 +44,7 @@ export const transitionService = {
   ): Promise<TransitionServiceResult<WorkflowTransition[]>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await getCommunityWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
+        try { return { data: await getMdbWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
       },
       supabase: async () => {
@@ -78,7 +78,7 @@ export const transitionService = {
   ): Promise<TransitionServiceResult<WorkflowTransition>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await createCommunityWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
+        try { return { data: await createMdbWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow transition.') } }
       },
       supabase: async () => {
@@ -99,7 +99,7 @@ export const transitionService = {
   ): Promise<TransitionServiceResult<WorkflowTransition>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await updateCommunityWorkflowTransition(transitionId, updates) as unknown as WorkflowTransition, error: null } }
+        try { return { data: await updateMdbWorkflowTransition(transitionId, updates) as unknown as WorkflowTransition, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow transition.') } }
       },
       supabase: async () => {
@@ -115,7 +115,7 @@ export const transitionService = {
   async delete(transitionId: string): Promise<TransitionServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await deleteCommunityWorkflowTransition(transitionId); return { data: undefined, error: null } }
+        try { await deleteMdbWorkflowTransition(transitionId); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow transition.') } }
       },
       supabase: async () => {
@@ -145,7 +145,7 @@ export const transitionService = {
 
     return routeBackend({
       mdb: async () => {
-        try { await updateCommunityWorkflowTransition(transitionId, updates); return { data: undefined, error: null } }
+        try { await updateMdbWorkflowTransition(transitionId, updates); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to reconnect workflow transition.') } }
       },
       supabase: async () => {
@@ -170,7 +170,7 @@ export const transitionService = {
     }
     return routeBackend({
       mdb: async () => {
-        try { return { data: await getCommunityWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
+        try { return { data: await getMdbWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow gates.') } }
       },
       supabase: async () => {
@@ -211,7 +211,7 @@ export const transitionService = {
   ): Promise<TransitionServiceResult<WorkflowGate>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await createCommunityWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
+        try { return { data: await createMdbWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow gate.') } }
       },
       supabase: async () => {
@@ -230,7 +230,7 @@ export const transitionService = {
   ): Promise<TransitionServiceResult<WorkflowGate>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await updateCommunityWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
+        try { return { data: await updateMdbWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow gate.') } }
       },
       supabase: async () => {
@@ -246,7 +246,7 @@ export const transitionService = {
   async deleteGate(gateId: string): Promise<TransitionServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await deleteCommunityWorkflowGate(gateId); return { data: undefined, error: null } }
+        try { await deleteMdbWorkflowGate(gateId); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow gate.') } }
       },
       supabase: async () => {

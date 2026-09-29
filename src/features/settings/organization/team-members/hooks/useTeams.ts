@@ -27,14 +27,14 @@
 import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  createCommunityTeam,
-  deleteCommunityTeam,
-  getCommunityTeamVaultAccess,
-  getCommunityTeams,
-  setCommunityDefaultNewUserTeam,
-  setCommunityTeamVaultAccess,
-  updateCommunityTeam,
-} from '@/lib/community'
+  createMdbTeam,
+  deleteMdbTeam,
+  getMdbTeamVaultAccess,
+  getMdbTeams,
+  setMdbDefaultNewUserTeam,
+  setMdbTeamVaultAccess,
+  updateMdbTeam,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
@@ -69,13 +69,13 @@ export function useTeams(orgId: string | null) {
     try {
       const loadedTeams = await routeBackend({
         mdb: async () => {
-          const communityTeams = await getCommunityTeams()
-          return Promise.all(communityTeams.map(async (team): Promise<TeamWithDetails> => ({
+          const mdbTeams = await getMdbTeams()
+          return Promise.all(mdbTeams.map(async (team): Promise<TeamWithDetails> => ({
             id: team.id, org_id: orgId, name: team.name, description: null,
             color: team.color, icon: team.icon, parent_team_id: null,
             created_at: team.createdAt, created_by: null, updated_at: null, updated_by: null,
             is_default: false, is_system: false, member_count: team.memberCount,
-            permissions_count: 0, vault_access: await getCommunityTeamVaultAccess(team.id),
+            permissions_count: 0, vault_access: await getMdbTeamVaultAccess(team.id),
           })))
         },
         supabase: async () => {
@@ -108,11 +108,11 @@ export function useTeams(orgId: string | null) {
       try {
         await routeBackend({
           mdb: async () => {
-            const created = await createCommunityTeam({
+            const created = await createMdbTeam({
               name: formData.name.trim(), color: formData.color, icon: formData.icon,
             })
             if (copyFromTeamId) {
-              await setCommunityTeamVaultAccess(created.id, await getCommunityTeamVaultAccess(copyFromTeamId))
+              await setMdbTeamVaultAccess(created.id, await getMdbTeamVaultAccess(copyFromTeamId))
             }
           },
           supabase: async () => {
@@ -171,7 +171,7 @@ export function useTeams(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => updateCommunityTeam(teamId, {
+          mdb: () => updateMdbTeam(teamId, {
             name: formData.name.trim(), color: formData.color, icon: formData.icon,
           }),
           supabase: async () => {
@@ -206,7 +206,7 @@ export function useTeams(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => deleteCommunityTeam(teamId),
+          mdb: () => deleteMdbTeam(teamId),
           supabase: async () => {
             const { error } = await supabase.from('teams').delete().eq('id', teamId)
             if (error) throw error
@@ -241,7 +241,7 @@ export function useTeams(orgId: string | null) {
     ): Promise<boolean> => {
       try {
         await routeBackend({
-          mdb: () => setCommunityDefaultNewUserTeam(teamId),
+          mdb: () => setMdbDefaultNewUserTeam(teamId),
           supabase: async () => {
             const { error } = await updateOrganization(organizationId, {
               default_new_user_team_id: teamId,

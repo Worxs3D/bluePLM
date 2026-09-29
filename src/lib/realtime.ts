@@ -115,7 +115,7 @@ type MemberChangeCallback = (
  * - revision changes
  */
 export function subscribeToFiles(orgId: string, onFileChange: FileChangeCallback): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (filesChannel) {
@@ -168,7 +168,7 @@ export function subscribeToFolders(
   orgId: string,
   onFolderChange: FolderChangeCallback,
 ): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (foldersChannel) {
@@ -212,7 +212,7 @@ export function subscribeToFolders(
  * - Files change state
  */
 export function subscribeToActivity(orgId: string, onActivity: ActivityCallback): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   if (activityChannel) {
     activityChannel.unsubscribe()
@@ -266,7 +266,7 @@ export function subscribeToOrganization(
   orgId: string,
   onOrgChange: OrganizationChangeCallback,
 ): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (organizationChannel) {
@@ -313,7 +313,7 @@ export function subscribeToColorSwatches(
   orgId: string,
   onSwatchChange: ColorSwatchChangeCallback,
 ): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (colorSwatchesChannel) {
@@ -387,7 +387,7 @@ export function subscribeToColorSwatches(
  * This ensures all admins see vault changes immediately.
  */
 export function subscribeToVaults(orgId: string, onVaultChange: VaultChangeCallback): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (vaultsChannel) {
@@ -446,7 +446,7 @@ export function subscribeToMemberChanges(
   orgId: string,
   onMemberChange: MemberChangeCallback,
 ): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (memberChangesChannel) {
@@ -541,7 +541,7 @@ export function subscribeToPermissions(
   orgId: string,
   onPermissionChange: PermissionChangeCallback,
 ): () => void {
-  if (isBackendActive('community')) return noopUnsubscribe
+  if (isBackendActive('mdb')) return noopUnsubscribe
 
   // Unsubscribe from previous channel if exists
   if (permissionsChannel) {

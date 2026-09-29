@@ -3,29 +3,29 @@
 
 import { supabase } from './supabase'
 import {
-  assignCommunityFileWorkflow,
-  createCommunityWorkflow,
-  createCommunityWorkflowGate,
-  createCommunityWorkflowState,
-  createCommunityWorkflowTransition,
-  decideCommunityWorkflowReview,
-  deleteCommunityWorkflow,
-  deleteCommunityWorkflowGate,
-  deleteCommunityWorkflowState,
-  deleteCommunityWorkflowTransition,
-  executeCommunityWorkflowTransition,
-  getCommunityAvailableTransitions,
-  getCommunityFileWorkflow,
-  getCommunityMyWorkflowReviews,
-  getCommunityWorkflowGates,
-  getCommunityWorkflowStates,
-  getCommunityWorkflowTransitions,
-  getCommunityWorkflows,
-  updateCommunityWorkflow,
-  updateCommunityWorkflowGate,
-  updateCommunityWorkflowState,
-  updateCommunityWorkflowTransition,
-} from './community'
+  assignMdbFileWorkflow,
+  createMdbWorkflow,
+  createMdbWorkflowGate,
+  createMdbWorkflowState,
+  createMdbWorkflowTransition,
+  decideMdbWorkflowReview,
+  deleteMdbWorkflow,
+  deleteMdbWorkflowGate,
+  deleteMdbWorkflowState,
+  deleteMdbWorkflowTransition,
+  executeMdbWorkflowTransition,
+  getMdbAvailableTransitions,
+  getMdbFileWorkflow,
+  getMdbMyWorkflowReviews,
+  getMdbWorkflowGates,
+  getMdbWorkflowStates,
+  getMdbWorkflowTransitions,
+  getMdbWorkflows,
+  updateMdbWorkflow,
+  updateMdbWorkflowGate,
+  updateMdbWorkflowState,
+  updateMdbWorkflowTransition,
+} from './mdb'
 import { routeBackend } from './backendAdapter'
 import type {
   WorkflowTemplate,
@@ -46,7 +46,7 @@ import type {
 export async function getWorkflowTemplates(orgId: string) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityWorkflows() as unknown as WorkflowTemplate[], error: null } }
+      try { return { data: await getMdbWorkflows() as unknown as WorkflowTemplate[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflows.') } }
     },
     supabase: async () => {
@@ -62,7 +62,7 @@ export async function getDefaultWorkflow(orgId: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const workflow = (await getCommunityWorkflows()).find((candidate) => candidate.is_default)
+        const workflow = (await getMdbWorkflows()).find((candidate) => candidate.is_default)
         return { data: workflow as unknown as WorkflowTemplate | undefined ?? null, error: null }
       } catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load default workflow.') } }
     },
@@ -82,7 +82,7 @@ export async function createWorkflowTemplate(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await createCommunityWorkflow({ name, description: description ?? null }) as unknown as WorkflowTemplate, error: null } }
+      try { return { data: await createMdbWorkflow({ name, description: description ?? null }) as unknown as WorkflowTemplate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
     },
     supabase: async () => {
@@ -103,7 +103,7 @@ export async function updateWorkflowTemplate(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await updateCommunityWorkflow(workflowId, updates as Record<string, unknown>) as unknown as WorkflowTemplate, error: null } }
+      try { return { data: await updateMdbWorkflow(workflowId, updates as Record<string, unknown>) as unknown as WorkflowTemplate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow.') } }
     },
     supabase: async () => {
@@ -116,7 +116,7 @@ export async function updateWorkflowTemplate(
 export async function deleteWorkflowTemplate(workflowId: string) {
   return routeBackend({
     mdb: async () => {
-      try { await deleteCommunityWorkflow(workflowId); return { data: null, error: null } }
+      try { await deleteMdbWorkflow(workflowId); return { data: null, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow.') } }
     },
     supabase: () => supabase.from('workflow_templates').update({ is_active: false }).eq('id', workflowId),
@@ -130,7 +130,7 @@ export async function deleteWorkflowTemplate(workflowId: string) {
 export async function getWorkflowStates(workflowId: string) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
+      try { return { data: await getMdbWorkflowStates(workflowId) as unknown as WorkflowState[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow states.') } }
     },
     supabase: () => supabase.from('workflow_states').select('*').eq('workflow_id', workflowId).order('sort_order'),
@@ -142,7 +142,7 @@ export async function createWorkflowState(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await createCommunityWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
+      try { return { data: await createMdbWorkflowState(state as Record<string, unknown>) as unknown as WorkflowState, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow state.') } }
     },
     supabase: () => supabase.from('workflow_states').insert(state).select().single(),
@@ -152,7 +152,7 @@ export async function createWorkflowState(
 export async function updateWorkflowState(stateId: string, updates: Partial<WorkflowState>) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await updateCommunityWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
+      try { return { data: await updateMdbWorkflowState(stateId, updates as Record<string, unknown>) as unknown as WorkflowState, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
     },
     supabase: () => supabase.from('workflow_states').update(updates).eq('id', stateId).select().single(),
@@ -162,7 +162,7 @@ export async function updateWorkflowState(stateId: string, updates: Partial<Work
 export async function deleteWorkflowState(stateId: string) {
   return routeBackend({
     mdb: async () => {
-      try { await deleteCommunityWorkflowState(stateId); return { data: null, error: null } }
+      try { await deleteMdbWorkflowState(stateId); return { data: null, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow state.') } }
     },
     supabase: () => supabase.from('workflow_states').delete().eq('id', stateId),
@@ -176,7 +176,7 @@ export async function deleteWorkflowState(stateId: string) {
 export async function getWorkflowTransitions(workflowId: string) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
+      try { return { data: await getMdbWorkflowTransitions(workflowId) as unknown as WorkflowTransition[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
     },
     supabase: () => supabase.from('workflow_transitions').select('*').eq('workflow_id', workflowId),
@@ -192,7 +192,7 @@ export async function createWorkflowTransition(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await createCommunityWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
+      try { return { data: await createMdbWorkflowTransition(transition as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow transition.') } }
     },
     supabase: () => {
@@ -208,7 +208,7 @@ export async function updateWorkflowTransition(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await updateCommunityWorkflowTransition(transitionId, updates as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
+      try { return { data: await updateMdbWorkflowTransition(transitionId, updates as Record<string, unknown>) as unknown as WorkflowTransition, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow transition.') } }
     },
     supabase: () => {
@@ -221,7 +221,7 @@ export async function updateWorkflowTransition(
 export async function deleteWorkflowTransition(transitionId: string) {
   return routeBackend({
     mdb: async () => {
-      try { await deleteCommunityWorkflowTransition(transitionId); return { data: null, error: null } }
+      try { await deleteMdbWorkflowTransition(transitionId); return { data: null, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow transition.') } }
     },
     supabase: () => supabase.from('workflow_transitions').delete().eq('id', transitionId),
@@ -235,7 +235,7 @@ export async function deleteWorkflowTransition(transitionId: string) {
 export async function getGatesForTransitions(transitionIds: string[]) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
+      try { return { data: await getMdbWorkflowGates(transitionIds) as unknown as WorkflowGate[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow gates.') } }
     },
     supabase: () => supabase.from('workflow_gates').select('*').in('transition_id', transitionIds).order('sort_order'),
@@ -247,7 +247,7 @@ export async function createWorkflowGate(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await createCommunityWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
+      try { return { data: await createMdbWorkflowGate(gate as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow gate.') } }
     },
     supabase: () => {
@@ -265,7 +265,7 @@ export async function createWorkflowGate(
 export async function updateWorkflowGate(gateId: string, updates: Partial<WorkflowGate>) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await updateCommunityWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
+      try { return { data: await updateMdbWorkflowGate(gateId, updates as Record<string, unknown>) as unknown as WorkflowGate, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow gate.') } }
     },
     supabase: () => {
@@ -283,7 +283,7 @@ export async function updateWorkflowGate(gateId: string, updates: Partial<Workfl
 export async function deleteWorkflowGate(gateId: string) {
   return routeBackend({
     mdb: async () => {
-      try { await deleteCommunityWorkflowGate(gateId); return { data: null, error: null } }
+      try { await deleteMdbWorkflowGate(gateId); return { data: null, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow gate.') } }
     },
     supabase: () => supabase.from('workflow_gates').delete().eq('id', gateId),
@@ -338,7 +338,7 @@ export async function removeGateReviewer(reviewerId: string) {
 export async function getFileWorkflowAssignment(fileId: string) {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityFileWorkflow(fileId), error: null } }
+      try { return { data: await getMdbFileWorkflow(fileId), error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load file workflow.') } }
     },
     supabase: () => supabase.from('file_workflow_assignments').select(`
@@ -357,7 +357,7 @@ export async function assignWorkflowToFile(
 ) {
   return routeBackend({
     mdb: async () => {
-      try { await assignCommunityFileWorkflow(fileId, workflowId, initialStateId); return { data: { file_id: fileId, workflow_id: workflowId, current_state_id: initialStateId }, error: null } }
+      try { await assignMdbFileWorkflow(fileId, workflowId, initialStateId); return { data: { file_id: fileId, workflow_id: workflowId, current_state_id: initialStateId }, error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to assign workflow.') } }
     },
     supabase: () => supabase.from('file_workflow_assignments').upsert({
@@ -370,10 +370,10 @@ export async function updateFileWorkflowState(fileId: string, newStateId: string
   return routeBackend({
     mdb: async () => {
       try {
-        const assignment = await getCommunityFileWorkflow(fileId)
+        const assignment = await getMdbFileWorkflow(fileId)
         const workflowId = typeof assignment?.workflow_id === 'string' ? assignment.workflow_id : null
         if (!workflowId) return { data: null, error: new Error('File has no workflow assignment.') }
-        await assignCommunityFileWorkflow(fileId, workflowId, newStateId)
+        await assignMdbFileWorkflow(fileId, workflowId, newStateId)
         return { data: { file_id: fileId, current_state_id: newStateId }, error: null }
       } catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow state.') } }
     },
@@ -391,7 +391,7 @@ export async function getAvailableTransitions(
 ): Promise<{ data: AvailableTransition[] | null; error: Error | null }> {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityAvailableTransitions(fileId) as unknown as AvailableTransition[], error: null } }
+      try { return { data: await getMdbAvailableTransitions(fileId) as unknown as AvailableTransition[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow transitions.') } }
     },
     supabase: async () => {
@@ -428,7 +428,7 @@ export async function getMyPendingReviews(): Promise<{
 }> {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getCommunityMyWorkflowReviews() as unknown as MyPendingReview[], error: null } }
+      try { return { data: await getMdbMyWorkflowReviews() as unknown as MyPendingReview[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load pending reviews.') } }
     },
     supabase: async () => {
@@ -464,7 +464,7 @@ export async function submitReviewDecision(
 ): Promise<{ data: TransitionResult | null; error: Error | null }> {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await decideCommunityWorkflowReview(reviewId, decision, comment, checklistResponses), error: null } }
+      try { return { data: await decideMdbWorkflowReview(reviewId, decision, comment, checklistResponses), error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to submit review decision.') } }
     },
     supabase: async () => {
@@ -546,7 +546,7 @@ export async function executeTransition(
 ): Promise<{ data: TransitionResult | null; error: Error | null }> {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await executeCommunityWorkflowTransition(fileId, transitionId, options?.comment), error: null } }
+      try { return { data: await executeMdbWorkflowTransition(fileId, transitionId, options?.comment), error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to execute workflow transition.') } }
     },
     supabase: async () => {

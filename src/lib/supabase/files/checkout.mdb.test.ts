@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const checkinCommunityFile = vi.fn()
+const checkinMdbFile = vi.fn()
 
 vi.mock('@/lib/backendAdapter', () => ({
   routeBackend: (routes: { mdb: () => unknown }) => routes.mdb(),
 }))
 
-vi.mock('@/lib/community', () => ({
-  cancelCommunityCheckout: vi.fn(),
-  checkoutCommunityFile: vi.fn(),
-  checkinCommunityFile,
+vi.mock('@/lib/mdb', () => ({
+  cancelMdbCheckout: vi.fn(),
+  checkoutMdbFile: vi.fn(),
+  checkinMdbFile,
 }))
 
 vi.mock('../client', () => ({
@@ -24,20 +24,20 @@ const { checkinFile } = await import('./checkout')
 
 describe('checkinFile with the MDB backend', () => {
   beforeEach(() => {
-    checkinCommunityFile.mockReset()
-    checkinCommunityFile.mockResolvedValue({ revision: 2 })
+    checkinMdbFile.mockReset()
+    checkinMdbFile.mockResolvedValue({ revision: 2 })
   })
 
   it('persists a changed part number with the new network-vault revision', async () => {
     const result = await checkinFile('file-1', 'user-1', {
-      communityStorageRelativePath: 'revisions/file-1/2.sldprt',
+      mdbStorageRelativePath: 'revisions/file-1/2.sldprt',
       newContentHash: 'a'.repeat(64),
       newFileSize: 42,
       comment: 'Revision with metadata',
       pendingMetadata: { part_number: 'PN-00043' },
     })
 
-    expect(checkinCommunityFile).toHaveBeenCalledWith('file-1', {
+    expect(checkinMdbFile).toHaveBeenCalledWith('file-1', {
       storageRelativePath: 'revisions/file-1/2.sldprt',
       contentHash: 'a'.repeat(64),
       sizeBytes: 42,
@@ -53,10 +53,10 @@ describe('checkinFile with the MDB backend', () => {
 
   it('omits untouched metadata instead of clearing the existing part number', async () => {
     await checkinFile('file-1', 'user-1', {
-      communityStorageRelativePath: 'revisions/file-1/2.sldprt',
+      mdbStorageRelativePath: 'revisions/file-1/2.sldprt',
     })
 
-    expect(checkinCommunityFile).toHaveBeenCalledWith('file-1', {
+    expect(checkinMdbFile).toHaveBeenCalledWith('file-1', {
       storageRelativePath: 'revisions/file-1/2.sldprt',
       contentHash: undefined,
       sizeBytes: undefined,

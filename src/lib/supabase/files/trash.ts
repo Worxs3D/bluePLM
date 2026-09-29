@@ -5,11 +5,11 @@ import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePatt
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { getSupabaseClient } from '../client'
 import {
-  getCommunityTrash,
-  permanentlyDeleteCommunityFile,
-  restoreCommunityFile,
-  trashCommunityFile,
-} from '@/lib/community'
+  getMdbTrash,
+  permanentlyDeleteMdbFile,
+  restoreMdbFile,
+  trashMdbFile,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -48,7 +48,7 @@ export async function softDeleteFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await trashCommunityFile(fileId)
+        await trashMdbFile(fileId)
         return { success: true, file: { id: fileId } }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -157,7 +157,7 @@ export async function restoreFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await restoreCommunityFile(fileId)
+        await restoreMdbFile(fileId)
         return { success: true, file: { id: fileId } }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -284,7 +284,7 @@ export async function permanentlyDeleteFile(
   return routeBackend({
     mdb: async () => {
       try {
-        await permanentlyDeleteCommunityFile(fileId)
+        await permanentlyDeleteMdbFile(fileId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -402,7 +402,7 @@ export async function getDeletedFiles(
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await getCommunityTrash(options?.vaultId)
+        const files = await getMdbTrash(options?.vaultId)
         const normalizedFolder = options?.folderPath?.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
         return {
           files: files
@@ -520,7 +520,7 @@ export async function getDeletedFilesCount(
   return routeBackend({
     mdb: async () => {
       try {
-        return { count: (await getCommunityTrash(vaultId)).length }
+        return { count: (await getMdbTrash(vaultId)).length }
       } catch (error) {
         return { count: 0, error: error instanceof Error ? error.message : String(error) }
       }
@@ -571,7 +571,7 @@ export async function emptyTrash(
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await getCommunityTrash(vaultId)
+        const files = await getMdbTrash(vaultId)
         const result = await permanentlyDeleteFiles(
           files.map((file) => file.id),
           userId,

@@ -23,10 +23,10 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
 import {
-  getCommunityTeamPermissions,
-  getCommunityVaults,
-  setCommunityTeamPermissions,
-} from '@/lib/community'
+  getMdbTeamPermissions,
+  getMdbVaults,
+  setMdbTeamPermissions,
+} from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import type { Team, PermissionPreset, PermissionAction } from '@/types/permissions'
 import {
@@ -167,7 +167,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
     const loadVaults = async () => {
       try {
         if (isMdbBackendActive()) {
-          setVaults((await getCommunityVaults()).map((vault) => ({
+          setVaults((await getMdbVaults()).map((vault) => ({
             id: vault.id,
             name: vault.name,
             slug: vault.id,
@@ -217,7 +217,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
     setIsLoading(true)
     try {
       if (isMdbBackendActive()) {
-        const loaded = await getCommunityTeamPermissions(team.id)
+        const loaded = await getMdbTeamPermissions(team.id)
         const globalPermsMap: Record<string, PermissionAction[]> = {}
         const vaultPermsMap: Record<string, Record<string, PermissionAction[]>> = { all: {} }
         for (const permission of loaded) {
@@ -366,7 +366,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
             })),
           ),
         ].filter((permission) => permission.actions.length > 0)
-        await setCommunityTeamPermissions(team.id, allNewPerms)
+        await setMdbTeamPermissions(team.id, allNewPerms)
         setOriginalPermissions({ ...permissions })
         setOriginalSourceFilesPermsByVault(JSON.parse(JSON.stringify(sourceFilesPermsByVault)))
         setHasChanges(false)

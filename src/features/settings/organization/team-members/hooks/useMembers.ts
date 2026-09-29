@@ -27,12 +27,12 @@
 import { useCallback, useEffect } from 'react'
 import { supabase, removeUserFromOrg } from '@/lib/supabase'
 import {
-  addCommunityTeamMember,
-  getCommunityUserTeams,
-  getCommunityUsers,
-  removeCommunityUser,
-  removeCommunityTeamMember,
-} from '@/lib/community'
+  addMdbTeamMember,
+  getMdbUserTeams,
+  getMdbUsers,
+  removeMdbUser,
+  removeMdbTeamMember,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
@@ -66,19 +66,19 @@ export function useMembers(orgId: string | null) {
     try {
       const loadedMembers = await routeBackend({
         mdb: async () => {
-          const communityUsers = await getCommunityUsers()
+          const mdbUsers = await getMdbUsers()
           return Promise.all(
-            communityUsers.map(async (communityUser): Promise<OrgUser> => ({
-              id: communityUser.id,
-              email: communityUser.email,
-              full_name: communityUser.displayName,
+            mdbUsers.map(async (mdbUser): Promise<OrgUser> => ({
+              id: mdbUser.id,
+              email: mdbUser.email,
+              full_name: mdbUser.displayName,
               avatar_url: null,
               custom_avatar_url: null,
               job_title: null,
-              role: communityUser.role,
+              role: mdbUser.role,
               last_sign_in: null,
               last_online: null,
-              teams: await getCommunityUserTeams(communityUser.id),
+              teams: await getMdbUserTeams(mdbUser.id),
             })),
           )
         },
@@ -141,7 +141,7 @@ export function useMembers(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => removeCommunityUser(memberId),
+          mdb: () => removeMdbUser(memberId),
           supabase: async () => {
             const result = await removeUserFromOrg(memberId, orgId)
             if (!result.success) throw new Error(result.error || 'Failed to remove user')
@@ -168,7 +168,7 @@ export function useMembers(orgId: string | null) {
 
       try {
         await routeBackend({
-          mdb: () => removeCommunityTeamMember(teamId, memberId),
+          mdb: () => removeMdbTeamMember(teamId, memberId),
           supabase: async () => {
             const { error } = await supabase.from('team_members').delete()
               .eq('user_id', memberId).eq('team_id', teamId)
@@ -197,8 +197,8 @@ export function useMembers(orgId: string | null) {
       try {
         await routeBackend({
           mdb: () => isAdding
-            ? addCommunityTeamMember(teamId, memberId)
-            : removeCommunityTeamMember(teamId, memberId),
+            ? addMdbTeamMember(teamId, memberId)
+            : removeMdbTeamMember(teamId, memberId),
           supabase: async () => {
             if (isAdding) {
               const { error } = await insertTeamMember({
@@ -246,8 +246,8 @@ export function useMembers(orgId: string | null) {
 
         await routeBackend({
           mdb: async () => {
-            for (const teamId of toRemove) await removeCommunityTeamMember(teamId, memberId)
-            for (const teamId of toAdd) await addCommunityTeamMember(teamId, memberId)
+            for (const teamId of toRemove) await removeMdbTeamMember(teamId, memberId)
+            for (const teamId of toAdd) await addMdbTeamMember(teamId, memberId)
           },
           supabase: async () => {
             for (const teamId of toRemove) {

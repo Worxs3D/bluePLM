@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
-import { communityObjectStoragePath, normalizeCommunityOrgVaultAccess } from './community'
+import { mdbObjectStoragePath, normalizeMdbOrgVaultAccess } from './mdb'
 
-describe('communityObjectStoragePath', () => {
+describe('mdbObjectStoragePath', () => {
   it('uses a content-addressed immutable object path', () => {
     const hash = 'AB'.repeat(32)
 
-    expect(communityObjectStoragePath(hash)).toBe(`.blueplm/objects/ab/${hash.toLowerCase()}`)
+    expect(mdbObjectStoragePath(hash)).toBe(`.blueplm/objects/ab/${hash.toLowerCase()}`)
   })
 
   it('rejects values that are not SHA-256 hashes', () => {
-    expect(() => communityObjectStoragePath('../not-a-hash')).toThrow('SHA-256')
+    expect(() => mdbObjectStoragePath('../not-a-hash')).toThrow('SHA-256')
   })
 })
 
-describe('normalizeCommunityOrgVaultAccess', () => {
+describe('normalizeMdbOrgVaultAccess', () => {
   it('converts the legacy user-to-vault response into the client vault-to-user contract', () => {
     expect(
-      normalizeCommunityOrgVaultAccess(
+      normalizeMdbOrgVaultAccess(
         {
           'user-1': ['vault-a', 'vault-b'],
           'user-2': ['vault-b'],
@@ -36,6 +36,6 @@ describe('normalizeCommunityOrgVaultAccess', () => {
       'vault-b': ['user-1', 'user-2'],
     }
 
-    expect(normalizeCommunityOrgVaultAccess(accessMap, ['vault-a', 'vault-b'])).toEqual(accessMap)
+    expect(normalizeMdbOrgVaultAccess(accessMap, ['vault-a', 'vault-b'])).toEqual(accessMap)
   })
 })

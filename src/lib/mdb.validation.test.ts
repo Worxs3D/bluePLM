@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MDB_API_VERSION, validateCommunityConfig } from './community'
+import { MDB_API_VERSION, validateMdbConfig } from './mdb'
 
 describe('MariaDB backend compatibility', () => {
   afterEach(() => {
@@ -23,7 +23,7 @@ describe('MariaDB backend compatibility', () => {
       ),
     )
 
-    await expect(validateCommunityConfig('https://mdb.example.test')).resolves.toEqual({
+    await expect(validateMdbConfig('https://mdb.example.test')).resolves.toEqual({
       valid: true,
     })
   })
@@ -38,7 +38,7 @@ describe('MariaDB backend compatibility', () => {
       ),
     )
 
-    await expect(validateCommunityConfig('https://mdb.example.test')).resolves.toEqual({
+    await expect(validateMdbConfig('https://mdb.example.test')).resolves.toEqual({
       valid: false,
       error: `The MariaDB backend is outdated. Install API version ${MDB_API_VERSION} or newer.`,
     })
@@ -54,7 +54,7 @@ describe('MariaDB backend compatibility', () => {
       ),
     )
 
-    await expect(validateCommunityConfig('https://mdb.example.test')).resolves.toEqual({
+    await expect(validateMdbConfig('https://mdb.example.test')).resolves.toEqual({
       valid: false,
       error: 'This is not a BluePLM MariaDB backend.',
     })

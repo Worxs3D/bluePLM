@@ -3,12 +3,12 @@ import { getSupabaseClient } from './client'
 import { log } from '@/lib/logger'
 import type { ItemImage } from '@/types/item'
 import {
-  getCommunityItemImages,
-  getCommunityVault,
-  getCommunityVaults,
-  resetCommunityItemImage,
-  setCommunityItemImage,
-} from '@/lib/community'
+  getMdbItemImages,
+  getMdbVault,
+  getMdbVaults,
+  resetMdbItemImage,
+  setMdbItemImage,
+} from '@/lib/mdb'
 import { buildFullPath } from '@/lib/utils/path'
 import { routeBackend } from '@/lib/backendAdapter'
 
@@ -66,12 +66,12 @@ export async function getItemImages(orgId: string): Promise<Map<string, ItemImag
     mdb: async () => {
       const result = new Map<string, ItemImage>()
       try {
-        const rows = await getCommunityItemImages()
+        const rows = await getMdbItemImages()
         await Promise.all(
           rows.map(async (row) => {
             let imageUrl: string | null = null
             if (row.imageType === 'image' && row.storageRelativePath) {
-              const vault = await getCommunityVault(row.vaultId)
+              const vault = await getMdbVault(row.vaultId)
               if (vault.storageProvider === 'network' && vault.networkRoot && window.electronAPI) {
                 const read = await window.electronAPI.readFile(
                   buildFullPath(vault.networkRoot, row.storageRelativePath),
@@ -130,9 +130,9 @@ export async function setItemIcon(
 ): Promise<ItemImage> {
   return routeBackend({
     mdb: async () => {
-      const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
+      const vault = vaultId ? await getMdbVault(vaultId) : (await getMdbVaults())[0]
       if (!vault) throw new Error('Select a vault before assigning an item icon.')
-      const row = await setCommunityItemImage(partNumber, {
+      const row = await setMdbItemImage(partNumber, {
         vaultId: vault.id,
         imageType: 'icon',
         iconName,
@@ -180,7 +180,7 @@ export async function uploadItemImage(
 
   return routeBackend({
     mdb: async () => {
-      const vault = vaultId ? await getCommunityVault(vaultId) : (await getCommunityVaults())[0]
+      const vault = vaultId ? await getMdbVault(vaultId) : (await getMdbVaults())[0]
       if (!vault) throw new Error('Select a vault before uploading an item image.')
       if (!window.electronAPI)
         throw new Error('Item image upload requires the BluePLM desktop client.')
@@ -188,7 +188,7 @@ export async function uploadItemImage(
       let storagePath: string
       let imageUrl: string
       if (vault.storageProvider === 'network') {
-        if (!vault.networkRoot) throw new Error('The Community network vault root is missing.')
+        if (!vault.networkRoot) throw new Error('The MDB network vault root is missing.')
         storagePath = `.blueplm/assets/item-images/${sanitizePartNumber(partNumber)}-${crypto.randomUUID()}.${ext}`
         const bytes = new Uint8Array(await file.arrayBuffer())
         // Avoid spreading a multi-megabyte image into one function call: Chromium
@@ -207,7 +207,7 @@ export async function uploadItemImage(
       } else {
         throw new Error('MDB supports Network Vault storage only.')
       }
-      const row = await setCommunityItemImage(partNumber, {
+      const row = await setMdbItemImage(partNumber, {
         vaultId: vault.id,
         imageType: 'image',
         iconName: null,
@@ -254,7 +254,7 @@ export async function uploadItemImage(
 export async function resetItemImage(orgId: string, partNumber: string): Promise<void> {
   return routeBackend({
     mdb: async () => {
-      await resetCommunityItemImage(partNumber)
+      await resetMdbItemImage(partNumber)
       return
     },
     supabase: async () => {

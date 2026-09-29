@@ -1,12 +1,12 @@
 import { getSupabaseClient } from './client'
 import {
-  createCommunityAnnotation,
-  deleteCommunityAnnotation,
-  getCommunityAnnotations,
-  resolveCommunityAnnotation,
-  unresolveCommunityAnnotation,
-  updateCommunityAnnotation,
-} from '@/lib/community'
+  createMdbAnnotation,
+  deleteMdbAnnotation,
+  getMdbAnnotations,
+  resolveMdbAnnotation,
+  unresolveMdbAnnotation,
+  updateMdbAnnotation,
+} from '@/lib/mdb'
 import { log } from '@/lib/logger'
 import type { AnnotationType, AnnotationPosition, FileAnnotation } from '@/types/database'
 import { routeBackend } from '@/lib/backendAdapter'
@@ -119,7 +119,7 @@ export async function getFileAnnotations(
   return routeBackend({
     mdb: async () => {
       try {
-        const rows = await getCommunityAnnotations(fileId, version)
+        const rows = await getMdbAnnotations(fileId, version)
         return {
           annotations: buildThreadTree(
             rows.map((row) => toFileAnnotation(row as unknown as FileCommentRow)),
@@ -128,7 +128,7 @@ export async function getFileAnnotations(
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to fetch annotations.'
-        log.error('[Annotations]', 'Failed to fetch Community annotations', {
+        log.error('[Annotations]', 'Failed to fetch MDB annotations', {
           error: message,
           fileId,
         })
@@ -197,7 +197,7 @@ export async function getAnnotationCount(
   return routeBackend({
     mdb: async () => {
       try {
-        const annotations = await getCommunityAnnotations(fileId)
+        const annotations = await getMdbAnnotations(fileId)
         return {
           count: annotations.filter(
             (annotation) => !annotation.resolved && annotation.parent_id === null,
@@ -262,7 +262,7 @@ export async function createAnnotation(
   return routeBackend({
     mdb: async () => {
       try {
-        const annotation = await createCommunityAnnotation(params.fileId, {
+        const annotation = await createMdbAnnotation(params.fileId, {
           comment: params.comment,
           pageNumber: params.pageNumber ?? null,
           position: params.position ?? null,
@@ -350,7 +350,7 @@ export async function updateAnnotation(
       try {
         return {
           annotation: toFileAnnotation(
-            (await updateCommunityAnnotation(annotationId, comment)) as unknown as FileCommentRow,
+            (await updateMdbAnnotation(annotationId, comment)) as unknown as FileCommentRow,
           ),
           error: null,
         }
@@ -421,7 +421,7 @@ export async function deleteAnnotation(
   return routeBackend({
     mdb: async () => {
       try {
-        await deleteCommunityAnnotation(annotationId)
+        await deleteMdbAnnotation(annotationId)
         return { success: true, error: null }
       } catch (error) {
         return {
@@ -469,7 +469,7 @@ export async function resolveAnnotation(
       try {
         return {
           annotation: toFileAnnotation(
-            (await resolveCommunityAnnotation(annotationId)) as unknown as FileCommentRow,
+            (await resolveMdbAnnotation(annotationId)) as unknown as FileCommentRow,
           ),
           error: null,
         }
@@ -543,7 +543,7 @@ export async function unresolveAnnotation(
       try {
         return {
           annotation: toFileAnnotation(
-            (await unresolveCommunityAnnotation(annotationId)) as unknown as FileCommentRow,
+            (await unresolveMdbAnnotation(annotationId)) as unknown as FileCommentRow,
           ),
           error: null,
         }

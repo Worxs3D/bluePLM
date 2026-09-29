@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { deleteCommunityAccount, getSupabaseClient } = vi.hoisted(() => ({
-  deleteCommunityAccount: vi.fn(),
+const { deleteMdbAccount, getSupabaseClient } = vi.hoisted(() => ({
+  deleteMdbAccount: vi.fn(),
   getSupabaseClient: vi.fn(),
 }))
 
@@ -12,12 +12,12 @@ vi.mock('./client', () => ({
   setSessionResolver: vi.fn(),
 }))
 
-vi.mock('@/lib/community', () => ({
-  communityAccessToken: vi.fn(),
-  deleteCommunityAccount,
-  getCommunityPrincipal: vi.fn(),
-  signInCommunity: vi.fn(),
-  signOutCommunity: vi.fn(),
+vi.mock('@/lib/mdb', () => ({
+  mdbAccessToken: vi.fn(),
+  deleteMdbAccount,
+  getMdbPrincipal: vi.fn(),
+  signInMdb: vi.fn(),
+  signOutMdb: vi.fn(),
 }))
 
 vi.mock('@/lib/backendAdapter', () => ({
@@ -33,15 +33,15 @@ describe('deleteCurrentAccount in MDB mode', () => {
   })
 
   it('uses only the MDB account endpoint', async () => {
-    deleteCommunityAccount.mockResolvedValue(undefined)
+    deleteMdbAccount.mockResolvedValue(undefined)
 
     await expect(deleteCurrentAccount()).resolves.toEqual({ error: null })
-    expect(deleteCommunityAccount).toHaveBeenCalledOnce()
+    expect(deleteMdbAccount).toHaveBeenCalledOnce()
     expect(getSupabaseClient).not.toHaveBeenCalled()
   })
 
   it('normalizes MDB request failures', async () => {
-    deleteCommunityAccount.mockRejectedValue('network failure')
+    deleteMdbAccount.mockRejectedValue('network failure')
 
     const result = await deleteCurrentAccount()
     expect(result.error).toBeInstanceOf(Error)

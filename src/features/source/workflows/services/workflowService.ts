@@ -6,13 +6,13 @@
  */
 import { supabase } from '@/lib/supabase'
 import {
-  createCommunityWorkflow,
-  deleteCommunityWorkflow,
-  getCommunityWorkflow,
-  getCommunityWorkflows,
-  importCommunityWorkflow,
-  updateCommunityWorkflow,
-} from '@/lib/community'
+  createMdbWorkflow,
+  deleteMdbWorkflow,
+  getMdbWorkflow,
+  getMdbWorkflows,
+  importMdbWorkflow,
+  updateMdbWorkflow,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 import type { Database } from '@/types/database'
 
@@ -42,7 +42,7 @@ export const workflowService = {
   async getAll(orgId: string): Promise<WorkflowServiceResult<WorkflowTemplateRow[]>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await getCommunityWorkflows() as WorkflowTemplateRow[], error: null } }
+        try { return { data: await getMdbWorkflows() as WorkflowTemplateRow[], error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflows.') } }
       },
       supabase: async () => {
@@ -59,7 +59,7 @@ export const workflowService = {
   async getById(workflowId: string): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await getCommunityWorkflow(workflowId) as WorkflowTemplateRow, error: null } }
+        try { return { data: await getMdbWorkflow(workflowId) as WorkflowTemplateRow, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load workflow.') } }
       },
       supabase: async () => {
@@ -75,7 +75,7 @@ export const workflowService = {
   async createDefault(orgId: string, userId: string): Promise<WorkflowServiceResult<string>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: (await createCommunityWorkflow({ name: 'Standard Release Process' })).id, error: null } }
+        try { return { data: (await createMdbWorkflow({ name: 'Standard Release Process' })).id, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
       },
       supabase: async () => {
@@ -93,7 +93,7 @@ export const workflowService = {
   ): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await createCommunityWorkflow(workflow) as WorkflowTemplateRow, error: null } }
+        try { return { data: await createMdbWorkflow(workflow) as WorkflowTemplateRow, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to create workflow.') } }
       },
       supabase: async () => {
@@ -112,7 +112,7 @@ export const workflowService = {
   ): Promise<WorkflowServiceResult<WorkflowTemplateRow>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await updateCommunityWorkflow(workflowId, updates as Record<string, unknown>) as WorkflowTemplateRow, error: null } }
+        try { return { data: await updateMdbWorkflow(workflowId, updates as Record<string, unknown>) as WorkflowTemplateRow, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow.') } }
       },
       supabase: async () => {
@@ -128,7 +128,7 @@ export const workflowService = {
   async softDelete(workflowId: string): Promise<WorkflowServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await deleteCommunityWorkflow(workflowId); return { data: undefined, error: null } }
+        try { await deleteMdbWorkflow(workflowId); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to delete workflow.') } }
       },
       supabase: async () => {
@@ -149,7 +149,7 @@ export const workflowService = {
   ): Promise<WorkflowServiceResult<ImportGraphResult>> {
     return routeBackend({
       mdb: async () => {
-        try { return { data: await importCommunityWorkflow(workflowId, payload), error: null } }
+        try { return { data: await importMdbWorkflow(workflowId, payload), error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to import workflow.') } }
       },
       supabase: async () => {
@@ -168,7 +168,7 @@ export const workflowService = {
   ): Promise<WorkflowServiceResult<void>> {
     return routeBackend({
       mdb: async () => {
-        try { await updateCommunityWorkflow(workflowId, { canvas_config: config }); return { data: undefined, error: null } }
+        try { await updateMdbWorkflow(workflowId, { canvas_config: config }); return { data: undefined, error: null } }
         catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to update workflow canvas.') } }
       },
       supabase: async () => {

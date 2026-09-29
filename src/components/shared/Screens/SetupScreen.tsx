@@ -27,7 +27,7 @@ import { LanguageSelector } from '@/components/shared/LanguageSelector'
 import { useTranslation } from '@/lib/i18n'
 import { copyToClipboard } from '@/lib/clipboard'
 import { log } from '@/lib/logger'
-import { clearCommunityConfig, saveCommunityConfig, validateCommunityConfig } from '@/lib/community'
+import { clearMdbConfig, saveMdbConfig, validateMdbConfig } from '@/lib/mdb'
 import {
   parseMdbSetupPreset,
   serializeMdbSetupPreset,
@@ -214,7 +214,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       return
     }
 
-    clearCommunityConfig()
+    clearMdbConfig()
     saveConfig(config)
     reconfigureSupabase(config)
 
@@ -263,7 +263,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       return
     }
 
-    clearCommunityConfig()
+    clearMdbConfig()
     saveConfig(config)
     reconfigureSupabase(config)
     setIsValidating(false)
@@ -295,7 +295,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     }
     setIsValidating(true)
     setError(null)
-    const result = await validateCommunityConfig(serverUrl.trim())
+    const result = await validateMdbConfig(serverUrl.trim())
     if (!result.valid) {
       log.warn('[SetupScreen]', 'MDB backend validation failed', { error: result.error })
       setError(t('mdbSetup.backendConnectionFailed'))
@@ -304,7 +304,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
     }
     try {
       clearConfig()
-      saveCommunityConfig({ version: 1, serverUrl: serverUrl.trim() })
+      saveMdbConfig({ version: 1, serverUrl: serverUrl.trim() })
       setIsValidating(false)
       onConfigured()
     } catch (setupError) {
@@ -476,7 +476,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       return
     }
     clearConfig()
-    saveCommunityConfig({
+    saveMdbConfig({
       version: 1,
       serverUrl: result.serverUrl,
       accessToken: result.accessToken,

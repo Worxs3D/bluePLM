@@ -1,5 +1,5 @@
 import { routeBackend } from '@/lib/backendAdapter'
-import { setCommunityDocumentManagerLicense } from '@/lib/community'
+import { setMdbDocumentManagerLicense } from '@/lib/mdb'
 import { supabase } from '@/lib/supabase'
 import type { Json } from '@/types/database'
 import type { OrgSettings } from '@/types/pdm'
@@ -24,7 +24,7 @@ async function persistWithMdb(
   currentSettings: OrgSettings,
   licenseKey: string | null,
 ): Promise<OrgSettings> {
-  await setCommunityDocumentManagerLicense(licenseKey)
+  await setMdbDocumentManagerLicense(licenseKey)
   return normalizeSettings(currentSettings, licenseKey)
 }
 

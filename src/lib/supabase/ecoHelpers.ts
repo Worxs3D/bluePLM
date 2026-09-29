@@ -1,10 +1,10 @@
 import { getSupabaseClient } from './client'
 import {
-  addCommunityFileToEco,
-  getCommunityActiveEcos,
-  getCommunityFileEcos,
-  removeCommunityFileFromEco,
-} from '@/lib/community'
+  addMdbFileToEco,
+  getMdbActiveEcos,
+  getMdbFileEcos,
+  removeMdbFileFromEco,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 /**
@@ -14,7 +14,7 @@ export async function getActiveECOs(orgId: string): Promise<{ ecos: any[]; error
   return routeBackend({
     mdb: async () => {
       try {
-        return { ecos: await getCommunityActiveEcos() }
+        return { ecos: await getMdbActiveEcos() }
       } catch (error) {
         return { ecos: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -58,7 +58,7 @@ export async function addFileToECO(
   return routeBackend({
     mdb: async () => {
       try {
-        await addCommunityFileToEco(fileId, ecoId, notes)
+        await addMdbFileToEco(fileId, ecoId, notes)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -96,7 +96,7 @@ export async function removeFileFromECO(
   return routeBackend({
     mdb: async () => {
       try {
-        await removeCommunityFileFromEco(fileId, ecoId)
+        await removeMdbFileFromEco(fileId, ecoId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -127,7 +127,7 @@ export async function getFileECOs(fileId: string): Promise<{ ecos: any[]; error?
   return routeBackend({
     mdb: async () => {
       try {
-        return { ecos: await getCommunityFileEcos(fileId) }
+        return { ecos: await getMdbFileEcos(fileId) }
       } catch (error) {
         return { ecos: [], error: error instanceof Error ? error.message : String(error) }
       }

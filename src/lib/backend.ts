@@ -3,7 +3,7 @@
  * for individual backends.  A machine runs exactly one backend adapter at a
  * time; keeping stale credentials must never make another adapter active.
  */
-export type BackendKind = 'supabase' | 'community'
+export type BackendKind = 'supabase' | 'mdb'
 
 interface BackendProfile {
   version: 1
@@ -11,11 +11,13 @@ interface BackendProfile {
 }
 
 const STORAGE_KEY = 'blueplm-backend-profile'
-const LEGACY_COMMUNITY_CONFIG_KEY = 'blueplm-community-config'
+const MDB_CONFIG_KEY = 'blueplm-mdb-config'
+const LEGACY_MDB_CONFIG_KEY = 'blueplm-community-config'
+const LEGACY_MDB_BACKEND_KIND = 'community'
 const LEGACY_SUPABASE_CONFIG_KEY = 'blueplm-supabase-config'
 
 function isBackendKind(value: unknown): value is BackendKind {
-  return value === 'supabase' || value === 'community'
+  return value === 'supabase' || value === 'mdb'
 }
 
 function getStoredValue(key: string): string | null {
@@ -30,8 +32,14 @@ export function loadBackendProfile(): BackendProfile | null {
   try {
     const raw = getStoredValue(STORAGE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<BackendProfile>
-    if (parsed.version !== 1 || !isBackendKind(parsed.kind)) return null
+    const parsed = JSON.parse(raw) as { version?: unknown; kind?: unknown }
+    if (parsed.version !== 1) return null
+    if (parsed.kind === LEGACY_MDB_BACKEND_KIND) {
+      const migrated = { version: 1, kind: 'mdb' } satisfies BackendProfile
+      activateBackend('mdb')
+      return migrated
+    }
+    if (!isBackendKind(parsed.kind)) return null
     return { version: 1, kind: parsed.kind }
   } catch {
     return null
@@ -63,7 +71,7 @@ export function getActiveBackendKind(): BackendKind | null {
 
   // Existing clients had backend credentials but no explicit profile. Saving
   // either configuration writes the profile; new installs never infer one.
-  if (getStoredValue(LEGACY_COMMUNITY_CONFIG_KEY)) return 'community'
+  if (getStoredValue(MDB_CONFIG_KEY) || getStoredValue(LEGACY_MDB_CONFIG_KEY)) return 'mdb'
   if (getStoredValue(LEGACY_SUPABASE_CONFIG_KEY)) return 'supabase'
   return null
 }

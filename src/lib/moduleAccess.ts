@@ -1,11 +1,11 @@
 import { routeBackend } from './backendAdapter'
 import {
-  getCommunityDeniedModules,
-  getCommunityModuleAccessConfig,
-  getCommunityTeams,
-  getCommunityUsers,
-  setCommunityModuleAccess,
-} from './community'
+  getMdbDeniedModules,
+  getMdbModuleAccessConfig,
+  getMdbTeams,
+  getMdbUsers,
+  setMdbModuleAccess,
+} from './mdb'
 import { supabase } from './supabase'
 
 export interface ModuleAccessTeam {
@@ -38,9 +38,9 @@ export async function getModuleAccessAdministration(
   return routeBackend({
     mdb: async () => {
       const [teams, users, access] = await Promise.all([
-        getCommunityTeams(),
-        getCommunityUsers(),
-        getCommunityModuleAccessConfig(),
+        getMdbTeams(),
+        getMdbUsers(),
+        getMdbModuleAccessConfig(),
       ])
       return {
         teams: teams.map(({ id, name, color }) => ({ id, name, color })),
@@ -85,7 +85,7 @@ export async function setModuleAccess(
   userIds: string[],
 ): Promise<void> {
   return routeBackend({
-    mdb: () => setCommunityModuleAccess(moduleId, teamIds, userIds),
+    mdb: () => setMdbModuleAccess(moduleId, teamIds, userIds),
     supabase: async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.rpc as any)('set_module_access', {
@@ -102,7 +102,7 @@ export async function setModuleAccess(
 
 export async function getDeniedModules(): Promise<string[]> {
   return routeBackend({
-    mdb: getCommunityDeniedModules,
+    mdb: getMdbDeniedModules,
     supabase: async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.rpc as any)('get_denied_modules') // TODO: type this

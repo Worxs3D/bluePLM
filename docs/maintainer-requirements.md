@@ -18,7 +18,7 @@ Google Drive remains a later, separate contribution until it has been tested pro
 
 - Keep the PHP backend publicly reviewable rather than hiding it in a generated binary. The PHP backend is maintained as a submodule, and the macOS CI job must check out or otherwise validate the relevant public backend state.
 - Route every new UI string through `t()` and add the key to every locale file. Do not add hard-coded English strings to user-facing screens.
-- Use one backend adapter boundary. Do not spread backend-selection checks such as `isCommunityConfigured()` throughout individual Supabase modules.
+- Use one backend adapter boundary. Do not spread backend-selection checks such as `isMdbConfigured()` throughout individual Supabase modules.
 - Preserve the server-provided authentication values. Login must not rewrite `created_at`, and roles must not be promoted to administrator based on any client-side fallback; use the role returned by the server.
 - The installer must never upload a database password or deployment secret over plain FTP. Allow FTPS only and make the TLS mode and required port explicit.
 - Do not place SMB passwords on command lines. Credentials must be handled through the platform credential store or an equivalent protected mechanism.

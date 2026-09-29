@@ -15,14 +15,14 @@ vi.mock('./backend', () => ({
 
 import { subscribeToFiles } from './realtime'
 
-describe('Community realtime isolation', () => {
+describe('MDB realtime isolation', () => {
   beforeEach(() => {
     channel.mockReset()
     isBackendActive.mockReturnValue(true)
   })
 
   it('does not open a Supabase files channel while the MDB backend is active', () => {
-    const unsubscribe = subscribeToFiles('community-org', vi.fn())
+    const unsubscribe = subscribeToFiles('mdb-org', vi.fn())
 
     expect(channel).not.toHaveBeenCalled()
     expect(() => unsubscribe()).not.toThrow()

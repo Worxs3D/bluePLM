@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { Loader2 } from 'lucide-react'
 import { Dialog } from '@/components/core/Dialog'
-import { updateCommunityUser } from '@/lib/community'
+import { updateMdbUser } from '@/lib/mdb'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrgUser } from '../../types'
-import type { CommunityMembershipRole } from '@/lib/community'
+import type { MdbMembershipRole } from '@/lib/mdb'
 import { log } from '@/lib/logger'
 
-interface EditCommunityUserCredentialsDialogProps {
+interface EditMdbUserCredentialsDialogProps {
   user: OrgUser
   onClose: () => void
   onUpdated: () => Promise<void> | void
@@ -19,20 +19,20 @@ interface EditCommunityUserCredentialsDialogProps {
  * the Supabase invitation/profile flow so a MariaDB installation never
  * needs a Supabase session or API key to manage its users.
  */
-export function EditCommunityUserCredentialsDialog({
+export function EditMdbUserCredentialsDialog({
   user,
   onClose,
   onUpdated,
-}: EditCommunityUserCredentialsDialogProps) {
+}: EditMdbUserCredentialsDialogProps) {
   const { t } = useTranslation()
   const { addToast } = usePDMStore()
   const [email, setEmail] = useState(user.email)
   const [displayName, setDisplayName] = useState(user.full_name ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const originalRole: Exclude<CommunityMembershipRole, 'owner'> =
+  const originalRole: Exclude<MdbMembershipRole, 'owner'> =
     user.role === 'admin' || user.role === 'viewer' || user.role === 'guest' ? user.role : 'member'
-  const [role, setRole] = useState<Exclude<CommunityMembershipRole, 'owner'>>(originalRole)
+  const [role, setRole] = useState<Exclude<MdbMembershipRole, 'owner'>>(originalRole)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async () => {
@@ -69,7 +69,7 @@ export function EditCommunityUserCredentialsDialog({
 
     setIsSaving(true)
     try {
-      await updateCommunityUser(user.id, {
+      await updateMdbUser(user.id, {
         email: normalizedEmail,
         displayName: normalizedName,
         ...(password ? { password } : {}),
@@ -79,7 +79,7 @@ export function EditCommunityUserCredentialsDialog({
       addToast('success', t('mdbSetup.updatedAccount', { name: normalizedName }))
       onClose()
     } catch (error) {
-      log.error('[EditCommunityUserCredentialsDialog]', 'Failed to update MDB user', { error })
+      log.error('[EditMdbUserCredentialsDialog]', 'Failed to update MDB user', { error })
       addToast('error', t('mdbSetup.failedUpdate'))
     } finally {
       setIsSaving(false)
@@ -140,7 +140,7 @@ export function EditCommunityUserCredentialsDialog({
             <select
               value={role}
               onChange={(event) =>
-                setRole(event.target.value as Exclude<CommunityMembershipRole, 'owner'>)
+                setRole(event.target.value as Exclude<MdbMembershipRole, 'owner'>)
               }
               disabled={isSaving}
               className="input mt-1 w-full"

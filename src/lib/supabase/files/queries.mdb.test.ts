@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getCommunityFileReferences, getCommunityFiles, getCommunityVaults, getSupabaseClient } = vi.hoisted(() => ({
-  getCommunityFileReferences: vi.fn(),
-  getCommunityFiles: vi.fn(),
-  getCommunityVaults: vi.fn(),
+const { getMdbFileReferences, getMdbFiles, getMdbVaults, getSupabaseClient } = vi.hoisted(() => ({
+  getMdbFileReferences: vi.fn(),
+  getMdbFiles: vi.fn(),
+  getMdbVaults: vi.fn(),
   getSupabaseClient: vi.fn(),
 }))
 
 vi.mock('../client', () => ({ getSupabaseClient }))
-vi.mock('@/lib/community', () => ({
-  getCommunityFileReferences,
-  getCommunityFileRevisions: vi.fn(),
-  getCommunityFiles,
-  getCommunityVaults,
+vi.mock('@/lib/mdb', () => ({
+  getMdbFileReferences,
+  getMdbFileRevisions: vi.fn(),
+  getMdbFiles,
+  getMdbVaults,
 }))
 vi.mock('@/lib/backendAdapter', () => ({
   routeBackend: <TMdb, TSupabase>(routes: { mdb: () => TMdb; supabase: () => TSupabase }) =>
@@ -27,9 +27,9 @@ import {
 
 describe('MDB lightweight file loading', () => {
   beforeEach(() => {
-    getCommunityVaults.mockResolvedValue([{ id: 'vault-1' }])
-    getCommunityFileReferences.mockResolvedValue([])
-    getCommunityFiles.mockResolvedValue([
+    getMdbVaults.mockResolvedValue([{ id: 'vault-1' }])
+    getMdbFileReferences.mockResolvedValue([])
+    getMdbFiles.mockResolvedValue([
       {
         id: 'file-1',
         canonicalPath: 'Rollenlager/04er_Rolle_V.3mf',
@@ -49,18 +49,18 @@ describe('MDB lightweight file loading', () => {
     ])
   })
 
-  it('retains the immutable Community storage path in cacheable lightweight rows', async () => {
+  it('retains the immutable MDB storage path in cacheable lightweight rows', async () => {
     const result = await getFilesLightweight('organization-1', 'vault-1')
 
     expect(result.files?.[0]).toMatchObject({
       storage_relative_path: '.blueplm/objects/ab/abcdef',
-      _communityStorageRelativePath: '.blueplm/objects/ab/abcdef',
+      _mdbStorageRelativePath: '.blueplm/objects/ab/abcdef',
       part_number: 'PN-00042',
     })
   })
 
   it('loads reference diagnostics through the MDB backend', async () => {
-    getCommunityFileReferences.mockResolvedValue([
+    getMdbFileReferences.mockResolvedValue([
       {
         id: 'reference-1',
         parent_file_id: 'assembly-1',
@@ -89,7 +89,7 @@ describe('MDB lightweight file loading', () => {
         child: { file_name: 'part.sldprt' },
       },
     ])
-    expect(getCommunityFileReferences).toHaveBeenCalledWith('assembly-1', 'contains')
+    expect(getMdbFileReferences).toHaveBeenCalledWith('assembly-1', 'contains')
     expect(getSupabaseClient).not.toHaveBeenCalled()
   })
 

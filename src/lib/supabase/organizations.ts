@@ -2,7 +2,7 @@ import { getSupabaseClient, authLog, getCurrentConfigValues } from './client'
 import { getCurrentAccessToken } from './auth'
 import { recordMetric } from '@/lib/performanceMetrics'
 import type { Organization } from '@/types/pdm'
-import { getCommunityOrganization, getCommunityPrincipal, getCommunityUsers } from '@/lib/community'
+import { getMdbOrganization, getMdbPrincipal, getMdbUsers } from '@/lib/mdb'
 import { mapMdbRole } from '@/lib/backendAdapter'
 import { routeBackend } from '@/lib/backendAdapter'
 
@@ -27,7 +27,7 @@ export async function getUserProfile(
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.userId !== userId)
           return { profile: null, error: new Error('User is outside the active session.') }
         return {
@@ -115,7 +115,7 @@ export async function getOrganization(orgId: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const organization = await getCommunityOrganization()
+        const organization = await getMdbOrganization()
         if (organization.id !== orgId)
           return { org: null, error: new Error('Organization not found') }
         return { org: organization, error: null }
@@ -404,8 +404,8 @@ export async function linkUserToOrganization(
     mdb: async () => {
       try {
         const [principal, organization] = await Promise.all([
-          getCommunityPrincipal(),
-          getCommunityOrganization(),
+          getMdbPrincipal(),
+          getMdbOrganization(),
         ])
         if (
           principal.userId !== userId ||
@@ -414,7 +414,7 @@ export async function linkUserToOrganization(
         ) {
           return {
             org: null,
-            error: new Error('Community session does not match the requested organization.'),
+            error: new Error('MDB session does not match the requested organization.'),
           }
         }
         return {
@@ -739,10 +739,10 @@ export async function getOrgUsers(orgId: string): Promise<{ users: any[]; error?
   return routeBackend({
     mdb: async () => {
       try {
-        const principal = await getCommunityPrincipal()
+        const principal = await getMdbPrincipal()
         if (principal.organizationId !== orgId)
           return { users: [], error: 'Organization not found' }
-        const users = await getCommunityUsers()
+        const users = await getMdbUsers()
         return {
           users: users.map((user) => ({
             id: user.id,

@@ -1,13 +1,13 @@
 import { getSupabaseClient } from './client'
 import {
-  addCommunityTeamReviewer,
-  getCommunityTeams,
-  getCommunityTeamReviewers,
-  getCommunityUserTeams,
-  getCommunityUserWorkflowRoles,
-  removeCommunityUser,
-  removeCommunityTeamReviewer,
-} from '@/lib/community'
+  addMdbTeamReviewer,
+  getMdbTeams,
+  getMdbTeamReviewers,
+  getMdbUserTeams,
+  getMdbUserWorkflowRoles,
+  removeMdbUser,
+  removeMdbTeamReviewer,
+} from '@/lib/mdb'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
 import { mergeModuleOrder } from '../../types/modules'
@@ -64,7 +64,7 @@ export async function removeUserFromOrg(
   return routeBackend({
     mdb: async () => {
       try {
-        await removeCommunityUser(targetUserId)
+        await removeMdbUser(targetUserId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -167,7 +167,7 @@ export async function getUserTeams(userId: string): Promise<{
   return routeBackend({
     mdb: async () => {
       try {
-        return { teams: await getCommunityUserTeams(userId) }
+        return { teams: await getMdbUserTeams(userId) }
       } catch (error) {
         return { teams: null, error: error instanceof Error ? error.message : String(error) }
       }
@@ -210,7 +210,7 @@ export async function getUserWorkflowRoles(
   return routeBackend({
     mdb: async () => {
       try {
-        return { roleIds: await getCommunityUserWorkflowRoles(userId) }
+        return { roleIds: await getMdbUserWorkflowRoles(userId) }
       } catch (error) {
         return { roleIds: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -495,7 +495,7 @@ export async function getTeamReviewers(
   return routeBackend({
     mdb: async () => {
       try {
-        return { reviewers: await getCommunityTeamReviewers(teamId) as TeamReviewerRow[] }
+        return { reviewers: await getMdbTeamReviewers(teamId) as TeamReviewerRow[] }
       } catch (error) {
         return { reviewers: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -550,7 +550,7 @@ export async function addTeamReviewer(
   return routeBackend({
     mdb: async () => {
       try {
-        return { id: await addCommunityTeamReviewer(teamId, reviewerType, opts.userId ?? opts.workflowRoleId ?? '') }
+        return { id: await addMdbTeamReviewer(teamId, reviewerType, opts.userId ?? opts.workflowRoleId ?? '') }
       } catch (error) {
         return { id: null, error: error instanceof Error ? error.message : String(error) }
       }
@@ -587,7 +587,7 @@ export async function removeTeamReviewer(
   return routeBackend({
     mdb: async () => {
       try {
-        await removeCommunityTeamReviewer(reviewerId)
+        await removeMdbTeamReviewer(reviewerId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -614,7 +614,7 @@ export async function getOrgTeams(orgId: string): Promise<{ teams: any[] | null;
   return routeBackend({
     mdb: async () => {
       try {
-        const teams = await getCommunityTeams()
+        const teams = await getMdbTeams()
         return {
           teams: teams.map((team) => ({
             id: team.id,

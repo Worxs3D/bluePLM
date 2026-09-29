@@ -1,12 +1,12 @@
 import { getSupabaseClient } from './client'
 import {
-  createCommunityItemDesignation,
-  deleteCommunityItemDesignation,
-  getCommunityItemDesignationAssignments,
-  getCommunityItemDesignations,
-  setCommunityItemDesignationAssignment,
-  updateCommunityItemDesignation,
-} from '@/lib/community'
+  createMdbItemDesignation,
+  deleteMdbItemDesignation,
+  getMdbItemDesignationAssignments,
+  getMdbItemDesignations,
+  setMdbItemDesignationAssignment,
+  updateMdbItemDesignation,
+} from '@/lib/mdb'
 
 import { log } from '@/lib/logger'
 import type { ItemDesignation } from '@/types/item'
@@ -38,7 +38,7 @@ export async function getItemDesignations(orgId: string): Promise<ItemDesignatio
   return routeBackend({
     mdb: async () => {
       try {
-        return (await getCommunityItemDesignations()).map(toDesignation)
+        return (await getMdbItemDesignations()).map(toDesignation)
       } catch (error) {
         log.error('[ItemDesignations]', 'Failed to load MDB item designations', { error })
         return []
@@ -68,8 +68,8 @@ export async function upsertItemDesignation(
   return routeBackend({
     mdb: async () => {
       const row = id
-        ? await updateCommunityItemDesignation(id, name, sortOrder)
-        : await createCommunityItemDesignation(name, sortOrder)
+        ? await updateMdbItemDesignation(id, name, sortOrder)
+        : await createMdbItemDesignation(name, sortOrder)
       return toDesignation(row)
     },
     supabase: async () => {
@@ -90,7 +90,7 @@ export async function upsertItemDesignation(
 export async function deleteItemDesignation(orgId: string, id: string): Promise<void> {
   return routeBackend({
     mdb: async () => {
-      return deleteCommunityItemDesignation(id)
+      return deleteMdbItemDesignation(id)
     },
     supabase: async () => {
       const supabase = getSupabaseClient() as unknown as RpcClient
@@ -112,7 +112,7 @@ export async function getItemDesignationAssignments(
     mdb: async () => {
       const result = new Map<string, string>()
       try {
-        for (const row of await getCommunityItemDesignationAssignments(vaultId))
+        for (const row of await getMdbItemDesignationAssignments(vaultId))
           result.set(row.part_number, row.designation_id)
       } catch (error) {
         log.error('[ItemDesignations]', 'Failed to load MDB designation assignments', {
@@ -153,7 +153,7 @@ export async function setItemDesignationAssignment(
 ): Promise<void> {
   return routeBackend({
     mdb: async () => {
-      return setCommunityItemDesignationAssignment(vaultId, partNumber, designationId)
+      return setMdbItemDesignationAssignment(vaultId, partNumber, designationId)
     },
     supabase: async () => {
       const supabase = getSupabaseClient() as unknown as RpcClient

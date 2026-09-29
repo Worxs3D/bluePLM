@@ -1,14 +1,14 @@
 import { getSupabaseClient } from '../client'
-import { getCommunityFileReferences } from '@/lib/community'
+import { getMdbFileReferences } from '@/lib/mdb'
 import { log } from '@/lib/logger'
 import { folderPrefixLikePattern } from '@/lib/utils/likePattern'
 import { hashCheckoutIdentifier, type CheckoutUserProfile } from '@/types/pdm'
 import {
-  getCommunityFileRevisions,
-  getCommunityFiles,
-  getCommunityVaults,
-  type CommunityFile,
-} from '@/lib/community'
+  getMdbFileRevisions,
+  getMdbFiles,
+  getMdbVaults,
+  type MdbFile,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -28,7 +28,7 @@ export interface CheckedOutUsersResult {
 
 const checkedOutUsersInFlight = new Map<string, Promise<CheckedOutUsersResult>>()
 
-function communityFileToPdm(file: CommunityFile, vaultId: string) {
+function mdbFileToPdm(file: MdbFile, vaultId: string) {
   const extension = file.fileName.includes('.')
     ? `.${file.fileName.split('.').pop()}`.toLowerCase()
     : null
@@ -46,7 +46,7 @@ function communityFileToPdm(file: CommunityFile, vaultId: string) {
     version: file.currentRevision,
     content_hash: file.contentHash,
     storage_relative_path: file.storageRelativePath,
-    _communityStorageRelativePath: file.storageRelativePath,
+    _mdbStorageRelativePath: file.storageRelativePath,
     file_size: file.sizeBytes,
     state: file.state,
     workflow_state_id: file.workflowStateId ?? null,
@@ -63,14 +63,14 @@ function communityFileToPdm(file: CommunityFile, vaultId: string) {
   }
 }
 
-async function communityFilesForVaults(vaultId?: string) {
+async function mdbFilesForVaults(vaultId?: string) {
   const vaults = vaultId
-    ? (await getCommunityVaults()).filter((vault) => vault.id === vaultId)
-    : await getCommunityVaults()
+    ? (await getMdbVaults()).filter((vault) => vault.id === vaultId)
+    : await getMdbVaults()
   const files = (
     await Promise.all(
       vaults.map(async (vault) =>
-        (await getCommunityFiles(vault.id)).map((file) => communityFileToPdm(file, vault.id)),
+        (await getMdbFiles(vault.id)).map((file) => mdbFileToPdm(file, vault.id)),
       ),
     )
   ).flat()
@@ -95,7 +95,7 @@ export async function getFiles(
   return routeBackend({
     mdb: async () => {
       try {
-        let files = await communityFilesForVaults(options?.vaultId)
+        let files = await mdbFilesForVaults(options?.vaultId)
         if (options?.folder) {
           const prefix = `${options.folder.replace(/[\\/]$/, '')}/`.toLowerCase()
           files = files.filter((file) => file.file_path.toLowerCase().startsWith(prefix))
@@ -181,10 +181,10 @@ export interface LightweightFile {
   revision: string | null
   version: number
   content_hash: string | null
-  /** Immutable Community network-vault object path, when Community is active. */
+  /** Immutable MDB network-vault object path, when MDB is active. */
   storage_relative_path?: string | null
-  /** Explicit alias retained for Community download and rollback commands. */
-  _communityStorageRelativePath?: string
+  /** Explicit alias retained for MDB download and rollback commands. */
+  _mdbStorageRelativePath?: string
   file_size: number | null
   state: string | null
   checked_out_by: string | null
@@ -222,7 +222,7 @@ export async function getFilesLightweight(
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await communityFilesForVaults(vaultId)
+        const files = await mdbFilesForVaults(vaultId)
         return {
           files: files.map((file) => ({
             id: file.id,
@@ -236,7 +236,7 @@ export async function getFilesLightweight(
             version: file.version,
             content_hash: file.content_hash,
             storage_relative_path: file.storage_relative_path,
-            _communityStorageRelativePath: file._communityStorageRelativePath,
+            _mdbStorageRelativePath: file._mdbStorageRelativePath,
             file_size: file.file_size,
             state: file.state,
             checked_out_by: file.checked_out_by,
@@ -308,7 +308,7 @@ export async function getFilesDelta(
     mdb: async () => {
       try {
         const watermark = new Date(since).getTime()
-        const files = await communityFilesForVaults(vaultId)
+        const files = await mdbFilesForVaults(vaultId)
         return {
           files: files
             .filter(
@@ -326,7 +326,7 @@ export async function getFilesDelta(
               version: file.version,
               content_hash: file.content_hash,
               storage_relative_path: file.storage_relative_path,
-              _communityStorageRelativePath: file._communityStorageRelativePath,
+              _mdbStorageRelativePath: file._mdbStorageRelativePath,
               file_size: file.file_size,
               state: file.state,
               checked_out_by: file.checked_out_by,
@@ -399,7 +399,7 @@ export async function getVaultFilesCount(
   return routeBackend({
     mdb: async () => {
       try {
-        return { count: (await communityFilesForVaults(vaultId)).length, error: null }
+        return { count: (await mdbFilesForVaults(vaultId)).length, error: null }
       } catch (error) {
         return { count: null, error }
       }
@@ -596,7 +596,7 @@ export async function getFile(fileId: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await communityFilesForVaults()
+        const files = await mdbFilesForVaults()
         return { file: files.find((file) => file.id === fileId) ?? null, error: null }
       } catch (error) {
         return { file: null, error: error as Error }
@@ -644,7 +644,7 @@ export async function getFileByPath(vaultId: string, filePath: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await communityFilesForVaults(vaultId)
+        const files = await mdbFilesForVaults(vaultId)
         return {
           file:
             files.find(
@@ -678,13 +678,13 @@ export async function getFileVersions(fileId: string) {
   return routeBackend({
     mdb: async () => {
       try {
-        const versions = (await getCommunityFileRevisions(fileId)).map((revision) => ({
+        const versions = (await getMdbFileRevisions(fileId)).map((revision) => ({
           id: revision.id,
           file_id: fileId,
           version: revision.revisionNumber,
           revision: String(revision.revisionNumber),
           content_hash: revision.contentHash,
-          _communityStorageRelativePath: revision.storageRelativePath,
+          _mdbStorageRelativePath: revision.storageRelativePath,
           file_size: revision.sizeBytes,
           comment: revision.comment,
           workflow_state_id: null,
@@ -724,7 +724,7 @@ export async function getWhereUsed(fileId: string) {
     mdb: async () => {
       try {
         return {
-          references: (await getCommunityFileReferences(fileId, 'where-used')) as any,
+          references: (await getMdbFileReferences(fileId, 'where-used')) as any,
           error: null,
         }
       } catch (error) {
@@ -755,7 +755,7 @@ export async function getContains(fileId: string) {
     mdb: async () => {
       try {
         return {
-          references: (await getCommunityFileReferences(fileId, 'contains')) as any,
+          references: (await getMdbFileReferences(fileId, 'contains')) as any,
           error: null,
         }
       } catch (error) {
@@ -1389,7 +1389,7 @@ export async function getFileReferenceDiagnostics(parentFileId: string): Promise
   return routeBackend({
     mdb: async () => {
       try {
-        const references = await getCommunityFileReferences(parentFileId, 'contains')
+        const references = await getMdbFileReferences(parentFileId, 'contains')
         return {
           references: references.map((reference) => ({
             id: String(reference.id ?? ''),
@@ -1456,7 +1456,7 @@ export async function getVaultFilesForDiagnostics(
   return routeBackend({
     mdb: async () => {
       try {
-        const files = await communityFilesForVaults(vaultId)
+        const files = await mdbFilesForVaults(vaultId)
         return {
           files: files
             .map((file) => ({

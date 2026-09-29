@@ -18,7 +18,7 @@ describe('LicenseManagerSection backend routing', () => {
   })
 
   it('does not select the Supabase license manager in MDB mode', () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
     expect(LicenseManagerSection()).toBeNull()
   })

@@ -8,7 +8,7 @@ import {
   loadBackendProfile,
 } from './backend'
 import { hasConfig } from './supabaseConfig'
-import { saveCommunityConfig } from './community'
+import { saveMdbConfig } from './mdb'
 import { isMdbBackendActive } from './backendAdapter'
 
 const storage = new Map<string, string>()
@@ -25,16 +25,16 @@ describe('backend profile', () => {
   })
 
   it('activates exactly the selected adapter', () => {
-    activateBackend('community')
+    activateBackend('mdb')
 
-    expect(getActiveBackendKind()).toBe('community')
-    expect(isBackendActive('community')).toBe(true)
+    expect(getActiveBackendKind()).toBe('mdb')
+    expect(isBackendActive('mdb')).toBe(true)
     expect(isBackendActive('supabase')).toBe(false)
 
     activateBackend('supabase')
 
     expect(getActiveBackendKind()).toBe('supabase')
-    expect(isBackendActive('community')).toBe(false)
+    expect(isBackendActive('mdb')).toBe(false)
     expect(isBackendActive('supabase')).toBe(true)
   })
 
@@ -44,8 +44,27 @@ describe('backend profile', () => {
     expect(loadBackendProfile()).toBeNull()
   })
 
+  it('migrates the legacy MDB backend profile to the canonical identifier', () => {
+    localStorage.setItem('blueplm-backend-profile', JSON.stringify({ version: 1, kind: 'community' }))
+
+    expect(loadBackendProfile()).toEqual({ version: 1, kind: 'mdb' })
+    expect(JSON.parse(localStorage.getItem('blueplm-backend-profile') ?? '{}')).toEqual({
+      version: 1,
+      kind: 'mdb',
+    })
+  })
+
+  it('recognizes a legacy MDB configuration when no backend profile exists', () => {
+    localStorage.setItem('blueplm-community-config', JSON.stringify({
+      version: 1,
+      serverUrl: 'https://mdb.example.test',
+    }))
+
+    expect(getActiveBackendKind()).toBe('mdb')
+  })
+
   it('can return a client to backend selection', () => {
-    activateBackend('community')
+    activateBackend('mdb')
     clearBackendProfile()
 
     expect(getActiveBackendKind()).toBeNull()
@@ -55,13 +74,13 @@ describe('backend profile', () => {
     localStorage.setItem('blueplm-supabase-config', JSON.stringify({ url: 'https://example.test', anonKey: 'key' }))
     expect(getActiveBackendKind()).toBe('supabase')
 
-    activateBackend('community')
-    expect(getActiveBackendKind()).toBe('community')
+    activateBackend('mdb')
+    expect(getActiveBackendKind()).toBe('mdb')
   })
 
   it('does not expose inactive Supabase credentials in MDB mode', () => {
     localStorage.setItem('blueplm-supabase-config', JSON.stringify({ url: 'https://example.test', anonKey: 'key' }))
-    saveCommunityConfig({ version: 1, serverUrl: 'https://community.example.test' })
+    saveMdbConfig({ version: 1, serverUrl: 'https://mdb.example.test' })
 
     expect(isMdbBackendActive()).toBe(true)
     expect(hasConfig()).toBe(false)

@@ -31,7 +31,7 @@ import { executeCommand } from '@/lib/commands'
 import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialogs'
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { RealignSection } from './realign'
-import { createCommunityVault } from '@/lib/community'
+import { createMdbVault } from '@/lib/mdb'
 import { activeBackendSupports, routeBackend } from '@/lib/backendAdapter'
 import { clearVaultCache } from '@/lib/cache/vaultFileCache'
 import { useTranslation } from '@/lib/i18n'
@@ -255,7 +255,7 @@ export function VaultsSettings() {
             return null
           }
         }
-        const vault = await createCommunityVault({
+        const vault = await createMdbVault({
           name,
           storageProvider: 'network',
           networkRoot,

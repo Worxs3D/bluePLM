@@ -2,14 +2,14 @@ import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePatt
 
 import { getSupabaseClient } from '../client'
 import {
-  executeCommunityWorkflowTransition,
-  getCommunityAvailableTransitions,
-  getCommunityFileWorkflow,
-  moveCommunityFile,
-  moveCommunityFilePathPrefix,
-  syncCommunityFileReferences,
-  updateCommunityFileState,
-} from '@/lib/community'
+  executeMdbWorkflowTransition,
+  getMdbAvailableTransitions,
+  getMdbFileWorkflow,
+  moveMdbFile,
+  moveMdbFilePathPrefix,
+  syncMdbFileReferences,
+  updateMdbFileState,
+} from '@/lib/mdb'
 import { getCurrentUser, getCurrentUserEmail } from '../auth'
 import { withRetry } from '../../network'
 import type { Database } from '@/types/supabase'
@@ -296,12 +296,12 @@ export async function syncFile(
 ) {
   return routeBackend({
     mdb: async () => {
-      // The Community adapter stores immutable revisions in the configured
+      // The MDB adapter stores immutable revisions in the configured
       // network vault. It must not fall through to Supabase Storage while that
       // native transfer path is unavailable.
       return {
         file: null,
-        error: new Error(t('mdbSetup.communityCheckinUnavailable')),
+        error: new Error(t('mdbSetup.mdbCheckinUnavailable')),
         isNew: false,
       }
     },
@@ -934,9 +934,9 @@ export async function updateFileMetadata(
       }
       if (!updates.state) return { success: true, file: { id: fileId }, error: null }
       try {
-        const assignment = await getCommunityFileWorkflow(fileId)
+        const assignment = await getMdbFileWorkflow(fileId)
         if (!assignment) {
-          const file = await updateCommunityFileState(fileId, updates.state)
+          const file = await updateMdbFileState(fileId, updates.state)
           return { success: true, file, error: null }
         }
         const stateForWorkflowName = (name: unknown) => {
@@ -950,7 +950,7 @@ export async function updateFileMetadata(
         if (stateForWorkflowName(assignment.current_state_name) === updates.state) {
           return { success: true, file: { id: fileId, state: updates.state }, error: null }
         }
-        const transitions = await getCommunityAvailableTransitions(fileId)
+        const transitions = await getMdbAvailableTransitions(fileId)
         const transition = transitions.find(
           (candidate) =>
             stateForWorkflowName(candidate.to_state_name) === updates.state &&
@@ -962,7 +962,7 @@ export async function updateFileMetadata(
             error: `No permitted workflow transition reaches ${updates.state}.`,
           }
         }
-        const result = await executeCommunityWorkflowTransition(fileId, transition.transition_id)
+        const result = await executeMdbWorkflowTransition(fileId, transition.transition_id)
         if (!result.success)
           return { success: false, error: result.error_message ?? 'Workflow transition failed.' }
         if (result.requires_review) return { success: true, requiresReview: true, error: null }
@@ -1073,7 +1073,7 @@ export async function updateFilePath(
     mdb: async () => {
       const newFileName = newPath.split('/').pop() || newPath.split('\\').pop() || newPath
       try {
-        await moveCommunityFile(fileId, newPath, newFileName)
+        await moveMdbFile(fileId, newPath, newFileName)
         return { success: true, file: { id: fileId, file_path: newPath, file_name: newFileName } }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -1191,11 +1191,11 @@ export async function updateFolderPath(
           success: false,
           updated: 0,
           total: 0,
-          errors: [t('mdbSetup.communityVaultRequiredForMove')],
+          errors: [t('mdbSetup.mdbVaultRequiredForMove')],
         }
       }
       try {
-        const result = await moveCommunityFilePathPrefix(
+        const result = await moveMdbFilePathPrefix(
           vaultId,
           oldFolderPath.replace(/\/+$/, ''),
           newFolderPath.replace(/\/+$/, ''),
@@ -1366,7 +1366,7 @@ export async function upsertFileReferences(
   return routeBackend({
     mdb: async () => {
       try {
-        return await syncCommunityFileReferences(parentFileId, references, vaultRootPath)
+        return await syncMdbFileReferences(parentFileId, references, vaultRootPath)
       } catch (error) {
         return {
           success: false,

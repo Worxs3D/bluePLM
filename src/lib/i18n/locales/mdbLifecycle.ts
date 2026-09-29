@@ -70,11 +70,11 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}}: The MDB revision does not match the local file.',
     fileNetworkVaultOnly: '{{name}}: MDB currently supports network vault storage only.',
     fileVaultMetadataIncomplete: '{{name}}: The MDB vault metadata is incomplete.',
-    communityCheckinUnavailable:
+    mdbCheckinUnavailable:
       'This check-in path is unavailable for MDB. Use the MDB vault check-in workflow.',
     directWorkflowStateUnsupported:
       'Direct workflow-state updates are unavailable. Run an available workflow transition instead.',
-    communityVaultRequiredForMove: 'An MDB vault is required to move folder contents.',
+    mdbVaultRequiredForMove: 'An MDB vault is required to move folder contents.',
     fileImportRecordUnavailable: '{{name}}: The imported MDB file record could not be loaded.',
     fileImportConflict:
       '{{name}}: A different file already exists at this path. Download and check it out instead.',
@@ -345,11 +345,11 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
       '{{name}}: Die MDB-Revision stimmt nicht mit der lokalen Datei überein.',
     fileNetworkVaultOnly: '{{name}}: MDB unterstützt derzeit nur Netzwerk-Vaults.',
     fileVaultMetadataIncomplete: '{{name}}: Die MDB-Vault-Metadaten sind unvollständig.',
-    communityCheckinUnavailable:
+    mdbCheckinUnavailable:
       'Dieser Eincheckpfad ist für MDB nicht verfügbar. Verwende den Eincheckablauf des MDB-Vaults.',
     directWorkflowStateUnsupported:
       'Direkte Workflow-Statusänderungen sind nicht verfügbar. Führe stattdessen einen verfügbaren Übergang aus.',
-    communityVaultRequiredForMove:
+    mdbVaultRequiredForMove:
       'Zum Verschieben von Ordnerinhalten ist ein MDB-Vault erforderlich.',
     fileImportRecordUnavailable:
       '{{name}}: Der importierte MDB-Dateidatensatz konnte nicht geladen werden.',
@@ -628,11 +628,11 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}}: La revisión MDB no coincide con el archivo local.',
     fileNetworkVaultOnly: '{{name}}: MDB solo admite actualmente almacenamiento en vault de red.',
     fileVaultMetadataIncomplete: '{{name}}: Los metadatos del vault MDB están incompletos.',
-    communityCheckinUnavailable:
+    mdbCheckinUnavailable:
       'Esta ruta de check-in no está disponible para MDB. Usa el flujo de check-in del vault MDB.',
     directWorkflowStateUnsupported:
       'Las actualizaciones directas del estado no están disponibles. Ejecuta una transición disponible.',
-    communityVaultRequiredForMove: 'Se requiere un vault MDB para mover el contenido de carpetas.',
+    mdbVaultRequiredForMove: 'Se requiere un vault MDB para mover el contenido de carpetas.',
     fileImportRecordUnavailable:
       '{{name}}: No se pudo cargar el registro del archivo MDB importado.',
     fileImportConflict:
@@ -909,11 +909,11 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}} : la révision MDB ne correspond pas au fichier local.',
     fileNetworkVaultOnly: '{{name}} : MDB ne prend actuellement en charge que les coffres réseau.',
     fileVaultMetadataIncomplete: '{{name}} : les métadonnées du coffre MDB sont incomplètes.',
-    communityCheckinUnavailable:
+    mdbCheckinUnavailable:
       'Ce mode d’archivage n’est pas disponible pour MDB. Utilisez le flux d’archivage du coffre MDB.',
     directWorkflowStateUnsupported:
       'Les changements directs d’état ne sont pas disponibles. Exécutez plutôt une transition disponible.',
-    communityVaultRequiredForMove:
+    mdbVaultRequiredForMove:
       'Un coffre MDB est requis pour déplacer le contenu des dossiers.',
     fileImportRecordUnavailable:
       '{{name}} : l’enregistrement du fichier MDB importé n’a pas pu être chargé.',
@@ -1193,11 +1193,11 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}}: A revisão MDB não corresponde ao ficheiro local.',
     fileNetworkVaultOnly: '{{name}}: O MDB suporta atualmente apenas vaults de rede.',
     fileVaultMetadataIncomplete: '{{name}}: Os metadados do vault MDB estão incompletos.',
-    communityCheckinUnavailable:
+    mdbCheckinUnavailable:
       'Este caminho de check-in não está disponível para MDB. Use o fluxo de check-in do vault MDB.',
     directWorkflowStateUnsupported:
       'As alterações diretas de estado não estão disponíveis. Execute antes uma transição disponível.',
-    communityVaultRequiredForMove: 'É necessário um vault MDB para mover conteúdo de pastas.',
+    mdbVaultRequiredForMove: 'É necessário um vault MDB para mover conteúdo de pastas.',
     fileImportRecordUnavailable:
       '{{name}}: Não foi possível carregar o registo do ficheiro MDB importado.',
     fileImportConflict:
@@ -1465,9 +1465,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}}：MDB 修订与本地文件不匹配。',
     fileNetworkVaultOnly: '{{name}}：MDB 目前仅支持网络保管库存储。',
     fileVaultMetadataIncomplete: '{{name}}：MDB 保管库元数据不完整。',
-    communityCheckinUnavailable: 'MDB 不支持此签入路径。请使用 MDB 保管库签入流程。',
+    mdbCheckinUnavailable: 'MDB 不支持此签入路径。请使用 MDB 保管库签入流程。',
     directWorkflowStateUnsupported: '不支持直接更新工作流状态。请执行可用的工作流转换。',
-    communityVaultRequiredForMove: '移动文件夹内容需要 MDB 保管库。',
+    mdbVaultRequiredForMove: '移动文件夹内容需要 MDB 保管库。',
     fileImportRecordUnavailable: '{{name}}：无法加载已导入的 MDB 文件记录。',
     fileImportConflict: '{{name}}：此路径已存在其他文件。请下载并签出该文件。',
     erpSyncUnavailable: 'MDB 后端尚未配置 ERP 同步。',
@@ -1719,9 +1719,9 @@ export const mdbLifecycleTranslations: Record<MdbLocale, Record<string, string>>
     fileRevisionHashMismatch: '{{name}}：MDB 修訂與本機檔案不符。',
     fileNetworkVaultOnly: '{{name}}：MDB 目前僅支援網路保存庫儲存。',
     fileVaultMetadataIncomplete: '{{name}}：MDB 保存庫中繼資料不完整。',
-    communityCheckinUnavailable: 'MDB 不支援此簽入路徑。請使用 MDB 保存庫簽入流程。',
+    mdbCheckinUnavailable: 'MDB 不支援此簽入路徑。請使用 MDB 保存庫簽入流程。',
     directWorkflowStateUnsupported: '不支援直接更新工作流程狀態。請執行可用的工作流程轉換。',
-    communityVaultRequiredForMove: '移動資料夾內容需要 MDB 保存庫。',
+    mdbVaultRequiredForMove: '移動資料夾內容需要 MDB 保存庫。',
     fileImportRecordUnavailable: '{{name}}：無法載入已匯入的 MDB 檔案記錄。',
     fileImportConflict: '{{name}}：此路徑已有其他檔案。請下載並簽出該檔案。',
     erpSyncUnavailable: 'MDB 後端尚未設定 ERP 同步。',

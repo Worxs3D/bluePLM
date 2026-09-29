@@ -3,15 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { activateBackend, clearBackendProfile } from '../backend'
 import { getUserWorkflowRoles } from './teams'
 
-const { getCommunityUserWorkflowRoles } = vi.hoisted(() => ({
-  getCommunityUserWorkflowRoles: vi.fn(),
+const { getMdbUserWorkflowRoles } = vi.hoisted(() => ({
+  getMdbUserWorkflowRoles: vi.fn(),
 }))
 
-vi.mock('@/lib/community', () => ({
-  getCommunityTeams: vi.fn(),
-  getCommunityUserTeams: vi.fn(),
-  getCommunityUserWorkflowRoles,
-  removeCommunityUser: vi.fn(),
+vi.mock('@/lib/mdb', () => ({
+  getMdbTeams: vi.fn(),
+  getMdbUserTeams: vi.fn(),
+  getMdbUserWorkflowRoles,
+  removeMdbUser: vi.fn(),
 }))
 
 vi.mock('./client', () => ({
@@ -33,21 +33,21 @@ describe('MDB workflow-role hydration', () => {
   beforeEach(() => {
     storage.clear()
     clearBackendProfile()
-    getCommunityUserWorkflowRoles.mockReset()
-    activateBackend('community')
+    getMdbUserWorkflowRoles.mockReset()
+    activateBackend('mdb')
   })
 
   it('loads separately assigned workflow roles for the active MDB user', async () => {
-    getCommunityUserWorkflowRoles.mockResolvedValue(['workflow-role-1', 'workflow-role-2'])
+    getMdbUserWorkflowRoles.mockResolvedValue(['workflow-role-1', 'workflow-role-2'])
 
     await expect(getUserWorkflowRoles('user-1')).resolves.toEqual({
       roleIds: ['workflow-role-1', 'workflow-role-2'],
     })
-    expect(getCommunityUserWorkflowRoles).toHaveBeenCalledWith('user-1')
+    expect(getMdbUserWorkflowRoles).toHaveBeenCalledWith('user-1')
   })
 
   it('fails closed when the MDB role lookup cannot be loaded', async () => {
-    getCommunityUserWorkflowRoles.mockRejectedValue(new Error('backend unavailable'))
+    getMdbUserWorkflowRoles.mockRejectedValue(new Error('backend unavailable'))
 
     await expect(getUserWorkflowRoles('user-1')).resolves.toEqual({
       roleIds: [],

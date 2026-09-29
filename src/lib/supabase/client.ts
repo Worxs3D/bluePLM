@@ -37,7 +37,7 @@ let sessionListenerCleanup: (() => void) | null = null
 
 // Initialize from stored config or env variables (for dev)
 function initializeClient() {
-  if (getActiveBackendKind() === 'community') {
+  if (getActiveBackendKind() === 'mdb') {
     return
   }
 
@@ -100,7 +100,7 @@ export function reconfigureSupabase(config: SupabaseConfig): void {
 
 // Get the current Supabase client (creates placeholder if not configured)
 export function getSupabaseClient(): SupabaseClient<Database> {
-  if (getActiveBackendKind() === 'community') {
+  if (getActiveBackendKind() === 'mdb') {
     throw new Error('Supabase is inactive while the BluePLM MariaDB backend is selected.')
   }
   if (!supabaseClient) {

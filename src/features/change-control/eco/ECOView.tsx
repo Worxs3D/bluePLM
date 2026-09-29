@@ -19,13 +19,13 @@ import { usePDMStore } from '@/stores/pdmStore'
 import type { ECO } from '@/stores/types'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
-  addCommunityFileToEco,
-  createCommunityEco,
-  getCommunityEcoFiles,
-  getCommunityEcos,
-  removeCommunityFileFromEco,
-  updateCommunityEcoStatus,
-} from '@/lib/community'
+  addMdbFileToEco,
+  createMdbEco,
+  getMdbEcoFiles,
+  getMdbEcos,
+  removeMdbFileFromEco,
+  updateMdbEcoStatus,
+} from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 import { formatDistanceToNow } from 'date-fns'
@@ -129,7 +129,7 @@ export function ECOView() {
 
       try {
         if (isMdbBackendActive()) {
-          setECOs((await getCommunityEcos()) as ECO[])
+          setECOs((await getMdbEcos()) as ECO[])
           return
         }
         const client = getSupabaseClient()
@@ -216,7 +216,7 @@ export function ECOView() {
 
     try {
       if (isMdbBackendActive()) {
-        const files = await getCommunityEcoFiles(ecoId)
+        const files = await getMdbEcoFiles(ecoId)
         setEcoFiles((prev) => ({ ...prev, [ecoId]: files }))
         return
       }
@@ -298,7 +298,7 @@ export function ECOView() {
 
     try {
       if (isMdbBackendActive()) {
-        const data = await createCommunityEco({
+        const data = await createMdbEco({
           ecoNumber: newEcoNumber.trim(),
           title: newEcoTitle.trim() || null,
           description: newEcoDescription.trim() || null,
@@ -382,7 +382,7 @@ export function ECOView() {
       }
 
       if (isMdbBackendActive()) {
-        await Promise.all(fileIds.map((fileId) => addCommunityFileToEco(fileId, tagEcoId)))
+        await Promise.all(fileIds.map((fileId) => addMdbFileToEco(fileId, tagEcoId)))
         const eco = ecos.find((e) => e.id === tagEcoId)
         if (eco) updateECO(tagEcoId, { file_count: (eco.file_count || 0) + fileIds.length })
         setEcoFiles((prev) => {
@@ -443,7 +443,7 @@ export function ECOView() {
       if (isMdbBackendActive()) {
         const file = ecoFiles[ecoId]?.find((entry) => entry.id === fileEcoId)
         if (!file) throw new Error('ECO file mapping not found.')
-        await removeCommunityFileFromEco(file.file_id, ecoId)
+        await removeMdbFileFromEco(file.file_id, ecoId)
         setEcoFiles((prev) => ({
           ...prev,
           [ecoId]: prev[ecoId]?.filter((fe) => fe.id !== fileEcoId) || [],
@@ -486,7 +486,7 @@ export function ECOView() {
 
     try {
       if (isMdbBackendActive()) {
-        await updateCommunityEcoStatus(ecoId, newStatus)
+        await updateMdbEcoStatus(ecoId, newStatus)
         updateECO(ecoId, { status: newStatus })
         addToast(
           'success',

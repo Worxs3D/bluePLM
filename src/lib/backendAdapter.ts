@@ -13,8 +13,8 @@ export type BackendCapability =
   | 'job-titles'
   | 'team-permissions'
   | 'team-reviewers'
-  | 'community-authenticator'
-  | 'community-user-credentials'
+  | 'mdb-authenticator'
+  | 'mdb-user-credentials'
   | 'user-permissions'
   | 'net-permissions'
   | 'company-logo-management'
@@ -28,7 +28,7 @@ export interface BackendRoutes<TMdb, TSupabase> {
   supabase: () => TSupabase
 }
 
-const allBackends = new Set<BackendKind>(['community', 'supabase'])
+const allBackends = new Set<BackendKind>(['mdb', 'supabase'])
 const supabaseOnly = new Set<BackendKind>(['supabase'])
 
 /**
@@ -71,11 +71,11 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
 }
 
 const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> = {
-  community: new Set<BackendCapability>([
+  mdb: new Set<BackendCapability>([
     'metadata-column-defaults',
     'direct-account-provisioning',
-    'community-authenticator',
-    'community-user-credentials',
+    'mdb-authenticator',
+    'mdb-user-credentials',
     'editable-workflow-roles',
     'team-permissions',
     'team-reviewers',
@@ -107,7 +107,7 @@ const backendCapabilities: Record<BackendKind, ReadonlySet<BackendCapability>> =
 export function routeBackend<TMdb, TSupabase>(
   routes: BackendRoutes<TMdb, TSupabase>,
 ): TMdb | TSupabase {
-  return getActiveBackendKind() === 'community' ? routes.mdb() : routes.supabase()
+  return getActiveBackendKind() === 'mdb' ? routes.mdb() : routes.supabase()
 }
 
 /** Translate the MDB server role without promoting unknown values. */
@@ -128,7 +128,7 @@ export function mapMdbRole(role: string): ClientRole | null {
 
 /** Single backend-selection seam for auth and data adapters. */
 export function isMdbBackendActive(): boolean {
-  return getActiveBackendKind() === 'community'
+  return getActiveBackendKind() === 'mdb'
 }
 
 /**
@@ -161,5 +161,5 @@ export function getActiveBackendSettingsTabAvailability(
 
 /** Keep backend-specific application modules behind the same adapter boundary. */
 export function activeBackendSupportsModule(moduleId: ModuleId): boolean {
-  return getActiveBackendKind() !== 'community' || moduleId !== 'google-drive'
+  return getActiveBackendKind() !== 'mdb' || moduleId !== 'google-drive'
 }

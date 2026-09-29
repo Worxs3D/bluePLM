@@ -31,7 +31,7 @@ import { getMachineId } from '@/lib/backup'
 import { useTranslation } from '@/lib/i18n'
 import { ContributionHistory } from '../system/ContributionHistory'
 import { activeBackendSupports } from '@/lib/backendAdapter'
-import { CommunityAuthenticatorSettings } from './CommunityAuthenticatorSettings'
+import { MdbAuthenticatorSettings } from './MdbAuthenticatorSettings'
 
 interface UserSession {
   id: string
@@ -313,7 +313,7 @@ export function AccountSettings() {
         </div>
       </section>
 
-      {activeBackendSupports('community-authenticator') && <CommunityAuthenticatorSettings />}
+      {activeBackendSupports('mdb-authenticator') && <MdbAuthenticatorSettings />}
 
       {/* Contribution History */}
       <ContributionHistory />

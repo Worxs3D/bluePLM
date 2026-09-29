@@ -31,7 +31,7 @@ import {
 } from '../../hooks'
 import { UserRow } from './UserRow'
 import { UserVaultAccessDialog } from './UserVaultAccessDialog'
-import { EditCommunityUserCredentialsDialog } from './EditCommunityUserCredentialsDialog'
+import { EditMdbUserCredentialsDialog } from './EditMdbUserCredentialsDialog'
 import { UserProfileModal } from '@/features/settings/account'
 import { activeBackendSupports } from '@/lib/backendAdapter'
 import { BackendAvailabilityDialog } from '../../../../components/BackendAvailabilityNotice'
@@ -67,7 +67,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   const isRealAdmin = currentUser?.role === 'admin'
   const canViewNetPermissions = activeBackendSupports('net-permissions')
   const canManageUserPermissions = activeBackendSupports('user-permissions')
-  const canManageCommunityCredentials = activeBackendSupports('community-user-credentials')
+  const canManageMdbCredentials = activeBackendSupports('mdb-user-credentials')
 
   // Data hooks (these are cached, so calling them in each row is efficient)
   const { teams } = useTeams(orgId)
@@ -218,7 +218,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         // Do not expose this action in a Supabase installation (or for oneself,
         // because a password/email update intentionally revokes its sessions).
         onManageCredentials={
-          isAdmin && !isCurrentUser && canManageCommunityCredentials
+          isAdmin && !isCurrentUser && canManageMdbCredentials
             ? () => setEditingCredentialsUser(user)
             : undefined
         }
@@ -252,7 +252,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
         />
       )}
       {editingCredentialsUser && (
-        <EditCommunityUserCredentialsDialog
+        <EditMdbUserCredentialsDialog
           user={editingCredentialsUser}
           onClose={() => setEditingCredentialsUser(null)}
           onUpdated={loadMembers}

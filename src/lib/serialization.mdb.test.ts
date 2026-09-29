@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { communitySerialNumberExists, getCommunitySerialInventory, getOrganizationSetting } =
+const { mdbSerialNumberExists, getMdbSerialInventory, getOrganizationSetting } =
   vi.hoisted(() => ({
-    communitySerialNumberExists: vi.fn(),
-    getCommunitySerialInventory: vi.fn(),
+    mdbSerialNumberExists: vi.fn(),
+    getMdbSerialInventory: vi.fn(),
     getOrganizationSetting: vi.fn(),
   }))
 
 vi.mock('./supabase', () => ({ supabase: {} }))
-vi.mock('./community', () => ({
-  allocateCommunitySerialNumber: vi.fn(),
-  previewCommunitySerialNumber: vi.fn(),
-  communitySerialNumberExists,
-  getCommunitySerialInventory,
+vi.mock('./mdb', () => ({
+  allocateMdbSerialNumber: vi.fn(),
+  previewMdbSerialNumber: vi.fn(),
+  mdbSerialNumberExists,
+  getMdbSerialInventory,
 }))
 vi.mock('./organizationSettings', () => ({
   getOrganizationSetting,
@@ -30,12 +30,12 @@ vi.stubGlobal('localStorage', {
   clear: () => storage.clear(),
 })
 
-describe('Community serialization', () => {
+describe('MDB serialization', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
     clearBackendProfile()
-    activateBackend('community')
+    activateBackend('mdb')
     getOrganizationSetting.mockResolvedValue({
       enabled: true,
       prefix: 'PN-',
@@ -46,14 +46,14 @@ describe('Community serialization', () => {
   })
 
   it('checks uniqueness through MDB without initializing Supabase', async () => {
-    communitySerialNumberExists.mockResolvedValue(true)
+    mdbSerialNumberExists.mockResolvedValue(true)
 
     await expect(serialNumberExists('org-1', 'PN-00042')).resolves.toBe(true)
-    expect(communitySerialNumberExists).toHaveBeenCalledWith('PN-00042')
+    expect(mdbSerialNumberExists).toHaveBeenCalledWith('PN-00042')
   })
 
   it('finds the highest persisted MDB part number', async () => {
-    getCommunitySerialInventory.mockResolvedValue([
+    getMdbSerialInventory.mockResolvedValue([
       { partNumber: 'PN-00007', filePath: 'parts/a.sldprt' },
       { partNumber: 'PN-00042', filePath: 'parts/b.sldprt' },
       { partNumber: 'OTHER', filePath: 'parts/c.sldprt' },

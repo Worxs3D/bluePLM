@@ -23,10 +23,10 @@ import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
 import {
-  communityObjectStoragePath,
-  getCommunityVault,
-  importCommunityFile,
-} from '@/lib/community'
+  mdbObjectStoragePath,
+  getMdbVault,
+  importMdbFile,
+} from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 
 // Helper to check if file is a SolidWorks temp lock file (~$filename.sldxxx)
@@ -456,14 +456,14 @@ export const syncCommand: Command<SyncParams> = {
 
           if (isMdbBackendActive()) {
             try {
-              const vault = await getCommunityVault(activeVaultId)
+              const vault = await getMdbVault(activeVaultId)
               const canonicalPath = file.relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
               let storageRelativePath: string
               let verifiedSize: number
               if (vault.storageProvider === 'network') {
                 if (!vault.networkRoot)
                   throw new Error(t('mdbSetup.fileNetworkRootMissing', { name: file.name }))
-                storageRelativePath = communityObjectStoragePath(contentHash)
+                storageRelativePath = mdbObjectStoragePath(contentHash)
                 const stagedPath = buildFullPath(vault.networkRoot, storageRelativePath)
                 const staged = await window.electronAPI?.copyFile(file.path, stagedPath)
                 if (!staged?.success) {
@@ -486,7 +486,7 @@ export const syncCommand: Command<SyncParams> = {
                 throw new Error(t('mdbSetup.fileNetworkVaultOnly', { name: file.name }))
               }
 
-              const imported = await importCommunityFile({
+              const imported = await importMdbFile({
                 vaultId: activeVaultId,
                 canonicalPath,
                 storageRelativePath,

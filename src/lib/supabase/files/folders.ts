@@ -9,11 +9,11 @@ import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePatt
 
 import { getSupabaseClient } from '../client'
 import {
-  deleteCommunityFolder,
-  getCommunityFolders,
-  syncCommunityFolder,
-  updateCommunityFolder,
-} from '@/lib/community'
+  deleteMdbFolder,
+  getMdbFolders,
+  syncMdbFolder,
+  updateMdbFolder,
+} from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 // ============================================
@@ -116,7 +116,7 @@ export async function syncFolder(
         const parts = normalizedPath.split('/')
         let folder: FolderRecord | null = null
         for (let index = 1; index <= parts.length; index += 1) {
-          folder = (await syncCommunityFolder(
+          folder = (await syncMdbFolder(
             vaultId,
             parts.slice(0, index).join('/'),
           )) as FolderRecord
@@ -247,7 +247,7 @@ export async function getVaultFolders(
   return routeBackend({
     mdb: async () => {
       try {
-        return { folders: (await getCommunityFolders(vaultId)) as FolderRecord[] }
+        return { folders: (await getMdbFolders(vaultId)) as FolderRecord[] }
       } catch (error) {
         return { folders: [], error: error instanceof Error ? error.message : String(error) }
       }
@@ -300,7 +300,7 @@ export async function updateFolderServerPath(
   return routeBackend({
     mdb: async () => {
       try {
-        await updateCommunityFolder(folderId, newPath)
+        await updateMdbFolder(folderId, newPath)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -412,7 +412,7 @@ export async function deleteFolderOnServer(
   return routeBackend({
     mdb: async () => {
       try {
-        await deleteCommunityFolder(folderId)
+        await deleteMdbFolder(folderId)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -507,11 +507,11 @@ export async function deleteFolderByPath(
     mdb: async () => {
       try {
         const normalizedPath = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-        const folder = (await getCommunityFolders(vaultId)).find(
+        const folder = (await getMdbFolders(vaultId)).find(
           (candidate) => candidate.folder_path.toLowerCase() === normalizedPath.toLowerCase(),
         )
         if (!folder) return { success: true }
-        await deleteCommunityFolder(folder.id)
+        await deleteMdbFolder(folder.id)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }

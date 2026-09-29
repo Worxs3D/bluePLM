@@ -9,10 +9,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const rpc = vi.fn()
 vi.mock('../client', () => ({ getSupabaseClient: () => ({ rpc }) }))
 
-const community = vi.hoisted(() => ({
-  moveCommunityFile: vi.fn(),
+const mdb = vi.hoisted(() => ({
+  moveMdbFile: vi.fn(),
 }))
-vi.mock('@/lib/community', () => community)
+vi.mock('@/lib/mdb', () => mdb)
 const backend = vi.hoisted(() => ({ useMdb: false }))
 vi.mock('@/lib/backendAdapter', () => ({
   routeBackend: <TMdb, TSupabase>(routes: { mdb: () => TMdb; supabase: () => TSupabase }) =>
@@ -40,7 +40,7 @@ function moves(...fileIds: string[]) {
 beforeEach(() => {
   vi.clearAllMocks()
   backend.useMdb = false
-  community.moveCommunityFile.mockResolvedValue(undefined)
+  mdb.moveMdbFile.mockResolvedValue(undefined)
   replies({})
 })
 
@@ -65,7 +65,7 @@ describe('moveFileOnServer', () => {
     })
   })
 
-  it('uses the Community/MariaDB endpoint instead of the Supabase RPC', async () => {
+  it('uses the MDB/MariaDB endpoint instead of the Supabase RPC', async () => {
     backend.useMdb = true
 
     await expect(moveFileOnServer('a', 'user-me', 'new/a.sldprt', 'a.sldprt')).resolves.toEqual({
@@ -73,17 +73,17 @@ describe('moveFileOnServer', () => {
       file: { id: 'a', file_path: 'new/a.sldprt', file_name: 'a.sldprt' },
     })
 
-    expect(community.moveCommunityFile).toHaveBeenCalledWith('a', 'new/a.sldprt', 'a.sldprt')
+    expect(mdb.moveMdbFile).toHaveBeenCalledWith('a', 'new/a.sldprt', 'a.sldprt')
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('reports a Community/MariaDB move failure without falling back to Supabase', async () => {
+  it('reports a MDB/MariaDB move failure without falling back to Supabase', async () => {
     backend.useMdb = true
-    community.moveCommunityFile.mockRejectedValueOnce(new Error('Community server unavailable'))
+    mdb.moveMdbFile.mockRejectedValueOnce(new Error('MDB server unavailable'))
 
     await expect(moveFileOnServer('a', 'user-me', 'new/a.sldprt')).resolves.toEqual({
       success: false,
-      error: 'Community server unavailable',
+      error: 'MDB server unavailable',
     })
 
     expect(rpc).not.toHaveBeenCalled()

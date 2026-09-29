@@ -15,7 +15,7 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
-import { getCommunityVault, type CommunityVault } from '@/lib/community'
+import { getMdbVault, type MdbVault } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 
@@ -24,18 +24,23 @@ const MAX_RETRY_ATTEMPTS = 3
 
 // Delay between retries (exponential backoff: 1s, 2s, 4s)
 const RETRY_BASE_DELAY_MS = 1000
+const LEGACY_MDB_STORAGE_PATH_FIELD = '_communityStorageRelativePath'
 
 /**
- * Community file rows loaded from older local caches used the database field
- * name while freshly loaded rows carry the explicit Community alias.
+ * MDB file rows loaded from older local caches used the database field
+ * name while freshly loaded rows carry the explicit MDB alias.
  */
-export function resolveCommunityStorageRelativePath(pdmData: unknown): string | null {
+export function resolveMdbStorageRelativePath(pdmData: unknown): string | null {
   const metadata = pdmData as Record<string, unknown> | null | undefined
   if (
-    typeof metadata?._communityStorageRelativePath === 'string' &&
-    metadata._communityStorageRelativePath.trim() !== ''
+    typeof metadata?._mdbStorageRelativePath === 'string' &&
+    metadata._mdbStorageRelativePath.trim() !== ''
   ) {
-    return metadata._communityStorageRelativePath
+    return metadata._mdbStorageRelativePath
+  }
+  const legacyStoragePath = metadata?.[LEGACY_MDB_STORAGE_PATH_FIELD]
+  if (typeof legacyStoragePath === 'string' && legacyStoragePath.trim() !== '') {
+    return legacyStoragePath
   }
   if (
     typeof metadata?.storage_relative_path === 'string' &&
@@ -44,7 +49,7 @@ export function resolveCommunityStorageRelativePath(pdmData: unknown): string | 
     return metadata.storage_relative_path
   }
 
-  // CB1.0 installations cached a few Community rows before the storage path
+  // CB1.0 installations cached a few MDB rows before the storage path
   // field was persisted. Immutable objects are content-addressed, so a valid
   // SHA-256 hash is sufficient to recover the exact vault location.
   const contentHash =
@@ -178,9 +183,9 @@ export const downloadCommand: Command<DownloadParams> = {
     const organization = ctx.organization!
     const vaultPath = ctx.vaultPath!
     const operationId = `download-${Date.now()}`
-    const communityMode = isMdbBackendActive()
-    let communityVault: CommunityVault | null = null
-    if (communityMode) {
+    const mdbMode = isMdbBackendActive()
+    let mdbVault: MdbVault | null = null
+    if (mdbMode) {
       try {
         if (!ctx.activeVaultId)
           return {
@@ -190,7 +195,7 @@ export const downloadCommand: Command<DownloadParams> = {
             succeeded: 0,
             failed: 0,
           }
-        communityVault = await getCommunityVault(ctx.activeVaultId)
+        mdbVault = await getMdbVault(ctx.activeVaultId)
       } catch (error) {
         log.error('[Download]', 'Failed to load MDB vault', { error })
         return {
@@ -425,23 +430,23 @@ export const downloadCommand: Command<DownloadParams> = {
         let downloadResult:
           | { success: boolean; error?: string; size?: number; hash?: string }
           | undefined
-        if (communityMode) {
-          const storagePath = resolveCommunityStorageRelativePath(file.pdmData)
-          if (typeof storagePath !== 'string' || !communityVault) {
+        if (mdbMode) {
+          const storagePath = resolveMdbStorageRelativePath(file.pdmData)
+          if (typeof storagePath !== 'string' || !mdbVault) {
             return {
               success: false,
               error: t('mdbSetup.fileStoragePathMissing', { name: file.name }),
             }
           }
-          if (communityVault.storageProvider === 'network') {
-            if (!communityVault.networkRoot) {
+          if (mdbVault.storageProvider === 'network') {
+            if (!mdbVault.networkRoot) {
               return {
                 success: false,
                 error: t('mdbSetup.fileNetworkRootMissing', { name: file.name }),
               }
             }
-            const sourcePath = buildFullPath(communityVault.networkRoot, storagePath)
-            logDownload('debug', 'Copying current Community revision from network vault', {
+            const sourcePath = buildFullPath(mdbVault.networkRoot, storagePath)
+            logDownload('debug', 'Copying current MDB revision from network vault', {
               operationId,
               ...fileCtx,
               sourcePath,

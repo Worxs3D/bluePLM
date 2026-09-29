@@ -12,14 +12,14 @@
  */
 import { getSupabaseClient } from '../client'
 import {
-  createCommunityInspectionMethod,
-  deleteCommunityInspectionMethod,
-  getCommunityInspectionMethods,
-  getCommunityInspectionRows,
-  getCommunityInspectionRowsForRevision,
-  saveCommunityInspectionRows,
-  updateCommunityInspectionMethod,
-} from '@/lib/community'
+  createMdbInspectionMethod,
+  deleteMdbInspectionMethod,
+  getMdbInspectionMethods,
+  getMdbInspectionRows,
+  getMdbInspectionRowsForRevision,
+  saveMdbInspectionRows,
+  updateMdbInspectionMethod,
+} from '@/lib/mdb'
 
 import type {
   InspectionCharacteristic,
@@ -84,7 +84,7 @@ export async function getInspectionRows(fileId: string): Promise<{
       try {
         return {
           success: true,
-          rows: (await getCommunityInspectionRows(fileId)) as InspectionCharacteristic[],
+          rows: (await getMdbInspectionRows(fileId)) as InspectionCharacteristic[],
         }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -126,7 +126,7 @@ export async function getInspectionRowsForVersion(fileVersionId: string): Promis
       try {
         return {
           success: true,
-          rows: (await getCommunityInspectionRowsForRevision(
+          rows: (await getMdbInspectionRowsForRevision(
             fileVersionId,
           )) as InspectionCharacteristicVersion[],
         }
@@ -171,7 +171,7 @@ export async function saveInspectionRows(
   return routeBackend({
     mdb: async () => {
       try {
-        await saveCommunityInspectionRows(fileId, rows)
+        await saveMdbInspectionRows(fileId, rows)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -252,7 +252,7 @@ export async function getInspectionMethods(
   return routeBackend({
     mdb: async () => {
       try {
-        return { success: true, methods: await getCommunityInspectionMethods() }
+        return { success: true, methods: await getMdbInspectionMethods() }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
       }
@@ -296,7 +296,7 @@ export async function addInspectionMethod(
   return routeBackend({
     mdb: async () => {
       try {
-        return { success: true, method: await createCommunityInspectionMethod(trimmed) }
+        return { success: true, method: await createMdbInspectionMethod(trimmed) }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
       }
@@ -332,7 +332,7 @@ export async function updateInspectionMethod(
   return routeBackend({
     mdb: async () => {
       try {
-        await updateCommunityInspectionMethod(id, trimmed)
+        await updateMdbInspectionMethod(id, trimmed)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }
@@ -364,7 +364,7 @@ export async function deleteInspectionMethod(
   return routeBackend({
     mdb: async () => {
       try {
-        await deleteCommunityInspectionMethod(id)
+        await deleteMdbInspectionMethod(id)
         return { success: true }
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) }

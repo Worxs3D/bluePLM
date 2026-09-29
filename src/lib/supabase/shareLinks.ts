@@ -2,7 +2,7 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 
 import { getSupabaseClient } from './client'
-import { createCommunityShareLink } from '@/lib/community'
+import { createMdbShareLink } from '@/lib/mdb'
 import { routeBackend } from '@/lib/backendAdapter'
 
 export interface ShareLinkOptions {
@@ -78,7 +78,7 @@ export async function createShareLink(
   return routeBackend({
     mdb: async () => {
       try {
-        const link = await createCommunityShareLink(
+        const link = await createMdbShareLink(
           fileId,
           Math.min(options?.expiresInDays ?? DEFAULT_EXPIRY_DAYS, MAX_EXPIRY_DAYS),
         )

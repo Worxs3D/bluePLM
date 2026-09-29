@@ -6,11 +6,11 @@ import { log } from './logger'
 import { isPathHidden, readHiddenFolderPaths } from './hiddenFolders'
 import { routeBackend } from './backendAdapter'
 import {
-  allocateCommunitySerialNumber,
-  communitySerialNumberExists,
-  getCommunitySerialInventory,
-  previewCommunitySerialNumber,
-} from './community'
+  allocateMdbSerialNumber,
+  mdbSerialNumberExists,
+  getMdbSerialInventory,
+  previewMdbSerialNumber,
+} from './mdb'
 import { getOrganizationSetting, setOrganizationSetting } from './organizationSettings'
 
 export interface SerializationSettings {
@@ -79,7 +79,7 @@ const DEFAULT_SETTINGS: SerializationSettings = {
 export async function getNextSerialNumber(orgId: string): Promise<string | null> {
   try {
     return await routeBackend({
-      mdb: allocateCommunitySerialNumber,
+      mdb: allocateMdbSerialNumber,
       supabase: async () => {
         // Supabase v2 RPC type inference incomplete for custom functions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,7 +107,7 @@ export async function getNextSerialNumber(orgId: string): Promise<string | null>
 export async function previewNextSerialNumber(orgId: string): Promise<string | null> {
   try {
     return await routeBackend({
-      mdb: previewCommunitySerialNumber,
+      mdb: previewMdbSerialNumber,
       supabase: async () => {
         // Supabase v2 RPC type inference incomplete for custom functions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -307,7 +307,7 @@ export function matchesSerialFormat(
 export async function serialNumberExists(orgId: string, serialNumber: string): Promise<boolean> {
   try {
     return await routeBackend({
-      mdb: () => communitySerialNumberExists(serialNumber),
+      mdb: () => mdbSerialNumberExists(serialNumber),
       supabase: async () => {
         const { data, error } = await supabase
           .from('files')
@@ -641,7 +641,7 @@ export async function detectHighestSerialNumber(
     const settings = await getSerializationSettings(orgId)
     const { rows, hiddenPaths } = await routeBackend({
       mdb: async () => ({
-        rows: (await getCommunitySerialInventory()).map((file) => ({
+        rows: (await getMdbSerialInventory()).map((file) => ({
           part_number: file.partNumber,
           file_path: file.filePath,
         })),
