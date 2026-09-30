@@ -5,6 +5,7 @@ import { log } from '@/lib/logger'
 import {
   CONTEXT_MENU_CLOSE_EVENT,
   CONTEXT_MENU_OPEN_EVENT,
+  createNativePreviewVisibilityController,
 } from './nativePreviewOverlay'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
@@ -27,8 +28,6 @@ export function EDrawingsEmbeddedPreview({
 }: EDrawingsEmbeddedPreviewProps) {
   const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
-  const contextMenuOpen = useRef(false)
-  const previewReady = useRef(false)
   const [state, setState] = useState<PreviewState>('loading')
 
   useEffect(() => {
@@ -48,17 +47,21 @@ export function EDrawingsEmbeddedPreview({
       )
     }
 
+    const visibility = createNativePreviewVisibilityController({
+      hide: () => window.electronAPI?.hideEDrawingsPreview(),
+      show: async () => {
+        await syncBounds()
+        await window.electronAPI?.showEDrawingsPreview()
+      },
+    })
+
     const handleContextMenuOpen = () => {
-      contextMenuOpen.current = true
-      if (disposed || !previewReady.current) return
-      void window.electronAPI?.hideEDrawingsPreview()
+      if (disposed) return
+      visibility.setContextMenuOpen(true)
     }
     const handleContextMenuClose = () => {
-      contextMenuOpen.current = false
-      if (disposed || !previewReady.current) return
-      void syncBounds().then(() => {
-        if (!contextMenuOpen.current) void window.electronAPI?.showEDrawingsPreview()
-      })
+      if (disposed) return
+      visibility.setContextMenuOpen(false)
     }
     const handleOutsideContextMenu = (event: PointerEvent) => {
       if ((event.target as Element | null)?.closest?.('.context-menu')) return
@@ -91,10 +94,10 @@ export function EDrawingsEmbeddedPreview({
         return
       }
       await syncBounds()
-      await api.showEDrawingsPreview()
       if (disposed) return
-      previewReady.current = true
-      if (contextMenuOpen.current) await api.hideEDrawingsPreview()
+      // The controller is the only production show/hide seam. A menu opened
+      // during startup therefore results in hide, never an unconditional show.
+      visibility.setReady(true)
       observer = new ResizeObserver(() => void syncBounds())
       if (host.current) observer.observe(host.current)
       window.addEventListener('resize', syncBounds)
@@ -118,7 +121,7 @@ export function EDrawingsEmbeddedPreview({
     })
     return () => {
       disposed = true
-      previewReady.current = false
+      visibility.setReady(false)
       observer?.disconnect()
       window.removeEventListener('resize', syncBounds)
       window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)

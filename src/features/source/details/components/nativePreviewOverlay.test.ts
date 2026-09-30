@@ -36,4 +36,17 @@ describe('native preview context-menu seam', () => {
     expect(hide).toHaveBeenCalledTimes(2)
     expect(show).toHaveBeenCalledTimes(2)
   })
+
+  it('never shows while a menu opened during native startup', () => {
+    const calls: string[] = []
+    const controller = createNativePreviewVisibilityController({
+      hide: () => calls.push('hide'),
+      show: () => calls.push('show'),
+    })
+
+    controller.setContextMenuOpen(true)
+    controller.setReady(true)
+
+    expect(calls).toEqual(['hide'])
+  })
 })
