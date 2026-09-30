@@ -11,7 +11,13 @@ import {
 } from '../../types/modules'
 import { supabase } from '../../lib/supabase'
 import { isMdbBackendActive } from '../../lib/backendAdapter'
-import { getMdbOrganizationSetting, setMdbOrganizationSetting } from '../../lib/mdb'
+import {
+  getMdbOrganizationSetting,
+  setMdbOrganizationSetting,
+  getMdbTeamModuleDefaults,
+  setMdbTeamModuleDefaults,
+  clearMdbTeamModuleDefaults,
+} from '../../lib/mdb'
 
 export const createModulesSlice: StateCreator<
   PDMStoreState,
@@ -371,6 +377,25 @@ export const createModulesSlice: StateCreator<
 
   loadTeamModuleDefaults: async (teamId: string) => {
     try {
+      if (isMdbBackendActive()) {
+        const data = await getMdbTeamModuleDefaults(teamId)
+        if (!data) return { success: true, defaults: null }
+        const appDefaults = getDefaultModuleConfig()
+        return {
+          success: true,
+          defaults: {
+            enabledModules: { ...appDefaults.enabledModules, ...(data.enabled_modules || {}) },
+            enabledGroups: { ...appDefaults.enabledGroups, ...(data.enabled_groups || {}) },
+            moduleOrder: Array.isArray(data.module_order)
+              ? mergeModuleOrder(data.module_order as ModuleId[])
+              : appDefaults.moduleOrder,
+            dividers: data.dividers || appDefaults.dividers,
+            moduleParents: { ...appDefaults.moduleParents, ...(data.module_parents || {}) },
+            moduleIconColors: { ...appDefaults.moduleIconColors, ...(data.module_icon_colors || {}) },
+            customGroups: data.custom_groups || appDefaults.customGroups,
+          } as OrgModuleDefaults,
+        }
+      }
       const { data, error } = await (supabase.rpc as any)('get_team_module_defaults', {
         // TODO: type this
         p_team_id: teamId,
@@ -411,6 +436,18 @@ export const createModulesSlice: StateCreator<
     const configToSave = config || moduleConfig
 
     try {
+      if (isMdbBackendActive()) {
+        await setMdbTeamModuleDefaults(teamId, {
+          enabled_modules: configToSave.enabledModules,
+          enabled_groups: configToSave.enabledGroups,
+          module_order: configToSave.moduleOrder,
+          dividers: configToSave.dividers,
+          module_parents: configToSave.moduleParents,
+          module_icon_colors: configToSave.moduleIconColors,
+          custom_groups: configToSave.customGroups,
+        })
+        return { success: true }
+      }
       const { error } = await (supabase.rpc as any)('set_team_module_defaults', {
         // TODO: type this
         p_team_id: teamId,
@@ -432,6 +469,10 @@ export const createModulesSlice: StateCreator<
 
   clearTeamModuleDefaults: async (teamId: string) => {
     try {
+      if (isMdbBackendActive()) {
+        await clearMdbTeamModuleDefaults(teamId)
+        return { success: true }
+      }
       const { error } = await (supabase.rpc as any)('clear_team_module_defaults', {
         // TODO: type this
         p_team_id: teamId,
