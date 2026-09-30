@@ -132,6 +132,10 @@ class TelemetryService {
         // Ignore parse errors
       }
     }
+    // Restore an explicitly enabled recording session after a renderer restart.
+    // Sampling remains opt-in: the default config is disabled and therefore
+    // does not start an interval or an animation-frame loop.
+    if (this.config.enabled && !this.isRunning()) this.start()
     return this.config
   }
 
