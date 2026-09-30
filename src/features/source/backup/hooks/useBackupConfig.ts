@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { saveBackupConfig, type BackupConfig } from '@/lib/backup'
 import { DEFAULT_RETENTION } from '../constants'
+import { t } from '@/lib/i18n'
 
 interface UseBackupConfigReturn {
   // Provider settings
@@ -127,7 +128,7 @@ export function useBackupConfig(
     if (!orgId || !userId) return
 
     if (!bucket || !accessKey || !secretKey || !resticPassword) {
-      addToast('error', 'Please fill in all required fields')
+      addToast('error', t('backup.requiredFields'))
       return
     }
 
@@ -156,13 +157,13 @@ export function useBackupConfig(
       )
 
       if (result.success) {
-        addToast('success', 'Backup configuration saved')
+        addToast('success', t('backup.configurationSaved'))
         await onSaveSuccess()
       } else {
-        addToast('error', result.error || 'Failed to save configuration')
+        addToast('error', result.error || t('backup.saveFailed'))
       }
     } catch (_err) {
-      addToast('error', 'Failed to save configuration')
+      addToast('error', t('backup.saveFailed'))
     } finally {
       setIsSaving(false)
     }
@@ -194,7 +195,7 @@ export function useBackupConfig(
       _type: 'blueplm_backup_config',
       _version: 1,
       _exportedAt: new Date().toISOString(),
-      _warning: 'This file contains sensitive credentials. Store securely!',
+      _warning: t('backup.encryptionHint'),
       provider,
       bucket,
       region,
@@ -218,7 +219,7 @@ export function useBackupConfig(
 
     addToast(
       'success',
-      "Configuration exported. Keep this file safe - it's your disaster recovery key!",
+      t('backup.configExported'),
     )
   }, [
     provider,
@@ -249,7 +250,7 @@ export function useBackupConfig(
         const data = JSON.parse(text)
 
         if (data._type !== 'blueplm_backup_config') {
-          addToast('error', 'Invalid backup configuration file')
+          addToast('error', t('backup.invalidFile'))
           return
         }
 
@@ -265,9 +266,9 @@ export function useBackupConfig(
         setRetentionMonthly(data.retentionMonthly ?? DEFAULT_RETENTION.monthly)
         setRetentionYearly(data.retentionYearly ?? DEFAULT_RETENTION.yearly)
 
-        addToast('success', 'Configuration imported! Click Save to apply.')
+        addToast('success', t('backup.imported'))
       } catch (_err) {
-        addToast('error', 'Failed to parse configuration file')
+        addToast('error', t('backup.parseFailed'))
       }
     }
     input.click()

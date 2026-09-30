@@ -82,6 +82,54 @@ export type MdbOrganizationSettingSection =
   | 'rfq'
   | 'auth-providers'
 
+export interface MdbBackupConfig {
+  id?: string
+  org_id: string
+  provider: 'backblaze_b2' | 'aws_s3' | 'google_cloud'
+  bucket: string | null
+  region: string | null
+  endpoint: string | null
+  access_key_encrypted: string | null
+  secret_key_encrypted: string | null
+  restic_password_encrypted: string | null
+  retention_daily: number
+  retention_weekly: number
+  retention_monthly: number
+  retention_yearly: number
+  schedule_enabled: boolean
+  schedule_hour: number
+  schedule_minute: number
+  schedule_timezone: string
+  designated_machine_id: string | null
+  designated_machine_name: string | null
+  designated_machine_platform: string | null
+  designated_machine_user_email: string | null
+  designated_machine_last_seen: string | null
+  backup_requested_at: string | null
+  backup_requested_by: string | null
+  backup_running_since: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface MdbVaultAuditFile {
+  id: string
+  vaultId: string
+  canonicalPath: string
+  fileName: string
+  currentRevision: number
+  state: string
+  contentHash: string | null
+  updatedAt: string
+}
+
+export interface MdbVaultAuditPage {
+  files: MdbVaultAuditFile[]
+  page: number
+  limit: number
+  total: number
+}
+
 export interface MdbUser {
   id: string
   email: string
@@ -586,6 +634,78 @@ export async function setMdbOrganizationSetting<T extends object>(
       body: JSON.stringify({ value, ...options }),
     })
   ).value
+}
+
+/** MDB backup control-plane routes. Encrypted values remain opaque to the server. */
+export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
+  return (await request<{ config: MdbBackupConfig | null }>('/backup/config')).config
+}
+
+export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
+  return (await request<{ config: MdbBackupConfig }>('/backup/config', {
+    method: 'PUT',
+    body: JSON.stringify(value),
+  })).config
+}
+
+export async function designateMdbBackupMachine(value: {
+  machineId: string
+  machineName: string
+  platform: string
+  userEmail: string
+}): Promise<void> {
+  await request('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
+}
+
+export async function clearMdbBackupMachine(): Promise<void> {
+  await request('/backup/designate', { method: 'DELETE' })
+}
+
+export async function heartbeatMdbBackupMachine(machineId: string): Promise<boolean> {
+  return (await request<{ active: boolean }>('/backup/heartbeat', {
+    method: 'POST', body: JSON.stringify({ machineId }),
+  })).active
+}
+
+export async function requestMdbBackup(userEmail: string): Promise<void> {
+  await request('/backup/request', { method: 'POST', body: JSON.stringify({ userEmail }) })
+}
+
+export async function markMdbBackupStarted(machineId: string): Promise<void> {
+  await request('/backup/start', { method: 'POST', body: JSON.stringify({ machineId }) })
+}
+
+export async function markMdbBackupComplete(machineId: string): Promise<void> {
+  await request('/backup/complete', { method: 'POST', body: JSON.stringify({ machineId }) })
+}
+
+export async function getMdbVaultAuditFiles(
+  vaultId: string,
+  page = 1,
+  limit = 100,
+): Promise<MdbVaultAuditPage> {
+  const query = new URLSearchParams({ vaultId, page: String(page), limit: String(limit) })
+  return request<MdbVaultAuditPage>(`/vault-audit/files?${query.toString()}`)
+}
+
+export async function recordMdbVaultAuditRun(value: {
+  vaultId: string
+  pageCount: number
+  findingCount: number
+  summary?: Record<string, unknown>
+}): Promise<{ id: string }> {
+  return request<{ id: string }>('/vault-audit/runs', {
+    method: 'POST', body: JSON.stringify(value),
+  })
+}
+
+export async function applyMdbVaultAuditRepair(value: {
+  vaultId: string
+  updates: Array<{ fileId: string; currentRevision?: number; contentHash?: string | null; metadata?: Record<string, unknown> }>
+}): Promise<{ updated: number }> {
+  return request<{ updated: number }>('/vault-audit/repair', {
+    method: 'POST', body: JSON.stringify(value),
+  })
 }
 
 export async function previewMdbSerialNumber(): Promise<string | null> {

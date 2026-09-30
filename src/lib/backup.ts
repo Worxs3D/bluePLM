@@ -1,6 +1,16 @@
 // Backup service - simplified to use restic directly for everything
 import { getSupabaseClient } from './supabase'
 import { isBackendActive } from './backend'
+import {
+  clearMdbBackupMachine,
+  designateMdbBackupMachine,
+  getMdbBackupConfig,
+  heartbeatMdbBackupMachine,
+  markMdbBackupComplete,
+  markMdbBackupStarted,
+  requestMdbBackup,
+  setMdbBackupConfig,
+} from './mdb'
 import { log } from '@/lib/logger'
 
 // ============================================
@@ -78,6 +88,16 @@ export interface BackupResult {
   }
 }
 
+function mapMdbBackupConfig(value: Awaited<ReturnType<typeof getMdbBackupConfig>>): BackupConfig | null {
+  if (!value) return null
+  return {
+    ...value,
+    id: value.id ?? value.org_id,
+    created_at: value.created_at ?? new Date(0).toISOString(),
+    updated_at: value.updated_at ?? new Date(0).toISOString(),
+  }
+}
+
 // ============================================
 // Machine ID Management (still useful for identifying backup source)
 // ============================================
@@ -118,7 +138,7 @@ export async function getPlatform(): Promise<string> {
 export async function getBackupConfig(orgId: string): Promise<BackupConfig | null> {
   // MDB vault history is managed by its own backend and network-vault
   // layout. The Supabase/restic control plane must never be probed there.
-  if (!isBackendActive('supabase')) return null
+  if (!isBackendActive('supabase')) return mapMdbBackupConfig(await getMdbBackupConfig())
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase
@@ -140,6 +160,15 @@ export async function saveBackupConfig(
   config: Partial<BackupConfig>,
   _userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isBackendActive('supabase')) {
+    try {
+      await setMdbBackupConfig({ ...config, org_id: orgId })
+      return { success: true }
+    } catch (error) {
+      log.error('[Backup]', 'Error saving MDB config', { error: error instanceof Error ? error.message : 'unknown' })
+      return { success: false, error: error instanceof Error ? error.message : 'MDB backup configuration could not be saved.' }
+    }
+  }
   const supabase = getSupabaseClient()
 
   const updateData = {
@@ -169,6 +198,14 @@ export async function designateThisMachine(
   orgId: string,
   userEmail: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isBackendActive('supabase')) {
+    try {
+      await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail })
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'MDB backup machine could not be designated.' }
+    }
+  }
   const supabase = getSupabaseClient()
 
   const machineId = await getMachineId()
@@ -200,6 +237,10 @@ export async function designateThisMachine(
 export async function clearDesignatedMachine(
   orgId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isBackendActive('supabase')) {
+    try { await clearMdbBackupMachine(); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'MDB backup machine could not be cleared.' } }
+  }
   const supabase = getSupabaseClient()
 
   const { error } = await supabase
@@ -224,6 +265,7 @@ export async function clearDesignatedMachine(
 
 // Update heartbeat (called every minute by designated machine)
 export async function updateHeartbeat(orgId: string): Promise<boolean> {
+  if (!isBackendActive('supabase')) return heartbeatMdbBackupMachine(await getMachineId())
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
 
@@ -265,6 +307,10 @@ export async function requestBackup(
   orgId: string,
   userEmail: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isBackendActive('supabase')) {
+    try { await requestMdbBackup(userEmail); return { success: true } }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'MDB backup request failed.' } }
+  }
   const supabase = getSupabaseClient()
 
   // Check if there's a designated machine first
@@ -302,6 +348,9 @@ export function hasPendingBackupRequest(config: BackupConfig | null): boolean {
 
 // Mark backup as started (called by designated machine)
 export async function markBackupStarted(orgId: string): Promise<boolean> {
+  if (!isBackendActive('supabase')) {
+    try { await markMdbBackupStarted(await getMachineId()); return true } catch { return false }
+  }
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
 
@@ -326,6 +375,9 @@ export async function markBackupStarted(orgId: string): Promise<boolean> {
 
 // Mark backup as complete (called by designated machine)
 export async function markBackupComplete(orgId: string): Promise<boolean> {
+  if (!isBackendActive('supabase')) {
+    try { await markMdbBackupComplete(await getMachineId()); return true } catch { return false }
+  }
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
 

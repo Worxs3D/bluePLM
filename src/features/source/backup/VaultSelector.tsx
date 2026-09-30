@@ -1,5 +1,6 @@
 import { Folder } from 'lucide-react'
 import type { ConnectedVault } from './types'
+import { useTranslation } from '@/lib/i18n'
 
 interface VaultSelectorProps {
   connectedVaults: ConnectedVault[]
@@ -16,11 +17,12 @@ export function VaultSelector({
   selectedVaultIds,
   onVaultToggle,
 }: VaultSelectorProps) {
+  const { t } = useTranslation()
   return (
     <div className="p-2 rounded bg-plm-bg-tertiary space-y-2">
       <div className="text-xs text-plm-fg-muted flex items-center gap-2">
         <Folder className="w-4 h-4" />
-        Vaults to backup
+      {t('backup.source')}
       </div>
       {connectedVaults.length > 0 ? (
         <div className="space-y-1">

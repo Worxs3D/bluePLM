@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Shield, RefreshCw, Loader2 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useTranslation } from '@/lib/i18n'
 
 // Hooks
 import { useBackupStatus } from './hooks/useBackupStatus'
@@ -29,6 +30,7 @@ import type { BackupPanelProps, BackupStatus } from './types'
  * 2. Snapshots load in background (slow) - history section updates when ready
  */
 export function BackupPanel({ isAdmin }: BackupPanelProps) {
+  const { t } = useTranslation()
   const { organization, user, addToast, activeVaultId, connectedVaults, vaultPath } = usePDMStore()
   const currentVaultId = activeVaultId || connectedVaults[0]?.id
 
@@ -124,7 +126,7 @@ export function BackupPanel({ isAdmin }: BackupPanelProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Shield className="w-5 h-5 text-plm-accent" />
-          <h3 className="font-semibold">Backup & Restore</h3>
+          <h3 className="font-semibold">{t('backup.title')}</h3>
         </div>
         <button
           onClick={refresh}
@@ -136,8 +138,8 @@ export function BackupPanel({ isAdmin }: BackupPanelProps) {
           }`}
           title={
             isBackoffActive
-              ? `Rate limited - retry in ${backoffRemainingSeconds}s`
-              : 'Refresh from backup server'
+              ? t('backup.rateLimited', { seconds: backoffRemainingSeconds })
+              : t('backup.refresh')
           }
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />

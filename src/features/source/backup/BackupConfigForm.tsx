@@ -14,6 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { TIME_SLOTS } from './constants'
+import { useTranslation } from '@/lib/i18n'
 
 interface BackupConfigFormProps {
   showConfig: boolean
@@ -108,6 +109,7 @@ export function BackupConfigForm({
   onExport,
   onImport,
 }: BackupConfigFormProps) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3 pt-4 border-t border-plm-border">
       <button
@@ -116,9 +118,9 @@ export function BackupConfigForm({
       >
         <h4 className="text-sm font-medium flex items-center gap-2">
           <Settings className="w-4 h-4 text-plm-fg-muted" />
-          Backup Configuration
+          {t('backup.configTitle')}
           <span className="text-xs px-1.5 py-0.5 bg-plm-accent/20 text-plm-accent rounded">
-            Admin
+            {t('backup.admin')}
           </span>
         </h4>
         {showConfig ? (
@@ -132,7 +134,7 @@ export function BackupConfigForm({
         <div className="space-y-4 p-4 rounded-lg bg-plm-bg-secondary border border-plm-border">
           {/* Provider Selection */}
           <div>
-            <label className="block text-sm font-medium mb-1">Provider</label>
+            <label className="block text-sm font-medium mb-1">{t('backup.provider')}</label>
             <select
               value={provider}
               onChange={(e) => onProviderChange(e.target.value as typeof provider)}
@@ -146,7 +148,7 @@ export function BackupConfigForm({
 
           {/* Bucket */}
           <div>
-            <label className="block text-sm font-medium mb-1">Bucket Name</label>
+            <label className="block text-sm font-medium mb-1">{t('backup.bucket')}</label>
             <input
               type="text"
               value={bucket}
@@ -159,7 +161,7 @@ export function BackupConfigForm({
           {/* Endpoint (for S3-compatible) */}
           {provider === 'backblaze_b2' && (
             <div>
-              <label className="block text-sm font-medium mb-1">S3 Endpoint</label>
+            <label className="block text-sm font-medium mb-1">{t('backup.endpoint')}</label>
               <input
                 type="text"
                 value={endpoint}
@@ -167,14 +169,14 @@ export function BackupConfigForm({
                 placeholder="s3.us-west-004.backblazeb2.com"
                 className="w-full px-3 py-2 rounded bg-plm-bg-primary border border-plm-border text-sm"
               />
-              <p className="text-xs text-plm-fg-muted mt-1">Find this in your B2 bucket settings</p>
+              <p className="text-xs text-plm-fg-muted mt-1">{t('backup.endpointHint')}</p>
             </div>
           )}
 
           {/* Region (for AWS) */}
           {provider === 'aws_s3' && (
             <div>
-              <label className="block text-sm font-medium mb-1">Region</label>
+            <label className="block text-sm font-medium mb-1">{t('backup.region')}</label>
               <input
                 type="text"
                 value={region}
@@ -188,7 +190,7 @@ export function BackupConfigForm({
           {/* Access Key */}
           <div>
             <label className="block text-sm font-medium mb-1">
-              {provider === 'backblaze_b2' ? 'Application Key ID' : 'Access Key ID'}
+              {provider === 'backblaze_b2' ? t('backup.applicationKeyId') : t('backup.accessKeyId')}
             </label>
             <input
               type="text"
@@ -202,7 +204,7 @@ export function BackupConfigForm({
           {/* Secret Key */}
           <div>
             <label className="block text-sm font-medium mb-1">
-              {provider === 'backblaze_b2' ? 'Application Key' : 'Secret Access Key'}
+              {provider === 'backblaze_b2' ? t('backup.applicationKey') : t('backup.secretAccessKey')}
             </label>
             <div className="relative">
               <input
@@ -226,14 +228,14 @@ export function BackupConfigForm({
           <div>
             <label className="block text-sm font-medium mb-1 flex items-center gap-1">
               <Key className="w-3 h-3" />
-              Encryption Password
+              {t('backup.encryptionPassword')}
             </label>
             <div className="relative">
               <input
                 type={showResticPassword ? 'text' : 'password'}
                 value={resticPassword}
                 onChange={(e) => onResticPasswordChange(e.target.value)}
-                placeholder="Strong password for encrypting backups"
+                placeholder={t('backup.encryptionPassword')}
                 className="w-full px-3 py-2 pr-10 rounded bg-plm-bg-primary border border-plm-border text-sm"
               />
               <button
@@ -245,17 +247,17 @@ export function BackupConfigForm({
               </button>
             </div>
             <p className="text-xs text-plm-fg-muted mt-1">
-              This password encrypts your backups. <strong>Store it safely!</strong>
+              {t('backup.encryptionHint')}
             </p>
           </div>
 
           {/* Retention Policy */}
           <div>
-            <label className="block text-sm font-medium mb-2">Retention Policy</label>
-            <p className="text-xs text-plm-fg-muted mb-3">How long to keep backups on the server</p>
+            <label className="block text-sm font-medium mb-2">{t('backup.retention')}</label>
+            <p className="text-xs text-plm-fg-muted mb-3">{t('backup.retentionHint')}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-plm-fg-muted mb-1">Keep daily for</label>
+                <label className="block text-xs text-plm-fg-muted mb-1">{t('backup.daily')}</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -265,11 +267,11 @@ export function BackupConfigForm({
                     onChange={(e) => onRetentionDailyChange(parseInt(e.target.value) || 14)}
                     className="w-full px-3 py-2 rounded bg-plm-bg-primary border border-plm-border text-sm"
                   />
-                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">days</span>
+                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">{t('backup.days')}</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-plm-fg-muted mb-1">Keep weekly for</label>
+                <label className="block text-xs text-plm-fg-muted mb-1">{t('backup.weekly')}</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -279,11 +281,11 @@ export function BackupConfigForm({
                     onChange={(e) => onRetentionWeeklyChange(parseInt(e.target.value) || 10)}
                     className="w-full px-3 py-2 rounded bg-plm-bg-primary border border-plm-border text-sm"
                   />
-                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">weeks</span>
+                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">{t('backup.weeks')}</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-plm-fg-muted mb-1">Keep monthly for</label>
+                <label className="block text-xs text-plm-fg-muted mb-1">{t('backup.monthly')}</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -293,11 +295,11 @@ export function BackupConfigForm({
                     onChange={(e) => onRetentionMonthlyChange(parseInt(e.target.value) || 12)}
                     className="w-full px-3 py-2 rounded bg-plm-bg-primary border border-plm-border text-sm"
                   />
-                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">months</span>
+                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">{t('backup.months')}</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-plm-fg-muted mb-1">Keep yearly for</label>
+                <label className="block text-xs text-plm-fg-muted mb-1">{t('backup.yearly')}</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -307,7 +309,7 @@ export function BackupConfigForm({
                     onChange={(e) => onRetentionYearlyChange(parseInt(e.target.value) || 5)}
                     className="w-full px-3 py-2 rounded bg-plm-bg-primary border border-plm-border text-sm"
                   />
-                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">years</span>
+                  <span className="text-xs text-plm-fg-muted whitespace-nowrap">{t('backup.years')}</span>
                 </div>
               </div>
             </div>
@@ -325,12 +327,12 @@ export function BackupConfigForm({
                 onChange={(e) => onScheduleEnabledChange(e.target.checked)}
                 className="w-4 h-4 rounded border-plm-border bg-plm-bg-primary"
               />
-              <span className="text-sm font-medium">Enable scheduled backups</span>
+              <span className="text-sm font-medium">{t('backup.scheduled')}</span>
             </label>
 
             {scheduleEnabled && (
               <div className="pl-6">
-                <label className="block text-xs text-plm-fg-muted mb-1">Backup time</label>
+                <label className="block text-xs text-plm-fg-muted mb-1">{t('backup.backupTime')}</label>
                 <div className="flex items-center gap-2">
                   <select
                     value={`${scheduleHour}:${scheduleMinute}`}
@@ -385,8 +387,7 @@ export function BackupConfigForm({
               <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-blue-300">
                 <p className="mb-1">
-                  Backups use <strong>restic</strong> with deduplication, so storage usage is much
-                  lower than raw file size.
+                  {t('backup.resticInfo')}
                 </p>
                 <a
                   href="https://www.backblaze.com/b2/cloud-storage.html"
@@ -394,7 +395,7 @@ export function BackupConfigForm({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300"
                 >
-                  Backblaze B2 Pricing
+                  {t('backup.pricing')}
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -410,12 +411,12 @@ export function BackupConfigForm({
             {isSaving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
+                {t('backup.saving')}
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4" />
-                Save Configuration
+                {t('backup.save')}
               </>
             )}
           </button>
@@ -427,14 +428,14 @@ export function BackupConfigForm({
               className="flex-1 py-2 px-4 bg-plm-bg-tertiary text-plm-fg rounded font-medium hover:bg-plm-bg-primary border border-plm-border flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
-              Export Config
+              {t('backup.export')}
             </button>
             <button
               onClick={onImport}
               className="flex-1 py-2 px-4 bg-plm-bg-tertiary text-plm-fg rounded font-medium hover:bg-plm-bg-primary border border-plm-border flex items-center justify-center gap-2"
             >
               <Upload className="w-4 h-4" />
-              Import Config
+              {t('backup.import')}
             </button>
           </div>
 
@@ -443,10 +444,9 @@ export function BackupConfigForm({
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-amber-300">
-                <p className="font-medium mb-1">Export your config as disaster recovery!</p>
+                <p className="font-medium mb-1">{t('backup.configExported')}</p>
                 <p>
-                  If Supabase goes down, the exported config file is your key to access backups.
-                  Store it in a password manager or secure location.
+                  {t('backup.encryptionHint')}
                 </p>
               </div>
             </div>

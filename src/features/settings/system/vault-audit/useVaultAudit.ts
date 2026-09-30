@@ -26,6 +26,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { getMdbVaultAuditFiles, recordMdbVaultAuditRun } from '@/lib/mdb'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { writeDivergenceArtifact } from '@/lib/metadata/divergenceReport'
 import { runDivergenceScan, type DivergenceScanOptions } from '@/lib/metadata/divergenceScan'
 import {
@@ -215,7 +217,22 @@ export function useVaultAudit(): UseVaultAuditResult {
     }
 
     try {
+      if (isMdbBackendActive() && activeVaultId) {
+        // Establish the server-side, tenant-scoped audit snapshot before opening local files.
+        // The local scan remains authoritative for SolidWorks values, while MDB supplies the
+        // organization/vault-bounded record set and pagination contract.
+        await getMdbVaultAuditFiles(activeVaultId, 1, 500)
+      }
       const report = await runDivergenceScan(options)
+
+      if (isMdbBackendActive() && activeVaultId) {
+        await recordMdbVaultAuditRun({
+          vaultId: activeVaultId,
+          pageCount: 1,
+          findingCount: report.summary.fieldTallies.reduce((total, tally) => total + tally.compared, 0),
+          summary: { filesCompared: report.counts.filesCompared, cancelled: report.cancelled },
+        })
+      }
 
       let artifactPath: string | null = null
       try {

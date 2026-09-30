@@ -24,6 +24,8 @@ import { useCallback, useMemo } from 'react'
 
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { applyMdbVaultAuditRepair } from '@/lib/mdb'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import {
   buildRepairCandidates,
   summarizeCandidates,
@@ -147,7 +149,18 @@ export function useVaultAuditRepair(): UseVaultAuditRepairResult {
     startRepair()
 
     try {
-      const outcome = await applyConfigMapRepair(organization.id, request)
+      const outcome = isMdbBackendActive()
+        ? await applyMdbVaultAuditRepair({
+            vaultId: usePDMStore.getState().activeVaultId ?? '',
+            updates: request.map((file) => ({ fileId: file.fileId, metadata: file.maps })),
+          }).then((result) => ({
+            filesRequested: request.length,
+            filesUpdated: result.updated,
+            entriesRequested: selectedCandidates.length,
+            entriesAdded: result.updated > 0 ? selectedCandidates.length : 0,
+            files: [],
+          }))
+        : await applyConfigMapRepair(organization.id, request)
       // Settled against what was sent, not against what is ticked: the tick is cleared by this
       // same call, and the receipt only speaks about the files this request named.
       finishRepair({ outcome, settledIds: settledCandidateIds(selectedCandidates, outcome) })

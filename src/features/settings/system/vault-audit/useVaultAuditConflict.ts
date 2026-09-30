@@ -14,6 +14,8 @@
 import { useCallback, useMemo } from 'react'
 
 import { syncSolidWorksFileMetadata } from '@/lib/supabase'
+import { applyMdbVaultAuditRepair } from '@/lib/mdb'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { CONFIG_DESCRIPTIONS_KEY, CONFIG_TABS_KEY } from '@/lib/metadata/divergence'
 import { readConfigurationMap } from '@/lib/metadata/configurationMaps'
 import { t } from '@/lib/i18n'
@@ -150,6 +152,7 @@ export function useVaultAuditConflict(
 ): UseVaultAuditConflictResult {
   const loadedFiles = usePDMStore((state) => state.files)
   const user = usePDMStore((state) => state.user)
+  const activeVaultId = usePDMStore((state) => state.activeVaultId)
   const conflict = usePDMStore((state) => state.vaultAuditConflict)
   const setSelection = usePDMStore((state) => state.setVaultAuditConflictSelection)
   const startConflict = usePDMStore((state) => state.startVaultAuditConflict)
@@ -222,7 +225,14 @@ export function useVaultAuditConflict(
 
     for (const group of groups) {
       try {
-        const result = await syncSolidWorksFileMetadata(group.fileId, user.id, group.metadata)
+        const result = isMdbBackendActive()
+          ? activeVaultId
+            ? await applyMdbVaultAuditRepair({
+                vaultId: activeVaultId,
+                updates: [{ fileId: group.fileId, metadata: group.metadata as Record<string, unknown> }],
+              }).then((outcome) => ({ success: outcome.updated > 0, error: undefined as string | undefined }))
+            : { success: false, error: t('vaultAudit.conflict.updateFailed') }
+          : await syncSolidWorksFileMetadata(group.fileId, user.id, group.metadata)
         if (result.success) {
           settled.push(...group.findingIds)
         } else {
@@ -255,7 +265,7 @@ export function useVaultAuditConflict(
         failed: errors.length,
       })
     }
-  }, [addToast, finishConflict, findings, loadedFiles, selectedFindingIds, startConflict, user?.id])
+  }, [activeVaultId, addToast, finishConflict, findings, loadedFiles, selectedFindingIds, startConflict, user?.id])
 
   return {
     selectedFindingIds,
