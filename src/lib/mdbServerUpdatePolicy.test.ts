@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { mdbServerUpdateCheckKey, shouldNotifyMdbServerUpdate } from './mdbServerUpdatePolicy'
+import { describe, expect, it, vi } from 'vitest'
+import { finalizeMdbServerUpdateResult, mdbServerUpdateCheckKey, shouldNotifyMdbServerUpdate } from './mdbServerUpdatePolicy'
 
 describe('MDB startup update policy', () => {
   it('deduplicates by organization and server', () => {
@@ -13,5 +13,12 @@ describe('MDB startup update policy', () => {
     expect(shouldNotifyMdbServerUpdate('same-version-different', 'admin')).toBe(true)
     expect(shouldNotifyMdbServerUpdate('current', 'admin')).toBe(false)
     expect(shouldNotifyMdbServerUpdate('unknown', 'admin')).toBe(false)
+  })
+
+  it('preserves a successful server update when the capability refresh fails', async () => {
+    const refresh = vi.fn().mockRejectedValue(new Error('health unavailable'))
+
+    await expect(finalizeMdbServerUpdateResult({ success: true }, refresh)).resolves.toBe(true)
+    expect(refresh).toHaveBeenCalledOnce()
   })
 })

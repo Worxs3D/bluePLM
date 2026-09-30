@@ -3,6 +3,7 @@ import { RefreshCw, Server, ShieldCheck, Upload, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { loadMdbConfig, mdbAccessToken, refreshMdbServerCapabilities } from '@/lib/mdb'
+import { finalizeMdbServerUpdateResult } from '@/lib/mdbServerUpdatePolicy'
 import { usePDMStore } from '@/stores/pdmStore'
 
 type MdbServerStatus = 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
@@ -112,8 +113,7 @@ export function MdbServerSettings() {
         locale: language,
       })
       setStatus(result.status)
-      if (result.success) {
-        await refreshMdbServerCapabilities()
+      if (await finalizeMdbServerUpdateResult(result, refreshMdbServerCapabilities)) {
         addToast('success', t('settingsPages.mdbServer.resultSuccess'))
       }
       else if (result.errorCode === 'NOT_AUTHORIZED') addToast('error', t('settingsPages.mdbServer.unauthorized'))
