@@ -121,7 +121,7 @@ export function MdbServerSettings() {
 
   const statusLabel = t(statusTranslation[status])
   const credentials = inspection?.credentials
-  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current' || status === 'unknown'
+  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current'
   const digest = useMemo(() => (value: string | null | undefined) => value ? `${value.slice(0, 12)}…` : '—', [])
 
   if (!isMdbBackendActive() || !canManage) return null
