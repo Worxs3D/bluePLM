@@ -10,8 +10,12 @@ let cached: StoredKey | null = null
 let cachedAuth: StoredMdbAuth | null = null
 
 function assertTrustedSender(sender: WebContents): void {
-  const url = sender.getURL()
-  if (!url || (!url.startsWith('file://') && !url.startsWith('app://') && !url.startsWith('http://localhost'))) {
+  const rawUrl = sender.getURL()
+  let url: URL
+  try { url = new URL(rawUrl) } catch { throw new Error('Untrusted IPC sender') }
+  const isTrusted = url.protocol === 'file:' || url.protocol === 'app:' ||
+    (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname))
+  if (!isTrusted) {
     throw new Error('Untrusted IPC sender')
   }
 }
@@ -122,6 +126,7 @@ export function registerBackupDeviceHandlers(): void {
 export function unregisterBackupDeviceHandlers(): void {
   for (const channel of IPC_CHANNELS) ipcMain.removeHandler(channel)
   cached = null
+  cachedAuth = null
 }
 
 export function backupDeviceFingerprint(): string { return createHash('sha256').update(getBackupDevicePublicKey()).digest('hex') }

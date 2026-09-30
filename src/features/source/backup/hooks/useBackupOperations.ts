@@ -110,7 +110,7 @@ export function useBackupOperations(
       setBackupProgress({
         phase: 'Backing up',
         percent: 50,
-        message: 'Backup in progress (resumed view)...',
+        message: t('backup.progressResumed'),
       })
     }
     // Also check the main process in case the module flag was lost (e.g., hot reload)
@@ -118,10 +118,10 @@ export function useBackupOperations(
       if (result?.running) {
         setIsRunningBackup(true)
         setBackupRunningLocally(true)
-        setBackupProgress({ phase: 'Backing up', percent: 50, message: 'Backup in progress...' })
+        setBackupProgress({ phase: t('backup.backingUp'), percent: 50, message: t('backup.inProgress') })
       }
     })
-  }, [])
+  }, [t])
 
   // Internal function to actually run the backup (used by designated machine)
   const handleRunBackupInternal = useCallback(
@@ -135,13 +135,13 @@ export function useBackupOperations(
       })
 
       if (vaultsToBackup.length === 0) {
-        addToast('error', 'No vaults selected for backup')
+        addToast('error', t('backup.noVaultsSelected'))
         return
       }
 
       setIsRunningBackup(true)
       setBackupRunningLocally(true)
-      setBackupProgress({ phase: 'Starting', percent: 0, message: 'Initializing backup...' })
+      setBackupProgress({ phase: t('backup.starting'), percent: 0, message: t('backup.initializing') })
 
       // Mark backup as started in database
       await markBackupStarted(orgId || '')
@@ -157,9 +157,9 @@ export function useBackupOperations(
         for (let i = 0; i < vaultsToBackup.length; i++) {
           const vault = vaultsToBackup[i]
           setBackupProgress({
-            phase: `Vault ${i + 1}/${vaultsToBackup.length}`,
+            phase: t('backup.vaultProgress', { current: i + 1, total: vaultsToBackup.length }),
             percent: Math.round((i / vaultsToBackup.length) * 100),
-            message: `Backing up ${vault.name}...`,
+            message: t('backup.backingUpVault', { name: vault.name }),
           })
 
           try {
@@ -177,7 +177,7 @@ export function useBackupOperations(
 
             if (result.success) {
               successCount++
-              addToast('success', `Backed up ${vault.name}: ${result.snapshotId?.substring(0, 8)}`)
+              addToast('success', t('backup.vaultBackedUp', { name: vault.name, snapshot: result.snapshotId?.substring(0, 8) ?? '' }))
             } else {
               failCount++
               addToast('error', t('backup.saveFailed'))
@@ -187,7 +187,7 @@ export function useBackupOperations(
             log.error('[Backup]', `Backup failed for ${vault.name}`, { error: error })
             addToast(
               'error',
-              `Failed to backup ${vault.name}: ${error instanceof Error ? error.message : String(error)}`,
+              t('backup.vaultBackupFailed', { name: vault.name, error: error instanceof Error ? error.message : String(error) }),
             )
           }
         }
@@ -201,7 +201,7 @@ export function useBackupOperations(
         await loadStatus()
 
         if (vaultsToBackup.length > 1) {
-          addToast('info', `Backup complete: ${successCount} succeeded, ${failCount} failed`)
+          addToast('info', t('backup.summary', { succeeded: successCount, failed: failCount }))
         }
       }
     },
@@ -243,13 +243,13 @@ export function useBackupOperations(
   // Handle backup button click - either run locally or request remotely
   const handleRunBackup = useCallback(async () => {
     if (!config || !orgId) {
-      addToast('error', 'Backup not configured')
+      addToast('error', t('backup.notConfigured'))
       return
     }
 
     // Check if there's a designated machine
     if (!config.designated_machine_id) {
-      addToast('error', 'No backup machine designated. Set this machine as backup source first.')
+      addToast('error', t('backup.noDesignatedMachine'))
       return
     }
 
@@ -265,7 +265,7 @@ export function useBackupOperations(
 
     // Otherwise, request backup from designated machine
     if (!isDesignatedOnline) {
-      addToast('error', 'Backup machine is offline. Cannot trigger backup.')
+      addToast('error', t('backup.machineOffline'))
       return
     }
 
@@ -274,14 +274,14 @@ export function useBackupOperations(
       if (result.success) {
         addToast(
           'success',
-          'Backup requested! The designated machine will start the backup shortly.',
+          t('backup.requestAccepted'),
         )
         await loadStatus()
       } else {
         addToast('error', t('backup.saveFailed'))
       }
     } catch (_err) {
-      addToast('error', 'Failed to request backup')
+      addToast('error', t('backup.requestFailed'))
     }
   }, [
     config,
@@ -298,7 +298,7 @@ export function useBackupOperations(
   // Restore from snapshot
   const handleRestore = useCallback(async () => {
     if (!selectedSnapshot || !config || !vaultPath) {
-      addToast('error', 'No snapshot selected or vault not connected')
+      addToast('error', t('backup.noSnapshotOrVault'))
       return
     }
 
@@ -314,13 +314,13 @@ export function useBackupOperations(
     })
 
     try {
-      addToast('info', `Restoring snapshot ${selectedSnapshot.substring(0, 8)}...`, 0)
+      addToast('info', t('backup.restoringSnapshot', { snapshot: selectedSnapshot.substring(0, 8) }), 0)
 
       // Emit start log
       emitRendererLog({
         level: 'info',
         phase: 'restore',
-        message: `Starting restore of snapshot ${selectedSnapshot.substring(0, 8)} to ${vaultPath}`,
+        message: t('backup.restoreStarted', { snapshot: selectedSnapshot.substring(0, 8), path: vaultPath }),
       })
 
       const result = await restoreFromSnapshot(config, selectedSnapshot, vaultPath)
@@ -329,17 +329,17 @@ export function useBackupOperations(
         emitRendererLog({
           level: 'success',
           phase: 'restore',
-          message: 'File restore completed successfully',
+          message: t('backup.fileRestoreCompleted'),
         })
 
         // If backup contains metadata, automatically import it
         if (result.hasMetadata) {
-          addToast('info', 'Files restored. Importing database metadata...', 0)
+          addToast('info', t('backup.importingMetadata'), 0)
 
           emitRendererLog({
             level: 'info',
             phase: 'metadata_import',
-            message: 'Starting database metadata import...',
+            message: t('backup.metadataImportStarting'),
           })
 
           try {
@@ -347,7 +347,7 @@ export function useBackupOperations(
             emitRendererLog({
               level: 'info',
               phase: 'metadata_import',
-              message: 'Reading metadata file from restored backup...',
+              message: t('backup.readingMetadata'),
             })
 
             const metadataResult = await window.electronAPI?.readBackupMetadata(vaultPath)
@@ -370,7 +370,7 @@ export function useBackupOperations(
               emitRendererLog({
                 level: 'info',
                 phase: 'metadata_import',
-                message: `Found ${fileCount} files and ${versionCount} versions to import`,
+                message: t('backup.metadataFound', { files: fileCount, versions: versionCount }),
               })
 
               // Import the metadata into the database
@@ -388,7 +388,7 @@ export function useBackupOperations(
                 emitRendererLog({
                   level: 'success',
                   phase: 'complete',
-                  message: `Metadata import complete: ${filesRestored} files, ${versionsRestored} versions restored, ${skipped} skipped`,
+                  message: t('backup.metadataImportComplete', { files: filesRestored, versions: versionsRestored, skipped }),
                   metadata: {
                     filesProcessed: filesRestored + versionsRestored,
                     operation: 'metadata_import',
@@ -397,36 +397,36 @@ export function useBackupOperations(
 
                 addToast(
                   'success',
-                  `Restore complete! ${filesRestored} files, ${versionsRestored} versions restored${skipped > 0 ? ` (${skipped} skipped)` : ''}`,
+                  t('backup.restoreComplete', { files: filesRestored, versions: versionsRestored, skipped }),
                 )
               } else {
                 emitRendererLog({
                   level: 'error',
                   phase: 'metadata_import',
-                  message: `Metadata import failed: ${importResult.error || 'Unknown error'}`,
+                  message: t('backup.metadataImportFailed', { error: importResult.error || t('backup.unknownError') }),
                   metadata: { error: importResult.error },
                 })
 
                 // Metadata import failed, but files were restored
-                addToast('success', 'Files restored successfully!')
+                addToast('success', t('backup.filesRestored'))
                 addToast(
                   'error',
-                  `Failed to import metadata: ${importResult.error || 'Unknown error'}`,
+                  t('backup.metadataImportFailed', { error: importResult.error || t('backup.unknownError') }),
                 )
               }
             } else {
               emitRendererLog({
                 level: 'error',
                 phase: 'metadata_import',
-                message: `Failed to read metadata file: ${metadataResult?.error || 'Unknown error'}`,
+                message: t('backup.metadataReadFailed', { error: metadataResult?.error || t('backup.unknownError') }),
                 metadata: { error: metadataResult?.error },
               })
 
               // Couldn't read metadata file, but files were restored
-              addToast('success', 'Files restored successfully!')
+              addToast('success', t('backup.filesRestored'))
               addToast(
                 'error',
-                `Failed to read metadata: ${metadataResult?.error || 'Unknown error'}`,
+                t('backup.metadataReadFailed', { error: metadataResult?.error || t('backup.unknownError') }),
               )
             }
           } catch (metadataErr) {
@@ -436,21 +436,21 @@ export function useBackupOperations(
             emitRendererLog({
               level: 'error',
               phase: 'metadata_import',
-              message: `Metadata import exception: ${errorMsg}`,
+              message: t('backup.metadataImportFailed', { error: errorMsg }),
               metadata: { error: errorMsg },
             })
 
             // Metadata import threw an error, but files were restored
-            addToast('success', 'Files restored successfully!')
-            addToast('error', `Metadata import error: ${errorMsg}`)
+            addToast('success', t('backup.filesRestored'))
+            addToast('error', t('backup.metadataImportFailed', { error: errorMsg }))
           }
         } else {
           emitRendererLog({
             level: 'success',
             phase: 'complete',
-            message: 'Restore completed (no metadata to import)',
+            message: t('backup.restoreCompletedNoMetadata'),
           })
-          addToast('success', 'Files restored successfully!')
+          addToast('success', t('backup.filesRestored'))
         }
 
         setSelectedSnapshot(null)
@@ -458,10 +458,10 @@ export function useBackupOperations(
         emitRendererLog({
           level: 'error',
           phase: 'error',
-          message: `Restore failed: ${result.error || 'Unknown error'}`,
+          message: t('backup.restoreFailed', { error: result.error || t('backup.unknownError') }),
           metadata: { error: result.error },
         })
-        addToast('error', result.error || 'Restore failed')
+        addToast('error', result.error || t('backup.restoreFailedGeneric'))
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -470,11 +470,11 @@ export function useBackupOperations(
       emitRendererLog({
         level: 'error',
         phase: 'error',
-        message: `Restore exception: ${errorMsg}`,
+        message: t('backup.restoreFailed', { error: errorMsg }),
         metadata: { error: errorMsg },
       })
 
-      addToast('error', 'Restore failed: ' + errorMsg)
+      addToast('error', t('backup.restoreFailed', { error: errorMsg }))
     } finally {
       cleanupProgress?.()
       setIsRestoring(false)
@@ -496,13 +496,13 @@ export function useBackupOperations(
       const result = await deleteSnapshot(config, snapshotId)
 
       if (result.success) {
-        addToast('success', `Snapshot ${snapshotId.substring(0, 8)} deleted`)
+        addToast('success', t('backup.snapshotDeleted', { snapshot: snapshotId.substring(0, 8) }))
       } else {
       addToast('error', t('backup.saveFailed'))
       }
     } catch (error) {
       log.error('[Backup]', 'Delete failed', { error: error })
-      addToast('error', 'Failed to delete snapshot')
+      addToast('error', t('backup.deleteFailed'))
     } finally {
       // Remove from the set
       setDeletingSnapshotIds((prev) => {
@@ -526,7 +526,7 @@ export function useBackupOperations(
 
     const result = await designateThisMachine(orgId, userEmail)
     if (result.success) {
-      addToast('success', 'This machine is now the backup source')
+      addToast('success', t('backup.machineDesignated'))
       await loadStatus()
     } else {
       addToast('error', t('backup.saveFailed'))
@@ -539,7 +539,7 @@ export function useBackupOperations(
 
     const result = await clearDesignatedMachine(orgId)
     if (result.success) {
-      addToast('success', 'Backup source cleared')
+      addToast('success', t('backup.designationCleared'))
       await loadStatus()
     } else {
       addToast('error', t('backup.saveFailed'))
