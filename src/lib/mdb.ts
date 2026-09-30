@@ -182,6 +182,15 @@ export interface MdbWorkflowTemplate {
 
 export interface MdbWorkflowState { id: string; workflow_id: string; name: string; [key: string]: unknown }
 export interface MdbWorkflowTransition { id: string; workflow_id: string; from_state_id: string; to_state_id: string; [key: string]: unknown }
+export interface MdbAvailableTransition {
+  transition_id: string
+  transition_name: string | null
+  to_state_id: string
+  to_state_name: string
+  to_state_color: string
+  has_gates: boolean
+  user_can_transition: boolean
+}
 export interface MdbWorkflowGate { id: string; transition_id: string; name: string; [key: string]: unknown }
 export interface MdbTransitionResult {
   success: boolean
@@ -1192,8 +1201,8 @@ export async function assignMdbFileWorkflow(fileId: string, workflowId: string, 
   await request<{ success: boolean }>(`/files/${encodeURIComponent(fileId)}/workflow`, { method: 'PUT', body: JSON.stringify({ workflow_id: workflowId, current_state_id: stateId }) })
 }
 
-export async function getMdbAvailableTransitions(fileId: string): Promise<Array<Record<string, unknown>>> {
-  return (await request<{ transitions: Array<Record<string, unknown>> }>(`/files/${encodeURIComponent(fileId)}/available-transitions`)).transitions
+export async function getMdbAvailableTransitions(fileId: string): Promise<MdbAvailableTransition[]> {
+  return (await request<{ transitions: MdbAvailableTransition[] }>(`/files/${encodeURIComponent(fileId)}/available-transitions`)).transitions
 }
 
 export async function executeMdbWorkflowTransition(fileId: string, transitionId: string, comment?: string): Promise<MdbTransitionResult> {
