@@ -62,6 +62,8 @@ export const zhTW: TranslationDict = {
     sessionSecret: '工作階段密鑰',
     bootstrapToken: '啟動權杖',
     maintenanceToken: '維護權杖',
+    saveDeploymentCredentials: '安全儲存 FTPS 與維護憑據以供未來更新 MDB',
+    saveDeploymentCredentialsHelp: '可選且預設關閉。拒絕後可在 MDB 伺服器設定中儲存。',
     deploying: '正在部署 MDB 伺服器…',
     deploy: '部署並啟動引導設定',
     testingFtp: '正在測試 FTPS 連線…',

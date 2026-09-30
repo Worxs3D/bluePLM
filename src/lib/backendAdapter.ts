@@ -29,6 +29,7 @@ export interface BackendRoutes<TMdb, TSupabase> {
 }
 
 const allBackends = new Set<BackendKind>(['mdb', 'supabase'])
+const mdbOnly = new Set<BackendKind>(['mdb'])
 const supabaseOnly = new Set<BackendKind>(['supabase'])
 
 /**
@@ -67,7 +68,7 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   'dev-tools': allBackends,
   about: allBackends,
   'delete-account': allBackends,
-  'mdb-server': allBackends,
+  'mdb-server': mdbOnly,
   'extension-store': supabaseOnly,
 }
 

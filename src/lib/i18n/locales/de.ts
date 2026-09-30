@@ -107,6 +107,8 @@ export const de: TranslationDict = {
     sessionSecret: 'Session-Secret',
     bootstrapToken: 'Bootstrap-Token',
     maintenanceToken: 'Maintenance-Token',
+    saveDeploymentCredentials: 'FTPS- und Wartungszugangsdaten sicher fuer künftige MDB-Updates speichern',
+    saveDeploymentCredentialsHelp: 'Optional und standardmaessig deaktiviert. Spaeter unter MDB-Server speicherbar.',
     deploying: 'MDB-Server wird bereitgestellt…',
     deploy: 'Bereitstellen und geführte Einrichtung starten',
     testingFtp: 'FTPS-Verbindung wird getestet…',

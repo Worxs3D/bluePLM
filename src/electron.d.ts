@@ -423,26 +423,29 @@ declare global {
         ftpPassword: string
       }) => Promise<{ success: boolean; error?: string }>
       inspectMdbServerUpdate: (serverUrl: string) => Promise<{
-        status: 'current' | 'update-available' | 'unknown'
-        packaged: { version: 1; digest: string; fileCount: number }
-        deployed: { bundleVersion: number | null; bundleDigest: string | null; bundleFileCount: number | null } | null
-        credentials: { profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null; hasCredentials: boolean; encryptionAvailable: boolean }
+        status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
+        packaged: { version: 1; releaseVersion: string; digest: string; fileCount: number }
+        deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
+        credentials: { profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }
       }>
-      applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; confirmed: boolean }) => Promise<{
+      applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => Promise<{
         success: boolean
-        status: 'current' | 'update-available' | 'unknown' | 'updating' | 'rollback' | 'failure'
-        errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'UNAVAILABLE'
+        status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
+        errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'SERVER_NEWER' | 'VERSION_CONFLICT' | 'ROLLBACK_FAILED' | 'CREDENTIAL_BINDING_MISMATCH' | 'INVALID_PROFILE' | 'UNAVAILABLE'
       }>
       getMdbServerCredentialState: () => Promise<{
-        profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null
+        profile: null
         hasCredentials: boolean
         encryptionAvailable: boolean
+        boundServerUrl: string | null
+        boundOrganizationId: string | null
       }>
       saveMdbServerCredentials: (
         profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string },
         secrets: { ftpPassword: string; maintenanceToken: string },
-      ) => Promise<{ profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null; hasCredentials: boolean; encryptionAvailable: boolean }>
-      clearMdbServerCredentials: () => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean }>
+        binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } },
+      ) => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }>
+      clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }>
 
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>

@@ -5,18 +5,20 @@ import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { loadMdbConfig, mdbAccessToken } from '@/lib/mdb'
 import { usePDMStore } from '@/stores/pdmStore'
 
-type MdbServerStatus = 'current' | 'update-available' | 'unknown' | 'updating' | 'rollback' | 'failure'
+type MdbServerStatus = 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
 type Profile = { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string }
 type Inspection = {
-  status: 'current' | 'update-available' | 'unknown'
-  packaged: { version: number; digest: string; fileCount: number }
-  deployed: { bundleVersion: number | null; bundleDigest: string | null; bundleFileCount: number | null } | null
-  credentials: { profile: Profile | null; hasCredentials: boolean; encryptionAvailable: boolean }
+  status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
+  packaged: { version: number; releaseVersion: string; digest: string; fileCount: number }
+  deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
+  credentials: { profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }
 }
 
 const statusTranslation: Record<MdbServerStatus, string> = {
   current: 'settingsPages.mdbServer.statusCurrent',
   'update-available': 'settingsPages.mdbServer.statusUpdateAvailable',
+  'server-newer': 'settingsPages.mdbServer.statusServerNewer',
+  'same-version-different': 'settingsPages.mdbServer.statusSameVersionDifferent',
   unknown: 'settingsPages.mdbServer.statusUnknown',
   updating: 'settingsPages.mdbServer.statusUpdating',
   rollback: 'settingsPages.mdbServer.statusRollback',
@@ -50,9 +52,8 @@ export function MdbServerSettings() {
     void Promise.all([
       window.electronAPI.getMdbServerCredentialState(),
       window.electronAPI.inspectMdbServerUpdate(serverUrl),
-    ]).then(([credentials, nextInspection]) => {
+    ]).then(([, nextInspection]) => {
       if (cancelled) return
-      if (credentials.profile) setProfile(credentials.profile)
       setInspection(nextInspection)
       setStatus(nextInspection.status)
     }).catch(() => {
@@ -65,10 +66,7 @@ export function MdbServerSettings() {
     if (!window.electronAPI?.saveMdbServerCredentials) return
     setBusy(true)
     try {
-      const next = await window.electronAPI.saveMdbServerCredentials(profile, {
-        ftpPassword,
-        maintenanceToken,
-      })
+      const next = await window.electronAPI.saveMdbServerCredentials(profile, { ftpPassword, maintenanceToken }, { serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', confirmation: { message: t('settingsPages.mdbServer.confirmReplace'), confirmLabel: t('settingsPages.mdbServer.saveCredentials'), cancelLabel: t('settingsPages.mdbServer.clearCredentials') } })
       setInspection((current) => current ? { ...current, credentials: next } : current)
       setFtpPassword('')
       setMaintenanceToken('')
@@ -84,7 +82,7 @@ export function MdbServerSettings() {
     if (!window.electronAPI?.clearMdbServerCredentials) return
     setBusy(true)
     try {
-      const next = await window.electronAPI.clearMdbServerCredentials()
+      const next = await window.electronAPI.clearMdbServerCredentials({ serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', confirmation: { message: t('settingsPages.mdbServer.confirmClear'), confirmLabel: t('settingsPages.mdbServer.clearCredentials'), cancelLabel: t('settingsPages.mdbServer.saveCredentials') } })
       setInspection((current) => current ? { ...current, credentials: next } : current)
     } finally {
       setBusy(false)
@@ -93,7 +91,6 @@ export function MdbServerSettings() {
 
   const applyUpdate = async () => {
     if (!window.electronAPI?.applyMdbServerUpdate || !organization?.id) return
-    if (!window.confirm(t('settingsPages.mdbServer.confirmUpdate'))) return
     setBusy(true)
     setStatus('updating')
     try {
@@ -101,7 +98,7 @@ export function MdbServerSettings() {
         serverUrl,
         sessionToken: mdbAccessToken() ?? '',
         organizationId: organization.id,
-        confirmed: true,
+        confirmation: { message: t('settingsPages.mdbServer.confirmUpdate'), confirmLabel: t('settingsPages.mdbServer.update'), cancelLabel: t('settingsPages.mdbServer.clearCredentials') },
       })
       setStatus(result.status)
       if (result.success) addToast('success', t('settingsPages.mdbServer.resultSuccess'))
@@ -109,6 +106,9 @@ export function MdbServerSettings() {
       else if (result.errorCode === 'MAINTENANCE_TOKEN_REJECTED') addToast('error', t('settingsPages.mdbServer.invalidMaintenanceToken'))
       else if (result.errorCode === 'CREDENTIALS_UNAVAILABLE') addToast('error', t('settingsPages.mdbServer.missingCredentials'))
       else if (result.errorCode === 'HEALTH_MISMATCH') addToast('error', t('settingsPages.mdbServer.healthMismatch'))
+      else if (result.errorCode === 'SERVER_NEWER') addToast('error', t('settingsPages.mdbServer.serverNewer'))
+      else if (result.errorCode === 'VERSION_CONFLICT') addToast('error', t('settingsPages.mdbServer.versionConflict'))
+      else if (result.errorCode === 'ROLLBACK_FAILED') addToast('error', t('settingsPages.mdbServer.rollbackFailure'))
       else addToast('error', t('settingsPages.mdbServer.genericFailure'))
       await recheck()
     } catch {
@@ -121,8 +121,8 @@ export function MdbServerSettings() {
 
   const statusLabel = t(statusTranslation[status])
   const credentials = inspection?.credentials
-  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current'
-  const digest = useMemo(() => (value: string | null | undefined) => value ? `${value.slice(0, 12)}…` : '—', [])
+  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current' || status === 'server-newer' || status === 'same-version-different'
+  const digest = useMemo(() => (value: string | null | undefined) => value ? t('settingsPages.mdbServer.digestPreview', { value: value.slice(0, 12) }) : t('settingsPages.mdbServer.notAvailable'), [t])
 
   if (!isMdbBackendActive() || !canManage) return null
 
@@ -143,10 +143,11 @@ export function MdbServerSettings() {
         <div className="grid gap-2 text-xs text-plm-fg-muted sm:grid-cols-2">
           <span>{t('settingsPages.mdbServer.packagedDigest')}: {digest(inspection?.packaged.digest)}</span>
           <span>{t('settingsPages.mdbServer.deployedDigest')}: {digest(inspection?.deployed?.bundleDigest)}</span>
-          <span>{t('settingsPages.mdbServer.version')}: {inspection?.deployed?.bundleVersion ?? '—'} / {inspection?.packaged.version ?? '—'}</span>
-          <span>{t('settingsPages.mdbServer.fileCount')}: {inspection?.deployed?.bundleFileCount ?? '—'} / {inspection?.packaged.fileCount ?? '—'}</span>
+          <span>{t('settingsPages.mdbServer.version')}: {inspection?.deployed?.bundleReleaseVersion ?? t('settingsPages.mdbServer.notAvailable')} / {inspection?.packaged.releaseVersion ?? t('settingsPages.mdbServer.notAvailable')}</span>
+          <span>{t('settingsPages.mdbServer.fileCount')}: {inspection?.deployed?.bundleFileCount ?? t('settingsPages.mdbServer.notAvailable')} / {inspection?.packaged.fileCount ?? t('settingsPages.mdbServer.notAvailable')}</span>
         </div>
         <p className="text-xs text-plm-fg-muted">{t('settingsPages.mdbServer.maintenanceNote')}</p>
+        {status === 'unknown' && <p className="text-xs text-plm-fg-muted">{t('settingsPages.mdbServer.adoptionNote')}</p>}
         <button type="button" onClick={() => void applyUpdate()} disabled={updateDisabled} className="flex items-center gap-2 rounded bg-plm-accent px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50">
           <Upload size={14} />{t('settingsPages.mdbServer.update')}
         </button>

@@ -62,6 +62,8 @@ export const zhCN: TranslationDict = {
     sessionSecret: '会话密钥',
     bootstrapToken: '引导令牌',
     maintenanceToken: '维护令牌',
+    saveDeploymentCredentials: '安全保存 FTPS 和维护凭据以便将来更新 MDB',
+    saveDeploymentCredentialsHelp: '可选且默认关闭。拒绝后可在 MDB 服务器设置中保存。',
     deploying: '正在部署 MDB 服务器…',
     deploy: '部署并启动引导设置',
     testingFtp: '正在测试 FTPS 连接…',

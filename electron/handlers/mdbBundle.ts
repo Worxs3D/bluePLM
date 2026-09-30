@@ -7,6 +7,7 @@ export const MDB_BUNDLE_MANIFEST_FILE = 'bundle-manifest.json'
 
 export interface MdbBundleManifest {
   version: 1
+  releaseVersion: string
   digest: string
   fileCount: number
 }
@@ -38,7 +39,7 @@ async function collectFiles(root: string): Promise<string[]> {
   return files.flat()
 }
 
-export async function createMdbBundleManifest(bundleRoot: string): Promise<MdbBundleManifest> {
+export async function createMdbBundleManifest(bundleRoot: string, releaseVersion = '0.0.0'): Promise<MdbBundleManifest> {
   const entries: MdbBundleEntry[] = []
   for (const folder of MDB_BUNDLE_ROOTS) {
     const folderRoot = path.join(bundleRoot, folder)
@@ -53,6 +54,7 @@ export async function createMdbBundleManifest(bundleRoot: string): Promise<MdbBu
   }
   return {
     version: 1,
+    releaseVersion,
     digest: computeMdbBundleDigest(entries),
     fileCount: entries.length,
   }

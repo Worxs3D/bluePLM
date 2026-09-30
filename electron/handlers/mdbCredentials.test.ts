@@ -4,12 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 
 let root = ''
+const { encryptSpy } = vi.hoisted(() => ({ encryptSpy: vi.fn((value: string) => Buffer.from(value, 'utf8')) }))
 ;(globalThis as { __mdbCredentialsRoot?: string }).__mdbCredentialsRoot = ''
 vi.mock('electron', () => ({
   app: { getPath: () => (globalThis as { __mdbCredentialsRoot?: string }).__mdbCredentialsRoot ?? '' },
   safeStorage: {
     isEncryptionAvailable: () => true,
-    encryptString: (value: string) => Buffer.from(value, 'utf8'),
+    encryptString: encryptSpy,
     decryptString: (value: Buffer) => value.toString('utf8'),
   },
 }))
@@ -31,10 +32,14 @@ describe('MDB deployment credential storage', () => {
     await saveMdbServerCredentials(
       { ftpUrl: 'ftps://example.invalid', ftpSecurity: 'explicit', ftpRemotePath: '/srv/blueplm', ftpUsername: 'deploy' },
       { ftpPassword: 'password-value', maintenanceToken: 'maintenance-value' },
+      { serverUrl: 'https://example.invalid', organizationId: 'org-1' },
     )
     const files = storedCredentialFilePathsForTests()
     const rawSecretFile = await fs.readFile(files.secrets, 'utf8')
     const rawProfile = await fs.readFile(files.profile, 'utf8')
+    expect(encryptSpy).toHaveBeenCalled()
+    expect(rawSecretFile).not.toContain('ftps://example.invalid')
+    expect(rawSecretFile).not.toContain('deploy')
     expect(rawSecretFile).not.toContain('password-value')
     expect(rawSecretFile).not.toContain('maintenance-value')
     expect(rawProfile).not.toContain('password-value')

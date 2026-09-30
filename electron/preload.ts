@@ -365,7 +365,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     serverUrl: string
     sessionToken: string
     organizationId: string
-    confirmed: boolean
+    confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
   }) => ipcRenderer.invoke('mdb-server:apply-update', request),
   getMdbServerCredentialState: () => ipcRenderer.invoke('mdb-server:get-credentials'),
   saveMdbServerCredentials: (profile: {
@@ -373,9 +373,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ftpSecurity: 'explicit' | 'implicit'
     ftpRemotePath: string
     ftpUsername: string
-  }, secrets: { ftpPassword: string; maintenanceToken: string }) =>
-    ipcRenderer.invoke('mdb-server:save-credentials', profile, secrets),
-  clearMdbServerCredentials: () => ipcRenderer.invoke('mdb-server:clear-credentials'),
+  }, secrets: { ftpPassword: string; maintenanceToken: string }, binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) =>
+    ipcRenderer.invoke('mdb-server:save-credentials', profile, secrets, binding),
+  clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => ipcRenderer.invoke('mdb-server:clear-credentials', binding),
 
   // File system operations
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),

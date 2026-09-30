@@ -455,7 +455,7 @@ async function prepareInstaller(request: MdbProvisionRequest): Promise<{
         ftpPassword,
       )
     }
-    const manifest = await createMdbBundleManifest(root)
+    const manifest = await createMdbBundleManifest(root, app.getVersion())
     await fs.writeFile(localManifestPath, serializeMdbBundleManifest(manifest), { mode: 0o600 })
     await upload(
       ftp,
@@ -552,6 +552,14 @@ export interface RemoteDeploymentActivation {
   promoted: string[]
 }
 
+export class RemoteRollbackError extends Error {
+  readonly preserveEvidence = true
+  constructor(message: string, readonly cause?: unknown) {
+    super(message)
+    this.name = 'RemoteRollbackError'
+  }
+}
+
 export async function activateRemoteDeployment(
   client: DeploymentClient,
   targetRoot: string,
@@ -584,16 +592,14 @@ export async function activateRemoteDeployment(
       promoted.push(component)
     }
   } catch (error) {
+    const restoreFailures: unknown[] = []
     for (const component of [...promoted].reverse()) {
-      await client
-        .rename(remoteJoin(targetRoot, component), remoteJoin(stageRoot, component))
-        .catch(() => undefined)
+      try { await client.rename(remoteJoin(targetRoot, component), remoteJoin(stageRoot, component)) } catch (restoreError) { restoreFailures.push(restoreError) }
     }
     for (const component of [...existing].reverse()) {
-      await client
-        .rename(remoteJoin(backupRoot, component), remoteJoin(targetRoot, component))
-        .catch(() => undefined)
+      try { await client.rename(remoteJoin(backupRoot, component), remoteJoin(targetRoot, component)) } catch (restoreError) { restoreFailures.push(restoreError) }
     }
+    if (restoreFailures.length > 0) throw new RemoteRollbackError('Remote activation rollback failed; backup evidence was preserved.', restoreFailures[0])
     throw error
   }
   return { targetRoot, stageRoot, backupRoot, existing, promoted }
@@ -612,17 +618,15 @@ export async function rollbackRemoteDeployment(
   client: DeploymentClient,
   activation: RemoteDeploymentActivation,
 ): Promise<void> {
+  const failures: unknown[] = []
   for (const component of [...activation.promoted].reverse()) {
-    await client
-      .rename(remoteJoin(activation.targetRoot, component), remoteJoin(activation.stageRoot, component))
-      .catch(() => undefined)
+    try { await client.rename(remoteJoin(activation.targetRoot, component), remoteJoin(activation.stageRoot, component)) } catch (error) { failures.push(error) }
   }
   for (const component of [...activation.existing].reverse()) {
-    await client
-      .rename(remoteJoin(activation.backupRoot, component), remoteJoin(activation.targetRoot, component))
-      .catch(() => undefined)
+    try { await client.rename(remoteJoin(activation.backupRoot, component), remoteJoin(activation.targetRoot, component)) } catch (error) { failures.push(error) }
   }
-  await client.removeDir(activation.backupRoot).catch(() => undefined)
+  if (failures.length > 0) throw new RemoteRollbackError('Remote rollback failed; backup evidence was preserved.', failures[0])
+  try { await client.removeDir(activation.backupRoot) } catch (error) { throw new RemoteRollbackError('Remote rollback cleanup failed; backup evidence was preserved.', error) }
 }
 
 export async function swapRemoteDeployment(

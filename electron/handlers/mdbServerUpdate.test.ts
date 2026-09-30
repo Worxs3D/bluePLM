@@ -11,10 +11,14 @@ const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/bac
 
 describe('MDB server update seam', () => {
   it('classifies missing, matching, and changed deployment manifests', () => {
-    const packaged = { version: 1 as const, digest: 'a'.repeat(64), fileCount: 3 }
+    const packaged = { version: 1 as const, releaseVersion: '4.4.4', digest: 'a'.repeat(64), fileCount: 3 }
     expect(classifyMdbServerUpdate(packaged, null)).toBe('unknown')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleDigest: packaged.digest, bundleFileCount: 3 })).toBe('current')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: packaged.digest, bundleFileCount: 3 })).toBe('current')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.3', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.5', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('server-newer')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('same-version-different')
+    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.2' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.10', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('server-newer')
+    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.10' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.2', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
   })
 
   it('does not activate when migrations fail, and always cleans up', async () => {
@@ -51,6 +55,20 @@ describe('MDB server update seam', () => {
     expect(rollback).toHaveBeenCalledWith(activation)
     expect(finalize).not.toHaveBeenCalled()
     expect(cleanup).toHaveBeenCalledOnce()
+  })
+
+  it('preserves staged evidence when rollback fails', async () => {
+    const cleanup = vi.fn(async () => undefined)
+    const result = await executeMdbServerUpdatePlan({
+      migrate: async () => undefined,
+      activate: async () => activation,
+      verifyHealth: async () => false,
+      finalize: async () => undefined,
+      rollback: async () => { throw new Error('restore failed') },
+      cleanup,
+    })
+    expect(result).toMatchObject({ success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' })
+    expect(cleanup).not.toHaveBeenCalled()
   })
 
   it('activates and finalizes only after migration and health verification', async () => {

@@ -62,6 +62,8 @@ export const pt: TranslationDict = {
     sessionSecret: 'Segredo de sessão',
     bootstrapToken: 'Token de arranque',
     maintenanceToken: 'Token de manutenção',
+    saveDeploymentCredentials: 'Guardar credenciais FTPS e de manutenção para futuras atualizações MDB',
+    saveDeploymentCredentialsHelp: 'Opcional e desativado por padrão. Pode guardá-las depois em Servidor MDB.',
     deploying: 'A implementar servidor MDB…',
     deploy: 'Implementar e iniciar configuração guiada',
     testingFtp: 'A testar a ligação FTPS…',

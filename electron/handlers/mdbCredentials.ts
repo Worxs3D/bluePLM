@@ -13,6 +13,13 @@ export interface MdbServerCredentialState {
   profile: MdbServerProfile | null
   hasCredentials: boolean
   encryptionAvailable: boolean
+  boundServerUrl: string | null
+  boundOrganizationId: string | null
+}
+
+export interface MdbServerCredentialBinding {
+  serverUrl: string
+  organizationId: string
 }
 
 export interface MdbServerSecrets {
@@ -24,42 +31,52 @@ function credentialsDirectory(): string {
   return path.join(app.getPath('userData'), 'mdb-server')
 }
 
-function profilePath(): string {
-  return path.join(credentialsDirectory(), 'profile.json')
-}
-
 function secretsPath(): string {
   return path.join(credentialsDirectory(), 'credentials.enc')
 }
 
-function assertProfile(profile: MdbServerProfile): void {
-  if (!profile.ftpUrl || !profile.ftpRemotePath || !profile.ftpUsername) throw new Error('A complete FTPS profile is required.')
+export function normalizeMdbServerUrl(raw: string): string {
+  let url: URL
+  try { url = new URL(raw.trim()) } catch { throw new Error('UNAVAILABLE') }
+  if (!['https:', 'http:'].includes(url.protocol) || (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname)) || url.username || url.password || url.search || url.hash || (url.pathname !== '' && url.pathname !== '/')) throw new Error('UNAVAILABLE')
+  return url.origin
 }
 
-export async function saveMdbServerCredentials(profile: MdbServerProfile, secrets: MdbServerSecrets): Promise<void> {
+function assertProfile(profile: MdbServerProfile): void {
+  let ftp: URL
+  try { ftp = new URL(profile.ftpUrl) } catch { throw new Error('INVALID_PROFILE') }
+  if (ftp.protocol !== 'ftps:' || ftp.username || ftp.password || ftp.search || ftp.hash || (ftp.port && !['21', '990'].includes(ftp.port)) || !profile.ftpRemotePath.startsWith('/') || profile.ftpRemotePath.includes('..') || !profile.ftpUsername || /[\r\n\0]/u.test(profile.ftpRemotePath) || /[\r\n\0]/u.test(profile.ftpUsername) || !['explicit', 'implicit'].includes(profile.ftpSecurity)) throw new Error('INVALID_PROFILE')
+}
+
+interface StoredCredentials {
+  profile: MdbServerProfile
+  binding: MdbServerCredentialBinding
+  secrets: MdbServerSecrets
+}
+
+export async function saveMdbServerCredentials(profile: MdbServerProfile, secrets: MdbServerSecrets, binding: MdbServerCredentialBinding): Promise<void> {
   assertProfile(profile)
+  const normalizedBinding = { serverUrl: normalizeMdbServerUrl(binding.serverUrl), organizationId: binding.organizationId.trim() }
+  if (!normalizedBinding.organizationId) throw new Error('INVALID_PROFILE')
   if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable.')
   if (!secrets.ftpPassword || !secrets.maintenanceToken) throw new Error('Both deployment credentials are required.')
   const directory = credentialsDirectory()
   await fs.mkdir(directory, { recursive: true })
-  const encrypted = safeStorage.encryptString(JSON.stringify(secrets)).toString('base64')
-  await fs.writeFile(profilePath(), `${JSON.stringify(profile, null, 2)}\n`, { mode: 0o600 })
+  const encrypted = safeStorage.encryptString(JSON.stringify({ profile, binding: normalizedBinding, secrets } satisfies StoredCredentials)).toString('base64')
   await fs.writeFile(secretsPath(), `${encrypted}\n`, { mode: 0o600 })
 }
 
-export async function readMdbServerCredentials(): Promise<{ profile: MdbServerProfile; secrets: MdbServerSecrets } | null> {
+export async function readMdbServerCredentials(): Promise<{ profile: MdbServerProfile; secrets: MdbServerSecrets; binding: MdbServerCredentialBinding } | null> {
   if (!safeStorage.isEncryptionAvailable()) return null
   try {
-    const [profileRaw, encryptedRaw] = await Promise.all([
-      fs.readFile(profilePath(), 'utf8'),
-      fs.readFile(secretsPath(), 'utf8'),
-    ])
-    const profile = JSON.parse(profileRaw) as MdbServerProfile
-    const decoded = safeStorage.decryptString(Buffer.from(encryptedRaw.trim(), 'base64'))
-    const secrets = JSON.parse(decoded) as MdbServerSecrets
+    const encryptedRaw = await fs.readFile(secretsPath(), 'utf8')
+    const stored = JSON.parse(safeStorage.decryptString(Buffer.from(encryptedRaw.trim(), 'base64'))) as StoredCredentials
+    const profile = stored.profile
+    const secrets = stored.secrets
     assertProfile(profile)
     if (!secrets.ftpPassword || !secrets.maintenanceToken) return null
-    return { profile, secrets }
+    const binding = { serverUrl: normalizeMdbServerUrl(stored.binding.serverUrl), organizationId: stored.binding.organizationId }
+    return { profile, secrets, binding }
   } catch {
     return null
   }
@@ -67,27 +84,34 @@ export async function readMdbServerCredentials(): Promise<{ profile: MdbServerPr
 
 export async function getMdbServerCredentialState(): Promise<MdbServerCredentialState> {
   const encryptionAvailable = safeStorage.isEncryptionAvailable()
-  let profile: MdbServerProfile | null = null
+  let binding: MdbServerCredentialBinding | null = null
   try {
-    profile = JSON.parse(await fs.readFile(profilePath(), 'utf8')) as MdbServerProfile
-    assertProfile(profile)
+    const stored = await readMdbServerCredentials()
+    binding = stored?.binding ?? null
   } catch {
-    profile = null
+    binding = null
   }
   return {
-    profile,
+    // Deployment profile fields stay inside the encrypted main-process record.
+    // The renderer only needs to know whether credentials are available.
+    profile: null,
     hasCredentials: encryptionAvailable && (await readMdbServerCredentials()) !== null,
     encryptionAvailable,
+    boundServerUrl: binding?.serverUrl ?? null,
+    boundOrganizationId: binding?.organizationId ?? null,
   }
 }
 
-export async function clearMdbServerCredentials(): Promise<void> {
+export async function clearMdbServerCredentials(binding?: MdbServerCredentialBinding): Promise<void> {
+  if (binding) {
+    const stored = await readMdbServerCredentials()
+    if (!stored || stored.binding.serverUrl !== normalizeMdbServerUrl(binding.serverUrl) || stored.binding.organizationId !== binding.organizationId) throw new Error('CREDENTIAL_BINDING_MISMATCH')
+  }
   await Promise.all([
-    fs.rm(profilePath(), { force: true }),
     fs.rm(secretsPath(), { force: true }),
   ])
 }
 
 export function storedCredentialFilePathsForTests(): { profile: string; secrets: string } {
-  return { profile: profilePath(), secrets: secretsPath() }
+  return { profile: secretsPath(), secrets: secretsPath() }
 }

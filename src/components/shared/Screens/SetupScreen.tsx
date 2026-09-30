@@ -137,6 +137,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
   const [mdbSessionSecret, setMdbSessionSecret] = useState('')
   const [mdbBootstrapToken, setMdbBootstrapToken] = useState('')
   const [mdbMaintenanceToken, setMdbMaintenanceToken] = useState('')
+  const [mdbSaveDeploymentCredentials, setMdbSaveDeploymentCredentials] = useState(false)
   const [mdbDocumentRootConfirmed, setMdbDocumentRootConfirmed] = useState(false)
   const [mdbNetworkRoot, setMdbNetworkRoot] = useState('')
   const [mdbCompanyName, setMdbCompanyName] = useState('')
@@ -481,6 +482,19 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
       serverUrl: result.serverUrl,
       accessToken: result.accessToken,
     })
+    if (mdbSaveDeploymentCredentials && window.electronAPI?.saveMdbServerCredentials && result.accessToken) {
+      const maintenanceToken = mdbGenerateSecrets ? result.generatedSecrets?.maintenanceToken : mdbMaintenanceToken
+      if (maintenanceToken) {
+        try {
+          const meResponse = await fetch(new URL('/auth/me', `${result.serverUrl.replace(/\/$/u, '')}/`), { headers: { Authorization: `Bearer ${result.accessToken}` }, cache: 'no-store' })
+          const me = await meResponse.json() as { user?: { organizationId?: unknown } }
+          const organizationId = typeof me.user?.organizationId === 'string' ? me.user.organizationId : ''
+          if (meResponse.ok && organizationId) await window.electronAPI.saveMdbServerCredentials({ ftpUrl: mdbFtpUrl, ftpSecurity: mdbFtpSecurity, ftpRemotePath: mdbFtpPath, ftpUsername: mdbFtpUser }, { ftpPassword: mdbFtpPassword, maintenanceToken }, { serverUrl: result.serverUrl, sessionToken: result.accessToken, organizationId })
+        } catch (credentialError) {
+          log.warn('[SetupScreen]', 'Optional MDB deployment credential storage failed', { error: credentialError instanceof Error ? credentialError.message : 'unknown' })
+        }
+      }
+    }
     setMdbFtpPassword('')
     setMdbDatabasePassword('')
     setMdbOwnerPassword('')
@@ -1452,6 +1466,11 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
                   {t('mdbSetup.generateSecrets')}
                 </label>
                 <p className="text-xs text-plm-fg-muted mt-2">{t('mdbSetup.secretsHelp')}</p>
+                <label className="flex gap-2 items-center mt-3 text-sm text-plm-fg">
+                  <input type="checkbox" checked={mdbSaveDeploymentCredentials} onChange={(event) => setMdbSaveDeploymentCredentials(event.target.checked)} />
+                  {t('mdbSetup.saveDeploymentCredentials')}
+                </label>
+                <p className="text-xs text-plm-fg-muted mt-1">{t('mdbSetup.saveDeploymentCredentialsHelp')}</p>
                 {!mdbGenerateSecrets && (
                   <div className="grid grid-cols-1 gap-3 mt-4">
                     <label>

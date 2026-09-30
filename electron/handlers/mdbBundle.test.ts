@@ -16,8 +16,8 @@ describe('MDB bundle identity', () => {
   })
 
   it('serializes only the non-secret manifest identity', () => {
-    const json = serializeMdbBundleManifest({ version: 1, digest: 'a'.repeat(64), fileCount: 3 })
-    expect(JSON.parse(json)).toEqual({ version: 1, digest: 'a'.repeat(64), fileCount: 3 })
+    const json = serializeMdbBundleManifest({ version: 1, releaseVersion: '4.4.4-beta.1', digest: 'a'.repeat(64), fileCount: 3 })
+    expect(JSON.parse(json)).toEqual({ version: 1, releaseVersion: '4.4.4-beta.1', digest: 'a'.repeat(64), fileCount: 3 })
     expect(json).not.toMatch(/password|token|secret/i)
   })
 })

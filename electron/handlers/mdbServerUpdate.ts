@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -18,17 +18,19 @@ import {
   upload,
   type MdbFtpsSecurity,
   type RemoteDeploymentActivation,
+  RemoteRollbackError,
 } from './mdbInstaller'
 import { createMdbBundleManifest, MDB_BUNDLE_MANIFEST_FILE, serializeMdbBundleManifest, type MdbBundleManifest } from './mdbBundle'
-import { clearMdbServerCredentials, getMdbServerCredentialState, readMdbServerCredentials, saveMdbServerCredentials, type MdbServerCredentialState, type MdbServerProfile } from './mdbCredentials'
+import { clearMdbServerCredentials, getMdbServerCredentialState, normalizeMdbServerUrl, readMdbServerCredentials, saveMdbServerCredentials, type MdbServerCredentialBinding, type MdbServerCredentialState, type MdbServerProfile } from './mdbCredentials'
 
-export type MdbServerUpdateStatus = 'current' | 'update-available' | 'unknown' | 'updating' | 'rollback' | 'failure'
+export type MdbServerUpdateStatus = 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
 
 export interface MdbServerHealth {
   ok: boolean
   supabase: boolean
   apiVersion: number | null
   bundleVersion: number | null
+  bundleReleaseVersion: string | null
   bundleDigest: string | null
   bundleFileCount: number | null
 }
@@ -36,7 +38,7 @@ export interface MdbServerHealth {
 export interface MdbServerUpdateInspection {
   status: Exclude<MdbServerUpdateStatus, 'updating' | 'rollback' | 'failure'>
   packaged: MdbBundleManifest
-  deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleDigest' | 'bundleFileCount'> | null
+  deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount'> | null
   credentials: MdbServerCredentialState
 }
 
@@ -44,14 +46,40 @@ export interface MdbServerUpdateRequest {
   serverUrl: string
   sessionToken: string
   organizationId: string
-  confirmed: boolean
+  /** Renderer confirmation is advisory only; main process shows the authoritative dialog. */
+  confirmed?: boolean
+  confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
+}
+
+export interface MdbServerCredentialRequest extends MdbServerCredentialBinding {
+  sessionToken: string
+  confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
+}
+
+type ConfirmationKind = 'update' | 'credentials'
+let confirmationForTests: ((kind: ConfirmationKind, text: { message: string; confirmLabel: string; cancelLabel: string }) => Promise<boolean>) | undefined
+
+export function setMdbServerConfirmationForTests(handler: typeof confirmationForTests): void {
+  confirmationForTests = handler
+}
+
+async function requireNativeConfirmation(kind: ConfirmationKind, text: { message: string; confirmLabel: string; cancelLabel: string }): Promise<boolean> {
+  if (confirmationForTests) return confirmationForTests(kind, text)
+  const result = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: [text.cancelLabel, text.confirmLabel],
+    defaultId: 0,
+    cancelId: 0,
+    message: text.message,
+  })
+  return result.response === 1
 }
 
 export interface MdbServerUpdateResult {
   success: boolean
   status: MdbServerUpdateStatus
   inspection?: MdbServerUpdateInspection
-  errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'UNAVAILABLE'
+  errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'SERVER_NEWER' | 'VERSION_CONFLICT' | 'ROLLBACK_FAILED' | 'CREDENTIAL_BINDING_MISMATCH' | 'INVALID_PROFILE' | 'UNAVAILABLE'
 }
 
 interface HealthResponse {
@@ -59,15 +87,13 @@ interface HealthResponse {
   supabase?: unknown
   apiVersion?: unknown
   bundleVersion?: unknown
+  bundleReleaseVersion?: unknown
   bundleDigest?: unknown
   bundleFileCount?: unknown
 }
 
 function safeServerUrl(raw: string): URL {
-  const url = new URL(raw)
-  if (!['https:', 'http:'].includes(url.protocol)) throw new Error('UNAVAILABLE')
-  if (url.protocol === 'http:' && !['localhost', '127.0.0.1', '::1'].includes(url.hostname)) throw new Error('UNAVAILABLE')
-  return new URL(url.toString().replace(/\/$/, ''))
+  return new URL(normalizeMdbServerUrl(raw))
 }
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
@@ -83,6 +109,7 @@ function normalizeHealth(body: HealthResponse): MdbServerHealth {
     supabase: body.supabase === true,
     apiVersion: Number.isInteger(body.apiVersion) ? Number(body.apiVersion) : null,
     bundleVersion: Number.isInteger(body.bundleVersion) ? Number(body.bundleVersion) : null,
+    bundleReleaseVersion: typeof body.bundleReleaseVersion === 'string' ? body.bundleReleaseVersion : null,
     bundleDigest: typeof body.bundleDigest === 'string' && /^[a-f0-9]{64}$/.test(body.bundleDigest) ? body.bundleDigest : null,
     bundleFileCount: Number.isInteger(body.bundleFileCount) ? Number(body.bundleFileCount) : null,
   }
@@ -100,18 +127,47 @@ async function fetchHealth(serverUrl: string): Promise<MdbServerHealth> {
   }
 }
 
-export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleDigest' | 'bundleFileCount'> | null): MdbServerUpdateInspection['status'] {
-  if (!deployed?.bundleDigest || deployed.bundleVersion !== 1) return 'unknown'
-  return deployed.bundleDigest === packaged.digest ? 'current' : 'update-available'
+function compareReleaseVersions(left: string, right: string): number | null {
+  const parse = (value: string) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u.exec(value)
+    if (!match) return null
+    return { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: match[4]?.split('.') ?? [] }
+  }
+  const a = parse(left); const b = parse(right)
+  if (!a || !b) return null
+  for (let index = 0; index < 3; index += 1) if (a.core[index] !== b.core[index]) return a.core[index] > b.core[index] ? 1 : -1
+  if (a.pre.length === 0 && b.pre.length === 0) return 0
+  if (a.pre.length === 0) return 1
+  if (b.pre.length === 0) return -1
+  for (let index = 0; index < Math.max(a.pre.length, b.pre.length); index += 1) {
+    if (index >= a.pre.length) return -1
+    if (index >= b.pre.length) return 1
+    const leftPart = a.pre[index]; const rightPart = b.pre[index]
+    if (leftPart === rightPart) continue
+    const leftNumber = /^\d+$/u.test(leftPart); const rightNumber = /^\d+$/u.test(rightPart)
+    if (leftNumber && rightNumber) return Number(leftPart) > Number(rightPart) ? 1 : -1
+    if (leftNumber !== rightNumber) return leftNumber ? -1 : 1
+    return leftPart > rightPart ? 1 : -1
+  }
+  return 0
+}
+
+export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount'> | null): MdbServerUpdateInspection['status'] {
+  if (!deployed?.bundleDigest || deployed.bundleVersion !== 1 || !deployed.bundleReleaseVersion) return 'unknown'
+  if (deployed.bundleDigest === packaged.digest) return 'current'
+  const comparison = compareReleaseVersions(packaged.releaseVersion, deployed.bundleReleaseVersion)
+  if (comparison === null) return 'unknown'
+  return comparison > 0 ? 'update-available' : comparison < 0 ? 'server-newer' : 'same-version-different'
 }
 
 export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServerUpdateInspection> {
-  const packaged = await createMdbBundleManifest(serverBundleRoot())
+  const packaged = await createMdbBundleManifest(serverBundleRoot(), app.getVersion())
   const credentials = await getMdbServerCredentialState()
   try {
     const health = await fetchHealth(serverUrl)
     const deployed = {
       bundleVersion: health.bundleVersion,
+      bundleReleaseVersion: health.bundleReleaseVersion,
       bundleDigest: health.bundleDigest,
       bundleFileCount: health.bundleFileCount,
     }
@@ -162,7 +218,7 @@ async function stageBundle(
       const relative = path.relative(bundleRoot, file).replaceAll('\\', '/')
       await upload(ftp, security, `${resolvedStageRoot}/${relative}`, file, ftpUsername, ftpPassword)
     }
-    const manifest = await createMdbBundleManifest(bundleRoot)
+    const manifest = await createMdbBundleManifest(bundleRoot, app.getVersion())
     await fs.writeFile(manifestPath, serializeMdbBundleManifest(manifest), { mode: 0o600 })
     await upload(ftp, security, `${resolvedStageRoot}/${MDB_BUNDLE_MANIFEST_FILE}`, manifestPath, ftpUsername, ftpPassword)
     await fs.writeFile(bridgePath, installerBridge(stageName), { mode: 0o600 })
@@ -190,40 +246,53 @@ export interface MdbServerUpdatePlanOperations {
  */
 export async function executeMdbServerUpdatePlan(ops: MdbServerUpdatePlanOperations): Promise<MdbServerUpdateResult> {
   let activation: RemoteDeploymentActivation | undefined
+  let preserveEvidence = false
+  let rollbackAttempted = false
   try {
     await ops.migrate()
     activation = await ops.activate()
     if (!(await ops.verifyHealth())) {
-      await ops.rollback(activation)
+      rollbackAttempted = true
+      try { await ops.rollback(activation) } catch { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }
       return { success: false, status: 'rollback', errorCode: 'HEALTH_MISMATCH' }
     }
     await ops.finalize(activation)
     return { success: true, status: 'current' }
   } catch (error) {
-    if (activation) await ops.rollback(activation).catch(() => undefined)
+    if (activation && !rollbackAttempted) {
+      rollbackAttempted = true
+      try { await ops.rollback(activation) } catch { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }
+    }
     const message = error instanceof Error ? error.message : ''
     return {
       success: false,
       status: activation ? 'rollback' : 'failure',
-      errorCode: /maintenance|migration token/i.test(message) ? 'MAINTENANCE_TOKEN_REJECTED' : 'DEPLOYMENT_FAILED',
+      errorCode: error instanceof RemoteRollbackError ? 'ROLLBACK_FAILED' : /maintenance|migration token/i.test(message) ? 'MAINTENANCE_TOKEN_REJECTED' : 'DEPLOYMENT_FAILED',
     }
   } finally {
-    await ops.cleanup().catch(() => undefined)
+    if (!preserveEvidence) await ops.cleanup().catch(() => undefined)
   }
 }
 
 export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Promise<MdbServerUpdateResult> {
-  if (!request.confirmed) return { success: false, status: 'failure', errorCode: 'CONFIRMATION_REQUIRED' }
   try {
     await assertOwnerOrAdmin(request.serverUrl, request.sessionToken, request.organizationId)
   } catch {
     return { success: false, status: 'failure', errorCode: 'NOT_AUTHORIZED' }
   }
+  let inspection: MdbServerUpdateInspection
+  try { inspection = await inspectMdbServerUpdate(request.serverUrl) } catch { return { success: false, status: 'failure', errorCode: 'UNAVAILABLE' } }
+  if (inspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
+  if (inspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
+  if (inspection.status === 'current') return { success: true, status: 'current', inspection }
+  if (!request.confirmation || !await requireNativeConfirmation('update', request.confirmation)) return { success: false, status: 'failure', errorCode: 'CONFIRMATION_REQUIRED' }
   const stored = await readMdbServerCredentials()
   if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
+  if (stored.binding.serverUrl !== normalizeMdbServerUrl(request.serverUrl) || stored.binding.organizationId !== request.organizationId) return { success: false, status: 'failure', errorCode: 'CREDENTIAL_BINDING_MISMATCH' }
   let cleanup: (() => Promise<void>) | undefined
   let activation: RemoteDeploymentActivation | undefined
   let client: Client | undefined
+  let preserveEvidence = false
   try {
     const ftp = ftpBase(stored.profile.ftpUrl, stored.profile.ftpSecurity)
     const publicUrl = safeServerUrl(request.serverUrl)
@@ -256,12 +325,14 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
     cleanup = undefined
     return plan
   } catch (error) {
-    if (activation && client) await rollbackRemoteDeployment(client, activation).catch(() => undefined)
+    if (activation && client) {
+      try { await rollbackRemoteDeployment(client, activation) } catch { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }
+    }
     const code = error instanceof Error ? error.message : ''
     return { success: false, status: activation ? 'rollback' : 'failure', errorCode: code === 'MAINTENANCE_TOKEN_REJECTED' ? 'MAINTENANCE_TOKEN_REJECTED' : 'DEPLOYMENT_FAILED' }
   } finally {
     client?.close()
-    await cleanup?.()
+    if (!preserveEvidence) await cleanup?.()
   }
 }
 
@@ -269,14 +340,19 @@ export function registerMdbServerUpdateHandlers(): void {
   ipcMain.handle('mdb-server:inspect-update', async (event, serverUrl: string) => { assertTrustedSender(event); return inspectMdbServerUpdate(serverUrl) })
   ipcMain.handle('mdb-server:apply-update', async (event, request: MdbServerUpdateRequest) => { assertTrustedSender(event); return applyMdbServerUpdate(request) })
   ipcMain.handle('mdb-server:get-credentials', async (event) => { assertTrustedSender(event); return getMdbServerCredentialState() })
-  ipcMain.handle('mdb-server:save-credentials', async (event, profile: MdbServerProfile, secrets: { ftpPassword: string; maintenanceToken: string }) => {
+  ipcMain.handle('mdb-server:save-credentials', async (event, profile: MdbServerProfile, secrets: { ftpPassword: string; maintenanceToken: string }, binding: MdbServerCredentialRequest) => {
     assertTrustedSender(event)
-    await saveMdbServerCredentials(profile, secrets)
+    await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
+    const existing = await readMdbServerCredentials()
+    if (existing && (!binding.confirmation || !await requireNativeConfirmation('credentials', binding.confirmation))) throw new Error('CONFIRMATION_REQUIRED')
+    await saveMdbServerCredentials(profile, secrets, binding)
     return getMdbServerCredentialState()
   })
-  ipcMain.handle('mdb-server:clear-credentials', async (event) => {
+  ipcMain.handle('mdb-server:clear-credentials', async (event, binding: MdbServerCredentialRequest) => {
     assertTrustedSender(event)
-    await clearMdbServerCredentials()
+    await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
+    if (!binding.confirmation || !await requireNativeConfirmation('credentials', binding.confirmation)) throw new Error('CONFIRMATION_REQUIRED')
+    await clearMdbServerCredentials(binding)
     return getMdbServerCredentialState()
   })
 }
