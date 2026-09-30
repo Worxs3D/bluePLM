@@ -1434,6 +1434,7 @@ declare global {
       syncMdbBackupAuth: (serverUrl: string, accessToken: string) => Promise<void>
       clearMdbBackupAuth: () => Promise<void>
       designateMdbBackupDevice: (machineName: string, platform: string) => Promise<void>
+      performMdbBackupDeviceAction: (action: 'heartbeat' | 'start' | 'complete') => Promise<{ success: true; active?: boolean }>
       checkResticInstalled: () => Promise<{ installed: boolean; version?: string; error?: string }>
       isBackupRunning: () => Promise<{ running: boolean; startedAt: number | null }>
       runBackup: (config: {

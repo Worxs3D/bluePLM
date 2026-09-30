@@ -279,7 +279,7 @@ export async function clearDesignatedMachine(
 
 // Update heartbeat (called every minute by designated machine)
 export async function updateHeartbeat(orgId: string): Promise<boolean> {
-  if (!isBackendActive('supabase')) return heartbeatMdbBackupMachine(await getMachineId())
+  if (!isBackendActive('supabase')) return heartbeatMdbBackupMachine()
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
 
@@ -322,7 +322,7 @@ export async function requestBackup(
   userEmail: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
-    try { await requestMdbBackup(userEmail); return { success: true } }
+    try { await requestMdbBackup(); return { success: true } }
     catch (error) { log.error('[Backup]', 'MDB backup request failed', { error: error instanceof Error ? error.message : 'unknown' }); return { success: false, error: 'MDB_BACKUP_REQUEST_FAILED' } }
   }
   const supabase = getSupabaseClient()
@@ -363,7 +363,7 @@ export function hasPendingBackupRequest(config: BackupConfig | null): boolean {
 // Mark backup as started (called by designated machine)
 export async function markBackupStarted(orgId: string): Promise<boolean> {
   if (!isBackendActive('supabase')) {
-    try { await markMdbBackupStarted(await getMachineId()); return true } catch { return false }
+    try { await markMdbBackupStarted(); return true } catch { return false }
   }
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
@@ -390,7 +390,7 @@ export async function markBackupStarted(orgId: string): Promise<boolean> {
 // Mark backup as complete (called by designated machine)
 export async function markBackupComplete(orgId: string): Promise<boolean> {
   if (!isBackendActive('supabase')) {
-    try { await markMdbBackupComplete(await getMachineId()); return true } catch { return false }
+    try { await markMdbBackupComplete(); return true } catch { return false }
   }
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()

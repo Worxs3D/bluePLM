@@ -5,7 +5,7 @@ import path from 'path'
 
 type StoredKey = { privateKey: string; publicKey: string }
 type StoredMdbAuth = { serverUrl: string; accessToken: string }
-const IPC_CHANNELS = ['backup-device:public-key', 'backup-device:sync-auth', 'backup-device:clear-auth', 'backup-device:designate'] as const
+const IPC_CHANNELS = ['backup-device:public-key', 'backup-device:sync-auth', 'backup-device:clear-auth', 'backup-device:designate', 'backup-device:action'] as const
 let cached: StoredKey | null = null
 let cachedAuth: StoredMdbAuth | null = null
 
@@ -100,14 +100,22 @@ async function api<T>(auth: StoredMdbAuth, path: string, init: RequestInit = {})
   return body
 }
 
-export type MdbBackupDeviceAction = 'heartbeat' | 'request' | 'start' | 'complete'
+/** These are machine-possession actions. A user backup request is deliberately
+ * not included: it is authorized by the authenticated principal instead. */
+export type MdbBackupDeviceAction = 'heartbeat' | 'start' | 'complete'
+export type MdbBackupDeviceActionResult = { success: true; active?: boolean }
 
 /**
  * Performs a device-authorized backup action entirely in main.  The renderer
  * can request an action, but neither the session nor its assertion crosses IPC.
  */
-export async function performMdbBackupDeviceAction(endpoint: MdbBackupDeviceAction): Promise<void> {
-  await resolveMdbBackupRuntime(endpoint)
+export async function performMdbBackupDeviceAction(endpoint: MdbBackupDeviceAction): Promise<MdbBackupDeviceActionResult> {
+  const result = await resolveMdbBackupRuntime(endpoint)
+  // Do not let a future server response accidentally turn this IPC into a
+  // credential transport. These are the only renderer-visible action fields.
+  return endpoint === 'heartbeat'
+    ? { success: true, active: result.active === true }
+    : { success: true }
 }
 
 export async function resolveMdbBackupRuntime(endpoint: 'runtime-config' | MdbBackupDeviceAction = 'runtime-config'): Promise<Record<string, unknown>> {
@@ -130,6 +138,13 @@ export function registerBackupDeviceHandlers(): void {
     assertTrustedSender(event.sender)
     const auth = loadAuth()
     await api(auth, '/backup/designate', { method: 'POST', body: JSON.stringify({ machineId: machineId(), machineName: details.machineName, platform: details.platform, publicKey: getBackupDevicePublicKey() }) })
+  })
+  ipcMain.handle(IPC_CHANNELS[4], async (event, action: MdbBackupDeviceAction) => {
+    assertTrustedSender(event.sender)
+    if (action !== 'heartbeat' && action !== 'start' && action !== 'complete') {
+      throw new Error('Invalid MDB backup device action')
+    }
+    return performMdbBackupDeviceAction(action)
   })
 }
 

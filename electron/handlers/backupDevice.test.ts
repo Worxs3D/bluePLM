@@ -75,20 +75,28 @@ describe('MDB backup device boundary', () => {
     expect(JSON.stringify(state.encrypted)).not.toContain('private-key')
   })
 
-  it('hydrates runtime credentials only in main and signs every allowed action with its exact challenge context', async () => {
+  it('hydrates runtime credentials only in main and signs every machine action with its exact challenge context', async () => {
     const device = await subject(); device.registerBackupDeviceHandlers()
     await state.handlers.get('backup-device:sync-auth')!(sender(), { serverUrl: 'https://mdb.example.test', accessToken: 'session-secret' })
     const fetchMock = vi.mocked(fetch)
-    for (const action of ['heartbeat', 'request', 'start', 'complete'] as const) {
+    for (const action of ['heartbeat', 'start', 'complete'] as const) {
       fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ challengeId: `${action}-challenge`, nonce: 'nonce', keyVersion: 1 }) } as Response)
       fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ user: { userId: 'user', organizationId: 'org' } }) } as Response)
       fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, access_key_encrypted: 'must-not-leak' }) } as Response)
-      await expect(device.performMdbBackupDeviceAction(action)).resolves.toBeUndefined()
+      await expect(device.performMdbBackupDeviceAction(action)).resolves.toEqual(action === 'heartbeat' ? { success: true, active: false } : { success: true })
     }
     const requests = fetchMock.mock.calls.map(([input]) => String(input))
-    expect(requests.filter((url) => /\/backup\/(heartbeat|request|start|complete)$/.test(url))).toHaveLength(4)
+    expect(requests.filter((url) => /\/backup\/(heartbeat|start|complete)$/.test(url))).toHaveLength(3)
     expect(JSON.stringify(state.handlers)).not.toContain('session-secret')
     expect(JSON.stringify(state.handlers)).not.toContain('must-not-leak')
+  })
+
+  it('exposes only the allowlisted action IPC and rejects hostile senders or user requests', async () => {
+    const device = await subject(); device.registerBackupDeviceHandlers()
+    const action = state.handlers.get('backup-device:action')!
+    await expect(action(sender('https://attacker.test'), 'heartbeat')).rejects.toThrow('Untrusted IPC sender')
+    await expect(action(sender(), 'request')).rejects.toThrow('Invalid MDB backup device action')
+    expect(JSON.stringify(state.handlers)).not.toContain('privateKey')
   })
 
   it('does not accept a signature for one challenge action as another action', async () => {

@@ -649,12 +649,6 @@ export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
   return (await request<{ config: MdbBackupConfig | null }>('/backup/config')).config
 }
 
-/** Short-lived runtime credentials for the authenticated designated backup machine only. */
-export async function getMdbBackupRuntimeConfig(machineId: string, machineProof: string): Promise<MdbBackupConfig | null> {
-  const query = new URLSearchParams({ machineId })
-  return (await request<{ config: MdbBackupConfig | null }>(`/backup/runtime-config?${query.toString()}`, {}, true, machineProof)).config
-}
-
 export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
   return (await request<{ config: MdbBackupConfig }>('/backup/config', {
     method: 'PUT',
@@ -676,22 +670,24 @@ export async function clearMdbBackupMachine(): Promise<void> {
   await request('/backup/designate', { method: 'DELETE' })
 }
 
-export async function heartbeatMdbBackupMachine(machineId: string): Promise<boolean> {
-  return (await request<{ active: boolean }>('/backup/heartbeat', {
-    method: 'POST', body: JSON.stringify({ machineId }),
-  })).active
+export async function heartbeatMdbBackupMachine(): Promise<boolean> {
+  if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
+  return (await window.electronAPI.performMdbBackupDeviceAction('heartbeat')).active === true
 }
 
-export async function requestMdbBackup(userEmail: string): Promise<void> {
-  await request('/backup/request', { method: 'POST', body: JSON.stringify({ userEmail }) })
+/** The server attributes this user action from the authenticated principal. */
+export async function requestMdbBackup(): Promise<void> {
+  await request('/backup/request', { method: 'POST' })
 }
 
-export async function markMdbBackupStarted(machineId: string): Promise<void> {
-  await request('/backup/start', { method: 'POST', body: JSON.stringify({ machineId }) })
+export async function markMdbBackupStarted(): Promise<void> {
+  if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
+  await window.electronAPI.performMdbBackupDeviceAction('start')
 }
 
-export async function markMdbBackupComplete(machineId: string): Promise<void> {
-  await request('/backup/complete', { method: 'POST', body: JSON.stringify({ machineId }) })
+export async function markMdbBackupComplete(): Promise<void> {
+  if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
+  await window.electronAPI.performMdbBackupDeviceAction('complete')
 }
 
 export async function getMdbVaultAuditFiles(
