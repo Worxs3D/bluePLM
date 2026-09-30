@@ -89,6 +89,9 @@ interface TitleBarOverlayRect {
 contextBridge.exposeInMainWorld('electronAPI', {
   // Device public key only; signing remains in the Electron main process.
   getBackupDevicePublicKey: () => ipcRenderer.invoke('backup-device:public-key') as Promise<string>,
+  syncMdbBackupAuth: (serverUrl: string, accessToken: string) => ipcRenderer.invoke('backup-device:sync-auth', { serverUrl, accessToken }) as Promise<void>,
+  clearMdbBackupAuth: () => ipcRenderer.invoke('backup-device:clear-auth') as Promise<void>,
+  designateMdbBackupDevice: (machineName: string, platform: string) => ipcRenderer.invoke('backup-device:designate', { machineName, platform }) as Promise<void>,
   // App info
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   reloadApp: () => ipcRenderer.invoke('app:reload'),

@@ -1431,9 +1431,13 @@ declare global {
 
       // Backup execution
       getBackupDevicePublicKey: () => Promise<string>
+      syncMdbBackupAuth: (serverUrl: string, accessToken: string) => Promise<void>
+      clearMdbBackupAuth: () => Promise<void>
+      designateMdbBackupDevice: (machineName: string, platform: string) => Promise<void>
       checkResticInstalled: () => Promise<{ installed: boolean; version?: string; error?: string }>
       isBackupRunning: () => Promise<{ running: boolean; startedAt: number | null }>
       runBackup: (config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -1464,6 +1468,7 @@ declare global {
         }
       }>
       listBackupSnapshots: (config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -1483,6 +1488,7 @@ declare global {
         error?: string
       }>
       restoreFromBackup: (config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -1512,6 +1518,7 @@ declare global {
         error?: string
       }>
       deleteBackupSnapshot: (config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string

@@ -3,6 +3,7 @@ import { app, ipcMain, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { spawn, execSync } from 'child_process'
+import { resolveMdbBackupRuntime } from './backupDevice'
 
 // ============================================
 // Backup Log Types
@@ -68,6 +69,20 @@ let getWorkingDirectory: () => string | null = () => null
 let currentStats: BackupOperationStats | null = null
 let isBackupRunning = false
 let backupStartedAt: number | null = null
+
+type RuntimeCapableConfig = { mdbRuntime?: boolean; accessKey: string; secretKey: string; resticPassword: string }
+
+async function resolveMainProcessRuntime<T extends RuntimeCapableConfig>(config: T): Promise<T> {
+  if (!config.mdbRuntime) return config
+  const runtime = await resolveMdbBackupRuntime()
+  const accessKey = runtime.access_key_encrypted
+  const secretKey = runtime.secret_key_encrypted
+  const resticPassword = runtime.restic_password_encrypted
+  if (typeof accessKey !== 'string' || typeof secretKey !== 'string' || typeof resticPassword !== 'string') throw new Error('MDB backup runtime credentials are unavailable')
+  // Do not log or persist this object. It exists only until the child restic
+  // process has inherited its environment for this operation.
+  return { ...config, accessKey, secretKey, resticPassword }
+}
 
 /**
  * Last logged failure per repository.
@@ -329,6 +344,7 @@ export function registerBackupHandlers(
     async (
       event,
       config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -347,6 +363,7 @@ export function registerBackupHandlers(
         vaultPath?: string
       },
     ) => {
+      config = await resolveMainProcessRuntime(config)
       const operationStartTime = Date.now()
       isBackupRunning = true
       backupStartedAt = operationStartTime
@@ -910,6 +927,7 @@ export function registerBackupHandlers(
     async (
       _,
       config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -919,6 +937,7 @@ export function registerBackupHandlers(
         resticPassword: string
       },
     ) => {
+      config = await resolveMainProcessRuntime(config)
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         RESTIC_PASSWORD: config.resticPassword,
@@ -1005,6 +1024,7 @@ export function registerBackupHandlers(
     async (
       _,
       config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -1015,6 +1035,7 @@ export function registerBackupHandlers(
         snapshotId: string
       },
     ) => {
+      config = await resolveMainProcessRuntime(config)
       log('Deleting snapshot...', { snapshotId: config.snapshotId })
 
       const env: NodeJS.ProcessEnv = {
@@ -1115,6 +1136,7 @@ export function registerBackupHandlers(
     async (
       event,
       config: {
+        mdbRuntime?: boolean
         provider: string
         bucket: string
         region?: string
@@ -1127,6 +1149,7 @@ export function registerBackupHandlers(
         specificPaths?: string[]
       },
     ) => {
+      config = await resolveMainProcessRuntime(config)
       const operationStartTime = Date.now()
 
       log('Starting restore...', { snapshotId: config.snapshotId, targetPath: config.targetPath })

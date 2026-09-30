@@ -405,7 +405,9 @@ export function loadMdbConfig(): MdbConfig | null {
 }
 
 export function saveMdbConfig(config: MdbConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...config, serverUrl: normalizeServerUrl(config.serverUrl) }))
+  const normalized = { ...config, serverUrl: normalizeServerUrl(config.serverUrl) }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  if (normalized.accessToken) void window.electronAPI?.syncMdbBackupAuth?.(normalized.serverUrl, normalized.accessToken).catch(() => undefined)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
   activateBackend('mdb')
   notify()
@@ -414,6 +416,7 @@ export function saveMdbConfig(config: MdbConfig): void {
 export function clearMdbConfig(): void {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
+  void window.electronAPI?.clearMdbBackupAuth?.().catch(() => undefined)
   notify()
 }
 

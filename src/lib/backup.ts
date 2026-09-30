@@ -3,7 +3,6 @@ import { getSupabaseClient } from './supabase'
 import { isBackendActive } from './backend'
 import {
   clearMdbBackupMachine,
-  designateMdbBackupMachine,
   getMdbBackupConfig,
   heartbeatMdbBackupMachine,
   markMdbBackupComplete,
@@ -52,6 +51,8 @@ export interface BackupConfig {
   // Timestamps
   created_at: string
   updated_at: string
+  /** Secret-free marker consumed exclusively by Electron's backup handlers. */
+  main_process_mdb_runtime?: boolean
 }
 
 // Snapshot info from restic directly
@@ -103,7 +104,9 @@ function mapMdbBackupConfig(value: Awaited<ReturnType<typeof getMdbBackupConfig>
 
 async function resolveRuntimeConfig(config: BackupConfig): Promise<BackupConfig> {
   if (isBackendActive('supabase') || (config.access_key_encrypted && config.secret_key_encrypted && config.restic_password_encrypted)) return config
-  throw new Error('Machine authorization is unavailable until a signed device challenge is established.')
+  // The Electron main process resolves MDB credentials immediately before the
+  // native restic operation. This marker contains no secret material.
+  return { ...config, main_process_mdb_runtime: true } as BackupConfig
 }
 
 // ============================================
@@ -209,9 +212,8 @@ export async function designateThisMachine(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
     try {
-      const publicKey = await window.electronAPI?.getBackupDevicePublicKey?.()
-      if (!publicKey) throw new Error('Device key unavailable')
-      await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail, publicKey })
+      if (!window.electronAPI?.designateMdbBackupDevice) throw new Error('Device authorization is unavailable')
+      await window.electronAPI.designateMdbBackupDevice(await getMachineName(), await getPlatform())
       return { success: true }
     } catch (error) {
       log.error('[Backup]', 'MDB backup machine designation failed', { error: error instanceof Error ? error.message : 'unknown' })
@@ -700,12 +702,12 @@ export async function listSnapshots(
     return getCachedSnapshots()
   }
 
-  if (
+  if (!effectiveConfig.main_process_mdb_runtime && (
     !effectiveConfig.bucket ||
     !effectiveConfig.access_key_encrypted ||
     !effectiveConfig.secret_key_encrypted ||
     !effectiveConfig.restic_password_encrypted
-  ) {
+  )) {
     log.error('[Backup]', 'Config incomplete for listing snapshots')
     return getCachedSnapshots()
   }
@@ -739,6 +741,7 @@ export async function listSnapshots(
   pendingSnapshotRequest = (async () => {
     try {
       const result = await window.electronAPI!.listBackupSnapshots({
+        mdbRuntime: effectiveConfig.main_process_mdb_runtime,
         provider: effectiveConfig.provider,
         bucket: effectiveConfig.bucket || '',
         region: effectiveConfig.region || undefined,
@@ -793,24 +796,25 @@ async function deleteSnapshotInternal(
     return { success: false, error: 'Delete not available: Electron API not found' }
   }
 
-  if (
+  if (!effectiveConfig.main_process_mdb_runtime && (
     !effectiveConfig.bucket ||
     !effectiveConfig.access_key_encrypted ||
     !effectiveConfig.secret_key_encrypted ||
     !effectiveConfig.restic_password_encrypted
-  ) {
+  )) {
     return { success: false, error: 'Config incomplete for delete' }
   }
 
   try {
     const result = await window.electronAPI.deleteBackupSnapshot({
+      mdbRuntime: effectiveConfig.main_process_mdb_runtime,
       provider: effectiveConfig.provider,
-      bucket: effectiveConfig.bucket,
+      bucket: effectiveConfig.bucket || '',
       region: effectiveConfig.region || undefined,
       endpoint: effectiveConfig.endpoint || undefined,
-      accessKey: effectiveConfig.access_key_encrypted,
-      secretKey: effectiveConfig.secret_key_encrypted,
-      resticPassword: effectiveConfig.restic_password_encrypted,
+      accessKey: effectiveConfig.access_key_encrypted || '',
+      secretKey: effectiveConfig.secret_key_encrypted || '',
+      resticPassword: effectiveConfig.restic_password_encrypted || '',
       snapshotId,
     })
 
@@ -845,11 +849,11 @@ export async function runBackup(
 
   try {
     const effectiveConfig = await resolveRuntimeConfig(config)
-    if (!effectiveConfig.bucket || !effectiveConfig.access_key_encrypted || !effectiveConfig.secret_key_encrypted) {
+    if (!effectiveConfig.main_process_mdb_runtime && (!effectiveConfig.bucket || !effectiveConfig.access_key_encrypted || !effectiveConfig.secret_key_encrypted)) {
       throw new Error('Backup not configured: missing bucket or credentials')
     }
 
-    if (!effectiveConfig.restic_password_encrypted) {
+    if (!effectiveConfig.main_process_mdb_runtime && !effectiveConfig.restic_password_encrypted) {
       throw new Error('Backup not configured: missing restic password')
     }
 
@@ -881,13 +885,14 @@ export async function runBackup(
     }
 
     const result = await window.electronAPI.runBackup({
+      mdbRuntime: effectiveConfig.main_process_mdb_runtime,
       provider: effectiveConfig.provider,
-      bucket: effectiveConfig.bucket,
+      bucket: effectiveConfig.bucket || '',
       region: effectiveConfig.region || undefined,
       endpoint: effectiveConfig.endpoint || undefined,
-      accessKey: effectiveConfig.access_key_encrypted,
-      secretKey: effectiveConfig.secret_key_encrypted,
-      resticPassword: effectiveConfig.restic_password_encrypted,
+      accessKey: effectiveConfig.access_key_encrypted || '',
+      secretKey: effectiveConfig.secret_key_encrypted || '',
+      resticPassword: effectiveConfig.restic_password_encrypted || '',
       retentionDaily: effectiveConfig.retention_daily,
       retentionWeekly: effectiveConfig.retention_weekly,
       retentionMonthly: effectiveConfig.retention_monthly,
@@ -932,24 +937,25 @@ export async function restoreFromSnapshot(
     return { success: false, error: 'Restore not available: Electron API not found' }
   }
 
-  if (
+  if (!effectiveConfig.main_process_mdb_runtime && (
     !effectiveConfig.bucket ||
     !effectiveConfig.access_key_encrypted ||
     !effectiveConfig.secret_key_encrypted ||
     !effectiveConfig.restic_password_encrypted
-  ) {
+  )) {
     return { success: false, error: 'Config incomplete for restore' }
   }
 
   try {
     const result = await window.electronAPI.restoreFromBackup({
+      mdbRuntime: effectiveConfig.main_process_mdb_runtime,
       provider: effectiveConfig.provider,
-      bucket: effectiveConfig.bucket,
+      bucket: effectiveConfig.bucket || '',
       region: effectiveConfig.region || undefined,
       endpoint: effectiveConfig.endpoint || undefined,
-      accessKey: effectiveConfig.access_key_encrypted,
-      secretKey: effectiveConfig.secret_key_encrypted,
-      resticPassword: effectiveConfig.restic_password_encrypted,
+      accessKey: effectiveConfig.access_key_encrypted || '',
+      secretKey: effectiveConfig.secret_key_encrypted || '',
+      resticPassword: effectiveConfig.restic_password_encrypted || '',
       snapshotId,
       targetPath,
       specificPaths,
