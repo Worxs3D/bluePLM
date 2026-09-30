@@ -230,6 +230,12 @@ export function SupplierPortalView() {
         ) : (
           recentRFQs.map((rfq) => {
             const statusInfo = getRFQStatusInfo(rfq.status)
+            const statusKey = {
+              draft: 'rfq.pending', pending_files: 'rfq.pending', generating: 'rfq.generating',
+              ready: 'rfq.pending', sent: 'rfq.notSent', awaiting_quote: 'rfq.awaitingQuote',
+              quoted: 'rfq.quoted', awarded: 'rfq.quoted', cancelled: 'rfq.pending',
+              completed: 'rfq.quoted',
+            } as const
             return (
               <div
                 key={rfq.id}
@@ -254,7 +260,7 @@ export function SupplierPortalView() {
                     {rfq.status === 'awaiting_quote' && <Clock size={10} />}
                     {rfq.status === 'quoted' && <CheckCircle2 size={10} />}
                     {rfq.status === 'ready' && <Send size={10} />}
-                    {statusInfo.label}
+                    {t(statusKey[rfq.status])}
                   </span>
                 </div>
 
