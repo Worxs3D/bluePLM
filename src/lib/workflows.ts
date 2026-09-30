@@ -428,7 +428,7 @@ export async function getMyPendingReviews(): Promise<{
 }> {
   return routeBackend({
     mdb: async () => {
-      try { return { data: await getMdbMyWorkflowReviews() as unknown as MyPendingReview[], error: null } }
+      try { return { data: await getMdbMyWorkflowReviews() as MyPendingReview[], error: null } }
       catch (error) { return { data: null, error: error instanceof Error ? error : new Error('Failed to load pending reviews.') } }
     },
     supabase: async () => {

@@ -1209,8 +1209,26 @@ export async function executeMdbWorkflowTransition(fileId: string, transitionId:
   return (await request<{ result: MdbTransitionResult }>(`/files/${encodeURIComponent(fileId)}/workflow-transitions/${encodeURIComponent(transitionId)}/execute`, { method: 'POST', body: JSON.stringify({ comment }) })).result
 }
 
-export async function getMdbMyWorkflowReviews(): Promise<Array<Record<string, unknown>>> {
-  return (await request<{ reviews: Array<Record<string, unknown>> }>('/workflow-reviews/mine')).reviews
+export interface MdbWorkflowReview {
+  review_id: string
+  file_id: string
+  file_name: string
+  file_path: string
+  gate_id: string | null
+  gate_name: string | null
+  gate_type: 'approval' | 'checklist' | 'condition' | null
+  transition_id: string
+  transition_name: string | null
+  from_state_name: string
+  to_state_name: string
+  requested_by: string
+  requested_by_email: string
+  requested_at: string
+  checklist_items: unknown
+}
+
+export async function getMdbMyWorkflowReviews(): Promise<MdbWorkflowReview[]> {
+  return (await request<{ reviews: MdbWorkflowReview[] }>('/workflow-reviews/mine')).reviews
 }
 
 export async function decideMdbWorkflowReview(reviewId: string, decision: 'approved' | 'rejected' | 'kicked_back', comment?: string, checklistResponses?: Record<string, boolean>): Promise<MdbTransitionResult> {

@@ -177,9 +177,9 @@ export interface MyPendingReview {
   file_id: string
   file_name: string
   file_path: string
-  gate_id: string
-  gate_name: string
-  gate_type: GateType
+  gate_id: string | null
+  gate_name: string | null
+  gate_type: GateType | null
   transition_id: string
   transition_name: string | null
   from_state_name: string
