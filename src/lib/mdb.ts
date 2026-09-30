@@ -74,6 +74,7 @@ export interface MdbOrganization {
   defaultNewUserTeamId: string | null
   /** Shared SOLIDWORKS Document Manager key, available only to authenticated organization users. */
   documentManagerLicenseKey: string | null
+  module_defaults_forced_at?: string | null
 }
 
 export type MdbOrganizationSettingSection =
@@ -121,6 +122,7 @@ export interface MdbTeam {
   createdAt: string
   memberCount: number
   vaultCount: number
+  module_defaults?: Record<string, unknown> | null
 }
 
 export interface MdbTeamMember {
@@ -831,6 +833,18 @@ export function normalizeMdbOrgVaultAccess(
 
 export async function getMdbTeams(): Promise<MdbTeam[]> {
   return (await request<{ teams: MdbTeam[] }>('/teams')).teams
+}
+
+export async function getMdbTeamModuleDefaults(teamId: string): Promise<Record<string, unknown> | null> {
+  return (await request<{ defaults: Record<string, unknown> | null }>(`/teams/${encodeURIComponent(teamId)}/module-defaults`)).defaults
+}
+
+export async function setMdbTeamModuleDefaults(teamId: string, value: Record<string, unknown>): Promise<void> {
+  await request(`/teams/${encodeURIComponent(teamId)}/module-defaults`, { method: 'PUT', body: JSON.stringify({ defaults: value }) })
+}
+
+export async function clearMdbTeamModuleDefaults(teamId: string): Promise<void> {
+  await request(`/teams/${encodeURIComponent(teamId)}/module-defaults`, { method: 'DELETE' })
 }
 
 export async function getMdbUserTeams(userId: string): Promise<Array<Pick<MdbTeam, 'id' | 'name' | 'color' | 'icon'>>> {

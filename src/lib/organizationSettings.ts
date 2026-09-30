@@ -1,5 +1,6 @@
 import { routeBackend } from './backendAdapter'
 import {
+  getMdbTeams,
   getMdbOrganizationSetting,
   setMdbOrganizationSetting,
   type MdbOrganizationSettingSection,
@@ -7,6 +8,32 @@ import {
 import { supabase } from './supabase'
 
 export type OrganizationSettingSection = MdbOrganizationSettingSection
+
+export interface OrganizationTeamModuleSummary {
+  id: string
+  name: string
+  color: string
+  icon: string
+  module_defaults: Record<string, unknown> | null
+  member_count: number
+}
+
+export async function getTeamsWithModuleDefaults(): Promise<OrganizationTeamModuleSummary[]> {
+  return routeBackend({
+    mdb: async () => (await getMdbTeams()).filter((team) => team.module_defaults).map((team) => ({
+      id: team.id, name: team.name, color: team.color, icon: team.icon,
+      module_defaults: team.module_defaults ?? null, member_count: team.memberCount,
+    })),
+    supabase: async () => {
+      const { data, error } = await supabase.from('teams').select('id,name,color,icon,module_defaults,team_members(count)').order('name')
+      if (error) throw error
+      return (data ?? []).filter((team: any) => team.module_defaults).map((team: any) => ({
+        id: team.id, name: team.name, color: team.color, icon: team.icon,
+        module_defaults: team.module_defaults, member_count: team.team_members?.[0]?.count ?? 0,
+      }))
+    },
+  })
+}
 
 const directColumns: Record<Exclude<OrganizationSettingSection, 'export'>, string> = {
   serialization: 'serialization_settings',

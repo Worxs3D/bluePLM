@@ -36,6 +36,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       visibleToAll: 'Visible to the whole organization.',
       restrictedHelp: 'Everyone else sees this module greyed out in their sidebar settings.',
     },
+    modules: { title: 'Modules', description: 'Enable, disable, and reorder sidebar modules', pushTitle: 'Push to All Users', pushed: 'Pushed!', failed: 'Failed', pushAll: 'Push to All Users', saved: 'Saved!', saveDefaults: 'Save Defaults', loadDefaults: 'Load Defaults', reset: 'Reset', teamsTitle: 'Teams with Custom Module Defaults', manageTeams: 'Manage in Teams Settings', member: 'member', members: 'members', customHelp: 'Team members inherit these module defaults instead of organization defaults.', warning: 'Warning', overrideText: 'This will override the sidebar configuration for all users in your organization.', warningText: 'Users who customized their sidebar will have their changes overwritten. This action cannot be undone.', onlineText: 'Online users receive the update immediately. Others see it next time they open BluePLM.', cancel: 'Cancel', pushing: 'Pushing...', hasDefaults: 'Has custom module defaults' },
     authProviders: {
       title: 'Sign-In Methods',
       description: 'Control which authentication methods are available for your organization',
@@ -112,6 +113,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       restrictedHelp:
         'Für alle anderen wird dieses Modul in den Seitenleisteneinstellungen deaktiviert.',
     },
+    modules: { title: 'Module', description: 'Module der Seitenleiste aktivieren, deaktivieren und anordnen', pushTitle: 'Für alle Benutzer übernehmen', pushed: 'Übernommen!', failed: 'Fehlgeschlagen', pushAll: 'Für alle Benutzer übernehmen', saved: 'Gespeichert!', saveDefaults: 'Standardwerte speichern', loadDefaults: 'Standardwerte laden', reset: 'Zurücksetzen', teamsTitle: 'Teams mit eigenen Modulstandards', manageTeams: 'In den Teameinstellungen verwalten', member: 'Mitglied', members: 'Mitglieder', customHelp: 'Teammitglieder übernehmen diese Modulstandards statt der Organisationsstandards.', warning: 'Warnung', overrideText: 'Die Seitenleistenkonfiguration wird für alle Benutzer der Organisation überschrieben.', warningText: 'Eigene Seitenleistenänderungen der Benutzer werden überschrieben. Diese Aktion kann nicht rückgängig gemacht werden.', onlineText: 'Online-Benutzer erhalten die Änderung sofort. Andere sehen sie beim nächsten Start.', cancel: 'Abbrechen', pushing: 'Wird übernommen …', hasDefaults: 'Eigene Modulstandards vorhanden' },
     authProviders: {
       title: 'Anmeldemethoden',
       description: 'Lege fest, welche Anmeldemethoden für deine Organisation verfügbar sind',
@@ -188,6 +190,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       restrictedHelp:
         'Los demás verán este módulo desactivado en la configuración de la barra lateral.',
     },
+    modules: { title: 'Módulos', description: 'Activa, desactiva y reordena los módulos de la barra lateral', pushTitle: 'Aplicar a todos los usuarios', pushed: '¡Aplicado!', failed: 'Error', pushAll: 'Aplicar a todos los usuarios', saved: '¡Guardado!', saveDefaults: 'Guardar valores predeterminados', loadDefaults: 'Cargar valores predeterminados', reset: 'Restablecer', teamsTitle: 'Equipos con valores de módulo personalizados', manageTeams: 'Gestionar en ajustes de equipos', member: 'miembro', members: 'miembros', customHelp: 'Los miembros del equipo heredan estos valores en lugar de los de la organización.', warning: 'Advertencia', overrideText: 'Esto sobrescribirá la barra lateral de todos los usuarios de la organización.', warningText: 'Se sobrescribirán los cambios personalizados. Esta acción no se puede deshacer.', onlineText: 'Los usuarios conectados reciben el cambio inmediatamente; los demás al abrir BluePLM.', cancel: 'Cancelar', pushing: 'Aplicando...', hasDefaults: 'Tiene valores de módulo personalizados' },
     authProviders: {
       title: 'Métodos de inicio de sesión',
       description: 'Controla qué métodos de autenticación están disponibles para tu organización',
@@ -267,6 +270,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       restrictedHelp:
         'Les autres verront ce module grisé dans les paramètres de la barre latérale.',
     },
+    modules: { title: 'Modules', description: 'Activer, désactiver et réorganiser les modules de la barre latérale', pushTitle: 'Appliquer à tous les utilisateurs', pushed: 'Appliqué !', failed: 'Échec', pushAll: 'Appliquer à tous les utilisateurs', saved: 'Enregistré !', saveDefaults: 'Enregistrer les valeurs par défaut', loadDefaults: 'Charger les valeurs par défaut', reset: 'Réinitialiser', teamsTitle: 'Équipes avec des valeurs de module personnalisées', manageTeams: 'Gérer dans les paramètres des équipes', member: 'membre', members: 'membres', customHelp: 'Les membres de l’équipe héritent de ces valeurs plutôt que de celles de l’organisation.', warning: 'Avertissement', overrideText: 'La barre latérale sera remplacée pour tous les utilisateurs de l’organisation.', warningText: 'Les personnalisations seront écrasées. Cette action est irréversible.', onlineText: 'Les utilisateurs en ligne reçoivent la mise à jour immédiatement, les autres au prochain démarrage.', cancel: 'Annuler', pushing: 'Application…', hasDefaults: 'Valeurs de module personnalisées' },
     authProviders: {
       title: 'Méthodes de connexion',
       description: 'Contrôlez les méthodes d’authentification disponibles pour votre organisation',
@@ -346,6 +350,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       restrictedHelp:
         'As restantes pessoas verão este módulo desativado nas definições da barra lateral.',
     },
+    modules: { title: 'Módulos', description: 'Ativar, desativar e reordenar módulos da barra lateral', pushTitle: 'Aplicar a todos os utilizadores', pushed: 'Aplicado!', failed: 'Falha', pushAll: 'Aplicar a todos os utilizadores', saved: 'Guardado!', saveDefaults: 'Guardar predefinições', loadDefaults: 'Carregar predefinições', reset: 'Repor', teamsTitle: 'Equipas com predefinições de módulos personalizadas', manageTeams: 'Gerir nas definições de equipas', member: 'membro', members: 'membros', customHelp: 'Os membros da equipa herdam estas predefinições em vez das da organização.', warning: 'Aviso', overrideText: 'A configuração da barra lateral será substituída para todos os utilizadores da organização.', warningText: 'As alterações personalizadas serão substituídas. Esta ação não pode ser anulada.', onlineText: 'Os utilizadores online recebem a atualização imediatamente; os restantes no próximo arranque.', cancel: 'Cancelar', pushing: 'A aplicar...', hasDefaults: 'Tem predefinições de módulos personalizadas' },
     authProviders: {
       title: 'Métodos de início de sessão',
       description: 'Controle os métodos de autenticação disponíveis para a sua organização',
@@ -422,6 +427,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       visibleToAll: '对整个组织可见。',
       restrictedHelp: '其他人的侧边栏设置中，此模块将显示为禁用状态。',
     },
+    modules: { title: '模块', description: '启用、停用并重新排列侧边栏模块', pushTitle: '应用到所有用户', pushed: '已应用！', failed: '失败', pushAll: '应用到所有用户', saved: '已保存！', saveDefaults: '保存默认值', loadDefaults: '加载默认值', reset: '重置', teamsTitle: '具有自定义模块默认值的团队', manageTeams: '在团队设置中管理', member: '成员', members: '成员', customHelp: '团队成员继承这些模块默认值，而不是组织默认值。', warning: '警告', overrideText: '这会覆盖组织中所有用户的侧边栏配置。', warningText: '用户自定义的侧边栏会被覆盖，此操作无法撤销。', onlineText: '在线用户会立即收到更新，其他用户下次打开 BluePLM 时看到。', cancel: '取消', pushing: '应用中…', hasDefaults: '有自定义模块默认值' },
     authProviders: {
       title: '登录方式',
       description: '控制组织可用的身份验证方式',
@@ -493,6 +499,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
       visibleToAll: '對整個組織可見。',
       restrictedHelp: '其他人的側邊欄設定中，此模組會顯示為停用。',
     },
+    modules: { title: '模組', description: '啟用、停用並重新排列側邊欄模組', pushTitle: '套用至所有使用者', pushed: '已套用！', failed: '失敗', pushAll: '套用至所有使用者', saved: '已儲存！', saveDefaults: '儲存預設值', loadDefaults: '載入預設值', reset: '重設', teamsTitle: '具有自訂模組預設值的團隊', manageTeams: '在團隊設定中管理', member: '成員', members: '成員', customHelp: '團隊成員會繼承這些模組預設值，而不是組織預設值。', warning: '警告', overrideText: '這會覆蓋組織中所有使用者的側邊欄設定。', warningText: '使用者自訂的側邊欄變更將被覆蓋，此操作無法復原。', onlineText: '線上使用者會立即收到更新，其他使用者下次開啟 BluePLM 時看到。', cancel: '取消', pushing: '套用中…', hasDefaults: '有自訂模組預設值' },
     authProviders: {
       title: '登入方式',
       description: '控制組織可用的驗證方式',

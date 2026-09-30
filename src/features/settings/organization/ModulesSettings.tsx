@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import * as LucideIcons from 'lucide-react'
 import {
   RotateCcw,
@@ -12,9 +12,10 @@ import {
   X,
 } from 'lucide-react'
 import { log } from '@/lib/logger'
+import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useDeniedModules } from '@/hooks/useDeniedModules'
-import { supabase } from '@/lib/supabase'
+import { getTeamsWithModuleDefaults } from '@/lib/organizationSettings'
 import { ModulesEditor } from './ModulesEditor'
 
 // Team type for module defaults display
@@ -28,6 +29,7 @@ interface TeamWithModules {
 }
 
 export function ModulesSettings() {
+  const { t } = useTranslation()
   const {
     moduleConfig,
     setModuleConfig,
@@ -57,49 +59,23 @@ export function ModulesSettings() {
 
   const isAdmin = getEffectiveRole() === 'admin'
 
-  // Load teams with module defaults
-  useEffect(() => {
-    if (organization?.id) {
-      loadTeamsWithModules()
-    }
-  }, [organization?.id])
-
-  const loadTeamsWithModules = async () => {
+  const loadTeamsWithModules = useCallback(async () => {
     if (!organization?.id) return
 
     setTeamsLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('teams')
-        .select(
-          `
-          id,
-          name,
-          color,
-          icon,
-          module_defaults,
-          team_members(count)
-        `,
-        )
-        .eq('org_id', organization.id)
-        .not('module_defaults', 'is', null)
-        .order('name')
-
-      if (error) throw error
-      // Supabase v2 nested select type inference incomplete for team counts
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const teamsWithCounts = (data || []).map((team: any) => ({
-        ...team,
-        member_count: team.team_members?.[0]?.count || 0,
-      }))
-
-      setTeamsWithModules(teamsWithCounts)
+      setTeamsWithModules(await getTeamsWithModuleDefaults())
     } catch (error) {
       log.error('[ModulesSettings]', 'Failed to load teams with modules', { error: error })
     } finally {
       setTeamsLoading(false)
     }
-  }
+  }, [organization?.id])
+
+  // Load teams with module defaults
+  useEffect(() => {
+    void loadTeamsWithModules()
+  }, [loadTeamsWithModules])
 
   const handleSaveOrgDefaults = async () => {
     setIsSaving(true)
@@ -145,9 +121,9 @@ export function ModulesSettings() {
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-plm-fg">Modules</h1>
+          <h1 className="text-xl font-semibold text-plm-fg">{t('settingsPages.modules.title')}</h1>
           <p className="text-sm text-plm-fg-muted mt-1">
-            Enable, disable, and reorder sidebar modules
+            {t('settingsPages.modules.description')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -163,14 +139,14 @@ export function ModulesSettings() {
                       ? 'bg-plm-error/20 text-plm-error border border-plm-error/30'
                       : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
                 }`}
-                title="Push this configuration to all organization members, overriding their settings"
+                title={t('settingsPages.modules.pushTitle')}
               >
                 {isForcing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                 {forceResult === 'success'
-                  ? 'Pushed!'
+                  ? t('settingsPages.modules.pushed')
                   : forceResult === 'error'
-                    ? 'Failed'
-                    : 'Push to All Users'}
+                    ? t('settingsPages.modules.failed')
+                    : t('settingsPages.modules.pushAll')}
               </button>
               <button
                 onClick={handleSaveOrgDefaults}
@@ -182,14 +158,14 @@ export function ModulesSettings() {
                       ? 'bg-plm-error/20 text-plm-error border border-plm-error/30'
                       : 'bg-plm-accent text-white hover:bg-plm-accent/80'
                 }`}
-                title="Save as organization defaults for new members"
+                title={t('settingsPages.modules.saveDefaults')}
               >
                 {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 {saveResult === 'success'
-                  ? 'Saved!'
+                  ? t('settingsPages.modules.saved')
                   : saveResult === 'error'
-                    ? 'Failed'
-                    : 'Save Defaults'}
+                    ? t('settingsPages.modules.failed')
+                    : t('settingsPages.modules.saveDefaults')}
               </button>
             </>
           )}
@@ -197,18 +173,18 @@ export function ModulesSettings() {
             onClick={handleLoadOrgDefaults}
             disabled={isLoading}
             className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors disabled:opacity-50"
-            title="Load organization defaults"
+            title={t('settingsPages.modules.loadDefaults')}
           >
             {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            Load Defaults
+            {t('settingsPages.modules.loadDefaults')}
           </button>
           <button
             onClick={resetModulesToDefaults}
             className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors"
-            title="Reset to factory defaults"
+            title={t('settingsPages.modules.reset')}
           >
             <RotateCcw size={14} />
-            Reset
+            {t('settingsPages.modules.reset')}
           </button>
         </div>
       </div>
@@ -226,13 +202,13 @@ export function ModulesSettings() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm text-plm-fg-muted uppercase tracking-wide font-medium flex items-center gap-2">
               <Users size={14} />
-              Teams with Custom Module Defaults
+              {t('settingsPages.modules.teamsTitle')}
             </h2>
             <button
               onClick={() => setActiveView('settings')}
               className="text-xs text-plm-accent hover:text-plm-accent/80 flex items-center gap-1"
             >
-              Manage in Teams Settings
+              {t('settingsPages.modules.manageTeams')}
               <ExternalLink size={10} />
             </button>
           </div>
@@ -263,13 +239,15 @@ export function ModulesSettings() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-plm-fg truncate">{team.name}</div>
                     <div className="text-xs text-plm-fg-muted">
-                      {enabledCount} modules • {team.member_count} member
-                      {team.member_count !== 1 ? 's' : ''}
+                      {enabledCount} {t('settingsPages.modules.members')} • {team.member_count}{' '}
+                      {team.member_count === 1
+                        ? t('settingsPages.modules.member')
+                        : t('settingsPages.modules.members')}
                     </div>
                   </div>
                   <div
                     className="w-2 h-2 rounded-full bg-green-500"
-                    title="Has custom module defaults"
+                    title={t('settingsPages.modules.hasDefaults')}
                   />
                 </div>
               )
@@ -277,7 +255,7 @@ export function ModulesSettings() {
           </div>
 
           <p className="text-xs text-plm-fg-dim mt-3">
-            Team members inherit these module defaults instead of organization defaults.
+            {t('settingsPages.modules.customHelp')}
           </p>
         </section>
       )}
@@ -292,7 +270,7 @@ export function ModulesSettings() {
                 <div className="p-2 rounded-lg bg-amber-500/20">
                   <AlertTriangle size={20} className="text-amber-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-plm-fg">Push to All Users</h3>
+                <h3 className="text-lg font-semibold text-plm-fg">{t('settingsPages.modules.pushAll')}</h3>
               </div>
               <button
                 onClick={() => setShowForceConfirm(false)}
@@ -305,20 +283,18 @@ export function ModulesSettings() {
             {/* Content */}
             <div className="p-4 space-y-4">
               <p className="text-sm text-plm-fg">
-                This will <strong>override</strong> the sidebar configuration for{' '}
-                <strong>all users</strong> in your organization.
+                {t('settingsPages.modules.overrideText')}
               </p>
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
                 <p className="text-sm text-amber-300">
-                  <strong>Warning:</strong> Users who have customized their sidebar will have their
-                  changes overwritten. This action cannot be undone.
+                  <strong>{t('settingsPages.modules.warning')}:</strong>{' '}
+                  {t('settingsPages.modules.warningText')}
                 </p>
               </div>
 
               <p className="text-sm text-plm-fg-muted">
-                Users who are currently online will receive the update immediately. Others will see
-                the changes when they next open BluePLM.
+                {t('settingsPages.modules.onlineText')}
               </p>
             </div>
 
@@ -328,7 +304,7 @@ export function ModulesSettings() {
                 onClick={() => setShowForceConfirm(false)}
                 className="px-4 py-2 text-sm rounded-lg border border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors"
               >
-                Cancel
+                {t('settingsPages.modules.cancel')}
               </button>
               <button
                 onClick={handleForceOrgDefaults}
@@ -336,7 +312,7 @@ export function ModulesSettings() {
                 className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-amber-500 text-black font-medium hover:bg-amber-400 transition-colors disabled:opacity-50"
               >
                 {isForcing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                {isForcing ? 'Pushing...' : 'Push to All Users'}
+                {isForcing ? t('settingsPages.modules.pushing') : t('settingsPages.modules.pushAll')}
               </button>
             </div>
           </div>

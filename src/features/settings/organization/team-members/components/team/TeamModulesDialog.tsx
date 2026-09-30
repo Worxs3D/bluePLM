@@ -3,12 +3,14 @@ import type React from 'react'
 import * as LucideIcons from 'lucide-react'
 import { Users, X, Loader2, Trash2 } from 'lucide-react'
 import { log } from '@/lib/logger'
+import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import { ModulesEditor } from '../../../ModulesEditor'
 import type { ModuleConfig } from '@/types/modules'
 import type { TeamModulesDialogProps } from '../../types'
 
 export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
+  const { t } = useTranslation()
   const {
     addToast,
     loadTeamModuleDefaults,
@@ -62,7 +64,7 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
       }
     } catch (error) {
       log.error('[TeamModules]', 'Failed to load team defaults', { error: error })
-      addToast('error', 'Failed to load team module defaults')
+      addToast('error', t('settingsPages.modules.failed'))
     } finally {
       setIsLoading(false)
     }
@@ -80,15 +82,15 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
     try {
       const result = await saveTeamModuleDefaults(team.id, localConfig)
       if (result.success) {
-        addToast('success', `Module defaults saved for ${team.name}`)
+        addToast('success', `${t('settingsPages.modules.saved')} ${team.name}`)
         setHasChanges(false)
         onClose()
       } else {
-        addToast('error', result.error || 'Failed to save defaults')
+        addToast('error', t('settingsPages.modules.failed'))
       }
     } catch (error) {
       log.error('[TeamModules]', 'Failed to save team defaults', { error: error })
-      addToast('error', 'Failed to save team module defaults')
+      addToast('error', t('settingsPages.modules.failed'))
     } finally {
       setIsSaving(false)
     }
@@ -100,14 +102,14 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
     try {
       const result = await clearTeamModuleDefaults(team.id)
       if (result.success) {
-        addToast('success', `Module defaults cleared for ${team.name}`)
+        addToast('success', `${t('settingsPages.modules.reset')} ${team.name}`)
         onClose()
       } else {
-        addToast('error', result.error || 'Failed to clear defaults')
+        addToast('error', t('settingsPages.modules.failed'))
       }
     } catch (error) {
       log.error('[TeamModules]', 'Failed to clear team defaults', { error: error })
-      addToast('error', 'Failed to clear team module defaults')
+      addToast('error', t('settingsPages.modules.failed'))
     } finally {
       setIsSaving(false)
     }
@@ -132,9 +134,9 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
               <IconComponent size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-plm-fg">{team.name} - Module Defaults</h3>
+              <h3 className="text-lg font-semibold text-plm-fg">{team.name} - {t('settingsPages.modules.saveDefaults')}</h3>
               <p className="text-sm text-plm-fg-muted">
-                Configure sidebar modules for team members
+                {t('settingsPages.modules.customHelp')}
               </p>
             </div>
           </div>
@@ -152,9 +154,7 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
           ) : localConfig ? (
             <div className="space-y-4">
               <p className="text-sm text-plm-fg-muted">
-                Configure which modules are enabled and how they appear for members of this team.
-                Drag to reorder, create groups, and toggle modules on/off. If a user is in multiple
-                teams, they get a <strong>union</strong> of all enabled modules.
+                {t('settingsPages.modules.description')} {t('settingsPages.modules.customHelp')}
               </p>
 
               <ModulesEditor
@@ -174,12 +174,12 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
             className="btn btn-ghost text-plm-error hover:bg-plm-error/10 disabled:opacity-50"
           >
             <Trash2 size={14} className="mr-1.5" />
-            Clear Defaults
+            {t('settingsPages.modules.reset')}
           </button>
 
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="btn btn-ghost" disabled={isSaving}>
-              Cancel
+              {t('settingsPages.modules.cancel')}
             </button>
             <button
               onClick={handleSaveDefaults}
@@ -189,10 +189,10 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
               {isSaving ? (
                 <>
                   <Loader2 size={14} className="mr-1.5 animate-spin" />
-                  Saving...
+                  {t('settingsPages.modules.pushing')}
                 </>
               ) : (
-                'Save Defaults'
+                t('settingsPages.modules.saveDefaults')
               )}
             </button>
           </div>
@@ -209,20 +209,19 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
             className="bg-plm-bg-light border border-plm-border rounded-xl p-6 max-w-md w-full mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-medium text-plm-fg mb-4">Clear Module Defaults</h3>
+            <h3 className="text-lg font-medium text-plm-fg mb-4">{t('settingsPages.modules.reset')}</h3>
             <p className="text-base text-plm-fg-muted mb-4">
-              Are you sure you want to clear module defaults for <strong>{team.name}</strong>? Team
-              members will use organization or app defaults instead.
+              {t('settingsPages.modules.warningText')} <strong>{team.name}</strong>.
             </p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setShowClearConfirm(false)} className="btn btn-ghost">
-                Cancel
+                {t('settingsPages.modules.cancel')}
               </button>
               <button
                 onClick={handleClearDefaults}
                 className="btn bg-plm-error text-white hover:bg-plm-error/90"
               >
-                Clear Defaults
+                {t('settingsPages.modules.reset')}
               </button>
             </div>
           </div>
