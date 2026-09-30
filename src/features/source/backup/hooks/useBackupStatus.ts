@@ -11,12 +11,14 @@ import {
   type BackupConfig,
   type BackupSnapshot,
 } from '@/lib/backup'
+import { isMdbServerUpdateRequiredError } from '@/lib/mdb'
 
 interface UseBackupStatusReturn {
   // Config (loads fast)
   config: BackupConfig | null
   isConfigured: boolean
   isLoadingConfig: boolean
+  serverUpdateRequired: boolean
 
   // Snapshots (loads slow, in background)
   snapshots: BackupSnapshot[]
@@ -58,6 +60,7 @@ export function useBackupStatus(
   // Phase 1: Config state (fast)
   const [config, setConfig] = useState<BackupConfig | null>(null)
   const [isLoadingConfig, setIsLoadingConfig] = useState(true)
+  const [serverUpdateRequired, setServerUpdateRequired] = useState(false)
 
   // Phase 2: Snapshots state (slow)
   const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([])
@@ -93,9 +96,15 @@ export function useBackupStatus(
 
     try {
       const newConfig = await getBackupConfig(orgId)
+      setServerUpdateRequired(false)
       setConfig(newConfig)
       return newConfig
     } catch (error) {
+      if (isMdbServerUpdateRequiredError(error)) {
+        setServerUpdateRequired(true)
+        setConfig(null)
+        return null
+      }
       log.error('[Backup]', 'Failed to load backup config', { error: error })
       return null
     }
@@ -259,6 +268,7 @@ export function useBackupStatus(
     config,
     isConfigured,
     isLoadingConfig,
+    serverUpdateRequired,
 
     // Snapshots
     snapshots,

@@ -5,7 +5,7 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('basic-ftp', () => ({ Client: class {} }))
-import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, credentialClearOperationKind, credentialOperationKind, executeMdbServerUpdatePlan, setMdbServerConfirmationForTests, setMdbServerCredentialsForTests } from './mdbServerUpdate'
+import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, credentialClearOperationKind, credentialOperationKind, executeMdbServerUpdatePlan, isMdbServerUpdateRequired, setMdbServerConfirmationForTests, setMdbServerCredentialsForTests } from './mdbServerUpdate'
 import { RemoteRollbackError } from './mdbInstaller'
 
 const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/backup', existing: [], promoted: [] }
@@ -63,19 +63,33 @@ describe('MDB server update seam', () => {
     vi.unstubAllGlobals()
   })
 
-  it.each([
-    ['server-newer', '4.4.5', 'b'],
-    ['same-version-different', '4.4.4', 'b'],
-  ] as const)('refuses %s before confirmation', async (_status, releaseVersion, digestChar) => {
+  it('refuses a newer server before confirmation', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
       ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
-      : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: releaseVersion, bundleDigest: digestChar.repeat(64), bundleFileCount: 1 }), { status: 200 })))
+      : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: '4.4.5', bundleDigest: 'b'.repeat(64), bundleFileCount: 1 }), { status: 200 })))
     const confirm = vi.fn(async () => true)
     setMdbServerConfirmationForTests(confirm)
     const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
-    expect(['SERVER_NEWER', 'VERSION_CONFLICT']).toContain(result.errorCode)
+    expect(result.errorCode).toBe('SERVER_NEWER')
     expect(confirm).not.toHaveBeenCalled()
     setMdbServerConfirmationForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
+  it('treats same-release file drift as an explicit update and asks for confirmation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
+      ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: 'b'.repeat(64), bundleFileCount: 1 }), { status: 200 })))
+    setMdbServerCredentialsForTests({ profile: { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit', ftpRemotePath: '', ftpUsername: 'deploy' }, secrets: { ftpPassword: 'password', maintenanceToken: 'maintenance' }, binding: { serverUrl: 'https://mdb.example.test', organizationId: 'org-1' } })
+    const confirm = vi.fn(async () => false)
+    setMdbServerConfirmationForTests(confirm)
+
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+
+    expect(result.errorCode).toBe('CANCELLED')
+    expect(confirm).toHaveBeenCalledOnce()
+    setMdbServerConfirmationForTests(undefined)
+    setMdbServerCredentialsForTests(undefined)
     vi.unstubAllGlobals()
   })
 
@@ -103,6 +117,13 @@ describe('MDB server update seam', () => {
     expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('same-version-different')
     expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.2' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.10', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('server-newer')
     expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.10' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.2', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
+  })
+
+  it('requires an MDB server update when the release label matches but its digest differs', () => {
+    expect(isMdbServerUpdateRequired('same-version-different')).toBe(true)
+    expect(isMdbServerUpdateRequired('update-available')).toBe(true)
+    expect(isMdbServerUpdateRequired('current')).toBe(false)
+    expect(isMdbServerUpdateRequired('server-newer')).toBe(false)
   })
 
   it('does not activate when migrations fail, and always cleans up', async () => {

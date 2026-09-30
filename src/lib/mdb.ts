@@ -10,6 +10,11 @@ import { isMdbBackendActive } from './backendAdapter'
 
 
 export const MDB_API_VERSION = 2
+export const MDB_BACKUP_CAPABILITY = 'backup'
+
+const CAPABILITY_CACHE_MS = 60_000
+let capabilityCache: { serverUrl: string; expiresAt: number; capabilities: ReadonlySet<string> } | null = null
+let capabilityProbe: { serverUrl: string; promise: Promise<ReadonlySet<string>> } | null = null
 
 const STORAGE_KEY = 'blueplm-mdb-config'
 const CHECKOUTS_STORAGE_KEY = 'blueplm-mdb-checkouts'
@@ -113,6 +118,20 @@ export interface MdbBackupConfig {
   backup_running_since: string | null
   created_at?: string
   updated_at?: string
+}
+
+export class MdbServerUpdateRequiredError extends Error {
+  readonly code = 'MDB_SERVER_UPDATE_REQUIRED'
+
+  constructor() {
+    super('MDB_SERVER_UPDATE_REQUIRED')
+    this.name = 'MdbServerUpdateRequiredError'
+  }
+}
+
+export function isMdbServerUpdateRequiredError(error: unknown): error is MdbServerUpdateRequiredError {
+  return error instanceof MdbServerUpdateRequiredError
+    || (error instanceof Error && error.message === 'MDB_SERVER_UPDATE_REQUIRED')
 }
 
 export interface MdbVaultAuditFile {
@@ -409,6 +428,8 @@ export function saveMdbConfig(config: MdbConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
   if (normalized.accessToken) void window.electronAPI?.syncMdbBackupAuth?.(normalized.serverUrl, normalized.accessToken).catch(() => undefined)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
+  capabilityCache = null
+  capabilityProbe = null
   activateBackend('mdb')
   notify()
 }
@@ -416,6 +437,8 @@ export function saveMdbConfig(config: MdbConfig): void {
 export function clearMdbConfig(): void {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
+  capabilityCache = null
+  capabilityProbe = null
   void window.electronAPI?.clearMdbBackupAuth?.().catch(() => undefined)
   notify()
 }
@@ -460,6 +483,52 @@ async function request<T>(path: string, init: RequestInit = {}, needsAuth = true
   } finally {
     clearTimeout(timeout)
   }
+}
+
+export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
+  const config = loadMdbConfig()
+  if (!config) throw new Error('MariaDB backend is not configured.')
+  const now = Date.now()
+  if (capabilityCache?.serverUrl === config.serverUrl && capabilityCache.expiresAt > now) {
+    return capabilityCache.capabilities
+  }
+  if (capabilityProbe?.serverUrl === config.serverUrl) return capabilityProbe.promise
+
+  const serverUrl = config.serverUrl
+  const promise = (async () => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15_000)
+    try {
+      const response = await fetch(new URL('/health', `${serverUrl}/`), {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error(`Backend returned HTTP ${response.status}.`)
+      const body = await response.json() as { supabase?: unknown; capabilities?: unknown }
+      if (body.supabase !== false) throw new Error('This is not a BluePLM MariaDB backend.')
+      const capabilities = new Set(
+        Array.isArray(body.capabilities)
+          ? body.capabilities.filter((value): value is string => typeof value === 'string')
+          : [],
+      )
+      capabilityCache = { serverUrl, expiresAt: Date.now() + CAPABILITY_CACHE_MS, capabilities }
+      return capabilities
+    } finally {
+      clearTimeout(timeout)
+      if (capabilityProbe?.serverUrl === serverUrl) capabilityProbe = null
+    }
+  })()
+  capabilityProbe = { serverUrl, promise }
+  return promise
+}
+
+export async function mdbServerSupportsBackup(): Promise<boolean> {
+  return (await getMdbServerCapabilities()).has(MDB_BACKUP_CAPABILITY)
+}
+
+async function assertMdbBackupCapability(): Promise<void> {
+  if (!await mdbServerSupportsBackup()) throw new MdbServerUpdateRequiredError()
 }
 
 export async function validateMdbConfig(serverUrl: string): Promise<{ valid: boolean; error?: string }> {
@@ -646,10 +715,12 @@ export async function setMdbOrganizationSetting<T extends object>(
 
 /** MDB backup control-plane routes. Encrypted values remain opaque to the server. */
 export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
+  await assertMdbBackupCapability()
   return (await request<{ config: MdbBackupConfig | null }>('/backup/config')).config
 }
 
 export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
+  await assertMdbBackupCapability()
   return (await request<{ config: MdbBackupConfig }>('/backup/config', {
     method: 'PUT',
     body: JSON.stringify(value),
@@ -663,29 +734,35 @@ export async function designateMdbBackupMachine(value: {
   userEmail: string
   publicKey: string
 }): Promise<void> {
+  await assertMdbBackupCapability()
   await request('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
 }
 
 export async function clearMdbBackupMachine(): Promise<void> {
+  await assertMdbBackupCapability()
   await request('/backup/designate', { method: 'DELETE' })
 }
 
 export async function heartbeatMdbBackupMachine(): Promise<boolean> {
+  await assertMdbBackupCapability()
   if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
   return (await window.electronAPI.performMdbBackupDeviceAction('heartbeat')).active === true
 }
 
 /** The server attributes this user action from the authenticated principal. */
 export async function requestMdbBackup(): Promise<void> {
+  await assertMdbBackupCapability()
   await request('/backup/request', { method: 'POST' })
 }
 
 export async function markMdbBackupStarted(): Promise<void> {
+  await assertMdbBackupCapability()
   if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
   await window.electronAPI.performMdbBackupDeviceAction('start')
 }
 
 export async function markMdbBackupComplete(): Promise<void> {
+  await assertMdbBackupCapability()
   if (!window.electronAPI?.performMdbBackupDeviceAction) throw new Error('Device authorization is unavailable')
   await window.electronAPI.performMdbBackupDeviceAction('complete')
 }

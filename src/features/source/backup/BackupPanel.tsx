@@ -42,6 +42,7 @@ export function BackupPanel({ isAdmin }: BackupPanelProps) {
     config,
     isConfigured,
     isLoadingConfig,
+    serverUpdateRequired,
     snapshots,
     lastSnapshot,
     totalSnapshots,
@@ -71,6 +72,7 @@ export function BackupPanel({ isAdmin }: BackupPanelProps) {
       totalSnapshots,
       isLoading: isLoadingSnapshots,
       error: snapshotError,
+      updateRequired: serverUpdateRequired,
     }
   }, [
     isLoadingConfig,
@@ -81,6 +83,7 @@ export function BackupPanel({ isAdmin }: BackupPanelProps) {
     totalSnapshots,
     isLoadingSnapshots,
     snapshotError,
+    serverUpdateRequired,
   ])
 
   // Config form state

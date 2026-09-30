@@ -133,7 +133,7 @@ export function MdbServerSettings() {
   }
 
   const statusLabel = t(statusTranslation[status])
-  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current' || status === 'server-newer' || status === 'same-version-different'
+  const updateDisabled = busy || !credentials?.hasCredentials || status === 'current' || status === 'server-newer'
   const digest = useMemo(() => (value: string | null | undefined) => value ? t('settingsPages.mdbServer.digestPreview', { value: value.slice(0, 12) }) : t('settingsPages.mdbServer.notAvailable'), [t])
 
   if (!isMdbBackendActive() || !canManage) return null

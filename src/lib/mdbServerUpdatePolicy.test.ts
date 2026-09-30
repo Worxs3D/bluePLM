@@ -10,6 +10,7 @@ describe('MDB startup update policy', () => {
     expect(shouldNotifyMdbServerUpdate('update-available', 'owner')).toBe(true)
     expect(shouldNotifyMdbServerUpdate('update-available', 'admin')).toBe(true)
     expect(shouldNotifyMdbServerUpdate('update-available', 'member')).toBe(false)
+    expect(shouldNotifyMdbServerUpdate('same-version-different', 'admin')).toBe(true)
     expect(shouldNotifyMdbServerUpdate('current', 'admin')).toBe(false)
     expect(shouldNotifyMdbServerUpdate('unknown', 'admin')).toBe(false)
   })

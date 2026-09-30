@@ -5,6 +5,7 @@ import {
   clearMdbBackupMachine,
   getMdbBackupConfig,
   heartbeatMdbBackupMachine,
+  mdbServerSupportsBackup,
   markMdbBackupComplete,
   markMdbBackupStarted,
   requestMdbBackup,
@@ -76,6 +77,7 @@ export interface BackupStatus {
   totalSnapshots: number
   isLoading: boolean
   error: string | null
+  updateRequired?: boolean
 }
 
 export interface BackupResult {
@@ -279,7 +281,10 @@ export async function clearDesignatedMachine(
 
 // Update heartbeat (called every minute by designated machine)
 export async function updateHeartbeat(orgId: string): Promise<boolean> {
-  if (!isBackendActive('supabase')) return heartbeatMdbBackupMachine()
+  if (!isBackendActive('supabase')) {
+    if (!await mdbServerSupportsBackup()) return false
+    return heartbeatMdbBackupMachine()
+  }
   const supabase = getSupabaseClient()
   const machineId = await getMachineId()
 
@@ -969,6 +974,18 @@ export async function restoreFromSnapshot(
 
 // Get complete backup status
 export async function getBackupStatus(orgId: string): Promise<BackupStatus> {
+  if (!isBackendActive('supabase') && !await mdbServerSupportsBackup()) {
+    return {
+      isConfigured: false,
+      config: null,
+      snapshots: [],
+      lastSnapshot: null,
+      totalSnapshots: 0,
+      isLoading: false,
+      error: 'MDB_SERVER_UPDATE_REQUIRED',
+      updateRequired: true,
+    }
+  }
   const config = await getBackupConfig(orgId)
 
   const isConfigured = !!(

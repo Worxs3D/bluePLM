@@ -39,9 +39,10 @@ export type TranslationParams = Record<string, string | number>
 
 function interpolate(text: string, params?: TranslationParams): string {
   if (!params) return text
-  return text.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-    name in params ? String(params[name]) : match,
-  )
+  const substitute = (match: string, name: string) => name in params ? String(params[name]) : match
+  return text
+    .replace(/\{\{(\w+)\}\}/g, substitute)
+    .replace(/\{(\w+)\}/g, substitute)
 }
 
 /**

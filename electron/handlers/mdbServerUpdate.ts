@@ -194,6 +194,10 @@ export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: P
   return comparison > 0 ? 'update-available' : comparison < 0 ? 'server-newer' : 'same-version-different'
 }
 
+export function isMdbServerUpdateRequired(status: MdbServerUpdateInspection['status']): boolean {
+  return status === 'update-available' || status === 'same-version-different'
+}
+
 export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServerUpdateInspection> {
   const packaged = await createMdbBundleManifest(serverBundleRoot(), app.getVersion())
   try {
@@ -317,7 +321,6 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   let inspection: MdbServerUpdateInspection
   try { inspection = await inspectMdbServerUpdate(request.serverUrl) } catch { return { success: false, status: 'failure', errorCode: 'UNAVAILABLE' } }
   if (inspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
-  if (inspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
   if (inspection.status === 'current') return { success: true, status: 'current', inspection }
   const stored = await loadStoredCredentials()
   if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
@@ -327,7 +330,6 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   try { confirmedInspection = await inspectMdbServerUpdate(request.serverUrl) } catch { return { success: false, status: 'failure', errorCode: 'UNAVAILABLE' } }
   if (deploymentIdentity(confirmedInspection) !== deploymentIdentity(inspection)) return { success: false, status: 'failure', errorCode: 'SERVER_CHANGED' }
   if (confirmedInspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
-  if (confirmedInspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
   if (confirmedInspection.status === 'current') return { success: true, status: 'current', inspection: confirmedInspection }
   let cleanup: (() => Promise<void>) | undefined
   let activation: RemoteDeploymentActivation | undefined

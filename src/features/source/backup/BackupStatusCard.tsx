@@ -1,5 +1,6 @@
 import { CheckCircle2, AlertTriangle, Loader2, Clock, AlertCircle } from 'lucide-react'
 import type { BackupStatus } from './types'
+import { useTranslation } from '@/lib/i18n'
 
 interface BackupStatusCardProps {
   status: BackupStatus | null
@@ -35,6 +36,7 @@ export function BackupStatusCard({
   cacheAgeSeconds,
   isUsingCachedData,
 }: BackupStatusCardProps) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-2">
       <div
@@ -52,10 +54,14 @@ export function BackupStatusCard({
           )}
           <div className="flex-1">
             <div className="font-medium">
-              {status?.isConfigured ? 'Backup Configured' : 'Backup Not Configured'}
+              {status?.updateRequired
+                ? t('settingsPages.mdbServer.statusUpdateAvailable')
+                : status?.isConfigured ? 'Backup Configured' : 'Backup Not Configured'}
             </div>
             <div className="text-sm text-plm-fg-muted flex items-center gap-2">
-              {status?.isConfigured ? (
+              {status?.updateRequired ? (
+                t('settingsPages.mdbServer.backupUpdateRequired')
+              ) : status?.isConfigured ? (
                 isLoadingSnapshots ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
