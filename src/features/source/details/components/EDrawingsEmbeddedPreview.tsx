@@ -2,6 +2,10 @@ import { ExternalLink, FileBox, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import {
+  CONTEXT_MENU_CLOSE_EVENT,
+  CONTEXT_MENU_OPEN_EVENT,
+} from './nativePreviewOverlay'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
 
@@ -28,6 +32,7 @@ export function EDrawingsEmbeddedPreview({
   useEffect(() => {
     let disposed = false
     let observer: ResizeObserver | undefined
+    let hiddenForContextMenu = false
 
     const destroy = () => window.electronAPI?.destroyEDrawingsPreview().catch(() => undefined)
     const syncBounds = async () => {
@@ -40,6 +45,24 @@ export function EDrawingsEmbeddedPreview({
         rect.width * scale,
         rect.height * scale,
       )
+    }
+
+    const handleContextMenuOpen = () => {
+      if (disposed || hiddenForContextMenu) return
+      hiddenForContextMenu = true
+      void window.electronAPI?.hideEDrawingsPreview()
+    }
+    const handleContextMenuClose = () => {
+      if (disposed || !hiddenForContextMenu) return
+      hiddenForContextMenu = false
+      void syncBounds().then(() => window.electronAPI?.showEDrawingsPreview())
+    }
+    const handleOutsideContextMenu = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest?.('.context-menu')) return
+      handleContextMenuClose()
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') handleContextMenuClose()
     }
 
     const start = async () => {
@@ -70,6 +93,10 @@ export function EDrawingsEmbeddedPreview({
       observer = new ResizeObserver(() => void syncBounds())
       if (host.current) observer.observe(host.current)
       window.addEventListener('resize', syncBounds)
+      window.addEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)
+      window.addEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
+      document.addEventListener('pointerdown', handleOutsideContextMenu)
+      document.addEventListener('keydown', handleEscape)
       setState('ready')
     }
 
@@ -85,6 +112,10 @@ export function EDrawingsEmbeddedPreview({
       disposed = true
       observer?.disconnect()
       window.removeEventListener('resize', syncBounds)
+      window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)
+      window.removeEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
+      document.removeEventListener('pointerdown', handleOutsideContextMenu)
+      document.removeEventListener('keydown', handleEscape)
       void destroy()
     }
   }, [filePath])
