@@ -49,10 +49,8 @@ export function EDrawingsEmbeddedPreview({
 
     const visibility = createNativePreviewVisibilityController({
       hide: () => window.electronAPI?.hideEDrawingsPreview(),
-      show: async () => {
-        await syncBounds()
-        await window.electronAPI?.showEDrawingsPreview()
-      },
+      prepareShow: syncBounds,
+      show: () => window.electronAPI?.showEDrawingsPreview(),
     })
 
     const handleContextMenuOpen = () => {

@@ -13,6 +13,7 @@ export interface NativePreviewVisibilityController {
 
 /** Keeps native child-window visibility derived from the two actual states. */
 export function createNativePreviewVisibilityController(api: {
+  prepareShow?: () => unknown
   hide: () => unknown
   show: () => unknown
 }): NativePreviewVisibilityController {
@@ -20,17 +21,26 @@ export function createNativePreviewVisibilityController(api: {
   let contextMenuOpen = false
   let revision = 0
   const sync = () => {
-    if (!ready) return
     const requestedRevision = ++revision
+    if (!ready) return
     if (contextMenuOpen) {
       void api.hide()
       return
     }
-    const pending = api.show()
-    if (pending && typeof (pending as { then?: unknown }).then === 'function') {
-      void (pending as PromiseLike<void>).then(() => {
-        if (requestedRevision !== revision || contextMenuOpen) void api.hide()
-      })
+    const show = () => {
+      if (!ready || contextMenuOpen || requestedRevision !== revision) return
+      const pending = api.show()
+      if (pending && typeof (pending as { then?: unknown }).then === 'function') {
+        void (pending as PromiseLike<void>).then(() => {
+          if (!ready || requestedRevision !== revision || contextMenuOpen) void api.hide()
+        })
+      }
+    }
+    const preparation = api.prepareShow?.()
+    if (preparation && typeof (preparation as { then?: unknown }).then === 'function') {
+      void (preparation as PromiseLike<void>).then(show)
+    } else {
+      show()
     }
   }
   return {
