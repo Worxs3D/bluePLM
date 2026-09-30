@@ -30,6 +30,7 @@ export type SettingsTab =
   | 'dev-tools'
   | 'about'
   | 'delete-account'
+  | 'mdb-server'
   | 'extension-store'
 
 // Keybinding action identifiers

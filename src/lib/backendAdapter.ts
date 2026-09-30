@@ -67,6 +67,7 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   'dev-tools': allBackends,
   about: allBackends,
   'delete-account': allBackends,
+  'mdb-server': allBackends,
   'extension-store': supabaseOnly,
 }
 

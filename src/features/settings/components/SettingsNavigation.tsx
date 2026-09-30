@@ -52,6 +52,7 @@ const settingsSections = (): SettingsSection[] => [
       { id: 'item-designations', label: t('settings.itemDesignations') },
       { id: 'rfq', label: t('settings.rfqSettings') },
       { id: 'recovery-codes', label: t('settings.recoveryCodes') },
+      { id: 'mdb-server', label: t('settingsPages.mdbServer.title'), adminOnly: true },
     ],
   },
   {
@@ -145,13 +146,13 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
   // The useIntegrationStatus hook in App.tsx handles the status check orchestration
   const integrations = usePDMStore((s) => s.integrations)
   const backupStatus = usePDMStore((s) => s.backupStatus)
-  const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  const isAdmin = usePDMStore((s) => ['owner', 'admin'].includes(s.getEffectiveRole()))
   const isMdb = isMdbBackendActive()
 
   const sections = settingsSections().map((section) => ({
     ...section,
     items: section.items.filter(
-      (item) => (!item.adminOnly || isAdmin) && !(isMdb && item.id === 'supabase'),
+      (item) => (!item.adminOnly || isAdmin) && !(item.id === 'mdb-server' && !isMdb) && !(isMdb && item.id === 'supabase'),
     ),
   }))
 

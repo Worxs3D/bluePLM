@@ -102,6 +102,9 @@ const DeleteAccountSettings = lazy(() =>
 const VaultAuditSettings = lazy(() =>
   import('../system/vault-audit').then((m) => ({ default: m.VaultAuditSettings })),
 )
+const MdbServerSettings = lazy(() =>
+  import('../system/MdbServerSettings').then((m) => ({ default: m.MdbServerSettings })),
+)
 
 interface SettingsContentProps {
   activeTab: SettingsTab
@@ -183,6 +186,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <AboutSettings />
       case 'delete-account':
         return <DeleteAccountSettings />
+      case 'mdb-server':
+        return <MdbServerSettings />
       case 'extension-store':
         return <ExtensionStoreView />
       default:

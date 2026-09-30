@@ -17,6 +17,9 @@ import { checkApiVersion } from '@/lib/apiVersion'
 import { shouldRunVaultLoad } from './vaultLoadPolicy'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
+import { loadMdbConfig } from '@/lib/mdb'
+import { t } from '@/lib/i18n'
+import { mdbServerUpdateCheckKey, shouldNotifyMdbServerUpdate } from '@/lib/mdbServerUpdatePolicy'
 import { clearSwReferencesCache } from '@/lib/solidworks'
 import { syncDrawingReferencesInBackground } from '@/lib/solidworks/drawingReferenceSync'
 import { hashCheckoutIdentifier } from '@/types/pdm'
@@ -168,6 +171,21 @@ export function App() {
     setVaultConnected,
     getEffectiveRole,
   } = usePDMStore()
+
+  const mdbUpdateCheckKey = useRef<string | null>(null)
+  useEffect(() => {
+    const mdbConfig = loadMdbConfig()
+    const role = getEffectiveRole()
+    if (!isMdbBackendActive() || isOfflineMode || !organization?.id || !user || !mdbConfig?.serverUrl || !['owner', 'admin'].includes(role)) return
+    const key = mdbServerUpdateCheckKey(organization.id, mdbConfig.serverUrl)
+    if (mdbUpdateCheckKey.current === key || !window.electronAPI?.inspectMdbServerUpdate) return
+    mdbUpdateCheckKey.current = key
+    void window.electronAPI.inspectMdbServerUpdate(mdbConfig.serverUrl).then((result) => {
+      if (shouldNotifyMdbServerUpdate(result.status, role)) addToast('info', t('settingsPages.mdbServer.updateAvailableNotification'))
+    }).catch(() => {
+      // Startup checking is advisory; actionable errors belong to the Settings panel.
+    })
+  }, [addToast, getEffectiveRole, isOfflineMode, organization?.id, user?.id])
 
   // Get current vault ID (from activeVaultId or first connected vault)
   const currentVaultId = activeVaultId || connectedVaults[0]?.id

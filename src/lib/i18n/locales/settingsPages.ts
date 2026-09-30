@@ -1,6 +1,7 @@
 import { settingsExportTranslations } from './settingsExport'
 import { settingsMetadataTranslations } from './settingsMetadata'
 import { settingsSerializationTranslations } from './settingsSerialization'
+import { settingsMdbServerTranslations } from './settingsMdbServer'
 import type { TranslationValue } from '../types'
 
 type SettingsPageLocale = 'en' | 'de' | 'es' | 'fr' | 'pt' | 'zh-CN' | 'zh-TW'
@@ -8,6 +9,7 @@ type SettingsPageTranslations = Record<string, TranslationValue>
 
 export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTranslations> = {
   en: {
+    mdbServer: settingsMdbServerTranslations.en,
     export: settingsExportTranslations.en,
     metadata: settingsMetadataTranslations.en,
     serialization: settingsSerializationTranslations.en,
@@ -81,6 +83,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   de: {
+    mdbServer: settingsMdbServerTranslations.de,
     export: settingsExportTranslations.de,
     metadata: settingsMetadataTranslations.de,
     serialization: settingsSerializationTranslations.de,
@@ -157,6 +160,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   es: {
+    mdbServer: settingsMdbServerTranslations.es,
     export: settingsExportTranslations.es,
     metadata: settingsMetadataTranslations.es,
     serialization: settingsSerializationTranslations.es,
@@ -236,6 +240,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   fr: {
+    mdbServer: settingsMdbServerTranslations.fr,
     export: settingsExportTranslations.fr,
     metadata: settingsMetadataTranslations.fr,
     serialization: settingsSerializationTranslations.fr,
@@ -316,6 +321,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   pt: {
+    mdbServer: settingsMdbServerTranslations.pt,
     export: settingsExportTranslations.pt,
     metadata: settingsMetadataTranslations.pt,
     serialization: settingsSerializationTranslations.pt,
@@ -394,6 +400,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   'zh-CN': {
+    mdbServer: settingsMdbServerTranslations['zh-CN'],
     export: settingsExportTranslations['zh-CN'],
     metadata: settingsMetadataTranslations['zh-CN'],
     serialization: settingsSerializationTranslations['zh-CN'],
@@ -465,6 +472,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   'zh-TW': {
+    mdbServer: settingsMdbServerTranslations['zh-TW'],
     export: settingsExportTranslations['zh-TW'],
     metadata: settingsMetadataTranslations['zh-TW'],
     serialization: settingsSerializationTranslations['zh-TW'],
