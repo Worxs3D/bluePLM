@@ -492,7 +492,7 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
           if (meResponse.ok && organizationId) await window.electronAPI.saveMdbServerCredentials({ ftpUrl: mdbFtpUrl, ftpSecurity: mdbFtpSecurity, ftpRemotePath: mdbFtpPath, ftpUsername: mdbFtpUser }, { ftpPassword: mdbFtpPassword, maintenanceToken }, { serverUrl: result.serverUrl, sessionToken: result.accessToken, organizationId, locale: language })
         } catch (credentialError) {
           log.warn('[SetupScreen]', 'Optional MDB deployment credential storage failed', { error: credentialError instanceof Error ? credentialError.message : 'unknown' })
-          setError(t('mdbSetup.backendConfigSaveFailed'))
+          if (!(credentialError instanceof Error && credentialError.message === 'CANCELLED')) setError(t('mdbSetup.backendConfigSaveFailed'))
         }
       }
     }

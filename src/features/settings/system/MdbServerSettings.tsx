@@ -74,8 +74,10 @@ export function MdbServerSettings() {
       addToast('success', t('settingsPages.saveSettings'))
     } catch (error) {
       const code = error instanceof Error ? error.message : ''
-      const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'INVALID_PROFILE' ? 'invalidProfile' : code === 'CONFIRMATION_REQUIRED' ? 'cancelled' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : code.includes('encryption') ? 'encryptionUnavailable' : 'genericFailure'
-      addToast('error', t(`settingsPages.mdbServer.${key}`))
+      if (code !== 'CANCELLED') {
+        const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'INVALID_PROFILE' ? 'invalidProfile' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : code.includes('encryption') ? 'encryptionUnavailable' : 'genericFailure'
+        addToast('error', t(`settingsPages.mdbServer.${key}`))
+      }
     } finally {
       setBusy(false)
     }
@@ -89,8 +91,10 @@ export function MdbServerSettings() {
       setCredentials(next)
     } catch (error) {
       const code = error instanceof Error ? error.message : ''
-      const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'CONFIRMATION_REQUIRED' ? 'cancelled' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : 'genericFailure'
-      addToast('error', t(`settingsPages.mdbServer.${key}`))
+      if (code !== 'CANCELLED') {
+        const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : 'genericFailure'
+        addToast('error', t(`settingsPages.mdbServer.${key}`))
+      }
     } finally {
       setBusy(false)
     }
@@ -116,6 +120,8 @@ export function MdbServerSettings() {
       else if (result.errorCode === 'SERVER_NEWER') addToast('error', t('settingsPages.mdbServer.serverNewer'))
       else if (result.errorCode === 'VERSION_CONFLICT') addToast('error', t('settingsPages.mdbServer.versionConflict'))
       else if (result.errorCode === 'ROLLBACK_FAILED') addToast('error', t('settingsPages.mdbServer.rollbackFailure'))
+      else if (result.errorCode === 'SERVER_CHANGED') addToast('error', t('settingsPages.mdbServer.serverChanged'))
+      else if (result.errorCode === 'CANCELLED') return
       else addToast('error', t('settingsPages.mdbServer.genericFailure'))
       await recheck()
     } catch {

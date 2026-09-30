@@ -5,18 +5,38 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('basic-ftp', () => ({ Client: class {} }))
-import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, executeMdbServerUpdatePlan, setMdbServerConfirmationForTests } from './mdbServerUpdate'
+import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, executeMdbServerUpdatePlan, setMdbServerConfirmationForTests } from './mdbServerUpdate'
 
 const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/backup', existing: [], promoted: [] }
 
 describe('MDB server update seam', () => {
+  it('does not disclose credentials across server or organization bindings', () => {
+    expect(credentialBindingMatches({ serverUrl: 'https://mdb.example.test', organizationId: 'org-1' }, { serverUrl: 'https://mdb.example.test/', organizationId: 'org-1' })).toBe(true)
+    expect(credentialBindingMatches({ serverUrl: 'https://mdb.example.test', organizationId: 'org-1' }, { serverUrl: 'https://other.example.test', organizationId: 'org-1' })).toBe(false)
+    expect(credentialBindingMatches({ serverUrl: 'https://mdb.example.test', organizationId: 'org-1' }, { serverUrl: 'https://mdb.example.test', organizationId: 'org-2' })).toBe(false)
+  })
   it('cancellation stops before credentials are read or deployment starts', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
       ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
       : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: '0.0.0', bundleDigest: 'b'.repeat(64), bundleFileCount: 1 }), { status: 200 })))
     setMdbServerConfirmationForTests(async () => false)
     const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'de' })
-    expect(result.errorCode).toBe('CONFIRMATION_REQUIRED')
+    expect(result.errorCode).toBe('CANCELLED')
+    setMdbServerConfirmationForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
+  it('rechecks deployment identity after confirmation before staging', async () => {
+    let healthCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/me')) return new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      healthCalls += 1
+      return new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: '4.4.3', bundleDigest: healthCalls === 1 ? 'b'.repeat(64) : 'c'.repeat(64), bundleFileCount: 1 }), { status: 200 })
+    }))
+    setMdbServerConfirmationForTests(async () => true)
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+    expect(result.errorCode).toBe('SERVER_CHANGED')
+    expect(healthCalls).toBe(2)
     setMdbServerConfirmationForTests(undefined)
     vi.unstubAllGlobals()
   })
