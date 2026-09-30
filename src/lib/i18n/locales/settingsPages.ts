@@ -1,6 +1,7 @@
 import { settingsExportTranslations } from './settingsExport'
 import { settingsMetadataTranslations } from './settingsMetadata'
 import { settingsSerializationTranslations } from './settingsSerialization'
+import { settingsModulesEditor } from './settingsModulesEditor'
 import type { TranslationValue } from '../types'
 
 type SettingsPageLocale = 'en' | 'de' | 'es' | 'fr' | 'pt' | 'zh-CN' | 'zh-TW'
@@ -8,6 +9,7 @@ type SettingsPageTranslations = Record<string, TranslationValue>
 
 export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTranslations> = {
   en: {
+    modulesEditor: settingsModulesEditor.en,
     export: settingsExportTranslations.en,
     metadata: settingsMetadataTranslations.en,
     serialization: settingsSerializationTranslations.en,
@@ -82,6 +84,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   de: {
+    modulesEditor: settingsModulesEditor.de,
     export: settingsExportTranslations.de,
     metadata: settingsMetadataTranslations.de,
     serialization: settingsSerializationTranslations.de,
@@ -159,6 +162,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   es: {
+    modulesEditor: settingsModulesEditor.es,
     export: settingsExportTranslations.es,
     metadata: settingsMetadataTranslations.es,
     serialization: settingsSerializationTranslations.es,
@@ -239,6 +243,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   fr: {
+    modulesEditor: settingsModulesEditor.fr,
     export: settingsExportTranslations.fr,
     metadata: settingsMetadataTranslations.fr,
     serialization: settingsSerializationTranslations.fr,
@@ -320,6 +325,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   pt: {
+    modulesEditor: settingsModulesEditor.pt,
     export: settingsExportTranslations.pt,
     metadata: settingsMetadataTranslations.pt,
     serialization: settingsSerializationTranslations.pt,
@@ -399,6 +405,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   'zh-CN': {
+    modulesEditor: settingsModulesEditor['zh-CN'],
     export: settingsExportTranslations['zh-CN'],
     metadata: settingsMetadataTranslations['zh-CN'],
     serialization: settingsSerializationTranslations['zh-CN'],
@@ -471,6 +478,7 @@ export const settingsPageTranslations: Record<SettingsPageLocale, SettingsPageTr
     },
   },
   'zh-TW': {
+    modulesEditor: settingsModulesEditor['zh-TW'],
     export: settingsExportTranslations['zh-TW'],
     metadata: settingsMetadataTranslations['zh-TW'],
     serialization: settingsSerializationTranslations['zh-TW'],

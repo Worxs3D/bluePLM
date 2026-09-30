@@ -44,6 +44,7 @@ import {
 } from 'lucide-react'
 import { IconGridPicker } from '@/components/shared/IconPicker'
 import { ColorPicker, ColorSwatchRow } from '@/components/shared/ColorPicker'
+import { useTranslation } from '@/lib/i18n'
 import {
   MODULE_GROUPS,
   MODULES,
@@ -132,6 +133,7 @@ function OrderListItemComponent({
   onEditGroup: (group: { id: string; name: string; icon: string; iconColor: string | null }) => void
   deniedModuleIds?: ReadonlySet<ModuleId>
 }) {
+  const { t } = useTranslation()
   const showDropBefore = dropIndicator?.index === index && dropIndicator.position === 'before'
   const showDropAfter = dropIndicator?.index === index && dropIndicator.position === 'after'
   const [showParentSelect, setShowParentSelect] = useState(false)
@@ -276,7 +278,7 @@ function OrderListItemComponent({
           <div className="flex items-center gap-2 flex-1 pointer-events-none">
             <Minus size={16} className="text-plm-fg-muted" />
             <span className="text-xs text-plm-fg-muted font-medium uppercase tracking-wide">
-              Divider
+              {t('settingsPages.modulesEditor.divider')}
             </span>
           </div>
           <button
@@ -285,7 +287,7 @@ function OrderListItemComponent({
               removeDivider(item.id)
             }}
             className="p-1 text-plm-fg-muted hover:text-plm-error rounded transition-colors"
-            title="Remove divider"
+            title={t('settingsPages.modulesEditor.removeDivider')}
           >
             <X size={14} />
           </button>
@@ -343,10 +345,10 @@ function OrderListItemComponent({
                 {group.name}
               </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-plm-accent/20 text-plm-accent uppercase">
-                Group
+                {t('settingsPages.modulesEditor.group')}
               </span>
               {childCount > 0 && (
-                <span className="text-[10px] text-plm-fg-dim">{childCount} items</span>
+                <span className="text-[10px] text-plm-fg-dim">{childCount} {t('settingsPages.modulesEditor.items')}</span>
               )}
             </div>
           </div>
@@ -356,7 +358,7 @@ function OrderListItemComponent({
               onEditGroup(group)
             }}
             className="p-1.5 text-plm-fg-muted hover:text-plm-accent hover:bg-plm-highlight rounded transition-colors"
-            title="Edit group name and icon"
+            title={t('settingsPages.modulesEditor.editGroupTitle')}
           >
             <Pencil size={14} />
           </button>
@@ -366,7 +368,7 @@ function OrderListItemComponent({
               removeCustomGroup(group.id)
             }}
             className="p-1 text-plm-fg-muted hover:text-plm-error rounded transition-colors"
-            title="Remove group"
+            title={t('settingsPages.modulesEditor.removeGroup')}
           >
             <X size={14} />
           </button>
@@ -381,7 +383,7 @@ function OrderListItemComponent({
                 ? 'bg-plm-success/20 border border-plm-success/40 hover:bg-plm-success/30'
                 : 'bg-plm-bg-secondary border border-plm-border hover:bg-plm-highlight/50'
             }`}
-            title={isGroupEnabled ? 'Disable group' : 'Enable group'}
+            title={isGroupEnabled ? t('settingsPages.modulesEditor.disableGroup') : t('settingsPages.modulesEditor.enableGroup')}
           >
             <div
               className={`w-2 h-2 rounded-full transition-all duration-300 ${
@@ -395,7 +397,7 @@ function OrderListItemComponent({
                 isGroupEnabled ? 'text-plm-success' : 'text-plm-fg-muted'
               }`}
             >
-              {isGroupEnabled ? 'On' : 'Off'}
+              {isGroupEnabled ? t('settingsPages.modulesEditor.on') : t('settingsPages.modulesEditor.off')}
             </span>
           </button>
         </div>
@@ -507,27 +509,27 @@ function OrderListItemComponent({
             </span>
             {!module.implemented && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-plm-warning/20 text-plm-warning">
-                In Development
+                {t('settingsPages.modulesEditor.inDevelopment')}
               </span>
             )}
             {isDenied && (
               <span
                 className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-plm-bg-lighter text-plm-fg-dim"
-                title="An administrator has restricted this module to other teams"
+                title={t('settingsPages.modulesEditor.restricted')}
               >
                 <Lock size={9} />
-                No Access
+                {t('settingsPages.modulesEditor.noAccess')}
               </span>
             )}
             {module.required && (
-              <span title="Required when group enabled">
+              <span title={t('settingsPages.modulesEditor.required')}>
                 <Lock size={10} className="text-plm-fg-dim" />
               </span>
             )}
             {childCount > 0 && (
               <span
                 className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-plm-accent/20 text-plm-accent"
-                title={`Has ${childCount} sub-item${childCount > 1 ? 's' : ''}`}
+                title={t('settingsPages.modulesEditor.subItems')}
               >
                 <ChevronRight size={10} />
                 {childCount}
@@ -551,7 +553,7 @@ function OrderListItemComponent({
           </div>
           {currentParent && (
             <div className="text-[10px] text-plm-fg-dim mt-0.5">
-              Sub-item of: {currentParent.name}
+              {t('settingsPages.modulesEditor.subItemOf')}: {currentParent.name}
             </div>
           )}
         </div>
@@ -569,7 +571,7 @@ function OrderListItemComponent({
                 ? 'hover:bg-plm-highlight'
                 : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight'
             }`}
-            title="Set icon color"
+            title={t('settingsPages.modulesEditor.setIconColor')}
           >
             {customIconColor ? (
               <div
@@ -587,7 +589,7 @@ function OrderListItemComponent({
               color={customIconColor}
               onChange={(color) => setModuleIconColor(moduleId, color)}
               onClose={() => setShowColorPicker(false)}
-              title="Icon Color"
+              title={t('settingsPages.modulesEditor.iconColor')}
             />
           )}
         </div>
@@ -605,7 +607,7 @@ function OrderListItemComponent({
                 ? 'text-plm-accent bg-plm-accent/10 hover:bg-plm-accent/20'
                 : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight'
             }`}
-            title="Set parent module (create sub-group)"
+            title={t('settingsPages.modulesEditor.setParent')}
           >
             <ChevronRight size={14} className={currentParentId ? 'rotate-90' : ''} />
           </button>
@@ -617,7 +619,7 @@ function OrderListItemComponent({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-plm-fg-muted border-b border-plm-border">
-                Set Parent
+                {t('settingsPages.modulesEditor.setParentLabel')}
               </div>
               <button
                 onClick={() => {
@@ -631,13 +633,13 @@ function OrderListItemComponent({
                 <div
                   className={`w-2 h-2 rounded-full ${!currentParentId ? 'bg-plm-accent' : 'bg-transparent border border-plm-border'}`}
                 />
-                None (Top-level)
+                {t('settingsPages.modulesEditor.noneTopLevel')}
               </button>
               {/* Custom Groups section */}
               {(config.customGroups || []).length > 0 && (
                 <>
                   <div className="px-3 py-1 text-[9px] uppercase tracking-wide text-plm-fg-dim bg-plm-bg-secondary border-y border-plm-border">
-                    Groups
+                    {t('settingsPages.modulesEditor.groups')}
                   </div>
                   {(config.customGroups || []).map((group) => {
                     // Dynamic Lucide icon lookup requires any cast
@@ -671,7 +673,7 @@ function OrderListItemComponent({
               {availableParents.length > 0 && (
                 <>
                   <div className="px-3 py-1 text-[9px] uppercase tracking-wide text-plm-fg-dim bg-plm-bg-secondary border-y border-plm-border">
-                    Modules
+                    {t('settingsPages.modulesEditor.modules')}
                   </div>
                   {availableParents.map((parent) => (
                     <button
@@ -703,7 +705,7 @@ function OrderListItemComponent({
         <div className="flex items-center gap-2">
           {isDisabledByGroup && (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-plm-bg-lighter text-plm-fg-dim">
-              GROUP OFF
+              {t('settingsPages.modulesEditor.groupOff')}
             </span>
           )}
         </div>
@@ -726,11 +728,11 @@ function OrderListItemComponent({
           }`}
           title={
             isDenied
-              ? 'Restricted by your administrator'
+              ? t('settingsPages.modulesEditor.restrictedByAdmin')
               : !canToggle
-                ? 'This module cannot be disabled'
+                ? t('settingsPages.modulesEditor.cannotDisable')
                 : isDisabledByGroup
-                  ? 'Enable the group first'
+                  ? t('settingsPages.modulesEditor.enableGroupFirst')
                   : undefined
           }
         >
@@ -749,7 +751,7 @@ function OrderListItemComponent({
               config.enabledModules[moduleId] ? 'text-plm-success' : 'text-plm-fg-muted'
             }`}
           >
-            {config.enabledModules[moduleId] ? 'On' : 'Off'}
+            {config.enabledModules[moduleId] ? t('settingsPages.modulesEditor.on') : t('settingsPages.modulesEditor.off')}
           </span>
         </button>
       </div>
@@ -773,6 +775,7 @@ function GroupEditorModal({
   onSave: (name: string, icon: string, iconColor: string | null) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [name, setName] = useState(group?.name || '')
   const [icon, setIcon] = useState(group?.icon || 'Folder')
   const [iconColor, setIconColor] = useState<string | null>(group?.iconColor || null)
@@ -782,19 +785,19 @@ function GroupEditorModal({
       <div className="bg-plm-bg border border-plm-border rounded-lg shadow-xl w-[400px] max-h-[80vh] overflow-hidden">
         <div className="p-4 border-b border-plm-border">
           <h3 className="text-lg font-semibold text-plm-fg">
-            {group ? 'Edit Group' : 'Add Group'}
+            {group ? t('settingsPages.modulesEditor.editGroup') : t('settingsPages.modulesEditor.addGroupModal')}
           </h3>
         </div>
 
         <div className="p-4 space-y-4 overflow-y-auto max-h-[60vh]">
           {/* Name input */}
           <div>
-            <label className="block text-sm text-plm-fg-muted mb-1">Name</label>
+            <label className="block text-sm text-plm-fg-muted mb-1">{t('settingsPages.modulesEditor.name')}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Group name"
+              placeholder={t('settingsPages.modulesEditor.groupName')}
               className="w-full px-3 py-2 bg-plm-bg-secondary border border-plm-border rounded text-plm-fg placeholder:text-plm-fg-dim focus:outline-none focus:border-plm-accent"
               autoFocus
             />
@@ -802,19 +805,19 @@ function GroupEditorModal({
 
           {/* Icon picker */}
           <div>
-            <label className="block text-sm text-plm-fg-muted mb-1">Icon</label>
+            <label className="block text-sm text-plm-fg-muted mb-1">{t('settingsPages.modulesEditor.icon')}</label>
             <IconGridPicker value={icon} onChange={setIcon} maxHeight="160px" columns={8} />
           </div>
 
           {/* Color picker */}
           <div>
-            <label className="block text-sm text-plm-fg-muted mb-1">Color (optional)</label>
+            <label className="block text-sm text-plm-fg-muted mb-1">{t('settingsPages.modulesEditor.colorOptional')}</label>
             <ColorSwatchRow color={iconColor} onChange={setIconColor} showReset size="lg" />
           </div>
 
           {/* Preview */}
           <div>
-            <label className="block text-sm text-plm-fg-muted mb-1">Preview</label>
+            <label className="block text-sm text-plm-fg-muted mb-1">{t('settingsPages.modulesEditor.preview')}</label>
             <div className="flex items-center gap-3 p-3 bg-plm-bg-secondary rounded border border-plm-border">
               <div style={{ color: iconColor || 'var(--plm-accent)' }}>
                 {(() => {
@@ -824,7 +827,7 @@ function GroupEditorModal({
                   return IconComponent ? <IconComponent size={22} /> : <Package size={22} />
                 })()}
               </div>
-              <span className="text-plm-fg">{name || 'Group Name'}</span>
+              <span className="text-plm-fg">{name || t('settingsPages.modulesEditor.groupName')}</span>
             </div>
           </div>
         </div>
@@ -834,14 +837,14 @@ function GroupEditorModal({
             onClick={onCancel}
             className="px-4 py-2 text-sm text-plm-fg-muted hover:text-plm-fg border border-plm-border rounded hover:bg-plm-highlight transition-colors"
           >
-            Cancel
+            {t('settingsPages.modulesEditor.cancel')}
           </button>
           <button
             onClick={() => onSave(name, icon, iconColor)}
             disabled={!name.trim()}
             className="px-4 py-2 text-sm bg-plm-accent text-white rounded hover:bg-plm-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {group ? 'Save' : 'Create'}
+            {group ? t('settingsPages.modulesEditor.save') : t('settingsPages.modulesEditor.create')}
           </button>
         </div>
       </div>
@@ -858,6 +861,7 @@ export function ModulesEditor({
   showDescription = true,
   deniedModuleIds,
 }: ModulesEditorProps) {
+  const { t } = useTranslation()
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndicator, setDropIndicator] = useState<{
     index: number
@@ -1057,24 +1061,24 @@ export function ModulesEditor({
       {/* Controls */}
       <div className="flex items-center justify-between">
         <h2 className="text-sm text-plm-fg-muted uppercase tracking-wide font-medium">
-          Sidebar Order
+          {t('settingsPages.modulesEditor.sidebarOrder')}
         </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={handleAddGroup}
             className="flex items-center gap-1.5 px-2 py-1 text-xs rounded border border-plm-accent/50 text-plm-accent hover:bg-plm-accent/10 transition-colors"
-            title="Add a custom group"
+            title={t('settingsPages.modulesEditor.addGroupTitle')}
           >
             <Plus size={12} />
-            Add Group
+            {t('settingsPages.modulesEditor.addGroup')}
           </button>
           <button
             onClick={handleAddDivider}
             className="flex items-center gap-1.5 px-2 py-1 text-xs rounded border border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors"
-            title="Add a section divider"
+            title={t('settingsPages.modulesEditor.addDividerTitle')}
           >
             <Plus size={12} />
-            Add Divider
+            {t('settingsPages.modulesEditor.addDivider')}
           </button>
         </div>
       </div>
@@ -1083,7 +1087,7 @@ export function ModulesEditor({
       <div className="p-4 bg-plm-bg rounded-lg border border-plm-border">
         {showDescription && (
           <p className="text-sm text-plm-fg-muted mb-4">
-            Drag to reorder. Toggle to enable/disable. Disabling a module hides its dependents.
+            {t('settingsPages.modulesEditor.description')}
           </p>
         )}
         <div className="flex flex-col" onDragEnd={handleDragEnd}>
@@ -1133,40 +1137,38 @@ export function ModulesEditor({
       <div className="flex flex-wrap gap-4 text-xs text-plm-fg-dim">
         <div className="flex items-center gap-1.5">
           <Lock size={10} />
-          <span>Required module</span>
+          <span>{t('settingsPages.modulesEditor.requiredLegend')}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Minus size={10} />
-          <span>Section divider</span>
+          <span>{t('settingsPages.modulesEditor.dividerLegend')}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <ChevronRight size={10} />
-          <span>Has sub-items / Set parent</span>
+          <span>{t('settingsPages.modulesEditor.parentLegend')}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] px-1 py-0.5 rounded bg-plm-warning/20 text-plm-warning">
-            In Development
+            {t('settingsPages.modulesEditor.inDevelopment')}
           </span>
-          <span>Feature in progress</span>
+          <span>{t('settingsPages.modulesEditor.featureProgress')}</span>
         </div>
         {deniedModuleIds && deniedModuleIds.size > 0 && (
           <div className="flex items-center gap-1.5">
             <span className="flex items-center gap-1 text-[10px] px-1 py-0.5 rounded bg-plm-bg-lighter text-plm-fg-dim">
               <Lock size={9} />
-              No Access
+              {t('settingsPages.modulesEditor.noAccess')}
             </span>
-            <span>Restricted to other teams by an admin</span>
+            <span>{t('settingsPages.modulesEditor.restrictedLegend')}</span>
           </div>
         )}
       </div>
 
       {/* Submenu Info */}
       <div className="p-3 bg-plm-accent/5 border border-plm-accent/20 rounded-lg">
-        <div className="text-sm text-plm-fg font-medium mb-1">Creating Sub-menus</div>
+        <div className="text-sm text-plm-fg font-medium mb-1">{t('settingsPages.modulesEditor.creatingSubmenus')}</div>
         <p className="text-xs text-plm-fg-muted">
-          Click the <ChevronRight size={10} className="inline" /> button on any module to set its
-          parent. Child modules will appear as a fly-out submenu when hovering their parent in the
-          sidebar.
+          {t('settingsPages.modulesEditor.submenuHelp')}
         </p>
       </div>
 
