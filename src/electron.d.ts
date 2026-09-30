@@ -422,6 +422,27 @@ declare global {
         ftpUsername: string
         ftpPassword: string
       }) => Promise<{ success: boolean; error?: string }>
+      inspectMdbServerUpdate: (serverUrl: string) => Promise<{
+        status: 'current' | 'update-available' | 'unknown'
+        packaged: { version: 1; digest: string; fileCount: number }
+        deployed: { bundleVersion: number | null; bundleDigest: string | null; bundleFileCount: number | null } | null
+        credentials: { profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null; hasCredentials: boolean; encryptionAvailable: boolean }
+      }>
+      applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; confirmed: boolean }) => Promise<{
+        success: boolean
+        status: 'current' | 'update-available' | 'unknown' | 'updating' | 'rollback' | 'failure'
+        errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'UNAVAILABLE'
+      }>
+      getMdbServerCredentialState: () => Promise<{
+        profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null
+        hasCredentials: boolean
+        encryptionAvailable: boolean
+      }>
+      saveMdbServerCredentials: (
+        profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string },
+        secrets: { ftpPassword: string; maintenanceToken: string },
+      ) => Promise<{ profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string } | null; hasCredentials: boolean; encryptionAvailable: boolean }>
+      clearMdbServerCredentials: () => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean }>
 
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>

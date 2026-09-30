@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { Client } from 'basic-ftp'
+import { createMdbBundleManifest, MDB_BUNDLE_MANIFEST_FILE, serializeMdbBundleManifest } from './mdbBundle'
 
 export type MdbFtpsSecurity = 'explicit' | 'implicit'
 
@@ -180,14 +181,14 @@ function remotePath(value: string): string {
   return segments.join('/')
 }
 
-function serverBundleRoot(): string {
+export function serverBundleRoot(): string {
   const root = app.isPackaged
     ? path.join(process.resourcesPath, 'blueplm-mdb-server')
     : path.resolve(app.getAppPath(), 'blueplm-mdb-php')
   return root
 }
 
-async function listFiles(directory: string): Promise<string[]> {
+export async function listFiles(directory: string): Promise<string[]> {
   const entries = await fs.readdir(directory, { withFileTypes: true })
   const children = await Promise.all(
     entries.map(async (entry) => {
@@ -198,7 +199,7 @@ async function listFiles(directory: string): Promise<string[]> {
   return children.flat()
 }
 
-async function upload(
+export async function upload(
   ftp: URL,
   security: MdbFtpsSecurity,
   destination: string,
@@ -224,7 +225,7 @@ async function upload(
   }
 }
 
-async function removeRemoteFile(
+export async function removeRemoteFile(
   ftp: URL,
   security: MdbFtpsSecurity,
   destination: string,
@@ -247,7 +248,7 @@ async function removeRemoteFile(
   }
 }
 
-async function removeRemoteDirectory(
+export async function removeRemoteDirectory(
   ftp: URL,
   security: MdbFtpsSecurity,
   destination: string,
@@ -330,10 +331,10 @@ function environment(
   ].join('\n')
 }
 
-async function installerRequest<T>(
+export async function installerRequest<T>(
   publicUrl: URL,
   bridgeName: string,
-  route: '/installer/database-status' | '/installer/commit',
+  route: '/installer/database-status' | '/installer/commit' | '/admin/migrate',
   payload: Record<string, unknown>,
 ): Promise<T> {
   const abort = new AbortController()
@@ -369,7 +370,7 @@ export function installerBridge(stageName: string): string {
   return `<?php
 declare(strict_types=1);
 $route = $_SERVER['HTTP_X_BLUEPLM_INSTALLER_ROUTE'] ?? '';
-if (!in_array($route, ['/installer/database-status', '/installer/commit'], true)) {
+  if (!in_array($route, ['/installer/database-status', '/installer/commit', '/admin/migrate'], true)) {
     http_response_code(404);
     exit;
 }
@@ -419,6 +420,7 @@ async function prepareInstaller(request: MdbProvisionRequest): Promise<{
   const temp = await fs.mkdtemp(path.join(app.getPath('temp'), 'blueplm-mdb-installer-'))
   const localEnvironmentPath = path.join(temp, '.env')
   const localBridgePath = path.join(temp, bridgeName)
+  const localManifestPath = path.join(temp, MDB_BUNDLE_MANIFEST_FILE)
   let cleaned = false
   const cleanup = async () => {
     if (cleaned) return
@@ -453,6 +455,16 @@ async function prepareInstaller(request: MdbProvisionRequest): Promise<{
         ftpPassword,
       )
     }
+    const manifest = await createMdbBundleManifest(root)
+    await fs.writeFile(localManifestPath, serializeMdbBundleManifest(manifest), { mode: 0o600 })
+    await upload(
+      ftp,
+      request.ftpSecurity,
+      `${stageRoot}/${MDB_BUNDLE_MANIFEST_FILE}`,
+      localManifestPath,
+      ftpUsername,
+      ftpPassword,
+    )
     await fs.writeFile(
       localEnvironmentPath,
       environment(request, secrets, publicUrl, installationToken),
@@ -506,13 +518,14 @@ async function publishInstaller(
       `${base}/${prepared.targetRoot}`.replaceAll('//', '/'),
       `${base}/${prepared.stageRoot}`.replaceAll('//', '/'),
       promoteEnvironment,
+      true,
     )
   } finally {
     client.close()
   }
 }
 
-type DeploymentClient = Pick<Client, 'cd' | 'ensureDir' | 'list' | 'removeDir' | 'rename'>
+export type DeploymentClient = Pick<Client, 'cd' | 'ensureDir' | 'list' | 'removeDir' | 'rename'>
 
 function remoteJoin(root: string, name: string): string {
   return `${root.replace(/\/$/, '')}/${name}`.replaceAll('//', '/')
@@ -531,25 +544,34 @@ async function remoteEntryExists(client: DeploymentClient, remotePath: string): 
  * already moved components are returned to the stage and the previous live
  * tree is restored before the error escapes.
  */
-export async function swapRemoteDeployment(
+export interface RemoteDeploymentActivation {
+  targetRoot: string
+  stageRoot: string
+  backupRoot: string
+  existing: string[]
+  promoted: string[]
+}
+
+export async function activateRemoteDeployment(
   client: DeploymentClient,
   targetRoot: string,
   stageRoot: string,
   promoteEnvironment: boolean,
-): Promise<void> {
+  includeManifest = false,
+): Promise<RemoteDeploymentActivation> {
   const stageName = stageRoot.slice(stageRoot.lastIndexOf('/') + 1)
   if (!/^blueplm-stage-[a-f0-9]{24}$/.test(stageName)) fail('Invalid installer stage name.')
   const backupRoot = remoteJoin(targetRoot, `.blueplm-backup-${stageName.slice(14)}`)
   await client.ensureDir(backupRoot)
   await client.cd('/')
 
-  const components = ['src', 'migrations', ...(promoteEnvironment ? ['.env'] : []), 'public']
+  const components = ['src', 'migrations', ...(promoteEnvironment ? ['.env'] : []), 'public', ...(includeManifest ? [MDB_BUNDLE_MANIFEST_FILE] : [])]
   const existing: string[] = []
   const promoted: string[] = []
   try {
     // Removing public first creates a short maintenance window. No request can
     // execute while src, migrations, or the private environment are changing.
-    for (const component of ['public', 'src', 'migrations', ...(promoteEnvironment ? ['.env'] : [])]) {
+    for (const component of ['public', 'src', 'migrations', ...(promoteEnvironment ? ['.env'] : []), ...(includeManifest ? [MDB_BUNDLE_MANIFEST_FILE] : [])]) {
       const live = remoteJoin(targetRoot, component)
       if (!(await remoteEntryExists(client, live))) continue
       await client.rename(live, remoteJoin(backupRoot, component))
@@ -574,10 +596,50 @@ export async function swapRemoteDeployment(
     }
     throw error
   }
+  return { targetRoot, stageRoot, backupRoot, existing, promoted }
+}
 
+export async function finalizeRemoteDeployment(
+  client: DeploymentClient,
+  activation: RemoteDeploymentActivation,
+): Promise<void> {
   // A stale backup is harmless; failure to remove it must not turn a completed
   // activation into a reported deployment failure.
-  await client.removeDir(backupRoot).catch(() => undefined)
+  await client.removeDir(activation.backupRoot).catch(() => undefined)
+}
+
+export async function rollbackRemoteDeployment(
+  client: DeploymentClient,
+  activation: RemoteDeploymentActivation,
+): Promise<void> {
+  for (const component of [...activation.promoted].reverse()) {
+    await client
+      .rename(remoteJoin(activation.targetRoot, component), remoteJoin(activation.stageRoot, component))
+      .catch(() => undefined)
+  }
+  for (const component of [...activation.existing].reverse()) {
+    await client
+      .rename(remoteJoin(activation.backupRoot, component), remoteJoin(activation.targetRoot, component))
+      .catch(() => undefined)
+  }
+  await client.removeDir(activation.backupRoot).catch(() => undefined)
+}
+
+export async function swapRemoteDeployment(
+  client: DeploymentClient,
+  targetRoot: string,
+  stageRoot: string,
+  promoteEnvironment: boolean,
+  includeManifest = false,
+): Promise<void> {
+  const activation = await activateRemoteDeployment(
+    client,
+    targetRoot,
+    stageRoot,
+    promoteEnvironment,
+    includeManifest,
+  )
+  await finalizeRemoteDeployment(client, activation)
 }
 
 async function inspectDatabase(request: MdbProvisionRequest): Promise<MdbInspectionResult> {

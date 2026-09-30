@@ -360,6 +360,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ftpUsername: string
     ftpPassword: string
   }) => ipcRenderer.invoke('mdb-installer:test-ftp', request),
+  inspectMdbServerUpdate: (serverUrl: string) => ipcRenderer.invoke('mdb-server:inspect-update', serverUrl),
+  applyMdbServerUpdate: (request: {
+    serverUrl: string
+    sessionToken: string
+    organizationId: string
+    confirmed: boolean
+  }) => ipcRenderer.invoke('mdb-server:apply-update', request),
+  getMdbServerCredentialState: () => ipcRenderer.invoke('mdb-server:get-credentials'),
+  saveMdbServerCredentials: (profile: {
+    ftpUrl: string
+    ftpSecurity: 'explicit' | 'implicit'
+    ftpRemotePath: string
+    ftpUsername: string
+  }, secrets: { ftpPassword: string; maintenanceToken: string }) =>
+    ipcRenderer.invoke('mdb-server:save-credentials', profile, secrets),
+  clearMdbServerCredentials: () => ipcRenderer.invoke('mdb-server:clear-credentials'),
 
   // File system operations
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),

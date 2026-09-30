@@ -83,6 +83,7 @@ import {
 } from './archive'
 import { registerNetworkVaultHandlers, unregisterNetworkVaultHandlers } from './networkVault'
 import { registerMdbInstallerHandlers, unregisterMdbInstallerHandlers } from './mdbInstaller'
+import { registerMdbServerUpdateHandlers, unregisterMdbServerUpdateHandlers } from './mdbServerUpdate'
 import {
   initThumbnailStore,
   registerThumbnailProtocol,
@@ -245,6 +246,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerArchiveHandlers(mainWindow, archiveHandlerDeps)
   registerNetworkVaultHandlers()
   registerMdbInstallerHandlers()
+  registerMdbServerUpdateHandlers()
 
   // Thumbnails are served over a custom scheme rather than IPC, so they are set
   // up here alongside the handlers but do not register any ipcMain channels.
@@ -281,6 +283,7 @@ export function unregisterAllHandlers(): void {
   unregisterArchiveHandlers()
   unregisterNetworkVaultHandlers()
   unregisterMdbInstallerHandlers()
+  unregisterMdbServerUpdateHandlers()
   unregisterThumbnailProtocol()
   unregisterThumbnailIpcHandlers()
 }
