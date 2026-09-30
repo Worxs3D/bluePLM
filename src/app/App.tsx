@@ -172,10 +172,11 @@ export function App() {
     getEffectiveRole,
   } = usePDMStore()
 
+  const effectiveRole = getEffectiveRole()
   const mdbUpdateCheckKey = useRef<string | null>(null)
   useEffect(() => {
     const mdbConfig = loadMdbConfig()
-    const role = getEffectiveRole()
+    const role = effectiveRole
     if (!isMdbBackendActive() || isOfflineMode || !organization?.id || !user || !mdbConfig?.serverUrl || !['owner', 'admin'].includes(role)) return
     const key = mdbServerUpdateCheckKey(organization.id, mdbConfig.serverUrl)
     if (mdbUpdateCheckKey.current === key || !window.electronAPI?.inspectMdbServerUpdate) return
@@ -185,7 +186,7 @@ export function App() {
     }).catch(() => {
       // Startup checking is advisory; actionable errors belong to the Settings panel.
     })
-  }, [addToast, getEffectiveRole, isOfflineMode, organization?.id, user?.id])
+  }, [addToast, effectiveRole, isOfflineMode, organization?.id, user?.id])
 
   // Get current vault ID (from activeVaultId or first connected vault)
   const currentVaultId = activeVaultId || connectedVaults[0]?.id
