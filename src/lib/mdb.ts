@@ -81,6 +81,7 @@ export type MdbOrganizationSettingSection =
   | 'export'
   | 'rfq'
   | 'auth-providers'
+  | 'modules'
 
 export interface MdbUser {
   id: string
@@ -578,7 +579,7 @@ export async function getMdbOrganizationSetting<T extends object>(
 export async function setMdbOrganizationSetting<T extends object>(
   section: MdbOrganizationSettingSection,
   value: T,
-  options: { replaceCounter?: boolean } = {},
+  options: { replaceCounter?: boolean; force?: boolean } = {},
 ): Promise<T> {
   return (
     await request<{ value: T }>(`/organizations/current/settings/${section}`, {

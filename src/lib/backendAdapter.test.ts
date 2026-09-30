@@ -42,6 +42,8 @@ describe('backend capabilities', () => {
     activateBackend('mdb')
 
     expect(activeBackendSupportsSettingsTab('item-designations')).toBe(true)
+    expect(activeBackendSupportsSettingsTab('modules')).toBe(true)
+    expect(getActiveBackendSettingsTabAvailability('modules')).toBe('supported')
     expect(activeBackendSupportsSettingsTab('recovery-codes')).toBe(true)
     expect(activeBackendSupportsSettingsTab('delete-account')).toBe(true)
     expect(activeBackendSupportsSettingsTab('module-access')).toBe(true)

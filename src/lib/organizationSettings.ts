@@ -12,6 +12,7 @@ const directColumns: Record<Exclude<OrganizationSettingSection, 'export'>, strin
   serialization: 'serialization_settings',
   rfq: 'rfq_settings',
   'auth-providers': 'auth_providers',
+  modules: 'module_defaults',
 }
 
 export async function getOrganizationSetting<T extends object>(
@@ -50,7 +51,7 @@ export async function setOrganizationSetting<T extends object>(
   section: OrganizationSettingSection,
   organizationId: string,
   value: T,
-  options: { replaceCounter?: boolean } = {},
+  options: { replaceCounter?: boolean; force?: boolean } = {},
 ): Promise<T> {
   return routeBackend({
     mdb: () => setMdbOrganizationSetting(section, value, options),

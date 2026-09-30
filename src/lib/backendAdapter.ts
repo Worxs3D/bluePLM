@@ -39,6 +39,9 @@ const settingsTabBackends: Record<SettingsTab, ReadonlySet<BackendKind>> = {
   profile: allBackends,
   preferences: allBackends,
   keybindings: allBackends,
+  // Module defaults still use the Supabase RPC contract. Keep the original
+  // navigation entry, but render its unsupported state for MDB rather than
+  // allowing a settings panel to initialize the inactive SDK.
   modules: allBackends,
   vaults: allBackends,
   'team-members': allBackends,

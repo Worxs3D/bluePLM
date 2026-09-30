@@ -10,6 +10,8 @@ import {
   mergeModuleOrder,
 } from '../../types/modules'
 import { supabase } from '../../lib/supabase'
+import { isMdbBackendActive } from '../../lib/backendAdapter'
+import { getMdbOrganizationSetting, setMdbOrganizationSetting } from '../../lib/mdb'
 
 export const createModulesSlice: StateCreator<
   PDMStoreState,
@@ -225,6 +227,23 @@ export const createModulesSlice: StateCreator<
     }
 
     try {
+      if (isMdbBackendActive()) {
+        const defaults = await getMdbOrganizationSetting<Record<string, unknown>>('modules')
+        const appDefaults = getDefaultModuleConfig()
+        const moduleConfig: ModuleConfig = {
+          enabledModules: { ...appDefaults.enabledModules, ...((defaults.enabled_modules || defaults.enabledModules || {}) as Record<string, boolean>) },
+          enabledGroups: { ...appDefaults.enabledGroups, ...((defaults.enabled_groups || defaults.enabledGroups || {}) as Record<string, boolean>) },
+          moduleOrder: Array.isArray(defaults.module_order || defaults.moduleOrder)
+            ? mergeModuleOrder((defaults.module_order || defaults.moduleOrder) as ModuleId[])
+            : appDefaults.moduleOrder,
+          dividers: (defaults.dividers as ModuleConfig['dividers']) || appDefaults.dividers,
+          moduleParents: { ...appDefaults.moduleParents, ...((defaults.module_parents || defaults.moduleParents || {}) as ModuleConfig['moduleParents']) },
+          moduleIconColors: { ...appDefaults.moduleIconColors, ...((defaults.module_icon_colors || defaults.moduleIconColors || {}) as ModuleConfig['moduleIconColors']) },
+          customGroups: (defaults.custom_groups || defaults.customGroups || appDefaults.customGroups) as ModuleConfig['customGroups'],
+        }
+        set({ moduleConfig, moduleConfigLastSyncedAt: Date.now() })
+        return { success: true }
+      }
       const { data, error } = await (supabase.rpc as any)('get_org_module_defaults', {
         // TODO: type this
         p_org_id: organization.id,
@@ -273,6 +292,18 @@ export const createModulesSlice: StateCreator<
     }
 
     try {
+      if (isMdbBackendActive()) {
+        await setMdbOrganizationSetting('modules', {
+          enabled_modules: moduleConfig.enabledModules,
+          enabled_groups: moduleConfig.enabledGroups,
+          module_order: moduleConfig.moduleOrder,
+          dividers: moduleConfig.dividers,
+          module_parents: moduleConfig.moduleParents,
+          module_icon_colors: moduleConfig.moduleIconColors,
+          custom_groups: moduleConfig.customGroups,
+        })
+        return { success: true }
+      }
       const { error } = await (supabase.rpc as any)('set_org_module_defaults', {
         // TODO: type this
         p_org_id: organization.id,
@@ -302,6 +333,19 @@ export const createModulesSlice: StateCreator<
     }
 
     try {
+      if (isMdbBackendActive()) {
+        await setMdbOrganizationSetting('modules', {
+          enabled_modules: moduleConfig.enabledModules,
+          enabled_groups: moduleConfig.enabledGroups,
+          module_order: moduleConfig.moduleOrder,
+          dividers: moduleConfig.dividers,
+          module_parents: moduleConfig.moduleParents,
+          module_icon_colors: moduleConfig.moduleIconColors,
+          custom_groups: moduleConfig.customGroups,
+        }, { force: true })
+        set({ moduleConfigLastSyncedAt: Date.now() })
+        return { success: true }
+      }
       const { error } = await (supabase.rpc as any)('force_org_module_defaults', {
         // TODO: type this
         p_org_id: organization.id,
