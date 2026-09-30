@@ -23,7 +23,7 @@ export function computeMdbBundleDigest(entries: readonly MdbBundleEntry[]): stri
       relativePath: entry.relativePath.replaceAll('\\', '/').replace(/^\/+/, ''),
       digest: entry.digest.toLowerCase(),
     }))
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+    .sort((a, b) => (a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0))
   const hash = createHash('sha256')
   for (const entry of normalized) hash.update(`${entry.relativePath}\0${entry.digest}\n`, 'utf8')
   return hash.digest('hex')
