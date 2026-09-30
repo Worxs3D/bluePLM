@@ -121,7 +121,6 @@ export function MdbServerSettings() {
       else if (result.errorCode === 'CREDENTIALS_UNAVAILABLE') addToast('error', t('settingsPages.mdbServer.missingCredentials'))
       else if (result.errorCode === 'HEALTH_MISMATCH') addToast('error', t('settingsPages.mdbServer.healthMismatch'))
       else if (result.errorCode === 'SERVER_NEWER') addToast('error', t('settingsPages.mdbServer.serverNewer'))
-      else if (result.errorCode === 'VERSION_CONFLICT') addToast('error', t('settingsPages.mdbServer.versionConflict'))
       else if (result.errorCode === 'ROLLBACK_FAILED') addToast('error', t('settingsPages.mdbServer.rollbackFailure'))
       else if (result.errorCode === 'SERVER_CHANGED') addToast('error', t('settingsPages.mdbServer.serverChanged'))
       else if (result.errorCode === 'CANCELLED') return
