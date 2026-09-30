@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
-import { getMdbVaultAuditFiles, recordMdbVaultAuditRun } from '@/lib/mdb'
+import { getMdbVaultAuditFiles, recordMdbVaultAuditRun, type MdbVaultAuditFile } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { writeDivergenceArtifact } from '@/lib/metadata/divergenceReport'
 import { runDivergenceScan, type DivergenceScanOptions } from '@/lib/metadata/divergenceScan'
@@ -39,6 +39,25 @@ import { usePDMStore } from '@/stores/pdmStore'
 import type { VaultAuditScope, VaultAuditView } from '@/types/vaultAudit'
 
 import { buildVaultAuditView } from './vaultAuditView'
+
+export function mapMdbAuditFilesToScanRows(files: MdbVaultAuditFile[]) {
+  return files.map((file) => {
+    const metadata = file.metadata && typeof file.metadata === 'object' ? file.metadata : {}
+    const extension = /\.[^.\\/]+$/.exec(file.canonicalPath)?.[0]?.toLowerCase() ?? null
+    return {
+      id: file.id,
+      file_path: file.canonicalPath,
+      file_name: file.fileName,
+      extension,
+      part_number: typeof metadata.part_number === 'string' ? metadata.part_number : null,
+      description: typeof metadata.description === 'string' ? metadata.description : null,
+      revision: typeof metadata.revision === 'string' ? metadata.revision : String(file.currentRevision),
+      custom_properties: metadata.custom_properties && typeof metadata.custom_properties === 'object'
+        ? metadata.custom_properties as Record<string, unknown>
+        : null,
+    }
+  })
+}
 
 /** Store writes per second while scanning. Enough for a smooth bar, few enough to be free. */
 const PROGRESS_THROTTLE_MS = 200
@@ -196,6 +215,16 @@ export function useVaultAudit(): UseVaultAuditResult {
     const runId = startVaultAuditRun(scope)
     lastProgressAt.current = 0
 
+    let backendRows: DivergenceScanOptions['rows']
+    if (isMdbBackendActive() && activeVaultId) {
+      const firstPage = await getMdbVaultAuditFiles(activeVaultId, 1, 500)
+      const pages = [firstPage]
+      while (pages.length * firstPage.limit < firstPage.total) {
+        pages.push(await getMdbVaultAuditFiles(activeVaultId, pages.length + 1, firstPage.limit))
+      }
+      backendRows = mapMdbAuditFilesToScanRows(pages.flatMap((page) => page.files))
+    }
+
     const options: DivergenceScanOptions = {
       orgId: organization.id,
       vaultId: activeVaultId,
@@ -206,6 +235,7 @@ export function useVaultAudit(): UseVaultAuditResult {
       // The read-back timing exists for the plan's phase 4 and costs extra opens. An audit is not
       // a benchmark, so it is off here and stays available in the terminal command.
       timingRepeats: 0,
+      rows: backendRows,
       shouldCancel: () => usePDMStore.getState().vaultAuditRun?.cancelRequested === true,
       onProgress: (message) => setVaultAuditProgress(runId, { message }),
       onFileProgress: (completed, total) => {
@@ -217,12 +247,6 @@ export function useVaultAudit(): UseVaultAuditResult {
     }
 
     try {
-      if (isMdbBackendActive() && activeVaultId) {
-        // Establish the server-side, tenant-scoped audit snapshot before opening local files.
-        // The local scan remains authoritative for SolidWorks values, while MDB supplies the
-        // organization/vault-bounded record set and pagination contract.
-        await getMdbVaultAuditFiles(activeVaultId, 1, 500)
-      }
       const report = await runDivergenceScan(options)
 
       if (isMdbBackendActive() && activeVaultId) {

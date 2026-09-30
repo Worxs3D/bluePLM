@@ -146,6 +146,8 @@ export interface DivergenceScanOptions {
   onFileProgress?: (completed: number, total: number) => void
   /** Checked between files so a long scan can be stopped. */
   shouldCancel?: () => boolean
+  /** Optional authoritative rows supplied by a backend adapter (for example MDB). */
+  rows?: ScanRow[]
 }
 
 /**
@@ -331,6 +333,7 @@ function toCustomProperties(value: unknown): Record<string, unknown> | null {
  * and read a database function to be sure.
  */
 async function fetchRows(options: DivergenceScanOptions): Promise<ScanRow[]> {
+  if (options.rows) return options.rows
   const client = getSupabaseClient()
   const rows: ScanRow[] = []
 

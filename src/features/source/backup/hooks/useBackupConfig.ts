@@ -127,7 +127,7 @@ export function useBackupConfig(
   const handleSave = useCallback(async () => {
     if (!orgId || !userId) return
 
-    if (!bucket || !accessKey || !secretKey || !resticPassword) {
+    if (!bucket || (!accessKey && !initialConfig?.has_access_key) || (!secretKey && !initialConfig?.has_secret_key) || (!resticPassword && !initialConfig?.has_restic_password)) {
       addToast('error', t('backup.requiredFields'))
       return
     }
@@ -141,9 +141,9 @@ export function useBackupConfig(
           bucket,
           region: region || null,
           endpoint: endpoint || null,
-          access_key_encrypted: accessKey,
-          secret_key_encrypted: secretKey,
-          restic_password_encrypted: resticPassword,
+          access_key_encrypted: accessKey || null,
+          secret_key_encrypted: secretKey || null,
+          restic_password_encrypted: resticPassword || null,
           retention_daily: retentionDaily,
           retention_weekly: retentionWeekly,
           retention_monthly: retentionMonthly,

@@ -27,6 +27,9 @@ export interface BackupConfig {
   access_key_encrypted: string | null
   secret_key_encrypted: string | null
   restic_password_encrypted: string | null
+  has_access_key?: boolean
+  has_secret_key?: boolean
+  has_restic_password?: boolean
   retention_daily: number
   retention_weekly: number
   retention_monthly: number
