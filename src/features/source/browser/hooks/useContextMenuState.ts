@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { notifyNativePreviewContextMenu } from '@/features/source/details/components/nativePreviewOverlay'
 
 export interface ContextMenuState {
   x: number
@@ -102,6 +103,7 @@ export function useContextMenuState(): UseContextMenuStateReturn {
   const stateSubmenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const closeAllMenus = () => {
+    notifyNativePreviewContextMenu(false)
     setContextMenu(null)
     setContextMenuAdjustedPos(null)
     setEmptyContextMenu(null)
