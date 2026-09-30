@@ -126,7 +126,7 @@ export function SupplierPortalView() {
             className="text-xs text-plm-fg-muted hover:text-plm-fg flex items-center gap-1"
           >
             <ChevronRight size={12} className="rotate-180" />
-            Back to Portal
+            {t('supplierManagement.backToPortal')}
           </button>
         </div>
         <RFQView
@@ -164,8 +164,8 @@ export function SupplierPortalView() {
             <Globe size={16} className="text-white" />
           </div>
           <div>
-            <div className="text-sm font-medium text-plm-fg">Supplier Portal</div>
-            <div className="text-[10px] text-plm-fg-muted">Manage RFQs & sourcing</div>
+            <div className="text-sm font-medium text-plm-fg">{t('supplierManagement.portal')}</div>
+            <div className="text-[10px] text-plm-fg-muted">{t('supplierManagement.portalSubtitle')}</div>
           </div>
         </div>
 
@@ -179,11 +179,11 @@ export function SupplierPortalView() {
             className="flex items-center justify-center gap-1.5 px-3 py-2 bg-plm-accent hover:bg-plm-accent/90 text-white rounded text-xs font-medium transition-colors"
           >
             <Plus size={14} />
-            New RFQ
+            {t('supplierManagement.newRfq')}
           </button>
           <button className="flex items-center justify-center gap-1.5 px-3 py-2 bg-plm-highlight hover:bg-plm-highlight/80 text-plm-fg rounded text-xs font-medium transition-colors">
             <MessageSquare size={14} />
-            Messages
+            {t('supplierManagement.messages')}
           </button>
         </div>
       </div>
@@ -192,39 +192,39 @@ export function SupplierPortalView() {
       <div className="grid grid-cols-3 border-b border-plm-border">
         <div className="p-3 text-center border-r border-plm-border">
           <div className="text-lg font-semibold text-plm-fg">{stats.activeRFQs}</div>
-          <div className="text-[10px] text-plm-fg-muted">Active RFQs</div>
+          <div className="text-[10px] text-plm-fg-muted">{t('supplierManagement.activeRfqs')}</div>
         </div>
         <div className="p-3 text-center border-r border-plm-border">
           <div className="text-lg font-semibold text-plm-warning">{stats.pendingQuotes}</div>
-          <div className="text-[10px] text-plm-fg-muted">Pending</div>
+          <div className="text-[10px] text-plm-fg-muted">{t('supplierManagement.pendingQuotes')}</div>
         </div>
         <div className="p-3 text-center">
           <div className="text-lg font-semibold text-plm-success">{stats.completedRFQs}</div>
-          <div className="text-[10px] text-plm-fg-muted">Completed</div>
+          <div className="text-[10px] text-plm-fg-muted">{t('supplierManagement.completed')}</div>
         </div>
       </div>
 
       {/* Recent RFQs */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-3 text-[10px] font-medium text-plm-fg-muted uppercase tracking-wider flex items-center justify-between">
-          <span>Recent RFQs</span>
+          <span>{t('supplierManagement.recentRfqs')}</span>
           <button
             onClick={() => setView('rfqs')}
             className="text-plm-accent hover:underline normal-case"
           >
-            View All
+            {t('supplierManagement.viewAll')}
           </button>
         </div>
 
         {recentRFQs.length === 0 ? (
           <div className="text-center py-8 text-plm-fg-muted">
             <FileText size={32} className="mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No RFQs yet</p>
+            <p className="text-sm">{t('supplierManagement.noRfqs')}</p>
             <button
               onClick={() => setView('rfqs')}
               className="mt-2 text-xs text-plm-accent hover:underline"
             >
-              Create your first RFQ
+              {t('supplierManagement.createFirstRfq')}
             </button>
           </div>
         ) : (
@@ -262,16 +262,16 @@ export function SupplierPortalView() {
                   {rfq.due_date && (
                     <span className="flex items-center gap-1">
                       <Clock size={10} />
-                      Due {new Date(rfq.due_date).toLocaleDateString()}
+                      {t('supplierManagement.due', { date: new Date(rfq.due_date).toLocaleDateString() })}
                     </span>
                   )}
                   <span className="flex items-center gap-1">
                     <Package size={10} />
-                    {(rfq as any).items?.[0]?.count || 0} items // TODO: type this
+                    {t('supplierManagement.items', { count: (rfq as any).items?.[0]?.count || 0 })}
                   </span>
                   <span className="flex items-center gap-1">
                     <Building2 size={10} />
-                    {(rfq as any).suppliers?.[0]?.count || 0} suppliers // TODO: type this
+                    {t('supplierManagement.suppliers', { count: (rfq as any).suppliers?.[0]?.count || 0 })}
                   </span>
                 </div>
               </div>
@@ -283,7 +283,7 @@ export function SupplierPortalView() {
       {/* Quick links */}
       <div className="p-3 border-t border-plm-border bg-plm-bg">
         <div className="text-[10px] font-medium text-plm-fg-muted uppercase tracking-wider mb-2">
-          Quick Links
+          {t('supplierManagement.quickLinks')}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -291,19 +291,19 @@ export function SupplierPortalView() {
             className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors"
           >
             <Building2 size={14} />
-            Suppliers
+            {t('suppliers')}
           </button>
           <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
             <ClipboardCheck size={14} />
-            Quality Reports
+            {t('supplierManagement.qualityReports')}
           </button>
           <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
             <Truck size={14} />
-            Shipments
+            {t('supplierManagement.shipments')}
           </button>
           <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
             <TrendingUp size={14} />
-            Analytics
+            {t('supplierManagement.analytics')}
           </button>
         </div>
       </div>
@@ -314,8 +314,8 @@ export function SupplierPortalView() {
           <DollarSign size={14} className="text-plm-accent" />
           <span className="text-plm-fg-muted">
             {stats.pendingQuotes > 0
-              ? `${stats.pendingQuotes} RFQ${stats.pendingQuotes !== 1 ? 's' : ''} waiting for quotes`
-              : 'All quotes received'}
+              ? t('supplierManagement.waitingForQuotes', { count: stats.pendingQuotes })
+              : t('supplierManagement.allQuotesReceived')}
           </span>
         </div>
       </div>

@@ -52,6 +52,12 @@ export function SuppliersView() {
   const [supplierName, setSupplierName] = useState('')
   const [supplierEmail, setSupplierEmail] = useState('')
   const [supplierPhone, setSupplierPhone] = useState('')
+  const [supplierCode, setSupplierCode] = useState('')
+  const [supplierWebsite, setSupplierWebsite] = useState('')
+  const [supplierCity, setSupplierCity] = useState('')
+  const [supplierState, setSupplierState] = useState('')
+  const [supplierCountry, setSupplierCountry] = useState('')
+  const [supplierApproved, setSupplierApproved] = useState(false)
   const [saving, setSaving] = useState(false)
   const canManageSuppliers = ['owner', 'admin'].includes(getEffectiveRole())
 
@@ -60,6 +66,12 @@ export function SuppliersView() {
     setSupplierName(supplier?.name ?? '')
     setSupplierEmail(supplier?.contact_email ?? '')
     setSupplierPhone(supplier?.contact_phone ?? '')
+    setSupplierCode(supplier?.code ?? '')
+    setSupplierWebsite(supplier?.website ?? '')
+    setSupplierCity(supplier?.city ?? '')
+    setSupplierState(supplier?.state ?? '')
+    setSupplierCountry(supplier?.country ?? '')
+    setSupplierApproved(supplier?.is_approved ?? false)
     setFormOpen(true)
   }
 
@@ -67,14 +79,19 @@ export function SuppliersView() {
     if (!isMdbBackendActive() || !supplierName.trim() || !canManageSuppliers) return
     setSaving(true)
     try {
-      const input = { name: supplierName.trim(), contactEmail: supplierEmail.trim() || null, contactPhone: supplierPhone.trim() || null }
+      if (supplierEmail.trim() && !/^\S+@\S+\.\S+$/.test(supplierEmail.trim())) {
+        addToast('error', t('supplierManagement.saveFailed'))
+        return
+      }
+      const input = { name: supplierName.trim(), code: supplierCode.trim() || null, contactEmail: supplierEmail.trim() || null, contactPhone: supplierPhone.trim() || null, website: supplierWebsite.trim() || null, city: supplierCity.trim() || null, state: supplierState.trim() || null, country: supplierCountry.trim() || null, isApproved: supplierApproved }
       const supplier = editingSupplier ? await updateMdbSupplier(editingSupplier.id, input) : await createMdbSupplier(input)
       setSuppliers(editingSupplier ? suppliers.map((item) => item.id === supplier.id ? supplier as Supplier : item) : [...suppliers, supplier as Supplier])
       setSelectedSupplier(supplier as Supplier)
       setFormOpen(false)
     } catch (error) {
       log.error('[Suppliers]', 'Failed to save supplier', { error })
-      addToast('error', String(error))
+      log.error('[Suppliers]', 'Supplier save failed', { error: error instanceof Error ? error.message : error })
+      addToast('error', t('supplierManagement.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -82,13 +99,15 @@ export function SuppliersView() {
 
   const deactivateSupplier = async (supplier: Supplier) => {
     if (!isMdbBackendActive() || !canManageSuppliers) return
+    if (!window.confirm(t('supplierManagement.confirmDeactivate'))) return
     try {
       await deactivateMdbSupplier(supplier.id)
       setSuppliers(suppliers.filter((item) => item.id !== supplier.id))
       setSelectedSupplier(null)
     } catch (error) {
       log.error('[Suppliers]', 'Failed to deactivate supplier', { error })
-      addToast('error', String(error))
+      log.error('[Suppliers]', 'Supplier deactivation failed', { error: error instanceof Error ? error.message : error })
+      addToast('error', t('supplierManagement.deactivateFailed'))
     }
   }
 
@@ -114,7 +133,8 @@ export function SuppliersView() {
       if (error) throw error
       setSuppliers(data || [])
     } catch (error) {
-      log.error('[Suppliers]', 'Failed to load suppliers', { error: error })
+      log.error('[Suppliers]', 'Failed to load suppliers', { error: error instanceof Error ? error.message : error })
+      addToast('error', t('supplierManagement.loadFailed'))
     } finally {
       setSuppliersLoading(false)
     }
@@ -141,14 +161,14 @@ export function SuppliersView() {
       const token = session?.access_token
 
       if (!token) {
-        addToast('error', 'Session expired. Please log in again.')
+        addToast('error', t('notConfigured'))
         setSyncing(false)
         return
       }
 
       const apiUrl = getApiUrl(organization)
       if (!apiUrl) {
-        addToast('error', 'API server not configured. Go to Settings > REST API.')
+        addToast('error', t('notConfigured'))
         setSyncing(false)
         return
       }
@@ -165,25 +185,24 @@ export function SuppliersView() {
       log.debug('[Odoo Sync]', 'Sync response', { status: response.status, debug: data.debug })
 
       if (response.ok) {
-        addToast('success', `Synced ${data.created} new, ${data.updated} updated suppliers`)
+        addToast('success', t('supplierManagement.syncFromOdoo'))
         loadSuppliers()
       } else {
         if (data.message?.includes('not configured')) {
           addToast(
             'warning',
-            'Odoo not configured. Go to Settings > Google Drive & ERP to set it up.',
+            t('supplierManagement.syncFromOdoo'),
           )
           setActiveView('settings')
         } else {
           // Show more detailed error
-          const debugInfo = data.debug
-            ? ` (auth: ${data.debug.auth_uid ? 'ok' : 'failed'}, found: ${data.debug.supplier_ids_count})`
-            : ''
-          addToast('error', (data.message || 'Sync failed') + debugInfo)
+          log.error('[Odoo Sync]', 'Supplier synchronization failed', { message: data.message, debug: data.debug })
+          addToast('error', t('supplierManagement.loadFailed'))
         }
       }
     } catch (error) {
-      addToast('error', `Sync error: ${error}`)
+      log.error('[Odoo Sync]', 'Supplier synchronization threw', { error: error instanceof Error ? error.message : error })
+      addToast('error', t('supplierManagement.loadFailed'))
     } finally {
       setSyncing(false)
     }
@@ -224,7 +243,7 @@ export function SuppliersView() {
             onClick={() => setSelectedSupplier(null)}
             className="flex items-center gap-1 text-xs text-plm-fg-muted hover:text-plm-fg mb-3"
           >
-            ← Back to list
+            ← {t('supplierManagement.backToList')}
           </button>
           {canManageSuppliers && isMdbBackendActive() && (
             <div className="flex gap-2 mb-3">
@@ -253,11 +272,11 @@ export function SuppliersView() {
                       : 'bg-plm-warning/20 text-plm-warning'
                   }`}
                 >
-                  {selectedSupplier.is_approved ? 'APPROVED' : 'PENDING'}
+                  {selectedSupplier.is_approved ? t('supplierManagement.approved') : t('supplierManagement.pending')}
                 </span>
                 {selectedSupplier.erp_id && (
                   <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-plm-info/20 text-plm-info">
-                    ODOO #{selectedSupplier.erp_id}
+                    {t('supplierManagement.odoo')} #{selectedSupplier.erp_id}
                   </span>
                 )}
               </div>
@@ -270,7 +289,7 @@ export function SuppliersView() {
           {/* Contact */}
           <div className="space-y-2">
             <h3 className="text-xs font-medium text-plm-fg-muted uppercase tracking-wider">
-              Contact
+              {t('supplierManagement.contact')}
             </h3>
             {selectedSupplier.contact_email && (
               <div className="flex items-center gap-2 text-sm">
@@ -313,7 +332,7 @@ export function SuppliersView() {
           {(selectedSupplier.city || selectedSupplier.state || selectedSupplier.country) && (
             <div className="space-y-2">
               <h3 className="text-xs font-medium text-plm-fg-muted uppercase tracking-wider">
-                Location
+                {t('supplierManagement.location')}
               </h3>
               <div className="flex items-center gap-2 text-sm">
                 <MapPin size={14} className="text-plm-fg-muted" />
@@ -330,12 +349,12 @@ export function SuppliersView() {
           {selectedSupplier.erp_synced_at && (
             <div className="space-y-2">
               <h3 className="text-xs font-medium text-plm-fg-muted uppercase tracking-wider">
-                Sync
+                {t('supplierManagement.sync')}
               </h3>
               <div className="flex items-center gap-2 text-sm">
                 <Clock size={14} className="text-plm-fg-muted" />
                 <span className="text-plm-fg-muted">
-                  Last synced: {new Date(selectedSupplier.erp_synced_at).toLocaleString()}
+                  {t('supplierManagement.lastSynced', { date: new Date(selectedSupplier.erp_synced_at).toLocaleString() })}
                 </span>
               </div>
             </div>
@@ -358,7 +377,7 @@ export function SuppliersView() {
             onClick={handleSync}
             disabled={syncing}
             className="flex items-center justify-center gap-2 px-3 py-2 bg-plm-highlight hover:bg-plm-highlight/80 rounded text-sm font-medium text-plm-fg transition-colors disabled:opacity-50"
-            title="Sync from Odoo"
+            title={t('supplierManagement.syncFromOdoo')}
           >
             {syncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           </button>
@@ -391,9 +410,9 @@ export function SuppliersView() {
                   : 'text-plm-fg-muted hover:text-plm-fg'
               }`}
             >
-              {filter === 'all' && `All (${suppliers.length})`}
-              {filter === 'approved' && `Approved (${approvedCount})`}
-              {filter === 'pending' && `Pending (${pendingCount})`}
+              {filter === 'all' && t('supplierManagement.all', { count: suppliers.length })}
+              {filter === 'approved' && t('supplierManagement.approvedCount', { count: approvedCount })}
+              {filter === 'pending' && t('supplierManagement.pendingCount', { count: pendingCount })}
             </button>
           ))}
         </div>
@@ -412,19 +431,19 @@ export function SuppliersView() {
             </div>
             {suppliers.length === 0 ? (
               <>
-                <p className="text-sm text-plm-fg mb-1">No suppliers yet</p>
-                <p className="text-xs text-plm-fg-muted mb-4">Sync from Odoo or add manually</p>
+                <p className="text-sm text-plm-fg mb-1">{t('supplierManagement.noSuppliers')}</p>
+                <p className="text-xs text-plm-fg-muted mb-4">{t('supplierManagement.syncOrAdd')}</p>
                 <button
                   onClick={handleSync}
                   disabled={syncing}
                   className="flex items-center gap-2 px-3 py-2 bg-plm-accent hover:bg-plm-accent/90 text-white rounded text-sm font-medium transition-colors"
                 >
                   <RefreshCw size={14} />
-                  Sync from Odoo
+                  {t('supplierManagement.syncFromOdoo')}
                 </button>
               </>
             ) : (
-              <p className="text-sm text-plm-fg-muted">No suppliers match your search</p>
+              <p className="text-sm text-plm-fg-muted">{t('supplierManagement.noSearchMatch')}</p>
             )}
           </div>
         ) : (
@@ -454,7 +473,7 @@ export function SuppliersView() {
                         : 'bg-plm-warning/20 text-plm-warning'
                     }`}
                   >
-                    {supplier.is_approved ? 'APPROVED' : 'PENDING'}
+                    {supplier.is_approved ? t('supplierManagement.approved') : t('supplierManagement.pending')}
                   </span>
                   <ChevronRight
                     size={14}
@@ -475,7 +494,7 @@ export function SuppliersView() {
                   {supplier.erp_id && (
                     <span className="flex items-center gap-1 text-plm-info">
                       <RefreshCw size={10} />
-                      Odoo
+                      {t('supplierManagement.odoo')}
                     </span>
                   )}
                 </div>
@@ -489,9 +508,9 @@ export function SuppliersView() {
       {suppliers.length > 0 && (
         <div className="p-3 border-t border-plm-border bg-plm-bg">
           <div className="flex justify-between text-[11px] text-plm-fg-muted">
-            <span>{suppliers.length} suppliers</span>
+            <span>{t('supplierManagement.suppliersCount', { count: suppliers.length })}</span>
             <span>
-              {approvedCount} approved • {pendingCount} pending
+              {t('supplierManagement.approvedPending', { approved: approvedCount, pending: pendingCount })}
             </span>
           </div>
         </div>
@@ -501,8 +520,12 @@ export function SuppliersView() {
           <div className="w-full max-w-md space-y-3 rounded-lg bg-plm-panel p-4">
             <h2 className="text-sm font-medium text-plm-fg">{editingSupplier ? t('edit') : t('addSupplier')}</h2>
             <input className="w-full input" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} placeholder={t('name')} />
+            <input className="w-full input" value={supplierCode} onChange={(event) => setSupplierCode(event.target.value)} placeholder={t('supplierManagement.code')} />
             <input className="w-full input" value={supplierEmail} onChange={(event) => setSupplierEmail(event.target.value)} placeholder={t('email')} />
             <input className="w-full input" value={supplierPhone} onChange={(event) => setSupplierPhone(event.target.value)} placeholder={t('phone')} />
+            <input className="w-full input" value={supplierWebsite} onChange={(event) => setSupplierWebsite(event.target.value)} placeholder={t('supplierManagement.website')} />
+            <div className="grid grid-cols-3 gap-2"><input className="input" value={supplierCity} onChange={(event) => setSupplierCity(event.target.value)} placeholder={t('supplierManagement.city')} /><input className="input" value={supplierState} onChange={(event) => setSupplierState(event.target.value)} placeholder={t('supplierManagement.state')} /><input className="input" value={supplierCountry} onChange={(event) => setSupplierCountry(event.target.value)} placeholder={t('supplierManagement.country')} /></div>
+            <label className="flex items-center gap-2 text-xs text-plm-fg"><input type="checkbox" checked={supplierApproved} onChange={(event) => setSupplierApproved(event.target.checked)} />{t('supplierManagement.approved')}</label>
             <div className="flex justify-end gap-2">
               <button onClick={() => setFormOpen(false)} className="btn btn-secondary">{t('cancel')}</button>
               <button onClick={() => void saveSupplier()} disabled={saving || !supplierName.trim()} className="btn btn-primary">{t('save')}</button>
