@@ -7,6 +7,16 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
+4.4.4 shipped (renderer and SolidWorks service 1.21.2 — no schema change, no API change):
+everything in beta.1 below, plus two follow-ups from Quinlan's BR-107599 push, where BluePLM
+showed the file as checked out while the attribute was still set. Sync Metadata now reads the
+attribute before pushing and names read-only files instead of spending a minute on refused
+saves; it does not clear the attribute, because checkout owns that and Check Out on a held file
+repairs it. The service returns `DM_FILE_READ_ONLY` on Document Manager open error 4 instead of
+falling back to SolidWorks COM, which can only refuse the same save. Folded in: the Sep 11
+download/refresh work left uncommitted in the tree (hashless rows skipped, Refresh cloud rows
+built like a full load, parent folders registered as expected watcher changes).
+
 4.4.4-beta.1 (renderer and SolidWorks service — no schema change, no API change): checkout
 now confirms the Windows read-only bit is actually clear, retries once, and names files that
 stay read-only, including files the current user already has checked out. A read-only file

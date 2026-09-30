@@ -4,6 +4,32 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.4] - 2026-09-29
+
+Renderer and SolidWorks service — no schema change, no API change. Everything in
+4.4.4-beta.1, plus the following.
+
+### Fixed
+
+- **Sync Metadata refuses a file that is still read-only on disk, and says which.** A file
+  BluePLM showed as checked out could still carry the read-only attribute, and Sync Metadata
+  pushed into it anyway: over a minute of refused SolidWorks saves on a four-configuration
+  assembly, then "4 of 4 configurations did not take the change." It now checks first, names
+  the read-only files, and points at Check Out, which makes a file you already hold writable.
+- **A read-only write fails straight away in the SolidWorks service.** When Document Manager
+  refuses a write because the file is read-only, the service no longer retries it through
+  SolidWorks, which opened the file read-only too and could only refuse the save. SolidWorks
+  service 1.21.2.
+- **Downloading a folder no longer fails once per leftover row with no file behind it.**
+  Server rows with no content hash are skipped with one summary warning, and a hash missing
+  from the row is filled from the server index when it has one.
+- **Refreshing a folder no longer brings back cloud rows a full load hides.** Refresh now
+  skips rows with no hash and rows whose content already exists locally at another path,
+  the same way a full vault load does, so they stop reappearing as downloadable.
+- **Download and Get Latest no longer trigger a background vault reload.** Writing a file
+  fires a change event on its folder, which the file watcher treated as an outside edit;
+  those folders are now registered as BluePLM's own changes.
+
 ## [4.4.4-beta.1] - 2026-09-22
 
 Renderer and SolidWorks service — no schema change, no API change.
