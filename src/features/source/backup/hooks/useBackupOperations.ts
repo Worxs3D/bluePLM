@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { log } from '@/lib/logger'
+import { useTranslation } from '@/lib/i18n'
 import {
   runBackup,
   restoreFromSnapshot,
@@ -76,6 +77,7 @@ export function useBackupOperations(
   addToast: (type: 'success' | 'error' | 'info', message: string, duration?: number) => void,
   loadStatus: () => Promise<void>,
 ): UseBackupOperationsReturn {
+  const { t } = useTranslation()
   // Backup state
   const [isRunningBackup, setIsRunningBackup] = useState(false)
   const [backupProgress, setBackupProgress] = useState<BackupProgress | null>(null)
@@ -178,7 +180,7 @@ export function useBackupOperations(
               addToast('success', `Backed up ${vault.name}: ${result.snapshotId?.substring(0, 8)}`)
             } else {
               failCount++
-              addToast('error', `Failed to backup ${vault.name}: ${result.error}`)
+              addToast('error', t('backup.saveFailed'))
             }
           } catch (error) {
             failCount++
@@ -276,7 +278,7 @@ export function useBackupOperations(
         )
         await loadStatus()
       } else {
-        addToast('error', result.error || 'Failed to request backup')
+        addToast('error', t('backup.saveFailed'))
       }
     } catch (_err) {
       addToast('error', 'Failed to request backup')
@@ -496,7 +498,7 @@ export function useBackupOperations(
       if (result.success) {
         addToast('success', `Snapshot ${snapshotId.substring(0, 8)} deleted`)
       } else {
-        addToast('error', result.error || 'Failed to delete snapshot')
+      addToast('error', t('backup.saveFailed'))
       }
     } catch (error) {
       log.error('[Backup]', 'Delete failed', { error: error })
@@ -527,7 +529,7 @@ export function useBackupOperations(
       addToast('success', 'This machine is now the backup source')
       await loadStatus()
     } else {
-      addToast('error', result.error || 'Failed to designate machine')
+      addToast('error', t('backup.saveFailed'))
     }
   }, [orgId, userEmail, addToast, loadStatus])
 
@@ -540,7 +542,7 @@ export function useBackupOperations(
       addToast('success', 'Backup source cleared')
       await loadStatus()
     } else {
-      addToast('error', result.error || 'Failed to clear designation')
+      addToast('error', t('backup.saveFailed'))
     }
   }, [orgId, addToast, loadStatus])
 

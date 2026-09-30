@@ -645,6 +645,12 @@ export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
   return (await request<{ config: MdbBackupConfig | null }>('/backup/config')).config
 }
 
+/** Short-lived runtime credentials for the authenticated designated backup machine only. */
+export async function getMdbBackupRuntimeConfig(machineId: string): Promise<MdbBackupConfig | null> {
+  const query = new URLSearchParams({ machineId })
+  return (await request<{ config: MdbBackupConfig | null }>(`/backup/runtime-config?${query.toString()}`)).config
+}
+
 export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
   return (await request<{ config: MdbBackupConfig }>('/backup/config', {
     method: 'PUT',

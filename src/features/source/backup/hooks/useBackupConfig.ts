@@ -160,7 +160,7 @@ export function useBackupConfig(
         addToast('success', t('backup.configurationSaved'))
         await onSaveSuccess()
       } else {
-        addToast('error', result.error || t('backup.saveFailed'))
+        addToast('error', t('backup.saveFailed'))
       }
     } catch (_err) {
       addToast('error', t('backup.saveFailed'))

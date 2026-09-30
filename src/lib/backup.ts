@@ -5,6 +5,7 @@ import {
   clearMdbBackupMachine,
   designateMdbBackupMachine,
   getMdbBackupConfig,
+  getMdbBackupRuntimeConfig,
   heartbeatMdbBackupMachine,
   markMdbBackupComplete,
   markMdbBackupStarted,
@@ -101,6 +102,12 @@ function mapMdbBackupConfig(value: Awaited<ReturnType<typeof getMdbBackupConfig>
   }
 }
 
+async function resolveRuntimeConfig(config: BackupConfig): Promise<BackupConfig> {
+  if (isBackendActive('supabase') || (config.access_key_encrypted && config.secret_key_encrypted && config.restic_password_encrypted)) return config
+  const runtime = await getMdbBackupRuntimeConfig(await getMachineId())
+  return runtime ? mapMdbBackupConfig(runtime)! : config
+}
+
 // ============================================
 // Machine ID Management (still useful for identifying backup source)
 // ============================================
@@ -169,7 +176,8 @@ export async function saveBackupConfig(
       return { success: true }
     } catch (error) {
       log.error('[Backup]', 'Error saving MDB config', { error: error instanceof Error ? error.message : 'unknown' })
-      return { success: false, error: error instanceof Error ? error.message : 'MDB backup configuration could not be saved.' }
+      log.error('[Backup]', 'MDB backup configuration failed', { error: error instanceof Error ? error.message : 'unknown' })
+      return { success: false, error: 'MDB_BACKUP_CONFIG_SAVE_FAILED' }
     }
   }
   const supabase = getSupabaseClient()
@@ -206,7 +214,8 @@ export async function designateThisMachine(
       await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail })
       return { success: true }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'MDB backup machine could not be designated.' }
+      log.error('[Backup]', 'MDB backup machine designation failed', { error: error instanceof Error ? error.message : 'unknown' })
+      return { success: false, error: 'MDB_BACKUP_MACHINE_DESIGNATE_FAILED' }
     }
   }
   const supabase = getSupabaseClient()
@@ -242,7 +251,7 @@ export async function clearDesignatedMachine(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
     try { await clearMdbBackupMachine(); return { success: true } }
-    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'MDB backup machine could not be cleared.' } }
+    catch (error) { log.error('[Backup]', 'MDB backup machine clear failed', { error: error instanceof Error ? error.message : 'unknown' }); return { success: false, error: 'MDB_BACKUP_MACHINE_CLEAR_FAILED' } }
   }
   const supabase = getSupabaseClient()
 
@@ -312,7 +321,7 @@ export async function requestBackup(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
     try { await requestMdbBackup(userEmail); return { success: true } }
-    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'MDB backup request failed.' } }
+    catch (error) { log.error('[Backup]', 'MDB backup request failed', { error: error instanceof Error ? error.message : 'unknown' }); return { success: false, error: 'MDB_BACKUP_REQUEST_FAILED' } }
   }
   const supabase = getSupabaseClient()
 
@@ -685,23 +694,24 @@ export async function listSnapshots(
   config: BackupConfig,
   options?: { forceRefresh?: boolean },
 ): Promise<BackupSnapshot[]> {
+  const effectiveConfig = await resolveRuntimeConfig(config)
   if (!window.electronAPI?.listBackupSnapshots) {
     log.error('[Backup]', 'listBackupSnapshots not available')
     return getCachedSnapshots()
   }
 
   if (
-    !config.bucket ||
-    !config.access_key_encrypted ||
-    !config.secret_key_encrypted ||
-    !config.restic_password_encrypted
+    !effectiveConfig.bucket ||
+    !effectiveConfig.access_key_encrypted ||
+    !effectiveConfig.secret_key_encrypted ||
+    !effectiveConfig.restic_password_encrypted
   ) {
     log.error('[Backup]', 'Config incomplete for listing snapshots')
     return getCachedSnapshots()
   }
 
   // Return cached data if valid (unless force refresh)
-  if (!options?.forceRefresh && isCacheValid(config)) {
+  if (!options?.forceRefresh && isCacheValid(effectiveConfig)) {
     log.debug('[Backup]', 'Returning cached snapshots', {
       age: Math.round((Date.now() - snapshotCache!.timestamp) / 1000) + 's',
     })
@@ -729,13 +739,13 @@ export async function listSnapshots(
   pendingSnapshotRequest = (async () => {
     try {
       const result = await window.electronAPI!.listBackupSnapshots({
-        provider: config.provider,
-        bucket: config.bucket || '',
-        region: config.region || undefined,
-        endpoint: config.endpoint || undefined,
-        accessKey: config.access_key_encrypted || '',
-        secretKey: config.secret_key_encrypted || '',
-        resticPassword: config.restic_password_encrypted || '',
+        provider: effectiveConfig.provider,
+        bucket: effectiveConfig.bucket || '',
+        region: effectiveConfig.region || undefined,
+        endpoint: effectiveConfig.endpoint || undefined,
+        accessKey: effectiveConfig.access_key_encrypted || '',
+        secretKey: effectiveConfig.secret_key_encrypted || '',
+        resticPassword: effectiveConfig.restic_password_encrypted || '',
       })
 
       // Add short_id if missing (restic returns id but not always short_id)
@@ -748,7 +758,7 @@ export async function listSnapshots(
       snapshotCache = {
         snapshots,
         timestamp: Date.now(),
-        configHash: getConfigHash(config),
+        configHash: getConfigHash(effectiveConfig),
       }
       clearBackoff()
 
@@ -778,28 +788,29 @@ async function deleteSnapshotInternal(
   config: BackupConfig,
   snapshotId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  const effectiveConfig = await resolveRuntimeConfig(config)
   if (!window.electronAPI?.deleteBackupSnapshot) {
     return { success: false, error: 'Delete not available: Electron API not found' }
   }
 
   if (
-    !config.bucket ||
-    !config.access_key_encrypted ||
-    !config.secret_key_encrypted ||
-    !config.restic_password_encrypted
+    !effectiveConfig.bucket ||
+    !effectiveConfig.access_key_encrypted ||
+    !effectiveConfig.secret_key_encrypted ||
+    !effectiveConfig.restic_password_encrypted
   ) {
     return { success: false, error: 'Config incomplete for delete' }
   }
 
   try {
     const result = await window.electronAPI.deleteBackupSnapshot({
-      provider: config.provider,
-      bucket: config.bucket,
-      region: config.region || undefined,
-      endpoint: config.endpoint || undefined,
-      accessKey: config.access_key_encrypted,
-      secretKey: config.secret_key_encrypted,
-      resticPassword: config.restic_password_encrypted,
+      provider: effectiveConfig.provider,
+      bucket: effectiveConfig.bucket,
+      region: effectiveConfig.region || undefined,
+      endpoint: effectiveConfig.endpoint || undefined,
+      accessKey: effectiveConfig.access_key_encrypted,
+      secretKey: effectiveConfig.secret_key_encrypted,
+      resticPassword: effectiveConfig.restic_password_encrypted,
       snapshotId,
     })
 
@@ -833,11 +844,12 @@ export async function runBackup(
   const startTime = Date.now()
 
   try {
-    if (!config.bucket || !config.access_key_encrypted || !config.secret_key_encrypted) {
+    const effectiveConfig = await resolveRuntimeConfig(config)
+    if (!effectiveConfig.bucket || !effectiveConfig.access_key_encrypted || !effectiveConfig.secret_key_encrypted) {
       throw new Error('Backup not configured: missing bucket or credentials')
     }
 
-    if (!config.restic_password_encrypted) {
+    if (!effectiveConfig.restic_password_encrypted) {
       throw new Error('Backup not configured: missing restic password')
     }
 
@@ -845,10 +857,10 @@ export async function runBackup(
     let metadataJson = options?.metadataJson
     if (!metadataJson && options?.vaultId) {
       window.electronAPI?.log('info', '[Backup] Exporting database metadata...', {
-        orgId: config.org_id,
+        orgId: effectiveConfig.org_id,
         vaultId: options.vaultId,
       })
-      const metadataExport = await exportDatabaseMetadata(config.org_id, options.vaultId)
+      const metadataExport = await exportDatabaseMetadata(effectiveConfig.org_id, options.vaultId)
       if (metadataExport.success && metadataExport.data) {
         metadataJson = JSON.stringify(metadataExport.data, null, 2)
         window.electronAPI?.log('info', '[Backup] Database metadata exported successfully', {
@@ -869,17 +881,17 @@ export async function runBackup(
     }
 
     const result = await window.electronAPI.runBackup({
-      provider: config.provider,
-      bucket: config.bucket,
-      region: config.region || undefined,
-      endpoint: config.endpoint || undefined,
-      accessKey: config.access_key_encrypted,
-      secretKey: config.secret_key_encrypted,
-      resticPassword: config.restic_password_encrypted,
-      retentionDaily: config.retention_daily,
-      retentionWeekly: config.retention_weekly,
-      retentionMonthly: config.retention_monthly,
-      retentionYearly: config.retention_yearly,
+      provider: effectiveConfig.provider,
+      bucket: effectiveConfig.bucket,
+      region: effectiveConfig.region || undefined,
+      endpoint: effectiveConfig.endpoint || undefined,
+      accessKey: effectiveConfig.access_key_encrypted,
+      secretKey: effectiveConfig.secret_key_encrypted,
+      resticPassword: effectiveConfig.restic_password_encrypted,
+      retentionDaily: effectiveConfig.retention_daily,
+      retentionWeekly: effectiveConfig.retention_weekly,
+      retentionMonthly: effectiveConfig.retention_monthly,
+      retentionYearly: effectiveConfig.retention_yearly,
       metadataJson,
       vaultName: options?.vaultName,
       vaultPath: options?.vaultPath,
@@ -915,28 +927,29 @@ export async function restoreFromSnapshot(
   targetPath: string,
   specificPaths?: string[],
 ): Promise<{ success: boolean; hasMetadata?: boolean; error?: string }> {
+  const effectiveConfig = await resolveRuntimeConfig(config)
   if (!window.electronAPI?.restoreFromBackup) {
     return { success: false, error: 'Restore not available: Electron API not found' }
   }
 
   if (
-    !config.bucket ||
-    !config.access_key_encrypted ||
-    !config.secret_key_encrypted ||
-    !config.restic_password_encrypted
+    !effectiveConfig.bucket ||
+    !effectiveConfig.access_key_encrypted ||
+    !effectiveConfig.secret_key_encrypted ||
+    !effectiveConfig.restic_password_encrypted
   ) {
     return { success: false, error: 'Config incomplete for restore' }
   }
 
   try {
     const result = await window.electronAPI.restoreFromBackup({
-      provider: config.provider,
-      bucket: config.bucket,
-      region: config.region || undefined,
-      endpoint: config.endpoint || undefined,
-      accessKey: config.access_key_encrypted,
-      secretKey: config.secret_key_encrypted,
-      resticPassword: config.restic_password_encrypted,
+      provider: effectiveConfig.provider,
+      bucket: effectiveConfig.bucket,
+      region: effectiveConfig.region || undefined,
+      endpoint: effectiveConfig.endpoint || undefined,
+      accessKey: effectiveConfig.access_key_encrypted,
+      secretKey: effectiveConfig.secret_key_encrypted,
+      resticPassword: effectiveConfig.restic_password_encrypted,
       snapshotId,
       targetPath,
       specificPaths,
