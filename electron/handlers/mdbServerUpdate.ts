@@ -55,9 +55,26 @@ export interface MdbServerCredentialRequest extends MdbServerCredentialBinding {
 
 type ConfirmationKind = 'update' | 'save' | 'replace' | 'clear'
 let confirmationForTests: ((kind: ConfirmationKind, text: { message: string; confirmLabel: string; cancelLabel: string }) => Promise<boolean>) | undefined
+let credentialsForTests: Awaited<ReturnType<typeof readMdbServerCredentials>> | undefined
 
 export function setMdbServerConfirmationForTests(handler: typeof confirmationForTests): void {
   confirmationForTests = handler
+}
+
+export function setMdbServerCredentialsForTests(value: Awaited<ReturnType<typeof readMdbServerCredentials>> | undefined): void {
+  credentialsForTests = value
+}
+
+async function loadStoredCredentials() {
+  return credentialsForTests === undefined ? readMdbServerCredentials() : credentialsForTests
+}
+
+export function credentialOperationKind(existing: boolean): Exclude<ConfirmationKind, 'update'> {
+  return existing ? 'replace' : 'save'
+}
+
+export function credentialClearOperationKind(): ConfirmationKind {
+  return 'clear'
 }
 
 const confirmationText: Record<string, Record<ConfirmationKind, { message: string; confirmLabel: string; cancelLabel: string }>> = {
@@ -301,6 +318,9 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   if (inspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
   if (inspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
   if (inspection.status === 'current') return { success: true, status: 'current', inspection }
+  const stored = await loadStoredCredentials()
+  if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
+  if (!credentialBindingMatches(stored.binding, { serverUrl: request.serverUrl, organizationId: request.organizationId })) return { success: false, status: 'failure', errorCode: 'CREDENTIAL_BINDING_MISMATCH' }
   if (!await requireNativeConfirmation('update', request.locale)) return { success: false, status: 'failure', errorCode: 'CANCELLED' }
   let confirmedInspection: MdbServerUpdateInspection
   try { confirmedInspection = await inspectMdbServerUpdate(request.serverUrl) } catch { return { success: false, status: 'failure', errorCode: 'UNAVAILABLE' } }
@@ -308,9 +328,6 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   if (confirmedInspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
   if (confirmedInspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
   if (confirmedInspection.status === 'current') return { success: true, status: 'current', inspection: confirmedInspection }
-  const stored = await readMdbServerCredentials()
-  if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
-  if (!credentialBindingMatches(stored.binding, { serverUrl: request.serverUrl, organizationId: request.organizationId })) return { success: false, status: 'failure', errorCode: 'CREDENTIAL_BINDING_MISMATCH' }
   let cleanup: (() => Promise<void>) | undefined
   let activation: RemoteDeploymentActivation | undefined
   let client: Client | undefined
@@ -367,7 +384,7 @@ export function registerMdbServerUpdateHandlers(): void {
     assertTrustedSender(event)
     await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
     const existing = await readMdbServerCredentials()
-    const kind: ConfirmationKind = existing ? 'replace' : 'save'
+    const kind: ConfirmationKind = credentialOperationKind(Boolean(existing))
     if (!await requireNativeConfirmation(kind, binding.locale)) throw new Error('CANCELLED')
     await saveMdbServerCredentials(profile, secrets, binding)
     const state = await getMdbServerCredentialState(); return { hasCredentials: state.hasCredentials, encryptionAvailable: state.encryptionAvailable }
@@ -375,7 +392,7 @@ export function registerMdbServerUpdateHandlers(): void {
   ipcMain.handle('mdb-server:clear-credentials', async (event, binding: MdbServerCredentialRequest) => {
     assertTrustedSender(event)
     await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
-    if (!await requireNativeConfirmation('clear', binding.locale)) throw new Error('CANCELLED')
+    if (!await requireNativeConfirmation(credentialClearOperationKind(), binding.locale)) throw new Error('CANCELLED')
     await clearMdbServerCredentials(binding)
     const state = await getMdbServerCredentialState(); return { hasCredentials: state.hasCredentials, encryptionAvailable: state.encryptionAvailable }
   })
