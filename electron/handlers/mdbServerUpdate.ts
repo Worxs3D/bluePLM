@@ -125,8 +125,6 @@ export async function assertOwnerOrAdmin(serverUrl: string, sessionToken: string
   if (body.user?.organizationId !== organizationId || !['owner', 'admin'].includes(String(body.user?.role))) throw new Error('NOT_AUTHORIZED')
 }
 
-type UpdateDeploymentClient = Pick<Client, 'access' | 'cd' | 'ensureDir' | 'list' | 'removeDir' | 'rename'>
-
 async function stageBundle(
   ftp: URL,
   security: MdbFtpsSecurity,
@@ -218,9 +216,10 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
   let cleanup: (() => Promise<void>) | undefined
   let activation: RemoteDeploymentActivation | undefined
-  let client: UpdateDeploymentClient | undefined
+  let client: Client | undefined
   try {
     const ftp = ftpBase(stored.profile.ftpUrl, stored.profile.ftpSecurity)
+    const publicUrl = safeServerUrl(request.serverUrl)
     const bundleRoot = serverBundleRoot()
     const stage = await stageBundle(ftp, stored.profile.ftpSecurity, stored.profile.ftpRemotePath, stored.profile.ftpUsername, stored.secrets.ftpPassword, bundleRoot)
     cleanup = stage.cleanup
@@ -232,7 +231,7 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
     const stageRoot = `${base}/${stored.profile.ftpRemotePath}/${stage.bridgeName.replace('blueplm-installer-', 'blueplm-stage-').replace('.php', '')}`.replaceAll('//', '/')
     const plan = await executeMdbServerUpdatePlan({
       migrate: async () => {
-        const migrate = await installerRequest<{ applied?: string[] }>(request.serverUrl, stage.bridgeName, '/admin/migrate', { maintenanceToken: stored.secrets.maintenanceToken })
+        const migrate = await installerRequest<{ applied?: string[] }>(publicUrl, stage.bridgeName, '/admin/migrate', { maintenanceToken: stored.secrets.maintenanceToken })
         if (!Array.isArray(migrate.applied)) throw new Error('MAINTENANCE_TOKEN_REJECTED')
       },
       activate: async () => {
