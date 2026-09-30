@@ -87,6 +87,8 @@ interface TitleBarOverlayRect {
 
 // Expose APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Device public key only; signing remains in the Electron main process.
+  getBackupDevicePublicKey: () => ipcRenderer.invoke('backup-device:public-key') as Promise<string>,
   // App info
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   reloadApp: () => ipcRenderer.invoke('app:reload'),

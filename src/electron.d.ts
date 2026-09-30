@@ -1430,6 +1430,7 @@ declare global {
       }>
 
       // Backup execution
+      getBackupDevicePublicKey: () => Promise<string>
       checkResticInstalled: () => Promise<{ installed: boolean; version?: string; error?: string }>
       isBackupRunning: () => Promise<{ running: boolean; startedAt: number | null }>
       runBackup: (config: {

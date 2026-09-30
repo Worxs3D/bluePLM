@@ -92,6 +92,7 @@ import {
   unregisterThumbnailIpcHandlers,
 } from './thumbnails'
 import { extractCadImage } from './solidworks'
+import { registerBackupDeviceHandlers, unregisterBackupDeviceHandlers } from './backupDevice'
 
 // Logging utilities for main.ts
 export { writeLog, initializeLogging } from './logging'
@@ -166,6 +167,7 @@ export interface AllHandlerDependencies {
 }
 
 export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerDependencies): void {
+  registerBackupDeviceHandlers()
   restoreMainWindowFocusFn = deps.restoreMainWindowFocus
 
   // Create shared dependencies
@@ -269,6 +271,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
 }
 
 export function unregisterAllHandlers(): void {
+  unregisterBackupDeviceHandlers()
   unregisterFsHandlers()
   unregisterBackupHandlers()
   unregisterSolidWorksHandlers()
