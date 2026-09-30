@@ -70,6 +70,13 @@ function safeServerUrl(raw: string): URL {
   return new URL(url.toString().replace(/\/$/, ''))
 }
 
+function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
+  const origin = event.senderFrame?.url ?? ''
+  if (!origin.startsWith('file://') && !/^https?:\/\/localhost(?::\d+)?(?:\/|$)/u.test(origin)) {
+    throw new Error('UNAVAILABLE')
+  }
+}
+
 function normalizeHealth(body: HealthResponse): MdbServerHealth {
   return {
     ok: body.ok === true,
@@ -259,14 +266,16 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
 }
 
 export function registerMdbServerUpdateHandlers(): void {
-  ipcMain.handle('mdb-server:inspect-update', async (_event, serverUrl: string) => inspectMdbServerUpdate(serverUrl))
-  ipcMain.handle('mdb-server:apply-update', async (_event, request: MdbServerUpdateRequest) => applyMdbServerUpdate(request))
-  ipcMain.handle('mdb-server:get-credentials', async () => getMdbServerCredentialState())
-  ipcMain.handle('mdb-server:save-credentials', async (_event, profile: MdbServerProfile, secrets: { ftpPassword: string; maintenanceToken: string }) => {
+  ipcMain.handle('mdb-server:inspect-update', async (event, serverUrl: string) => { assertTrustedSender(event); return inspectMdbServerUpdate(serverUrl) })
+  ipcMain.handle('mdb-server:apply-update', async (event, request: MdbServerUpdateRequest) => { assertTrustedSender(event); return applyMdbServerUpdate(request) })
+  ipcMain.handle('mdb-server:get-credentials', async (event) => { assertTrustedSender(event); return getMdbServerCredentialState() })
+  ipcMain.handle('mdb-server:save-credentials', async (event, profile: MdbServerProfile, secrets: { ftpPassword: string; maintenanceToken: string }) => {
+    assertTrustedSender(event)
     await saveMdbServerCredentials(profile, secrets)
     return getMdbServerCredentialState()
   })
-  ipcMain.handle('mdb-server:clear-credentials', async () => {
+  ipcMain.handle('mdb-server:clear-credentials', async (event) => {
+    assertTrustedSender(event)
     await clearMdbServerCredentials()
     return getMdbServerCredentialState()
   })
