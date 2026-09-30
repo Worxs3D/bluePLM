@@ -3,6 +3,7 @@ import { App } from './App'
 import { ErrorBoundary } from '@/components/core'
 import { initAnalytics, trackError } from '@/lib/analytics'
 import { isStructuredConsoleLog } from '@/lib/logger'
+import { forwardConsoleError, forwardConsoleWarning } from '@/lib/consoleBridge'
 import '@/index.css'
 
 // Initialize Sentry analytics if user has consented
@@ -28,35 +29,12 @@ const originalConsoleWarn = console.warn
 console.error = (...args: unknown[]) => {
   // Call original so dev tools still work
   originalConsoleError.apply(console, args)
-
-  // Unified logger calls already write one structured entry directly.
-  if (isStructuredConsoleLog()) return
-
-  // Forward to app logs
   try {
-    const message = args
-      .map((arg) => {
-        if (arg instanceof Error) {
-          return `${arg.name}: ${arg.message}${arg.stack ? `\n${arg.stack}` : ''}`
-        }
-        if (typeof arg === 'object') {
-          try {
-            return JSON.stringify(arg)
-          } catch {
-            return String(arg)
-          }
-        }
-        return String(arg)
-      })
-      .join(' ')
-
-    window.electronAPI?.log('error', `[Console] ${message}`)
-
-    // Also send to Sentry if it's an Error object
-    const errorArg = args.find((arg) => arg instanceof Error)
-    if (errorArg instanceof Error) {
-      trackError(errorArg, { source: 'console.error' })
-    }
+    forwardConsoleError(args, {
+      log: (level, message) => { void window.electronAPI?.log(level, message) },
+      isStructured: isStructuredConsoleLog,
+      trackError,
+    })
   } catch {
     // Silently fail if logging fails
   }
@@ -65,33 +43,11 @@ console.error = (...args: unknown[]) => {
 console.warn = (...args: unknown[]) => {
   // Call original so dev tools still work
   originalConsoleWarn.apply(console, args)
-
-  // Unified logger calls already write one structured entry directly.
-  if (isStructuredConsoleLog()) return
-
-  // Skip forwarding warns over IPC in dev: the dev React build emits a high
-  // volume of warnings, and shipping each one to the main process slows
-  // navigation. They are still visible in DevTools via the original above.
-  if (import.meta.env.DEV) {
-    return
-  }
-
-  // Forward to app logs
   try {
-    const message = args
-      .map((arg) => {
-        if (typeof arg === 'object') {
-          try {
-            return JSON.stringify(arg)
-          } catch {
-            return String(arg)
-          }
-        }
-        return String(arg)
-      })
-      .join(' ')
-
-    window.electronAPI?.log('warn', `[Console] ${message}`)
+    forwardConsoleWarning(args, {
+      log: (level, message) => { void window.electronAPI?.log(level, message) },
+      isStructured: isStructuredConsoleLog,
+    }, import.meta.env.DEV)
   } catch {
     // Silently fail if logging fails
   }
