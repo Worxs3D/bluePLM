@@ -12,12 +12,14 @@ import {
   Mail,
   Phone,
   ChevronRight,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { Supplier } from '@/stores/types'
 import { supabase } from '@/lib/supabase'
-import { getMdbSuppliers } from '@/lib/mdb'
+import { createMdbSupplier, deactivateMdbSupplier, getMdbSuppliers, updateMdbSupplier } from '@/lib/mdb'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
 import { t } from '@/lib/i18n'
 
@@ -37,6 +39,7 @@ export function SuppliersView() {
     // Suppliers slice actions
     setSuppliers,
     setSuppliersLoading,
+    getEffectiveRole,
   } = usePDMStore()
 
   // Local UI state (not persisted)
@@ -44,6 +47,50 @@ export function SuppliersView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending'>('all')
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [supplierName, setSupplierName] = useState('')
+  const [supplierEmail, setSupplierEmail] = useState('')
+  const [supplierPhone, setSupplierPhone] = useState('')
+  const [saving, setSaving] = useState(false)
+  const canManageSuppliers = ['owner', 'admin'].includes(getEffectiveRole())
+
+  const openSupplierForm = (supplier: Supplier | null) => {
+    setEditingSupplier(supplier)
+    setSupplierName(supplier?.name ?? '')
+    setSupplierEmail(supplier?.contact_email ?? '')
+    setSupplierPhone(supplier?.contact_phone ?? '')
+    setFormOpen(true)
+  }
+
+  const saveSupplier = async () => {
+    if (!isMdbBackendActive() || !supplierName.trim() || !canManageSuppliers) return
+    setSaving(true)
+    try {
+      const input = { name: supplierName.trim(), contactEmail: supplierEmail.trim() || null, contactPhone: supplierPhone.trim() || null }
+      const supplier = editingSupplier ? await updateMdbSupplier(editingSupplier.id, input) : await createMdbSupplier(input)
+      setSuppliers(editingSupplier ? suppliers.map((item) => item.id === supplier.id ? supplier as Supplier : item) : [...suppliers, supplier as Supplier])
+      setSelectedSupplier(supplier as Supplier)
+      setFormOpen(false)
+    } catch (error) {
+      log.error('[Suppliers]', 'Failed to save supplier', { error })
+      addToast('error', String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const deactivateSupplier = async (supplier: Supplier) => {
+    if (!isMdbBackendActive() || !canManageSuppliers) return
+    try {
+      await deactivateMdbSupplier(supplier.id)
+      setSuppliers(suppliers.filter((item) => item.id !== supplier.id))
+      setSelectedSupplier(null)
+    } catch (error) {
+      log.error('[Suppliers]', 'Failed to deactivate supplier', { error })
+      addToast('error', String(error))
+    }
+  }
 
   const loadSuppliers = useCallback(async () => {
     if (!organization?.id) return
@@ -179,6 +226,16 @@ export function SuppliersView() {
           >
             ← Back to list
           </button>
+          {canManageSuppliers && isMdbBackendActive() && (
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => { openSupplierForm(selectedSupplier); setSelectedSupplier(null) }} className="btn btn-secondary gap-1">
+                <Pencil size={14} /> {t('edit')}
+              </button>
+              <button onClick={() => void deactivateSupplier(selectedSupplier)} className="btn btn-secondary gap-1 text-plm-error">
+                <Trash2 size={14} /> {t('delete')}
+              </button>
+            </div>
+          )}
           <div className="flex items-start gap-3">
             <div className="w-12 h-12 rounded-lg bg-plm-highlight flex items-center justify-center">
               <Building2 size={24} className="text-plm-fg-muted" />
@@ -293,10 +350,10 @@ export function SuppliersView() {
       {/* Header */}
       <div className="p-4 border-b border-plm-border space-y-3">
         <div className="flex gap-2">
-          <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-plm-accent hover:bg-plm-accent/90 text-white rounded text-sm font-medium transition-colors">
+          {canManageSuppliers && isMdbBackendActive() && <button onClick={() => openSupplierForm(null)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-plm-accent hover:bg-plm-accent/90 text-white rounded text-sm font-medium transition-colors">
             <Plus size={16} />
-            Add Supplier
-          </button>
+            {t('addSupplier')}
+          </button>}
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -317,7 +374,7 @@ export function SuppliersView() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search suppliers..."
+            placeholder={t('searchSuppliers')}
             className="w-full pl-9 pr-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted focus:outline-none focus:border-plm-accent"
           />
         </div>
@@ -436,6 +493,20 @@ export function SuppliersView() {
             <span>
               {approvedCount} approved • {pendingCount} pending
             </span>
+          </div>
+        </div>
+      )}
+      {formOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50" role="dialog">
+          <div className="w-full max-w-md space-y-3 rounded-lg bg-plm-panel p-4">
+            <h2 className="text-sm font-medium text-plm-fg">{editingSupplier ? t('edit') : t('addSupplier')}</h2>
+            <input className="w-full input" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} placeholder={t('name')} />
+            <input className="w-full input" value={supplierEmail} onChange={(event) => setSupplierEmail(event.target.value)} placeholder={t('email')} />
+            <input className="w-full input" value={supplierPhone} onChange={(event) => setSupplierPhone(event.target.value)} placeholder={t('phone')} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setFormOpen(false)} className="btn btn-secondary">{t('cancel')}</button>
+              <button onClick={() => void saveSupplier()} disabled={saving || !supplierName.trim()} className="btn btn-primary">{t('save')}</button>
+            </div>
           </div>
         </div>
       )}

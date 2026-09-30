@@ -22,6 +22,8 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { RFQView } from '../rfq'
 import type { RFQ, RFQStatus } from '@/types/rfq'
 import { getRFQStatusInfo } from '@/types/rfq'
+import { isMdbBackendActive } from '@/lib/backendAdapter'
+import { t } from '@/lib/i18n'
 
 // Supabase v2 type inference incomplete for dynamically added tables
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +55,12 @@ export function SupplierPortalView() {
 
     const loadDashboard = async () => {
       setLoading(true)
+      if (isMdbBackendActive()) {
+        // RFQ/portal tables are not part of the MDB API yet. Keep the
+        // navigation entry available, but never initialize or query Supabase.
+        setLoading(false)
+        return
+      }
       try {
         // Load recent RFQs
         const { data: rfqs, error: rfqError } = await db
@@ -133,6 +141,16 @@ export function SupplierPortalView() {
     return (
       <div className="flex items-center justify-center h-48">
         <Loader2 className="animate-spin text-plm-accent" size={24} />
+      </div>
+    )
+  }
+
+  if (isMdbBackendActive()) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+        <Globe size={36} className="mb-3 text-plm-accent" />
+        <h2 className="text-sm font-medium text-plm-fg">{t('mdbSupplierPortalTitle')}</h2>
+        <p className="mt-2 max-w-sm text-xs text-plm-fg-muted">{t('mdbSupplierPortalUnavailable')}</p>
       </div>
     )
   }

@@ -165,6 +165,8 @@ export const zhTW: TranslationDict = {
     roleSetByOrg: '您的角色（管理員、工程師、檢視者）由您的組織設定',
 
     supplierPortal: '供應商入口',
+    mdbSupplierPortalTitle: '供應商入口',
+    mdbSupplierPortalUnavailable: 'MDB 供應商入口尚未相容，目前仍在開發中。',
     createAccount: '建立您的供應商帳戶',
     signInToAccount: '登入您的帳戶',
     email: '電子郵件',

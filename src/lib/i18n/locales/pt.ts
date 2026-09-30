@@ -543,6 +543,8 @@ export const pt: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Base de Dados de Fornecedores',
     supplierPortal: 'Portal de Fornecedores',
+    mdbSupplierPortalTitle: 'Portal de Fornecedores',
+    mdbSupplierPortalUnavailable: 'O portal de fornecedores MDB ainda não é compatível e está em desenvolvimento.',
     // Customers
     customers: 'Clientes',
     // Integrations

@@ -1261,6 +1261,11 @@ export interface MdbSupplier {
   city: string | null; state: string | null; country: string | null; is_active: boolean; is_approved: boolean
   erp_id: string | null; erp_synced_at: string | null; created_at: string | null
 }
+export type MdbSupplierInput = {
+  name: string; code?: string | null; contactEmail?: string | null; contactPhone?: string | null
+  website?: string | null; city?: string | null; state?: string | null; country?: string | null
+  isActive?: boolean; isApproved?: boolean; erpId?: string | null
+}
 export interface MdbPartSupplier {
   id: string; org_id: string; file_id: string; supplier_id: string; supplier?: MdbSupplier
   supplier_part_number: string | null; supplier_description: string | null; supplier_url: string | null; unit_price: number | null
@@ -1275,6 +1280,15 @@ export type MdbPartSupplierInput = {
   orderMultiple?: number | null; leadTimeDays?: number | null; isPreferred?: boolean; isQualified?: boolean; qualifiedAt?: string | null; notes?: string | null
 }
 export async function getMdbSuppliers(): Promise<MdbSupplier[]> { return (await request<{ suppliers: MdbSupplier[] }>('/suppliers')).suppliers }
+export async function createMdbSupplier(input: MdbSupplierInput): Promise<MdbSupplier> {
+  return (await request<{ supplier: MdbSupplier }>('/suppliers', { method: 'POST', body: JSON.stringify(input) })).supplier
+}
+export async function updateMdbSupplier(id: string, input: Partial<MdbSupplierInput>): Promise<MdbSupplier> {
+  return (await request<{ supplier: MdbSupplier }>(`/suppliers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })).supplier
+}
+export async function deactivateMdbSupplier(id: string): Promise<void> {
+  await request(`/suppliers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
 export async function getMdbPartSuppliers(fileId: string): Promise<MdbPartSupplier[]> { return (await request<{ partSuppliers: MdbPartSupplier[] }>(`/files/${encodeURIComponent(fileId)}/suppliers`)).partSuppliers }
 export async function createMdbPartSupplier(fileId: string, supplierId: string, input: MdbPartSupplierInput): Promise<MdbPartSupplier> {
   return (await request<{ partSupplier: MdbPartSupplier }>(`/files/${encodeURIComponent(fileId)}/suppliers`, { method: 'POST', body: JSON.stringify({ supplierId, ...input }) })).partSupplier

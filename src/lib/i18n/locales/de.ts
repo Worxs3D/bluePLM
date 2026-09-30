@@ -213,6 +213,8 @@ export const de: TranslationDict = {
       'Ihre Rolle (Admin, Ingenieur, Betrachter) wird von Ihrer Organisation festgelegt',
 
     supplierPortal: 'Lieferantenportal',
+    mdbSupplierPortalTitle: 'Lieferantenportal',
+    mdbSupplierPortalUnavailable: 'Das MDB-Lieferantenportal ist noch nicht kompatibel und befindet sich in Entwicklung.',
     createAccount: 'Erstellen Sie Ihr Lieferantenkonto',
     signInToAccount: 'Bei Ihrem Konto anmelden',
     email: 'E-Mail',

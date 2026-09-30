@@ -165,6 +165,8 @@ export const zhCN: TranslationDict = {
     roleSetByOrg: '您的角色（管理员、工程师、查看者）由您的组织设定',
 
     supplierPortal: '供应商门户',
+    mdbSupplierPortalTitle: '供应商门户',
+    mdbSupplierPortalUnavailable: 'MDB 供应商门户尚不兼容，正在开发中。',
     createAccount: '创建您的供应商账户',
     signInToAccount: '登录您的账户',
     email: '电子邮箱',

@@ -252,6 +252,8 @@ export const en: TranslationDict = {
 
     // Supplier auth
     supplierPortal: 'Supplier Portal',
+    mdbSupplierPortalTitle: 'Supplier Portal',
+    mdbSupplierPortalUnavailable: 'The MDB supplier portal is not compatible yet and is still in development.',
     createAccount: 'Create your supplier account',
     signInToAccount: 'Sign in to your account',
     email: 'Email',

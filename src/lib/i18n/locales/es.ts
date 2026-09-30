@@ -165,6 +165,8 @@ export const es: TranslationDict = {
     roleSetByOrg: 'Tu rol (Admin, Ingeniero, Observador) es definido por tu organización',
 
     supplierPortal: 'Portal de proveedores',
+    mdbSupplierPortalTitle: 'Portal de proveedores',
+    mdbSupplierPortalUnavailable: 'El portal de proveedores MDB aún no es compatible y está en desarrollo.',
     createAccount: 'Crea tu cuenta de proveedor',
     signInToAccount: 'Inicia sesión en tu cuenta',
     email: 'Correo electrónico',
