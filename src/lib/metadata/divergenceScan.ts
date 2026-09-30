@@ -332,7 +332,7 @@ function toCustomProperties(value: unknown): Record<string, unknown> | null {
  * must not call any RPC, so that a reviewer checking this file for a write does not have to go
  * and read a database function to be sure.
  */
-async function fetchRows(options: DivergenceScanOptions): Promise<ScanRow[]> {
+export async function fetchRows(options: DivergenceScanOptions): Promise<ScanRow[]> {
   if (options.rows) return options.rows
   const client = getSupabaseClient()
   const rows: ScanRow[] = []
