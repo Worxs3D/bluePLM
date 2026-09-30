@@ -928,4 +928,7 @@ export const fr: TranslationDict = {
       config_descriptions: 'Descriptions des configurations',
     },
   },
+  performanceTelemetry: {
+    title: 'Performances', description: "Surveille les FPS lorsque l'enregistrement est activé.", popOut: 'Fenêtre séparée', openWindow: 'Ouvrir dans une nouvelle fenêtre', fps: 'FPS', settings: 'Paramètres', sampleRate: 'Fréquence d’échantillonnage', sampleRateHint: 'Fréquence de collecte des données de télémétrie', retention: 'Rétention', retentionHint: 'Durée de conservation de l’historique', bufferSize: 'Taille du tampon : {{count}} échantillons', clearData: 'Effacer les données', pause: 'Pause', start: 'Démarrer', clear: 'Effacer les données', now: 'maintenant', secondsAgo: 'il y a {{count}} s', startRecording: 'Démarrer l’enregistrement', stopRecording: 'Arrêter l’enregistrement', recordingAt: 'Enregistrement à {{rate}} Hz', telemetrySettings: 'Paramètres de télémétrie', sampleRateHz: 'Fréquence (Hz)', retentionSeconds: 'Rétention (secondes)', fpsOptIn: 'La collecte des FPS est active uniquement pendant l’enregistrement.',
+  },
 }

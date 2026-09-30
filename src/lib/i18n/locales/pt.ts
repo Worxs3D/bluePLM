@@ -922,4 +922,7 @@ export const pt: TranslationDict = {
       config_descriptions: 'Descrições das configurações',
     },
   },
+  performanceTelemetry: {
+    title: 'Desempenho', description: 'Monitoriza FPS enquanto a gravação está ativa.', popOut: 'Janela separada', openWindow: 'Abrir numa nova janela', fps: 'FPS', settings: 'Definições', sampleRate: 'Frequência de amostragem', sampleRateHint: 'Frequência de recolha de telemetria', retention: 'Retenção', retentionHint: 'Tempo de conservação do histórico', bufferSize: 'Tamanho do buffer: {{count}} amostras', clearData: 'Limpar dados', pause: 'Pausar', start: 'Iniciar', clear: 'Limpar dados', now: 'agora', secondsAgo: 'há {{count}} s', startRecording: 'Iniciar gravação', stopRecording: 'Parar gravação', recordingAt: 'A gravar a {{rate}} Hz', telemetrySettings: 'Definições de telemetria', sampleRateHz: 'Frequência (Hz)', retentionSeconds: 'Retenção (segundos)', fpsOptIn: 'A recolha de FPS só está ativa durante a gravação.',
+  },
 }

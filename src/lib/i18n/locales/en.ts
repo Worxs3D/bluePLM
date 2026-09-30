@@ -2087,4 +2087,7 @@ export const en: TranslationDict = {
       config_descriptions: 'Configuration descriptions',
     },
   },
+  performanceTelemetry: {
+    title: 'Performance', description: 'Monitor FPS while recording is enabled.', popOut: 'Pop Out', openWindow: 'Open in new window', fps: 'FPS', settings: 'Settings', sampleRate: 'Sample Rate', sampleRateHint: 'How often to collect telemetry data', retention: 'Retention Time', retentionHint: 'How long to keep telemetry history', bufferSize: 'Buffer size: {{count}} samples', clearData: 'Clear Data', pause: 'Pause', start: 'Start', clear: 'Clear data', now: 'now', secondsAgo: '{{count}}s ago', startRecording: 'Start Recording', stopRecording: 'Stop Recording', recordingAt: 'Recording at {{rate}}Hz', telemetrySettings: 'Telemetry Settings', sampleRateHz: 'Sample Rate (Hz)', retentionSeconds: 'Retention (seconds)', fpsOptIn: 'FPS collection is only active while recording is enabled.',
+  },
 }

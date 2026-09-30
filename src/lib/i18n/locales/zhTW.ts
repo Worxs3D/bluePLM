@@ -883,4 +883,7 @@ export const zhTW: TranslationDict = {
       config_descriptions: '組態描述',
     },
   },
+  performanceTelemetry: {
+    title: '效能', description: '僅在啟用錄製時監控 FPS。', popOut: '彈出視窗', openWindow: '在新視窗中開啟', fps: 'FPS', settings: '設定', sampleRate: '取樣率', sampleRateHint: '遙測資料的收集頻率', retention: '保留時間', retentionHint: '遙測歷程的保留時間', bufferSize: '緩衝區大小：{{count}} 個樣本', clearData: '清除資料', pause: '暫停', start: '開始', clear: '清除資料', now: '現在', secondsAgo: '{{count}} 秒前', startRecording: '開始錄製', stopRecording: '停止錄製', recordingAt: '以 {{rate}}Hz 錄製', telemetrySettings: '遙測設定', sampleRateHz: '取樣率 (Hz)', retentionSeconds: '保留時間（秒）', fpsOptIn: '僅在錄製啟用期間收集 FPS。',
+  },
 }

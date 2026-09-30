@@ -932,4 +932,7 @@ export const de: TranslationDict = {
       config_descriptions: 'Beschreibungen der Konfigurationen',
     },
   },
+  performanceTelemetry: {
+    title: 'Leistung', description: 'FPS werden nur bei aktivierter Aufzeichnung erfasst.', popOut: 'Pop-out', openWindow: 'In neuem Fenster öffnen', fps: 'FPS', settings: 'Einstellungen', sampleRate: 'Abtastrate', sampleRateHint: 'Wie oft Telemetriedaten erfasst werden', retention: 'Aufbewahrungsdauer', retentionHint: 'Wie lange der Telemetrieverlauf behalten wird', bufferSize: 'Puffergröße: {{count}} Samples', clearData: 'Daten löschen', pause: 'Pausieren', start: 'Starten', clear: 'Daten löschen', now: 'jetzt', secondsAgo: 'vor {{count}} s', startRecording: 'Aufzeichnung starten', stopRecording: 'Aufzeichnung stoppen', recordingAt: 'Aufzeichnung mit {{rate}} Hz', telemetrySettings: 'Telemetrie-Einstellungen', sampleRateHz: 'Abtastrate (Hz)', retentionSeconds: 'Aufbewahrung (Sekunden)', fpsOptIn: 'FPS-Erfassung ist nur während der Aufzeichnung aktiv.',
+  },
 }

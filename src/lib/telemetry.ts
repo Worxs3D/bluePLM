@@ -148,6 +148,7 @@ class TelemetryService {
     if (this.intervalId) return
 
     this.config.enabled = true
+    this.persistConfig()
 
     // Start FPS counter
     this.startFpsCounter()
@@ -168,6 +169,7 @@ class TelemetryService {
       this.rafId = null
     }
     this.config.enabled = false
+    this.persistConfig()
   }
 
   // Check if running
@@ -233,6 +235,10 @@ class TelemetryService {
         // Listener error - ignore
       }
     }
+  }
+
+  private persistConfig(): void {
+    localStorage.setItem('telemetry.config', JSON.stringify(this.config))
   }
 }
 
