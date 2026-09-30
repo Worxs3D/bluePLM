@@ -36,6 +36,19 @@ interface PortalStats {
   totalSpent: number
 }
 
+export const SUPPLIER_PORTAL_STATUS_KEYS: Record<RFQStatus, string> = {
+  draft: 'supplierStatus.draft',
+  pending_files: 'supplierStatus.pendingFiles',
+  generating: 'supplierStatus.generating',
+  ready: 'supplierStatus.ready',
+  sent: 'supplierStatus.sent',
+  awaiting_quote: 'supplierStatus.awaitingQuote',
+  quoted: 'supplierStatus.quoted',
+  awarded: 'supplierStatus.awarded',
+  cancelled: 'supplierStatus.cancelled',
+  completed: 'supplierStatus.completed',
+}
+
 export function SupplierPortalView() {
   const { organization, setActiveView } = usePDMStore()
   const [view, setView] = useState<'dashboard' | 'rfqs'>('dashboard')
@@ -230,12 +243,6 @@ export function SupplierPortalView() {
         ) : (
           recentRFQs.map((rfq) => {
             const statusInfo = getRFQStatusInfo(rfq.status)
-            const statusKey = {
-              draft: 'rfq.pending', pending_files: 'rfq.pending', generating: 'rfq.generating',
-              ready: 'rfq.pending', sent: 'rfq.notSent', awaiting_quote: 'rfq.awaitingQuote',
-              quoted: 'rfq.quoted', awarded: 'rfq.quoted', cancelled: 'rfq.pending',
-              completed: 'rfq.quoted',
-            } as const
             return (
               <div
                 key={rfq.id}
@@ -260,7 +267,7 @@ export function SupplierPortalView() {
                     {rfq.status === 'awaiting_quote' && <Clock size={10} />}
                     {rfq.status === 'quoted' && <CheckCircle2 size={10} />}
                     {rfq.status === 'ready' && <Send size={10} />}
-                    {t(statusKey[rfq.status])}
+                    {t(SUPPLIER_PORTAL_STATUS_KEYS[rfq.status])}
                   </span>
                 </div>
 

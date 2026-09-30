@@ -1,9 +1,11 @@
 import type { TranslationDict } from '../types'
 import { mdbLifecycleTranslations } from './mdbLifecycle'
 import { settingsPageTranslations } from './settingsPages'
+import { supplierStatusTranslations } from './supplierStatus'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
+  supplierStatus: supplierStatusTranslations['zh-CN'],
   settingsPages: settingsPageTranslations['zh-CN'],
   mdbSetup: {
     title: 'BluePLM MDB',

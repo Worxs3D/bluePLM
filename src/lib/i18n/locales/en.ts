@@ -1,9 +1,11 @@
 import type { TranslationDict } from '../types'
 import { mdbLifecycleTranslations } from './mdbLifecycle'
 import { settingsPageTranslations } from './settingsPages'
+import { supplierStatusTranslations } from './supplierStatus'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
+  supplierStatus: supplierStatusTranslations.en,
   settingsPages: settingsPageTranslations.en,
   mdbSetup: {
     title: 'BluePLM MDB',
