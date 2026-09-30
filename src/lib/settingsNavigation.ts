@@ -1,40 +1,18 @@
-import type { SettingsTab } from '@/types/settings'
+import { SETTINGS_TABS, type SettingsTab } from '@/types/settings'
 
-const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
-  'profile',
-  'preferences',
-  'keybindings',
-  'vaults',
-  'modules',
-  'team-members',
-  'module-access',
-  'company-profile',
-  'auth-providers',
-  'serialization',
-  'solidworks',
-  'export',
-  'rfq',
-  'metadata-columns',
-  'item-designations',
-  'backup',
-  'google-drive',
-  'odoo',
-  'slack',
-  'webhooks',
-  'api',
-  'supabase',
-  'recovery-codes',
-  'vault-audit',
-  'performance',
-  'logs',
-  'dev-tools',
-  'about',
-  'delete-account',
-  'extension-store',
-])
+const SETTINGS_TAB_SET: ReadonlySet<string> = new Set(SETTINGS_TABS)
 
 export function isSettingsTab(value: unknown): value is SettingsTab {
-  return typeof value === 'string' && SETTINGS_TABS.has(value)
+  return typeof value === 'string' && SETTINGS_TAB_SET.has(value)
+}
+
+export function registerSettingsNavigationListener(
+  target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  actions: { setActiveView: (view: 'settings') => void; setSettingsTab: (tab: SettingsTab) => void },
+): () => void {
+  const listener = (event: Event) => applySettingsNavigationEvent(event, actions)
+  target.addEventListener('navigate-settings-tab', listener)
+  return () => target.removeEventListener('navigate-settings-tab', listener)
 }
 
 export function applySettingsNavigationEvent(

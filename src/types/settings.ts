@@ -1,36 +1,15 @@
 // Settings-related type definitions
 
-export type SettingsTab =
-  | 'profile'
-  | 'preferences'
-  | 'keybindings'
-  | 'modules' // Displays as "Sidebar" in UI
-  | 'vaults'
-  | 'team-members'
-  | 'module-access'
-  | 'company-profile'
-  | 'auth-providers'
-  | 'serialization'
-  | 'export'
-  | 'rfq'
-  | 'metadata-columns'
-  | 'item-designations'
-  | 'backup'
-  | 'solidworks'
-  | 'google-drive'
-  | 'odoo'
-  | 'slack' // Hidden from nav, coming soon
-  | 'webhooks'
-  | 'api'
-  | 'supabase'
-  | 'recovery-codes'
-  | 'vault-audit' // Admin only - hidden from the navigation for everyone else
-  | 'performance'
-  | 'logs'
-  | 'dev-tools'
-  | 'about'
-  | 'delete-account'
-  | 'extension-store'
+/** Canonical runtime list used by navigation events and SettingsTab. */
+export const SETTINGS_TABS = [
+  'profile', 'preferences', 'keybindings', 'modules', 'vaults', 'team-members',
+  'module-access', 'company-profile', 'auth-providers', 'serialization', 'export', 'rfq',
+  'metadata-columns', 'item-designations', 'backup', 'solidworks', 'google-drive', 'odoo',
+  'slack', 'webhooks', 'api', 'supabase', 'recovery-codes', 'vault-audit', 'performance',
+  'logs', 'dev-tools', 'about', 'delete-account', 'extension-store',
+] as const
+
+export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
 // Keybinding action identifiers
 export type KeybindingAction =
