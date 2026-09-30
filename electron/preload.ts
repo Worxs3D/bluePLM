@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Machine identification (for backup service)
   getMachineId: () => ipcRenderer.invoke('app:get-machine-id'),
+  getMachineProof: () => ipcRenderer.invoke('app:get-machine-proof'),
   getMachineName: () => ipcRenderer.invoke('app:get-machine-name'),
   getAppVersion: () => ipcRenderer.invoke('app:get-app-version'),
 

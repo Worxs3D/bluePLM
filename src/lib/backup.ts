@@ -104,7 +104,9 @@ function mapMdbBackupConfig(value: Awaited<ReturnType<typeof getMdbBackupConfig>
 
 async function resolveRuntimeConfig(config: BackupConfig): Promise<BackupConfig> {
   if (isBackendActive('supabase') || (config.access_key_encrypted && config.secret_key_encrypted && config.restic_password_encrypted)) return config
-  const runtime = await getMdbBackupRuntimeConfig(await getMachineId())
+  const proof = await window.electronAPI?.getMachineProof?.()
+  if (!proof) throw new Error('Machine proof unavailable.')
+  const runtime = await getMdbBackupRuntimeConfig(await getMachineId(), proof)
   return runtime ? mapMdbBackupConfig(runtime)! : config
 }
 
@@ -211,7 +213,9 @@ export async function designateThisMachine(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
     try {
-      await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail })
+      const machineProof = await window.electronAPI?.getMachineProof?.()
+      if (!machineProof) throw new Error('Machine proof unavailable.')
+      await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail, machineProof })
       return { success: true }
     } catch (error) {
       log.error('[Backup]', 'MDB backup machine designation failed', { error: error instanceof Error ? error.message : 'unknown' })

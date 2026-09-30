@@ -1,5 +1,5 @@
 // System handlers for Electron main process
-import { app, ipcMain, BrowserWindow, clipboard } from 'electron'
+import { app, ipcMain, BrowserWindow, clipboard, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -72,6 +72,19 @@ export function registerSystemHandlers(
       return hash.substring(0, 16)
     } catch {
       return 'unknown'
+    }
+  })
+
+  ipcMain.handle('app:get-machine-proof', () => {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable.')
+    const proofPath = path.join(app.getPath('userData'), 'backup-machine-proof.enc')
+    try {
+      const raw = fs.readFileSync(proofPath, 'utf8').trim()
+      return safeStorage.decryptString(Buffer.from(raw, 'base64'))
+    } catch {
+      const proof = crypto.randomBytes(32).toString('base64url')
+      fs.writeFileSync(proofPath, safeStorage.encryptString(proof).toString('base64') + '\n', { mode: 0o600 })
+      return proof
     }
   })
 
@@ -369,6 +382,7 @@ export function unregisterSystemHandlers(): void {
     'analytics:set-enabled',
     'analytics:get-enabled',
     'app:get-machine-id',
+    'app:get-machine-proof',
     'app:get-machine-name',
     'clipboard:write-text',
     'clipboard:read-text',

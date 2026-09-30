@@ -1409,6 +1409,7 @@ declare global {
 
       // Machine identification (for backup service)
       getMachineId: () => Promise<string | null>
+      getMachineProof: () => Promise<string>
       getMachineName: () => Promise<string | null>
       getAppVersion: () => Promise<string>
 

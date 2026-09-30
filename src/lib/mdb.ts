@@ -426,11 +426,12 @@ export function onMdbAuthChange(listener: AuthListener): () => void {
   return () => listeners.delete(listener)
 }
 
-async function request<T>(path: string, init: RequestInit = {}, needsAuth = true): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, needsAuth = true, machineProof?: string): Promise<T> {
   const config = loadMdbConfig()
   if (!config) throw new Error('MariaDB backend is not configured.')
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
+  if (machineProof) headers.set('X-BluePLM-Machine-Proof', machineProof)
   if (init.body) headers.set('Content-Type', 'application/json')
   if (needsAuth) {
     if (!config.accessToken) throw new Error('Not signed in.')
@@ -646,9 +647,9 @@ export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
 }
 
 /** Short-lived runtime credentials for the authenticated designated backup machine only. */
-export async function getMdbBackupRuntimeConfig(machineId: string): Promise<MdbBackupConfig | null> {
+export async function getMdbBackupRuntimeConfig(machineId: string, machineProof: string): Promise<MdbBackupConfig | null> {
   const query = new URLSearchParams({ machineId })
-  return (await request<{ config: MdbBackupConfig | null }>(`/backup/runtime-config?${query.toString()}`)).config
+  return (await request<{ config: MdbBackupConfig | null }>(`/backup/runtime-config?${query.toString()}`, {}, true, machineProof)).config
 }
 
 export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
@@ -663,6 +664,7 @@ export async function designateMdbBackupMachine(value: {
   machineName: string
   platform: string
   userEmail: string
+  machineProof: string
 }): Promise<void> {
   await request('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
 }
