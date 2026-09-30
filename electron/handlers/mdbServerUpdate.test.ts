@@ -1,15 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({
-  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd(), isPackaged: false },
+  app: { getPath: () => process.cwd(), getAppPath: () => process.cwd(), getVersion: () => '4.4.4', isPackaged: false },
   safeStorage: { isEncryptionAvailable: () => false },
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('basic-ftp', () => ({ Client: class {} }))
-import { assertOwnerOrAdmin, classifyMdbServerUpdate, executeMdbServerUpdatePlan } from './mdbServerUpdate'
+import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, executeMdbServerUpdatePlan, setMdbServerConfirmationForTests } from './mdbServerUpdate'
 
 const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/backup', existing: [], promoted: [] }
 
 describe('MDB server update seam', () => {
+  it('cancellation stops before credentials are read or deployment starts', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
+      ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: '0.0.0', bundleDigest: 'b'.repeat(64), bundleFileCount: 1 }), { status: 200 })))
+    setMdbServerConfirmationForTests(async () => false)
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'de' })
+    expect(result.errorCode).toBe('CONFIRMATION_REQUIRED')
+    setMdbServerConfirmationForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
   it('classifies missing, matching, and changed deployment manifests', () => {
     const packaged = { version: 1 as const, releaseVersion: '4.4.4', digest: 'a'.repeat(64), fileCount: 3 }
     expect(classifyMdbServerUpdate(packaged, null)).toBe('unknown')

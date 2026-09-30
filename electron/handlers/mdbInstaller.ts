@@ -81,6 +81,10 @@ function required(value: string, label: string, max = 2048): string {
   return clean
 }
 
+export function validateFtpUsername(value: string): string {
+  return singleLine(value, 'FTP username', 512)
+}
+
 function singleLine(value: string, label: string, max = 2048): string {
   const clean = required(value, label, max)
   if (/[\r\n\0]/.test(clean)) fail(`${label} must not contain line breaks.`)
@@ -168,7 +172,7 @@ export function ftpAccessOptions(ftp: URL, security: MdbFtpsSecurity) {
   }
 }
 
-function remotePath(value: string): string {
+export function remotePath(value: string): string {
   const clean = value.trim().replaceAll('\\', '/')
   if (!clean) return ''
   const segments = clean.split('/').filter(Boolean)

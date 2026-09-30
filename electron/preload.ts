@@ -365,17 +365,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     serverUrl: string
     sessionToken: string
     organizationId: string
-    confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
+    locale?: string
   }) => ipcRenderer.invoke('mdb-server:apply-update', request),
-  getMdbServerCredentialState: () => ipcRenderer.invoke('mdb-server:get-credentials'),
+  getMdbServerCredentialState: (binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => ipcRenderer.invoke('mdb-server:get-credentials', binding),
   saveMdbServerCredentials: (profile: {
     ftpUrl: string
     ftpSecurity: 'explicit' | 'implicit'
     ftpRemotePath: string
     ftpUsername: string
-  }, secrets: { ftpPassword: string; maintenanceToken: string }, binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) =>
+  }, secrets: { ftpPassword: string; maintenanceToken: string }, binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) =>
     ipcRenderer.invoke('mdb-server:save-credentials', profile, secrets, binding),
-  clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => ipcRenderer.invoke('mdb-server:clear-credentials', binding),
+  clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => ipcRenderer.invoke('mdb-server:clear-credentials', binding),
 
   // File system operations
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),

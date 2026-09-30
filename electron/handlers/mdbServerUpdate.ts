@@ -21,7 +21,7 @@ import {
   RemoteRollbackError,
 } from './mdbInstaller'
 import { createMdbBundleManifest, MDB_BUNDLE_MANIFEST_FILE, serializeMdbBundleManifest, type MdbBundleManifest } from './mdbBundle'
-import { clearMdbServerCredentials, getMdbServerCredentialState, normalizeMdbServerUrl, readMdbServerCredentials, saveMdbServerCredentials, type MdbServerCredentialBinding, type MdbServerCredentialState, type MdbServerProfile } from './mdbCredentials'
+import { clearMdbServerCredentials, getMdbServerCredentialState, normalizeMdbServerUrl, readMdbServerCredentials, saveMdbServerCredentials, type MdbServerCredentialBinding, type MdbServerProfile } from './mdbCredentials'
 
 export type MdbServerUpdateStatus = 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
 
@@ -39,21 +39,18 @@ export interface MdbServerUpdateInspection {
   status: Exclude<MdbServerUpdateStatus, 'updating' | 'rollback' | 'failure'>
   packaged: MdbBundleManifest
   deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount'> | null
-  credentials: MdbServerCredentialState
 }
 
 export interface MdbServerUpdateRequest {
   serverUrl: string
   sessionToken: string
   organizationId: string
-  /** Renderer confirmation is advisory only; main process shows the authoritative dialog. */
-  confirmed?: boolean
-  confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
+  locale?: string
 }
 
 export interface MdbServerCredentialRequest extends MdbServerCredentialBinding {
   sessionToken: string
-  confirmation?: { message: string; confirmLabel: string; cancelLabel: string }
+  locale?: string
 }
 
 type ConfirmationKind = 'update' | 'credentials'
@@ -63,7 +60,18 @@ export function setMdbServerConfirmationForTests(handler: typeof confirmationFor
   confirmationForTests = handler
 }
 
-async function requireNativeConfirmation(kind: ConfirmationKind, text: { message: string; confirmLabel: string; cancelLabel: string }): Promise<boolean> {
+const confirmationText: Record<string, Record<ConfirmationKind, { message: string; confirmLabel: string; cancelLabel: string }>> = {
+  en: { update: { message: 'Update the MDB server now? Database migrations cannot be undone by restoring files.', confirmLabel: 'Update', cancelLabel: 'Cancel' }, credentials: { message: 'Change or remove the saved deployment credentials?', confirmLabel: 'Continue', cancelLabel: 'Cancel' } },
+  de: { update: { message: 'MDB-Server jetzt aktualisieren? Datenbankmigrationen können nicht durch Dateiwiederherstellung rückgängig gemacht werden.', confirmLabel: 'Aktualisieren', cancelLabel: 'Abbrechen' }, credentials: { message: 'Gespeicherte Bereitstellungszugangsdaten ändern oder löschen?', confirmLabel: 'Fortfahren', cancelLabel: 'Abbrechen' } },
+  fr: { update: { message: 'Mettre à jour le serveur MDB maintenant ? Les migrations ne peuvent pas être annulées par restauration des fichiers.', confirmLabel: 'Mettre à jour', cancelLabel: 'Annuler' }, credentials: { message: 'Modifier ou supprimer les identifiants de déploiement enregistrés ?', confirmLabel: 'Continuer', cancelLabel: 'Annuler' } },
+  es: { update: { message: '¿Actualizar ahora el servidor MDB? Las migraciones no se pueden deshacer restaurando archivos.', confirmLabel: 'Actualizar', cancelLabel: 'Cancelar' }, credentials: { message: '¿Cambiar o eliminar las credenciales de despliegue guardadas?', confirmLabel: 'Continuar', cancelLabel: 'Cancelar' } },
+  pt: { update: { message: 'Atualizar o servidor MDB agora? As migrações não podem ser desfeitas restaurando arquivos.', confirmLabel: 'Atualizar', cancelLabel: 'Cancelar' }, credentials: { message: 'Alterar ou excluir as credenciais de implantação salvas?', confirmLabel: 'Continuar', cancelLabel: 'Cancelar' } },
+  'zh-CN': { update: { message: '现在更新 MDB 服务器？数据库迁移无法通过恢复文件撤销。', confirmLabel: '更新', cancelLabel: '取消' }, credentials: { message: '更改或删除已保存的部署凭据？', confirmLabel: '继续', cancelLabel: '取消' } },
+  'zh-TW': { update: { message: '現在更新 MDB 伺服器？資料庫遷移無法透過還原檔案撤銷。', confirmLabel: '更新', cancelLabel: '取消' }, credentials: { message: '變更或刪除已儲存的部署憑據？', confirmLabel: '繼續', cancelLabel: '取消' } },
+}
+
+async function requireNativeConfirmation(kind: ConfirmationKind, locale?: string): Promise<boolean> {
+  const text = confirmationText[locale ?? 'en']?.[kind] ?? confirmationText.en[kind]
   if (confirmationForTests) return confirmationForTests(kind, text)
   const result = await dialog.showMessageBox({
     type: 'warning',
@@ -162,7 +170,6 @@ export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: P
 
 export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServerUpdateInspection> {
   const packaged = await createMdbBundleManifest(serverBundleRoot(), app.getVersion())
-  const credentials = await getMdbServerCredentialState()
   try {
     const health = await fetchHealth(serverUrl)
     const deployed = {
@@ -171,9 +178,9 @@ export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServ
       bundleDigest: health.bundleDigest,
       bundleFileCount: health.bundleFileCount,
     }
-    return { status: classifyMdbServerUpdate(packaged, deployed), packaged, deployed, credentials }
+    return { status: classifyMdbServerUpdate(packaged, deployed), packaged, deployed }
   } catch {
-    return { status: 'unknown', packaged, deployed: null, credentials }
+    return { status: 'unknown', packaged, deployed: null }
   }
 }
 
@@ -285,7 +292,7 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
   if (inspection.status === 'server-newer') return { success: false, status: 'server-newer', errorCode: 'SERVER_NEWER' }
   if (inspection.status === 'same-version-different') return { success: false, status: 'failure', errorCode: 'VERSION_CONFLICT' }
   if (inspection.status === 'current') return { success: true, status: 'current', inspection }
-  if (!request.confirmation || !await requireNativeConfirmation('update', request.confirmation)) return { success: false, status: 'failure', errorCode: 'CONFIRMATION_REQUIRED' }
+  if (!await requireNativeConfirmation('update', request.locale)) return { success: false, status: 'failure', errorCode: 'CONFIRMATION_REQUIRED' }
   const stored = await readMdbServerCredentials()
   if (!stored) return { success: false, status: 'failure', errorCode: 'CREDENTIALS_UNAVAILABLE' }
   if (stored.binding.serverUrl !== normalizeMdbServerUrl(request.serverUrl) || stored.binding.organizationId !== request.organizationId) return { success: false, status: 'failure', errorCode: 'CREDENTIAL_BINDING_MISMATCH' }
@@ -316,7 +323,7 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
       },
       verifyHealth: async () => {
         const health = await fetchHealth(request.serverUrl)
-        return health.bundleDigest === stage.manifest.digest && health.bundleVersion === stage.manifest.version
+        return health.bundleDigest === stage.manifest.digest && health.bundleVersion === stage.manifest.version && health.bundleReleaseVersion === stage.manifest.releaseVersion
       },
       finalize: (current) => finalizeRemoteDeployment(client!, current),
       rollback: (current) => rollbackRemoteDeployment(client!, current),
@@ -325,6 +332,7 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
     cleanup = undefined
     return plan
   } catch (error) {
+    if (error instanceof RemoteRollbackError) { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }
     if (activation && client) {
       try { await rollbackRemoteDeployment(client, activation) } catch { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }
     }
@@ -339,21 +347,21 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
 export function registerMdbServerUpdateHandlers(): void {
   ipcMain.handle('mdb-server:inspect-update', async (event, serverUrl: string) => { assertTrustedSender(event); return inspectMdbServerUpdate(serverUrl) })
   ipcMain.handle('mdb-server:apply-update', async (event, request: MdbServerUpdateRequest) => { assertTrustedSender(event); return applyMdbServerUpdate(request) })
-  ipcMain.handle('mdb-server:get-credentials', async (event) => { assertTrustedSender(event); return getMdbServerCredentialState() })
+  ipcMain.handle('mdb-server:get-credentials', async (event, binding: MdbServerCredentialRequest) => { assertTrustedSender(event); await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId); const state = await getMdbServerCredentialState(); return { hasCredentials: state.hasCredentials, encryptionAvailable: state.encryptionAvailable } })
   ipcMain.handle('mdb-server:save-credentials', async (event, profile: MdbServerProfile, secrets: { ftpPassword: string; maintenanceToken: string }, binding: MdbServerCredentialRequest) => {
     assertTrustedSender(event)
     await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
     const existing = await readMdbServerCredentials()
-    if (existing && (!binding.confirmation || !await requireNativeConfirmation('credentials', binding.confirmation))) throw new Error('CONFIRMATION_REQUIRED')
+    if (!await requireNativeConfirmation('credentials', binding.locale)) throw new Error('CONFIRMATION_REQUIRED')
     await saveMdbServerCredentials(profile, secrets, binding)
-    return getMdbServerCredentialState()
+    const state = await getMdbServerCredentialState(); return { hasCredentials: state.hasCredentials, encryptionAvailable: state.encryptionAvailable }
   })
   ipcMain.handle('mdb-server:clear-credentials', async (event, binding: MdbServerCredentialRequest) => {
     assertTrustedSender(event)
     await assertOwnerOrAdmin(binding.serverUrl, binding.sessionToken, binding.organizationId)
-    if (!binding.confirmation || !await requireNativeConfirmation('credentials', binding.confirmation)) throw new Error('CONFIRMATION_REQUIRED')
+    if (!await requireNativeConfirmation('credentials', binding.locale)) throw new Error('CONFIRMATION_REQUIRED')
     await clearMdbServerCredentials(binding)
-    return getMdbServerCredentialState()
+    const state = await getMdbServerCredentialState(); return { hasCredentials: state.hasCredentials, encryptionAvailable: state.encryptionAvailable }
   })
 }
 

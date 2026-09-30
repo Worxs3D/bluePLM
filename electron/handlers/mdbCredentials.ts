@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { ftpBase, remotePath, validateFtpUsername, type MdbFtpsSecurity } from './mdbInstaller'
 
 export interface MdbServerProfile {
   ftpUrl: string
@@ -42,10 +43,11 @@ export function normalizeMdbServerUrl(raw: string): string {
   return url.origin
 }
 
-function assertProfile(profile: MdbServerProfile): void {
-  let ftp: URL
-  try { ftp = new URL(profile.ftpUrl) } catch { throw new Error('INVALID_PROFILE') }
-  if (ftp.protocol !== 'ftps:' || ftp.username || ftp.password || ftp.search || ftp.hash || (ftp.port && !['21', '990'].includes(ftp.port)) || !profile.ftpRemotePath.startsWith('/') || profile.ftpRemotePath.includes('..') || !profile.ftpUsername || /[\r\n\0]/u.test(profile.ftpRemotePath) || /[\r\n\0]/u.test(profile.ftpUsername) || !['explicit', 'implicit'].includes(profile.ftpSecurity)) throw new Error('INVALID_PROFILE')
+function normalizeProfile(profile: MdbServerProfile): MdbServerProfile {
+  try {
+    const ftp = ftpBase(profile.ftpUrl, profile.ftpSecurity as MdbFtpsSecurity)
+    return { ...profile, ftpUrl: ftp.toString(), ftpRemotePath: remotePath(profile.ftpRemotePath), ftpUsername: validateFtpUsername(profile.ftpUsername) }
+  } catch { throw new Error('INVALID_PROFILE') }
 }
 
 interface StoredCredentials {
@@ -55,14 +57,14 @@ interface StoredCredentials {
 }
 
 export async function saveMdbServerCredentials(profile: MdbServerProfile, secrets: MdbServerSecrets, binding: MdbServerCredentialBinding): Promise<void> {
-  assertProfile(profile)
+  const normalizedProfile = normalizeProfile(profile)
   const normalizedBinding = { serverUrl: normalizeMdbServerUrl(binding.serverUrl), organizationId: binding.organizationId.trim() }
   if (!normalizedBinding.organizationId) throw new Error('INVALID_PROFILE')
   if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable.')
   if (!secrets.ftpPassword || !secrets.maintenanceToken) throw new Error('Both deployment credentials are required.')
   const directory = credentialsDirectory()
   await fs.mkdir(directory, { recursive: true })
-  const encrypted = safeStorage.encryptString(JSON.stringify({ profile, binding: normalizedBinding, secrets } satisfies StoredCredentials)).toString('base64')
+  const encrypted = safeStorage.encryptString(JSON.stringify({ profile: normalizedProfile, binding: normalizedBinding, secrets } satisfies StoredCredentials)).toString('base64')
   await fs.writeFile(secretsPath(), `${encrypted}\n`, { mode: 0o600 })
 }
 
@@ -73,10 +75,10 @@ export async function readMdbServerCredentials(): Promise<{ profile: MdbServerPr
     const stored = JSON.parse(safeStorage.decryptString(Buffer.from(encryptedRaw.trim(), 'base64'))) as StoredCredentials
     const profile = stored.profile
     const secrets = stored.secrets
-    assertProfile(profile)
+    const normalizedProfile = normalizeProfile(profile)
     if (!secrets.ftpPassword || !secrets.maintenanceToken) return null
     const binding = { serverUrl: normalizeMdbServerUrl(stored.binding.serverUrl), organizationId: stored.binding.organizationId }
-    return { profile, secrets, binding }
+    return { profile: normalizedProfile, secrets, binding }
   } catch {
     return null
   }

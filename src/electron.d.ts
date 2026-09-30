@@ -426,26 +426,19 @@ declare global {
         status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
         packaged: { version: 1; releaseVersion: string; digest: string; fileCount: number }
         deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
-        credentials: { profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }
       }>
-      applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => Promise<{
+      applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => Promise<{
         success: boolean
         status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
         errorCode?: 'NOT_AUTHORIZED' | 'CREDENTIALS_UNAVAILABLE' | 'CONFIRMATION_REQUIRED' | 'MAINTENANCE_TOKEN_REJECTED' | 'DEPLOYMENT_FAILED' | 'HEALTH_MISMATCH' | 'SERVER_NEWER' | 'VERSION_CONFLICT' | 'ROLLBACK_FAILED' | 'CREDENTIAL_BINDING_MISMATCH' | 'INVALID_PROFILE' | 'UNAVAILABLE'
       }>
-      getMdbServerCredentialState: () => Promise<{
-        profile: null
-        hasCredentials: boolean
-        encryptionAvailable: boolean
-        boundServerUrl: string | null
-        boundOrganizationId: string | null
-      }>
+      getMdbServerCredentialState: (binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => Promise<{ hasCredentials: boolean; encryptionAvailable: boolean }>
       saveMdbServerCredentials: (
         profile: { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemotePath: string; ftpUsername: string },
         secrets: { ftpPassword: string; maintenanceToken: string },
-        binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } },
-      ) => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }>
-      clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; confirmation?: { message: string; confirmLabel: string; cancelLabel: string } }) => Promise<{ profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }>
+        binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string },
+      ) => Promise<{ hasCredentials: boolean; encryptionAvailable: boolean }>
+      clearMdbServerCredentials: (binding: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => Promise<{ hasCredentials: boolean; encryptionAvailable: boolean }>
 
       // File system operations
       readFile: (path: string) => Promise<FileReadResult>

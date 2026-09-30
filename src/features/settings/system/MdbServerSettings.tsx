@@ -11,7 +11,6 @@ type Inspection = {
   status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
   packaged: { version: number; releaseVersion: string; digest: string; fileCount: number }
   deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
-  credentials: { profile: null; hasCredentials: boolean; encryptionAvailable: boolean; boundServerUrl: string | null; boundOrganizationId: string | null }
 }
 
 const statusTranslation: Record<MdbServerStatus, string> = {
@@ -26,7 +25,7 @@ const statusTranslation: Record<MdbServerStatus, string> = {
 }
 
 export function MdbServerSettings() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const organization = usePDMStore((state) => state.organization)
   const getEffectiveRole = usePDMStore((state) => state.getEffectiveRole)
   const addToast = usePDMStore((state) => state.addToast)
@@ -36,6 +35,7 @@ export function MdbServerSettings() {
   const [ftpPassword, setFtpPassword] = useState('')
   const [maintenanceToken, setMaintenanceToken] = useState('')
   const [busy, setBusy] = useState(false)
+  const [credentials, setCredentials] = useState<{ hasCredentials: boolean; encryptionAvailable: boolean }>({ hasCredentials: false, encryptionAvailable: false })
   const serverUrl = loadMdbConfig()?.serverUrl ?? ''
   const canManage = ['owner', 'admin'].includes(getEffectiveRole())
 
@@ -50,10 +50,11 @@ export function MdbServerSettings() {
     if (!isMdbBackendActive() || !canManage || !window.electronAPI?.getMdbServerCredentialState) return
     let cancelled = false
     void Promise.all([
-      window.electronAPI.getMdbServerCredentialState(),
+      window.electronAPI.getMdbServerCredentialState({ serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', locale: language }),
       window.electronAPI.inspectMdbServerUpdate(serverUrl),
-    ]).then(([, nextInspection]) => {
+    ]).then(([nextCredentials, nextInspection]) => {
       if (cancelled) return
+      setCredentials(nextCredentials)
       setInspection(nextInspection)
       setStatus(nextInspection.status)
     }).catch(() => {
@@ -66,13 +67,15 @@ export function MdbServerSettings() {
     if (!window.electronAPI?.saveMdbServerCredentials) return
     setBusy(true)
     try {
-      const next = await window.electronAPI.saveMdbServerCredentials(profile, { ftpPassword, maintenanceToken }, { serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', confirmation: { message: t('settingsPages.mdbServer.confirmReplace'), confirmLabel: t('settingsPages.mdbServer.saveCredentials'), cancelLabel: t('settingsPages.mdbServer.clearCredentials') } })
-      setInspection((current) => current ? { ...current, credentials: next } : current)
+      const next = await window.electronAPI.saveMdbServerCredentials(profile, { ftpPassword, maintenanceToken }, { serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', locale: language })
+      setCredentials(next)
       setFtpPassword('')
       setMaintenanceToken('')
       addToast('success', t('settingsPages.saveSettings'))
-    } catch {
-      addToast('error', t('settingsPages.mdbServer.encryptionUnavailable'))
+    } catch (error) {
+      const code = error instanceof Error ? error.message : ''
+      const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'INVALID_PROFILE' ? 'invalidProfile' : code === 'CONFIRMATION_REQUIRED' ? 'cancelled' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : code.includes('encryption') ? 'encryptionUnavailable' : 'genericFailure'
+      addToast('error', t(`settingsPages.mdbServer.${key}`))
     } finally {
       setBusy(false)
     }
@@ -82,8 +85,12 @@ export function MdbServerSettings() {
     if (!window.electronAPI?.clearMdbServerCredentials) return
     setBusy(true)
     try {
-      const next = await window.electronAPI.clearMdbServerCredentials({ serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', confirmation: { message: t('settingsPages.mdbServer.confirmClear'), confirmLabel: t('settingsPages.mdbServer.clearCredentials'), cancelLabel: t('settingsPages.mdbServer.saveCredentials') } })
-      setInspection((current) => current ? { ...current, credentials: next } : current)
+      const next = await window.electronAPI.clearMdbServerCredentials({ serverUrl, sessionToken: mdbAccessToken() ?? '', organizationId: organization?.id ?? '', locale: language })
+      setCredentials(next)
+    } catch (error) {
+      const code = error instanceof Error ? error.message : ''
+      const key = code === 'NOT_AUTHORIZED' ? 'unauthorized' : code === 'CONFIRMATION_REQUIRED' ? 'cancelled' : code === 'CREDENTIAL_BINDING_MISMATCH' ? 'bindingMismatch' : 'genericFailure'
+      addToast('error', t(`settingsPages.mdbServer.${key}`))
     } finally {
       setBusy(false)
     }
@@ -98,7 +105,7 @@ export function MdbServerSettings() {
         serverUrl,
         sessionToken: mdbAccessToken() ?? '',
         organizationId: organization.id,
-        confirmation: { message: t('settingsPages.mdbServer.confirmUpdate'), confirmLabel: t('settingsPages.mdbServer.update'), cancelLabel: t('settingsPages.mdbServer.clearCredentials') },
+        locale: language,
       })
       setStatus(result.status)
       if (result.success) addToast('success', t('settingsPages.mdbServer.resultSuccess'))
@@ -120,7 +127,6 @@ export function MdbServerSettings() {
   }
 
   const statusLabel = t(statusTranslation[status])
-  const credentials = inspection?.credentials
   const updateDisabled = busy || !credentials?.hasCredentials || status === 'current' || status === 'server-newer' || status === 'same-version-different'
   const digest = useMemo(() => (value: string | null | undefined) => value ? t('settingsPages.mdbServer.digestPreview', { value: value.slice(0, 12) }) : t('settingsPages.mdbServer.notAvailable'), [t])
 

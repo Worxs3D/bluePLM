@@ -104,7 +104,7 @@ function SetupTitleBar() {
 }
 
 export function SetupScreen({ onConfigured }: SetupScreenProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const [mode, setMode] = useState<SetupMode>('select')
   const [isValidating, setIsValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -489,9 +489,10 @@ export function SetupScreen({ onConfigured }: SetupScreenProps) {
           const meResponse = await fetch(new URL('/auth/me', `${result.serverUrl.replace(/\/$/u, '')}/`), { headers: { Authorization: `Bearer ${result.accessToken}` }, cache: 'no-store' })
           const me = await meResponse.json() as { user?: { organizationId?: unknown } }
           const organizationId = typeof me.user?.organizationId === 'string' ? me.user.organizationId : ''
-          if (meResponse.ok && organizationId) await window.electronAPI.saveMdbServerCredentials({ ftpUrl: mdbFtpUrl, ftpSecurity: mdbFtpSecurity, ftpRemotePath: mdbFtpPath, ftpUsername: mdbFtpUser }, { ftpPassword: mdbFtpPassword, maintenanceToken }, { serverUrl: result.serverUrl, sessionToken: result.accessToken, organizationId })
+          if (meResponse.ok && organizationId) await window.electronAPI.saveMdbServerCredentials({ ftpUrl: mdbFtpUrl, ftpSecurity: mdbFtpSecurity, ftpRemotePath: mdbFtpPath, ftpUsername: mdbFtpUser }, { ftpPassword: mdbFtpPassword, maintenanceToken }, { serverUrl: result.serverUrl, sessionToken: result.accessToken, organizationId, locale: language })
         } catch (credentialError) {
           log.warn('[SetupScreen]', 'Optional MDB deployment credential storage failed', { error: credentialError instanceof Error ? credentialError.message : 'unknown' })
+          setError(t('mdbSetup.backendConfigSaveFailed'))
         }
       }
     }

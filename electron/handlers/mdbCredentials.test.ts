@@ -28,9 +28,19 @@ afterEach(async () => {
 })
 
 describe('MDB deployment credential storage', () => {
+  it('uses installer FTPS validation for root paths, ports, and unsafe input', async () => {
+    await expect(saveMdbServerCredentials({ ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit', ftpRemotePath: '', ftpUsername: 'deploy' }, { ftpPassword: 'password-value', maintenanceToken: 'maintenance-value' }, { serverUrl: 'https://example.invalid', organizationId: 'org-1' })).resolves.toBeUndefined()
+    await clearMdbServerCredentials()
+    for (const profile of [
+      { ftpUrl: 'ftps://example.invalid:990', ftpSecurity: 'explicit' as const, ftpRemotePath: '', ftpUsername: 'deploy' },
+      { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit' as const, ftpRemotePath: '../escape', ftpUsername: 'deploy' },
+      { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit' as const, ftpRemotePath: '', ftpUsername: 'deploy\r\nuser' },
+    ]) await expect(saveMdbServerCredentials(profile, { ftpPassword: 'password-value', maintenanceToken: 'maintenance-value' }, { serverUrl: 'https://example.invalid', organizationId: 'org-1' })).rejects.toThrow('INVALID_PROFILE')
+  })
+
   it('stores secrets only through the encrypted file and never as plaintext', async () => {
     await saveMdbServerCredentials(
-      { ftpUrl: 'ftps://example.invalid', ftpSecurity: 'explicit', ftpRemotePath: '/srv/blueplm', ftpUsername: 'deploy' },
+      { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit', ftpRemotePath: '/srv/blueplm', ftpUsername: 'deploy' },
       { ftpPassword: 'password-value', maintenanceToken: 'maintenance-value' },
       { serverUrl: 'https://example.invalid', organizationId: 'org-1' },
     )
