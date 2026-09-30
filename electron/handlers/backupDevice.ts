@@ -100,7 +100,17 @@ async function api<T>(auth: StoredMdbAuth, path: string, init: RequestInit = {})
   return body
 }
 
-export async function resolveMdbBackupRuntime(endpoint: 'runtime-config' | 'heartbeat' | 'start' | 'complete' = 'runtime-config'): Promise<Record<string, unknown>> {
+export type MdbBackupDeviceAction = 'heartbeat' | 'request' | 'start' | 'complete'
+
+/**
+ * Performs a device-authorized backup action entirely in main.  The renderer
+ * can request an action, but neither the session nor its assertion crosses IPC.
+ */
+export async function performMdbBackupDeviceAction(endpoint: MdbBackupDeviceAction): Promise<void> {
+  await resolveMdbBackupRuntime(endpoint)
+}
+
+export async function resolveMdbBackupRuntime(endpoint: 'runtime-config' | MdbBackupDeviceAction = 'runtime-config'): Promise<Record<string, unknown>> {
   const auth = loadAuth(); const deviceId = machineId()
   const challenge = await api<{ challengeId: string; nonce: string; keyVersion: number }>(auth, '/backup/device/challenge', { method: 'POST', body: JSON.stringify({ deviceId, endpoint }) })
   // The current backend signature canonically requires principal IDs. Fetching

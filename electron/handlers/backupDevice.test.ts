@@ -74,4 +74,29 @@ describe('MDB backup device boundary', () => {
     await expect(fs.stat(path.join(state.root, 'backup-device-auth.bin'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect(JSON.stringify(state.encrypted)).not.toContain('private-key')
   })
+
+  it('hydrates runtime credentials only in main and signs every allowed action with its exact challenge context', async () => {
+    const device = await subject(); device.registerBackupDeviceHandlers()
+    await state.handlers.get('backup-device:sync-auth')!(sender(), { serverUrl: 'https://mdb.example.test', accessToken: 'session-secret' })
+    const fetchMock = vi.mocked(fetch)
+    for (const action of ['heartbeat', 'request', 'start', 'complete'] as const) {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ challengeId: `${action}-challenge`, nonce: 'nonce', keyVersion: 1 }) } as Response)
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ user: { userId: 'user', organizationId: 'org' } }) } as Response)
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, access_key_encrypted: 'must-not-leak' }) } as Response)
+      await expect(device.performMdbBackupDeviceAction(action)).resolves.toBeUndefined()
+    }
+    const requests = fetchMock.mock.calls.map(([input]) => String(input))
+    expect(requests.filter((url) => /\/backup\/(heartbeat|request|start|complete)$/.test(url))).toHaveLength(4)
+    expect(JSON.stringify(state.handlers)).not.toContain('session-secret')
+    expect(JSON.stringify(state.handlers)).not.toContain('must-not-leak')
+  })
+
+  it('does not accept a signature for one challenge action as another action', async () => {
+    const device = await subject()
+    const publicKey = device.getBackupDevicePublicKey()
+    const signature = device.signBackupDeviceAssertion({ method: 'POST', endpoint: 'start', organizationId: 'org', userId: 'user', machineId: 'machine', keyVersion: 1, challengeId: 'challenge', nonce: 'nonce' })
+    const key = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(publicKey, 'base64url')]), format: 'der', type: 'spki' })
+    expect(verify(null, Buffer.from('blueplm-backup-v1|POST|start|org|user|machine|1|challenge|nonce'), key, Buffer.from(signature, 'base64url'))).toBe(true)
+    expect(verify(null, Buffer.from('blueplm-backup-v1|POST|complete|org|user|machine|1|challenge|nonce'), key, Buffer.from(signature, 'base64url'))).toBe(false)
+  })
 })

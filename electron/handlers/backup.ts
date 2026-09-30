@@ -72,7 +72,8 @@ let backupStartedAt: number | null = null
 
 type RuntimeCapableConfig = { mdbRuntime?: boolean; accessKey: string; secretKey: string; resticPassword: string }
 
-async function resolveMainProcessRuntime<T extends RuntimeCapableConfig>(config: T): Promise<T> {
+/** Main-process boundary: untrusted renderer placeholders are overwritten in-memory. */
+export async function resolveMainProcessRuntime<T extends RuntimeCapableConfig>(config: T): Promise<T> {
   if (!config.mdbRuntime) return config
   const runtime = await resolveMdbBackupRuntime()
   const accessKey = runtime.access_key_encrypted
@@ -82,6 +83,12 @@ async function resolveMainProcessRuntime<T extends RuntimeCapableConfig>(config:
   // Do not log or persist this object. It exists only until the child restic
   // process has inherited its environment for this operation.
   return { ...config, accessKey, secretKey, resticPassword }
+}
+
+/** Never let credential-shaped fields escape a backup IPC response or log payload. */
+export function sanitizeBackupResult<T extends Record<string, unknown>>(result: T): T {
+  const sensitive = new Set(['accessKey', 'secretKey', 'resticPassword', 'access_key_encrypted', 'secret_key_encrypted', 'restic_password_encrypted'])
+  return Object.fromEntries(Object.entries(result).filter(([key]) => !sensitive.has(key))) as T
 }
 
 /**
