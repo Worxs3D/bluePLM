@@ -2,6 +2,7 @@ import ReactDOM from 'react-dom/client'
 import { App } from './App'
 import { ErrorBoundary } from '@/components/core'
 import { initAnalytics, trackError } from '@/lib/analytics'
+import { isStructuredConsoleLog } from '@/lib/logger'
 import '@/index.css'
 
 // Initialize Sentry analytics if user has consented
@@ -27,6 +28,9 @@ const originalConsoleWarn = console.warn
 console.error = (...args: unknown[]) => {
   // Call original so dev tools still work
   originalConsoleError.apply(console, args)
+
+  // Unified logger calls already write one structured entry directly.
+  if (isStructuredConsoleLog()) return
 
   // Forward to app logs
   try {
@@ -61,6 +65,9 @@ console.error = (...args: unknown[]) => {
 console.warn = (...args: unknown[]) => {
   // Call original so dev tools still work
   originalConsoleWarn.apply(console, args)
+
+  // Unified logger calls already write one structured entry directly.
+  if (isStructuredConsoleLog()) return
 
   // Skip forwarding warns over IPC in dev: the dev React build emits a high
   // volume of warnings, and shipping each one to the main process slows

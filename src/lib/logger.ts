@@ -30,6 +30,13 @@ interface LogData {
   [key: string]: unknown
 }
 
+let structuredConsoleDepth = 0
+
+/** True only while the unified logger is synchronously writing to the console. */
+export function isStructuredConsoleLog(): boolean {
+  return structuredConsoleDepth > 0
+}
+
 // ============================================
 // Configuration
 // ============================================
@@ -133,10 +140,15 @@ function logMessage(level: LogLevel, category: string, message: string, data?: L
 
   // Console output with appropriate method
   const consoleMethod = console[level] || console.log
-  if (formattedData) {
-    consoleMethod(formattedMessage, formattedData)
-  } else {
-    consoleMethod(formattedMessage)
+  structuredConsoleDepth += 1
+  try {
+    if (formattedData) {
+      consoleMethod(formattedMessage, formattedData)
+    } else {
+      consoleMethod(formattedMessage)
+    }
+  } finally {
+    structuredConsoleDepth -= 1
   }
 
   // Electron app log output

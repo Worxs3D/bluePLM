@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { log } from './logger'
+import { isStructuredConsoleLog, log } from './logger'
 
 describe('logger error serialization', () => {
   afterEach(() => {
@@ -27,5 +27,25 @@ describe('logger error serialization', () => {
         }),
       }),
     )
+  })
+})
+
+describe('structured logger console bridge', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('writes one app-log entry when console warnings are intercepted', () => {
+    const appLog = vi.fn()
+    vi.stubGlobal('window', { electronAPI: { log: appLog } })
+    vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      if (!isStructuredConsoleLog()) appLog('warn', `[Console] ${String(args[0])}`)
+    })
+
+    log.warn('[Perf]', 'Long animation frame', { duration: 1000 })
+
+    expect(appLog).toHaveBeenCalledOnce()
+    expect(appLog).toHaveBeenCalledWith('warn', '[Perf] Long animation frame', { duration: 1000 })
   })
 })
