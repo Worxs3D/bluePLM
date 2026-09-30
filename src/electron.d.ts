@@ -425,7 +425,7 @@ declare global {
       inspectMdbServerUpdate: (serverUrl: string) => Promise<{
         status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
         packaged: { version: 1; releaseVersion: string; digest: string; fileCount: number }
-        deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
+        deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null; capabilities: string[] } | null
       }>
       applyMdbServerUpdate: (request: { serverUrl: string; sessionToken: string; organizationId: string; locale?: string }) => Promise<{
         success: boolean

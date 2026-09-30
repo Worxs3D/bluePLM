@@ -37,12 +37,12 @@ const translations: Record<Language, Record<string, string>> = {
 /** Values substituted into a string's `{{placeholders}}`. */
 export type TranslationParams = Record<string, string | number>
 
-function interpolate(text: string, params?: TranslationParams): string {
+export function interpolate(text: string, params?: TranslationParams): string {
   if (!params) return text
-  const substitute = (match: string, name: string) => name in params ? String(params[name]) : match
-  return text
-    .replace(/\{\{(\w+)\}\}/g, substitute)
-    .replace(/\{(\w+)\}/g, substitute)
+  return text.replace(/\{\{(\w+)\}\}|\{(\w+)\}/g, (match, doubleName: string | undefined, singleName: string | undefined) => {
+    const name = doubleName ?? singleName
+    return name && name in params ? String(params[name]) : match
+  })
 }
 
 /**

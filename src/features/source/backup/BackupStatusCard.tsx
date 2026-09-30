@@ -55,7 +55,7 @@ export function BackupStatusCard({
           <div className="flex-1">
             <div className="font-medium">
               {status?.updateRequired
-                ? t('settingsPages.mdbServer.statusUpdateAvailable')
+                ? t('settingsPages.mdbServer.backupUpdateRequiredTitle')
                 : status?.isConfigured ? 'Backup Configured' : 'Backup Not Configured'}
             </div>
             <div className="text-sm text-plm-fg-muted flex items-center gap-2">

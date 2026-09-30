@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Server, ShieldCheck, Upload, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { isMdbBackendActive } from '@/lib/backendAdapter'
-import { loadMdbConfig, mdbAccessToken } from '@/lib/mdb'
+import { loadMdbConfig, mdbAccessToken, refreshMdbServerCapabilities } from '@/lib/mdb'
 import { usePDMStore } from '@/stores/pdmStore'
 
 type MdbServerStatus = 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown' | 'updating' | 'rollback' | 'failure'
@@ -10,7 +10,7 @@ type Profile = { ftpUrl: string; ftpSecurity: 'explicit' | 'implicit'; ftpRemote
 type Inspection = {
   status: 'current' | 'update-available' | 'server-newer' | 'same-version-different' | 'unknown'
   packaged: { version: number; releaseVersion: string; digest: string; fileCount: number }
-  deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null } | null
+  deployed: { bundleVersion: number | null; bundleReleaseVersion: string | null; bundleDigest: string | null; bundleFileCount: number | null; capabilities: string[] } | null
 }
 
 const statusTranslation: Record<MdbServerStatus, string> = {
@@ -61,7 +61,7 @@ export function MdbServerSettings() {
       if (!cancelled) setStatus('unknown')
     })
     return () => { cancelled = true }
-  }, [canManage, serverUrl])
+  }, [canManage, language, organization?.id, serverUrl])
 
   const saveCredentials = async () => {
     if (!window.electronAPI?.saveMdbServerCredentials) return
@@ -112,7 +112,10 @@ export function MdbServerSettings() {
         locale: language,
       })
       setStatus(result.status)
-      if (result.success) addToast('success', t('settingsPages.mdbServer.resultSuccess'))
+      if (result.success) {
+        await refreshMdbServerCapabilities()
+        addToast('success', t('settingsPages.mdbServer.resultSuccess'))
+      }
       else if (result.errorCode === 'NOT_AUTHORIZED') addToast('error', t('settingsPages.mdbServer.unauthorized'))
       else if (result.errorCode === 'MAINTENANCE_TOKEN_REJECTED') addToast('error', t('settingsPages.mdbServer.invalidMaintenanceToken'))
       else if (result.errorCode === 'CREDENTIALS_UNAVAILABLE') addToast('error', t('settingsPages.mdbServer.missingCredentials'))

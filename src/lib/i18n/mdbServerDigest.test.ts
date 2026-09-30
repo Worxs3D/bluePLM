@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getTranslation } from '.'
+import { getTranslation, interpolate } from '.'
 
 const locales = ['en', 'de', 'es', 'fr', 'pt', 'zh-CN', 'zh-TW'] as const
 
@@ -12,7 +12,14 @@ describe('MDB server digest translations', () => {
   })
 
   it.each(locales)('provides a localized update-required state in %s', (locale) => {
-    const key = 'settingsPages.mdbServer.backupUpdateRequired'
-    expect(getTranslation(locale, key)).not.toBe(key)
+    for (const key of [
+      'settingsPages.mdbServer.backupUpdateRequiredTitle',
+      'settingsPages.mdbServer.backupUpdateRequired',
+    ]) expect(getTranslation(locale, key)).not.toBe(key)
+  })
+
+  it('interpolates both placeholder forms in one non-recursive pass', () => {
+    expect(interpolate('Digest {{value}} / {count}', { value: '{count}', count: 7 })).toBe('Digest {count} / 7')
+    expect(interpolate('Missing {{missing}} / {alsoMissing}', { value: 'unused' })).toBe('Missing {{missing}} / {alsoMissing}')
   })
 })

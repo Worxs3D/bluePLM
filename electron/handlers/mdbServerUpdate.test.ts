@@ -5,7 +5,7 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('basic-ftp', () => ({ Client: class {} }))
-import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, credentialClearOperationKind, credentialOperationKind, executeMdbServerUpdatePlan, isMdbServerUpdateRequired, setMdbServerConfirmationForTests, setMdbServerCredentialsForTests } from './mdbServerUpdate'
+import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, credentialClearOperationKind, credentialOperationKind, executeMdbServerUpdatePlan, inspectMdbServerUpdate, setMdbServerConfirmationForTests, setMdbServerCredentialsForTests } from './mdbServerUpdate'
 import { RemoteRollbackError } from './mdbInstaller'
 
 const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/backup', existing: [], promoted: [] }
@@ -111,19 +111,36 @@ describe('MDB server update seam', () => {
   it('classifies missing, matching, and changed deployment manifests', () => {
     const packaged = { version: 1 as const, releaseVersion: '4.4.4', digest: 'a'.repeat(64), fileCount: 3 }
     expect(classifyMdbServerUpdate(packaged, null)).toBe('unknown')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: packaged.digest, bundleFileCount: 3 })).toBe('current')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.3', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.5', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('server-newer')
-    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('same-version-different')
-    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.2' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.10', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('server-newer')
-    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.10' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.2', bundleDigest: 'b'.repeat(64), bundleFileCount: 3 })).toBe('update-available')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: packaged.digest, bundleFileCount: 3, capabilities: ['backup'] })).toBe('current')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.3', bundleDigest: 'b'.repeat(64), bundleFileCount: 3, capabilities: ['backup'] })).toBe('update-available')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.5', bundleDigest: 'b'.repeat(64), bundleFileCount: 3, capabilities: ['backup'] })).toBe('server-newer')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: 'b'.repeat(64), bundleFileCount: 3, capabilities: ['backup'] })).toBe('same-version-different')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: packaged.digest, bundleFileCount: 2, capabilities: ['backup'] })).toBe('same-version-different')
+    expect(classifyMdbServerUpdate(packaged, { bundleVersion: 1, bundleReleaseVersion: '4.4.4', bundleDigest: packaged.digest, bundleFileCount: 3, capabilities: [] })).toBe('same-version-different')
+    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.2' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.10', bundleDigest: 'b'.repeat(64), bundleFileCount: 3, capabilities: ['backup'] })).toBe('server-newer')
+    expect(classifyMdbServerUpdate({ ...packaged, releaseVersion: '4.4.4-beta.10' }, { bundleVersion: 1, bundleReleaseVersion: '4.4.4-beta.2', bundleDigest: 'b'.repeat(64), bundleFileCount: 3, capabilities: ['backup'] })).toBe('update-available')
   })
 
-  it('requires an MDB server update when the release label matches but its digest differs', () => {
-    expect(isMdbServerUpdateRequired('same-version-different')).toBe(true)
-    expect(isMdbServerUpdateRequired('update-available')).toBe(true)
-    expect(isMdbServerUpdateRequired('current')).toBe(false)
-    expect(isMdbServerUpdateRequired('server-newer')).toBe(false)
+  it.each([
+    ['file count mismatch', ['backup'], -1],
+    ['missing backup capability', [], 0],
+  ] as const)('allows an explicitly confirmed update for %s', async (_case, capabilities, fileCountDelta) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })))
+    const baseline = await inspectMdbServerUpdate('https://mdb.example.test')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
+      ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true, bundleVersion: baseline.packaged.version, bundleReleaseVersion: baseline.packaged.releaseVersion, bundleDigest: baseline.packaged.digest, bundleFileCount: baseline.packaged.fileCount + fileCountDelta, capabilities }), { status: 200 })))
+    setMdbServerCredentialsForTests({ profile: { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit', ftpRemotePath: '', ftpUsername: 'deploy' }, secrets: { ftpPassword: 'password', maintenanceToken: 'maintenance' }, binding: { serverUrl: 'https://mdb.example.test', organizationId: 'org-1' } })
+    const confirm = vi.fn(async () => false)
+    setMdbServerConfirmationForTests(confirm)
+
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+
+    expect(result.errorCode).toBe('CANCELLED')
+    expect(confirm).toHaveBeenCalledOnce()
+    setMdbServerConfirmationForTests(undefined)
+    setMdbServerCredentialsForTests(undefined)
+    vi.unstubAllGlobals()
   })
 
   it('does not activate when migrations fail, and always cleans up', async () => {

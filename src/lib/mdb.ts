@@ -14,7 +14,8 @@ export const MDB_BACKUP_CAPABILITY = 'backup'
 
 const CAPABILITY_CACHE_MS = 60_000
 let capabilityCache: { serverUrl: string; expiresAt: number; capabilities: ReadonlySet<string> } | null = null
-let capabilityProbe: { serverUrl: string; promise: Promise<ReadonlySet<string>> } | null = null
+let capabilityProbe: { serverUrl: string; generation: number; promise: Promise<ReadonlySet<string>> } | null = null
+let capabilityGeneration = 0
 
 const STORAGE_KEY = 'blueplm-mdb-config'
 const CHECKOUTS_STORAGE_KEY = 'blueplm-mdb-checkouts'
@@ -428,8 +429,7 @@ export function saveMdbConfig(config: MdbConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
   if (normalized.accessToken) void window.electronAPI?.syncMdbBackupAuth?.(normalized.serverUrl, normalized.accessToken).catch(() => undefined)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
-  capabilityCache = null
-  capabilityProbe = null
+  invalidateMdbServerCapabilities()
   activateBackend('mdb')
   notify()
 }
@@ -437,8 +437,7 @@ export function saveMdbConfig(config: MdbConfig): void {
 export function clearMdbConfig(): void {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(LEGACY_STORAGE_KEY)
-  capabilityCache = null
-  capabilityProbe = null
+  invalidateMdbServerCapabilities()
   void window.electronAPI?.clearMdbBackupAuth?.().catch(() => undefined)
   notify()
 }
@@ -492,10 +491,13 @@ export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
   if (capabilityCache?.serverUrl === config.serverUrl && capabilityCache.expiresAt > now) {
     return capabilityCache.capabilities
   }
-  if (capabilityProbe?.serverUrl === config.serverUrl) return capabilityProbe.promise
+  if (capabilityProbe?.serverUrl === config.serverUrl && capabilityProbe.generation === capabilityGeneration) {
+    return capabilityProbe.promise
+  }
 
   const serverUrl = config.serverUrl
-  const promise = (async () => {
+  const generation = capabilityGeneration
+  const executeProbe = async (): Promise<ReadonlySet<string>> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15_000)
     try {
@@ -512,15 +514,30 @@ export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
           ? body.capabilities.filter((value): value is string => typeof value === 'string')
           : [],
       )
-      capabilityCache = { serverUrl, expiresAt: Date.now() + CAPABILITY_CACHE_MS, capabilities }
+      if (capabilityGeneration === generation && loadMdbConfig()?.serverUrl === serverUrl) {
+        capabilityCache = { serverUrl, expiresAt: Date.now() + CAPABILITY_CACHE_MS, capabilities }
+      }
       return capabilities
     } finally {
       clearTimeout(timeout)
-      if (capabilityProbe?.serverUrl === serverUrl) capabilityProbe = null
     }
-  })()
-  capabilityProbe = { serverUrl, promise }
+  }
+  const promise = executeProbe().finally(() => {
+    if (capabilityProbe?.promise === promise) capabilityProbe = null
+  })
+  capabilityProbe = { serverUrl, generation, promise }
   return promise
+}
+
+export function invalidateMdbServerCapabilities(): void {
+  capabilityGeneration += 1
+  capabilityCache = null
+  capabilityProbe = null
+}
+
+export async function refreshMdbServerCapabilities(): Promise<ReadonlySet<string>> {
+  invalidateMdbServerCapabilities()
+  return getMdbServerCapabilities()
 }
 
 export async function mdbServerSupportsBackup(): Promise<boolean> {

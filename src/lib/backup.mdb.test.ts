@@ -71,4 +71,27 @@ describe('backup MDB adapter', () => {
     ])
     expect(performMdbBackupDeviceAction).not.toHaveBeenCalled()
   })
+
+  it('unblocks backup immediately when a successful server update refreshes capabilities', async () => {
+    let supportsBackup = false
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/health')) {
+        return new Response(JSON.stringify({ ok: true, supabase: false, capabilities: supportsBackup ? ['backup'] : [] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ config: null }), { status: 200 })
+    })
+    const backup = await import('./backup')
+    const mdb = await import('./mdb')
+
+    await expect(backup.getBackupStatus('org-1')).resolves.toMatchObject({ updateRequired: true })
+    supportsBackup = true
+    await expect(mdb.refreshMdbServerCapabilities()).resolves.toEqual(new Set(['backup']))
+    expect((await backup.getBackupStatus('org-1')).updateRequired).not.toBe(true)
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://mdb.example.test/health',
+      'https://mdb.example.test/health',
+      'https://mdb.example.test/backup/config',
+    ])
+  })
 })

@@ -6,9 +6,53 @@ import type { IntegrationId } from '@/stores/types'
 
 // Polling interval for status checks (5 seconds)
 const POLLING_INTERVAL_MS = 5000
+const BACKUP_CAPABILITY_RETRY_MS = 60_000
 
 // Initial delay before first check (wait for organization to settle)
 const INITIAL_DELAY_MS = 500
+
+interface IntegrationStatusPollingOptions {
+  check: (includeBackup: boolean) => Promise<boolean>
+  isOnline: () => boolean
+  pollIntervalMs?: number
+  capabilityRetryMs?: number
+}
+
+export function startIntegrationStatusPolling({
+  check,
+  isOnline,
+  pollIntervalMs = POLLING_INTERVAL_MS,
+  capabilityRetryMs = BACKUP_CAPABILITY_RETRY_MS,
+}: IntegrationStatusPollingOptions) {
+  let backupUpdateRequired = false
+  let lastBackupCheckAt = Number.NEGATIVE_INFINITY
+  let checkInFlight = false
+
+  const checkNow = async (forceBackup = false): Promise<boolean> => {
+    if (!isOnline() || checkInFlight) return backupUpdateRequired
+    const now = Date.now()
+    const includeBackup = forceBackup || !backupUpdateRequired || now - lastBackupCheckAt >= capabilityRetryMs
+    if (includeBackup) lastBackupCheckAt = now
+    checkInFlight = true
+    try {
+      const nextUpdateRequired = await check(includeBackup)
+      if (includeBackup) backupUpdateRequired = nextUpdateRequired
+      return backupUpdateRequired
+    } finally {
+      checkInFlight = false
+    }
+  }
+
+  const interval = setInterval(() => { void checkNow() }, pollIntervalMs)
+  return {
+    checkNow,
+    setBackupUpdateRequired(value: boolean) {
+      backupUpdateRequired = value
+      if (value) lastBackupCheckAt = Date.now()
+    },
+    stop() { clearInterval(interval) },
+  }
+}
 
 /**
  * Orchestration hook for integration status checks
@@ -26,7 +70,8 @@ export function useIntegrationStatus() {
   // Track if we've done initial check
   const hasInitialCheckRef = useRef(false)
   const isOnlineRef = useRef(navigator.onLine)
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingControllerRef = useRef<ReturnType<typeof startIntegrationStatusPolling> | null>(null)
+  const backupUpdateRequiredRef = useRef(false)
 
   // Subscribe to relevant store values
   const organization = usePDMStore((state) => state.organization)
@@ -40,23 +85,24 @@ export function useIntegrationStatus() {
   const resetIntegrationStatuses = usePDMStore.getState().resetIntegrationStatuses
 
   // Check backup status (backup is separate from integrations slice)
-  const checkBackup = useCallback(async () => {
+  const checkBackup = useCallback(async (): Promise<boolean> => {
     const currentOrg = usePDMStore.getState().organization
     const connectedVaults = usePDMStore.getState().connectedVaults
 
     if (!currentOrg?.id) {
       setBackupStatus('not-configured')
-      return
+      return false
     }
 
     // No vaults connected = nothing to back up, show warning (yellow)
     if (connectedVaults.length === 0) {
       setBackupStatus('partial')
-      return
+      return false
     }
 
     try {
       const status = await getBackupStatus(currentOrg.id)
+      const updateRequired = status.updateRequired === true
 
       if (!status.isConfigured) {
         setBackupStatus('partial')
@@ -67,33 +113,40 @@ export function useIntegrationStatus() {
       } else {
         setBackupStatus('partial')
       }
+      return updateRequired
     } catch (error) {
       log.warn('[IntegrationStatus]', 'Failed to check backup status', { error: error })
       setBackupStatus('not-configured')
+      return false
     }
   }, [setBackupStatus])
 
   // Main check function - delegates to slice for integration checks
   // silent=true skips the 'checking' visual state to avoid UI flickering during polling
   const checkAllIntegrations = useCallback(
-    async (silent = false) => {
+    async (silent = false, includeBackup = true): Promise<boolean> => {
       const currentOrg = usePDMStore.getState().organization
 
       // Don't check if organization isn't loaded yet
       if (!currentOrg?.id) {
-        return
+        return backupUpdateRequiredRef.current
       }
 
       // Don't check in offline mode
       if (usePDMStore.getState().isOfflineMode) {
-        return
+        return backupUpdateRequiredRef.current
       }
 
       // Delegate to slice for all integration checks
       await usePDMStore.getState().checkAllIntegrations(silent)
 
       // Check backup separately (not in integrations slice)
-      checkBackup()
+      if (includeBackup) {
+        const updateRequired = await checkBackup()
+        backupUpdateRequiredRef.current = updateRequired
+        pollingControllerRef.current?.setBackupUpdateRequired(updateRequired)
+      }
+      return backupUpdateRequiredRef.current
     },
     [checkBackup],
   )
@@ -151,27 +204,19 @@ export function useIntegrationStatus() {
   useEffect(() => {
     // Only poll if organization is loaded and we're online
     if (!organization?.id || isOfflineMode) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
       return
     }
 
     // Set up polling with silent mode to avoid UI flickering
-    pollIntervalRef.current = setInterval(() => {
-      // Only poll if browser is online
-      if (navigator.onLine) {
-        // Silent check - don't flash 'checking' state during background polling
-        checkAllIntegrations(true)
-      }
-    }, POLLING_INTERVAL_MS)
+    const controller = startIntegrationStatusPolling({
+      check: (includeBackup) => checkAllIntegrations(true, includeBackup),
+      isOnline: () => navigator.onLine,
+    })
+    pollingControllerRef.current = controller
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
+      controller.stop()
+      if (pollingControllerRef.current === controller) pollingControllerRef.current = null
     }
   }, [organization?.id, isOfflineMode, checkAllIntegrations])
 
@@ -185,15 +230,6 @@ export function useIntegrationStatus() {
     // Delegate to slice's individual check
     usePDMStore.getState().checkIntegration('solidworks')
   }, [solidworksIntegrationEnabled, solidworksPath, organization?.id])
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
-  }, [])
 
   // Return function to manually trigger a check
   return {

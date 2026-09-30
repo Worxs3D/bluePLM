@@ -33,12 +33,13 @@ export interface MdbServerHealth {
   bundleReleaseVersion: string | null
   bundleDigest: string | null
   bundleFileCount: number | null
+  capabilities: string[]
 }
 
 export interface MdbServerUpdateInspection {
   status: Exclude<MdbServerUpdateStatus, 'updating' | 'rollback' | 'failure'>
   packaged: MdbBundleManifest
-  deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount'> | null
+  deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount' | 'capabilities'> | null
 }
 
 export interface MdbServerUpdateRequest {
@@ -102,7 +103,7 @@ async function requireNativeConfirmation(kind: ConfirmationKind, locale?: string
 
 function deploymentIdentity(inspection: MdbServerUpdateInspection): string {
   const deployed = inspection.deployed
-  return deployed ? JSON.stringify([deployed.bundleVersion, deployed.bundleReleaseVersion, deployed.bundleDigest, deployed.bundleFileCount]) : 'none'
+  return deployed ? JSON.stringify([deployed.bundleVersion, deployed.bundleReleaseVersion, deployed.bundleDigest, deployed.bundleFileCount, deployed.capabilities]) : 'none'
 }
 
 export function credentialBindingMatches(stored: MdbServerCredentialBinding | null, requested: MdbServerCredentialBinding): boolean {
@@ -124,6 +125,7 @@ interface HealthResponse {
   bundleReleaseVersion?: unknown
   bundleDigest?: unknown
   bundleFileCount?: unknown
+  capabilities?: unknown
 }
 
 function safeServerUrl(raw: string): URL {
@@ -146,6 +148,7 @@ function normalizeHealth(body: HealthResponse): MdbServerHealth {
     bundleReleaseVersion: typeof body.bundleReleaseVersion === 'string' ? body.bundleReleaseVersion : null,
     bundleDigest: typeof body.bundleDigest === 'string' && /^[a-f0-9]{64}$/.test(body.bundleDigest) ? body.bundleDigest : null,
     bundleFileCount: Number.isInteger(body.bundleFileCount) ? Number(body.bundleFileCount) : null,
+    capabilities: Array.isArray(body.capabilities) ? body.capabilities.filter((value): value is string => typeof value === 'string').sort() : [],
   }
 }
 
@@ -186,16 +189,14 @@ function compareReleaseVersions(left: string, right: string): number | null {
   return 0
 }
 
-export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount'> | null): MdbServerUpdateInspection['status'] {
+export function classifyMdbServerUpdate(packaged: MdbBundleManifest, deployed: Pick<MdbServerHealth, 'bundleVersion' | 'bundleReleaseVersion' | 'bundleDigest' | 'bundleFileCount' | 'capabilities'> | null): MdbServerUpdateInspection['status'] {
   if (!deployed?.bundleDigest || deployed.bundleVersion !== 1 || !deployed.bundleReleaseVersion) return 'unknown'
-  if (deployed.bundleDigest === packaged.digest) return 'current'
   const comparison = compareReleaseVersions(packaged.releaseVersion, deployed.bundleReleaseVersion)
   if (comparison === null) return 'unknown'
-  return comparison > 0 ? 'update-available' : comparison < 0 ? 'server-newer' : 'same-version-different'
-}
-
-export function isMdbServerUpdateRequired(status: MdbServerUpdateInspection['status']): boolean {
-  return status === 'update-available' || status === 'same-version-different'
+  if (comparison > 0) return 'update-available'
+  if (comparison < 0) return 'server-newer'
+  const deploymentMatches = deployed.bundleDigest === packaged.digest && deployed.bundleFileCount === packaged.fileCount && deployed.capabilities.includes('backup')
+  return deploymentMatches ? 'current' : 'same-version-different'
 }
 
 export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServerUpdateInspection> {
@@ -207,6 +208,7 @@ export async function inspectMdbServerUpdate(serverUrl: string): Promise<MdbServ
       bundleReleaseVersion: health.bundleReleaseVersion,
       bundleDigest: health.bundleDigest,
       bundleFileCount: health.bundleFileCount,
+      capabilities: health.capabilities,
     }
     return { status: classifyMdbServerUpdate(packaged, deployed), packaged, deployed }
   } catch {
@@ -358,7 +360,7 @@ export async function applyMdbServerUpdate(request: MdbServerUpdateRequest): Pro
       },
       verifyHealth: async () => {
         const health = await fetchHealth(request.serverUrl)
-        return health.bundleDigest === stage.manifest.digest && health.bundleVersion === stage.manifest.version && health.bundleReleaseVersion === stage.manifest.releaseVersion
+        return health.bundleDigest === stage.manifest.digest && health.bundleVersion === stage.manifest.version && health.bundleReleaseVersion === stage.manifest.releaseVersion && health.bundleFileCount === stage.manifest.fileCount && health.capabilities.includes('backup')
       },
       finalize: (current) => finalizeRemoteDeployment(client!, current),
       rollback: (current) => rollbackRemoteDeployment(client!, current),
