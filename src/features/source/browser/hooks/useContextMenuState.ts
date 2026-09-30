@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { notifyNativePreviewContextMenu } from '@/features/source/details/components/nativePreviewOverlay'
 
@@ -102,7 +102,7 @@ export function useContextMenuState(): UseContextMenuStateReturn {
   const ignoreSubmenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const stateSubmenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     notifyNativePreviewContextMenu(Boolean(
       contextMenu || emptyContextMenu || columnContextMenu || configContextMenu || refRowContextMenu,
     ))
