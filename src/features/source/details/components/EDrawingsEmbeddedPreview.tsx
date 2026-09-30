@@ -27,12 +27,13 @@ export function EDrawingsEmbeddedPreview({
 }: EDrawingsEmbeddedPreviewProps) {
   const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
+  const contextMenuOpen = useRef(false)
+  const previewReady = useRef(false)
   const [state, setState] = useState<PreviewState>('loading')
 
   useEffect(() => {
     let disposed = false
     let observer: ResizeObserver | undefined
-    let hiddenForContextMenu = false
 
     const destroy = () => window.electronAPI?.destroyEDrawingsPreview().catch(() => undefined)
     const syncBounds = async () => {
@@ -48,14 +49,16 @@ export function EDrawingsEmbeddedPreview({
     }
 
     const handleContextMenuOpen = () => {
-      if (disposed || hiddenForContextMenu) return
-      hiddenForContextMenu = true
+      contextMenuOpen.current = true
+      if (disposed || !previewReady.current) return
       void window.electronAPI?.hideEDrawingsPreview()
     }
     const handleContextMenuClose = () => {
-      if (disposed || !hiddenForContextMenu) return
-      hiddenForContextMenu = false
-      void syncBounds().then(() => window.electronAPI?.showEDrawingsPreview())
+      contextMenuOpen.current = false
+      if (disposed || !previewReady.current) return
+      void syncBounds().then(() => {
+        if (!contextMenuOpen.current) void window.electronAPI?.showEDrawingsPreview()
+      })
     }
     const handleOutsideContextMenu = (event: PointerEvent) => {
       if ((event.target as Element | null)?.closest?.('.context-menu')) return
@@ -90,15 +93,20 @@ export function EDrawingsEmbeddedPreview({
       await syncBounds()
       await api.showEDrawingsPreview()
       if (disposed) return
+      previewReady.current = true
+      if (contextMenuOpen.current) await api.hideEDrawingsPreview()
       observer = new ResizeObserver(() => void syncBounds())
       if (host.current) observer.observe(host.current)
       window.addEventListener('resize', syncBounds)
-      window.addEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)
-      window.addEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
-      document.addEventListener('pointerdown', handleOutsideContextMenu)
-      document.addEventListener('keydown', handleEscape)
       setState('ready')
     }
+
+    // Register before startup so a menu opened while the native child window is
+    // being created is applied as soon as the preview becomes ready.
+    window.addEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)
+    window.addEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
+    document.addEventListener('pointerdown', handleOutsideContextMenu)
+    document.addEventListener('keydown', handleEscape)
 
     void start().catch((error) => {
       log.error('[EDrawingsPreview]', 'Failed to start embedded preview', {
@@ -110,6 +118,7 @@ export function EDrawingsEmbeddedPreview({
     })
     return () => {
       disposed = true
+      previewReady.current = false
       observer?.disconnect()
       window.removeEventListener('resize', syncBounds)
       window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)

@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
 import type { ContextMenuState, EmptyContextMenuState } from './useContextMenuState'
 import { logContextMenu } from '@/lib/userActionLogger'
-import { notifyNativePreviewContextMenu } from '@/features/source/details/components/nativePreviewOverlay'
 
 export interface ContextMenuHandlersDeps {
   // Selection state
@@ -32,7 +31,6 @@ export function useContextMenuHandlers(
     (e: React.MouseEvent, file: LocalFile) => {
       e.preventDefault()
       e.stopPropagation()
-      notifyNativePreviewContextMenu(true)
       logContextMenu('Opened file context menu', file.relativePath)
       setEmptyContextMenu(null)
 
@@ -56,7 +54,6 @@ export function useContextMenuHandlers(
       if (target.closest('tr') && target.closest('tbody')) return
 
       e.preventDefault()
-      notifyNativePreviewContextMenu(true)
       setContextMenu(null)
       // Move empty context menu to new position (works even if already open)
       setEmptyContextMenu({ x: e.clientX, y: e.clientY })
