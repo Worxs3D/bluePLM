@@ -41,9 +41,35 @@ describe('MDB capability cache', () => {
     const newProbe = mdb.getMdbServerCapabilities()
     await expect(newProbe).resolves.toEqual(new Set(['backup']))
     resolveOld(new Response(JSON.stringify({ supabase: false, capabilities: [] }), { status: 200 }))
-    await expect(oldProbe).resolves.toEqual(new Set())
+    await expect(oldProbe).rejects.toThrow('MDB_SERVER_UPDATE_REQUIRED')
 
     await expect(mdb.getMdbServerCapabilities()).resolves.toEqual(new Set(['backup']))
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('never lets an old server capability probe authorize a backup request on a new server', async () => {
+    let resolveOld!: (response: Response) => void
+    const oldResponse = new Promise<Response>((resolve) => {
+      resolveOld = resolve
+    })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === 'https://mdb.example.test/health') return oldResponse
+      if (url === 'https://other.example.test/backup/config') {
+        return new Response(JSON.stringify({ config: null }), { status: 200 })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const mdb = await import('./mdb')
+    mdb.saveMdbConfig({ version: 1, serverUrl: 'https://mdb.example.test', accessToken: 'fixture-token-a' })
+
+    const pendingBackupRequest = mdb.getMdbBackupConfig()
+    mdb.saveMdbConfig({ version: 1, serverUrl: 'https://other.example.test', accessToken: 'fixture-token-b' })
+    resolveOld(new Response(JSON.stringify({ supabase: false, capabilities: ['backup'] }), { status: 200 }))
+
+    await expect(pendingBackupRequest).rejects.toThrow('MDB_SERVER_UPDATE_REQUIRED')
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://mdb.example.test/health',
+    ])
   })
 })

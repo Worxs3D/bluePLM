@@ -451,8 +451,8 @@ export function onMdbAuthChange(listener: AuthListener): () => void {
   return () => listeners.delete(listener)
 }
 
-async function request<T>(path: string, init: RequestInit = {}, needsAuth = true, machineProof?: string): Promise<T> {
-  const config = loadMdbConfig()
+async function request<T>(path: string, init: RequestInit = {}, needsAuth = true, machineProof?: string, configSnapshot?: MdbConfig): Promise<T> {
+  const config = configSnapshot ?? loadMdbConfig()
   if (!config) throw new Error('MariaDB backend is not configured.')
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
@@ -469,7 +469,10 @@ async function request<T>(path: string, init: RequestInit = {}, needsAuth = true
     const body = await response.json().catch(() => ({})) as T & { error?: string; message?: string }
     if (!response.ok) {
       if (needsAuth && response.status === 401 && config.accessToken) {
-        saveMdbConfig({ ...config, accessToken: undefined })
+        const currentConfig = loadMdbConfig()
+        if (currentConfig?.serverUrl === config.serverUrl && currentConfig.accessToken === config.accessToken) {
+          saveMdbConfig({ ...config, accessToken: undefined })
+        }
       }
       throw new Error(body.message ?? body.error ?? `Backend request failed (${response.status}).`)
     }
@@ -484,9 +487,7 @@ async function request<T>(path: string, init: RequestInit = {}, needsAuth = true
   }
 }
 
-export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
-  const config = loadMdbConfig()
-  if (!config) throw new Error('MariaDB backend is not configured.')
+async function getMdbServerCapabilitiesForConfig(config: MdbConfig): Promise<ReadonlySet<string>> {
   const now = Date.now()
   if (capabilityCache?.serverUrl === config.serverUrl && capabilityCache.expiresAt > now) {
     return capabilityCache.capabilities
@@ -514,9 +515,10 @@ export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
           ? body.capabilities.filter((value): value is string => typeof value === 'string')
           : [],
       )
-      if (capabilityGeneration === generation && loadMdbConfig()?.serverUrl === serverUrl) {
-        capabilityCache = { serverUrl, expiresAt: Date.now() + CAPABILITY_CACHE_MS, capabilities }
+      if (capabilityGeneration !== generation || loadMdbConfig()?.serverUrl !== serverUrl) {
+        throw new MdbServerUpdateRequiredError()
       }
+      capabilityCache = { serverUrl, expiresAt: Date.now() + CAPABILITY_CACHE_MS, capabilities }
       return capabilities
     } finally {
       clearTimeout(timeout)
@@ -527,6 +529,12 @@ export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
   })
   capabilityProbe = { serverUrl, generation, promise }
   return promise
+}
+
+export async function getMdbServerCapabilities(): Promise<ReadonlySet<string>> {
+  const config = loadMdbConfig()
+  if (!config) throw new Error('MariaDB backend is not configured.')
+  return getMdbServerCapabilitiesForConfig(config)
 }
 
 export function invalidateMdbServerCapabilities(): void {
@@ -544,8 +552,24 @@ export async function mdbServerSupportsBackup(): Promise<boolean> {
   return (await getMdbServerCapabilities()).has(MDB_BACKUP_CAPABILITY)
 }
 
-async function assertMdbBackupCapability(): Promise<void> {
-  if (!await mdbServerSupportsBackup()) throw new MdbServerUpdateRequiredError()
+async function assertMdbBackupCapability(config?: MdbConfig): Promise<void> {
+  const snapshot = config ?? loadMdbConfig()
+  if (!snapshot) throw new Error('MariaDB backend is not configured.')
+  const generation = capabilityGeneration
+  const capabilities = await getMdbServerCapabilitiesForConfig(snapshot)
+  if (capabilityGeneration !== generation || loadMdbConfig()?.serverUrl !== snapshot.serverUrl) {
+    throw new MdbServerUpdateRequiredError()
+  }
+  if (!capabilities.has(MDB_BACKUP_CAPABILITY)) {
+    throw new MdbServerUpdateRequiredError()
+  }
+}
+
+async function backupRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const config = loadMdbConfig()
+  if (!config) throw new Error('MariaDB backend is not configured.')
+  await assertMdbBackupCapability(config)
+  return request<T>(path, init, true, undefined, config)
 }
 
 export async function validateMdbConfig(serverUrl: string): Promise<{ valid: boolean; error?: string }> {
@@ -732,13 +756,11 @@ export async function setMdbOrganizationSetting<T extends object>(
 
 /** MDB backup control-plane routes. Encrypted values remain opaque to the server. */
 export async function getMdbBackupConfig(): Promise<MdbBackupConfig | null> {
-  await assertMdbBackupCapability()
-  return (await request<{ config: MdbBackupConfig | null }>('/backup/config')).config
+  return (await backupRequest<{ config: MdbBackupConfig | null }>('/backup/config')).config
 }
 
 export async function setMdbBackupConfig(value: Partial<MdbBackupConfig>): Promise<MdbBackupConfig> {
-  await assertMdbBackupCapability()
-  return (await request<{ config: MdbBackupConfig }>('/backup/config', {
+  return (await backupRequest<{ config: MdbBackupConfig }>('/backup/config', {
     method: 'PUT',
     body: JSON.stringify(value),
   })).config
@@ -751,13 +773,11 @@ export async function designateMdbBackupMachine(value: {
   userEmail: string
   publicKey: string
 }): Promise<void> {
-  await assertMdbBackupCapability()
-  await request('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
+  await backupRequest('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
 }
 
 export async function clearMdbBackupMachine(): Promise<void> {
-  await assertMdbBackupCapability()
-  await request('/backup/designate', { method: 'DELETE' })
+  await backupRequest('/backup/designate', { method: 'DELETE' })
 }
 
 export async function heartbeatMdbBackupMachine(): Promise<boolean> {
@@ -768,8 +788,7 @@ export async function heartbeatMdbBackupMachine(): Promise<boolean> {
 
 /** The server attributes this user action from the authenticated principal. */
 export async function requestMdbBackup(): Promise<void> {
-  await assertMdbBackupCapability()
-  await request('/backup/request', { method: 'POST' })
+  await backupRequest('/backup/request', { method: 'POST' })
 }
 
 export async function markMdbBackupStarted(): Promise<void> {
