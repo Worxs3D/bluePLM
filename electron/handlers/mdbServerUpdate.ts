@@ -292,6 +292,7 @@ export async function executeMdbServerUpdatePlan(ops: MdbServerUpdatePlanOperati
     await ops.finalize(activation)
     return { success: true, status: 'current' }
   } catch (error) {
+    if (error instanceof RemoteRollbackError) preserveEvidence = true
     if (activation && !rollbackAttempted) {
       rollbackAttempted = true
       try { await ops.rollback(activation) } catch { preserveEvidence = true; return { success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' } }

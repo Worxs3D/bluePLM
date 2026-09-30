@@ -6,6 +6,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('basic-ftp', () => ({ Client: class {} }))
 import { applyMdbServerUpdate, assertOwnerOrAdmin, classifyMdbServerUpdate, credentialBindingMatches, credentialClearOperationKind, credentialOperationKind, executeMdbServerUpdatePlan, setMdbServerConfirmationForTests, setMdbServerCredentialsForTests } from './mdbServerUpdate'
+import { RemoteRollbackError } from './mdbInstaller'
 
 const activation = { targetRoot: '/live', stageRoot: '/stage', backupRoot: '/backup', existing: [], promoted: [] }
 
@@ -46,6 +47,48 @@ describe('MDB server update seam', () => {
     const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
     expect(result.errorCode).toBe('SERVER_CHANGED')
     expect(healthCalls).toBe(2)
+    setMdbServerConfirmationForTests(undefined)
+    setMdbServerCredentialsForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects member apply before native confirmation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'member' } }), { status: 200 })))
+    const confirm = vi.fn(async () => true)
+    setMdbServerConfirmationForTests(confirm)
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+    expect(result.errorCode).toBe('NOT_AUTHORIZED')
+    expect(confirm).not.toHaveBeenCalled()
+    setMdbServerConfirmationForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
+  it.each([
+    ['server-newer', '4.4.5', 'b'],
+    ['same-version-different', '4.4.4', 'b'],
+  ] as const)('refuses %s before confirmation', async (_status, releaseVersion, digestChar) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
+      ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true, bundleVersion: 1, bundleReleaseVersion: releaseVersion, bundleDigest: digestChar.repeat(64), bundleFileCount: 1 }), { status: 200 })))
+    const confirm = vi.fn(async () => true)
+    setMdbServerConfirmationForTests(confirm)
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+    expect(['SERVER_NEWER', 'VERSION_CONFLICT']).toContain(result.errorCode)
+    expect(confirm).not.toHaveBeenCalled()
+    setMdbServerConfirmationForTests(undefined)
+    vi.unstubAllGlobals()
+  })
+
+  it('requires confirmation for a legacy unknown deployment with matching credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/auth/me')
+      ? new Response(JSON.stringify({ user: { organizationId: 'org-1', role: 'admin' } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true }), { status: 200 })))
+    setMdbServerCredentialsForTests({ profile: { ftpUrl: 'ftps://example.invalid:21', ftpSecurity: 'explicit', ftpRemotePath: '', ftpUsername: 'deploy' }, secrets: { ftpPassword: 'password', maintenanceToken: 'maintenance' }, binding: { serverUrl: 'https://mdb.example.test', organizationId: 'org-1' } })
+    const confirm = vi.fn(async () => false)
+    setMdbServerConfirmationForTests(confirm)
+    const result = await applyMdbServerUpdate({ serverUrl: 'https://mdb.example.test', sessionToken: 'session', organizationId: 'org-1', locale: 'en' })
+    expect(result.errorCode).toBe('CANCELLED')
+    expect(confirm).toHaveBeenCalledOnce()
     setMdbServerConfirmationForTests(undefined)
     setMdbServerCredentialsForTests(undefined)
     vi.unstubAllGlobals()
@@ -109,6 +152,20 @@ describe('MDB server update seam', () => {
       cleanup,
     })
     expect(result).toMatchObject({ success: false, status: 'failure', errorCode: 'ROLLBACK_FAILED' })
+    expect(cleanup).not.toHaveBeenCalled()
+  })
+
+  it('preserves staged evidence when activation rollback fails before activation returns', async () => {
+    const cleanup = vi.fn(async () => undefined)
+    const result = await executeMdbServerUpdatePlan({
+      migrate: async () => undefined,
+      activate: async () => { throw new RemoteRollbackError('restore failed') },
+      verifyHealth: async () => true,
+      finalize: async () => undefined,
+      rollback: async () => undefined,
+      cleanup,
+    })
+    expect(result).toMatchObject({ success: false, errorCode: 'ROLLBACK_FAILED' })
     expect(cleanup).not.toHaveBeenCalled()
   })
 
