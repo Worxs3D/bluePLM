@@ -5,7 +5,6 @@ import {
   clearMdbBackupMachine,
   designateMdbBackupMachine,
   getMdbBackupConfig,
-  getMdbBackupRuntimeConfig,
   heartbeatMdbBackupMachine,
   markMdbBackupComplete,
   markMdbBackupStarted,
@@ -105,7 +104,6 @@ function mapMdbBackupConfig(value: Awaited<ReturnType<typeof getMdbBackupConfig>
 async function resolveRuntimeConfig(config: BackupConfig): Promise<BackupConfig> {
   if (isBackendActive('supabase') || (config.access_key_encrypted && config.secret_key_encrypted && config.restic_password_encrypted)) return config
   throw new Error('Machine authorization is unavailable until a signed device challenge is established.')
-  return runtime ? mapMdbBackupConfig(runtime)! : config
 }
 
 // ============================================
@@ -211,7 +209,9 @@ export async function designateThisMachine(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isBackendActive('supabase')) {
     try {
-      throw new Error('Machine authorization is unavailable until a signed device challenge is established.')
+      const publicKey = await window.electronAPI?.getBackupDevicePublicKey?.()
+      if (!publicKey) throw new Error('Device key unavailable')
+      await designateMdbBackupMachine({ machineId: await getMachineId(), machineName: await getMachineName(), platform: await getPlatform(), userEmail, publicKey })
       return { success: true }
     } catch (error) {
       log.error('[Backup]', 'MDB backup machine designation failed', { error: error instanceof Error ? error.message : 'unknown' })

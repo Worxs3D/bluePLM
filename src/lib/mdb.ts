@@ -664,7 +664,7 @@ export async function designateMdbBackupMachine(value: {
   machineName: string
   platform: string
   userEmail: string
-  machineProof: string
+  publicKey: string
 }): Promise<void> {
   await request('/backup/designate', { method: 'POST', body: JSON.stringify(value) })
 }
