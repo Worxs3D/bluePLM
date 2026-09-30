@@ -49,4 +49,57 @@ describe('native preview context-menu seam', () => {
 
     expect(calls).toEqual(['hide'])
   })
+
+  it('does not show when the menu reopens during asynchronous preparation', async () => {
+    let resolvePreparation!: () => void
+    const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })
+    const show = vi.fn()
+    const hide = vi.fn()
+    const controller = createNativePreviewVisibilityController({
+      prepareShow: () => preparation,
+      hide,
+      show,
+    })
+
+    controller.setReady(true)
+    controller.setContextMenuOpen(true)
+    resolvePreparation()
+    await Promise.resolve()
+
+    expect(show).not.toHaveBeenCalled()
+    expect(hide).toHaveBeenCalled()
+  })
+
+  it('invalidates preparation when the preview is disposed', async () => {
+    let resolvePreparation!: () => void
+    const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({
+      prepareShow: () => preparation,
+      hide: vi.fn(),
+      show,
+    })
+
+    controller.setReady(true)
+    controller.setReady(false)
+    resolvePreparation()
+    await Promise.resolve()
+
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('hides after a stale show promise resolves', async () => {
+    let resolveShow!: () => void
+    const showPromise = new Promise<void>((resolve) => { resolveShow = resolve })
+    const show = vi.fn(() => showPromise)
+    const hide = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setReady(true)
+    controller.setContextMenuOpen(true)
+    resolveShow()
+    await Promise.resolve()
+
+    expect(hide).toHaveBeenCalled()
+  })
 })
