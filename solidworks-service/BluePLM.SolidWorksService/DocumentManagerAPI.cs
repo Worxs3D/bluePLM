@@ -1587,7 +1587,7 @@ namespace BluePLM.SolidWorksService
                 if (doc == null)
                 {
                     Console.Error.WriteLine($"[DM-API] SetCustomProperties: Failed to open file for writing: {filePath}, error={openError}");
-                    return new CommandResult { Success = false, Error = $"Failed to open file for writing: error code {openError}" };
+                    return WriteOpenFailed(openError);
                 }
 
                 dynamic dynDoc = doc;
@@ -1725,7 +1725,7 @@ namespace BluePLM.SolidWorksService
             {
                 doc = OpenDocumentForWrite(filePath!, out var openError);
                 if (doc == null)
-                    return new CommandResult { Success = false, Error = $"Failed to open file for writing: error code {openError}" };
+                    return WriteOpenFailed(openError);
 
                 dynamic dynDoc = doc;
                 object owner = doc;
@@ -1852,7 +1852,7 @@ namespace BluePLM.SolidWorksService
                 if (doc == null)
                 {
                     Console.Error.WriteLine($"[DM-API] SetCustomPropertiesBatch: Failed to open file for writing: {filePath}, error={openError}");
-                    return new CommandResult { Success = false, Error = $"Failed to open file for writing: error code {openError}" };
+                    return WriteOpenFailed(openError);
                 }
 
                 dynamic dynDoc = doc;
@@ -2720,6 +2720,26 @@ namespace BluePLM.SolidWorksService
             SwDmDocumentOpenError.FutureVersion => "file was saved by a newer SolidWorks version than the installed Document Manager",
             _ => $"error code {error}"
         };
+
+        /// <summary>
+        /// The wire code for a write Document Manager refused because the file is read-only: the
+        /// attribute is set, or another SolidWorks session holds the file. SolidWorks cannot save
+        /// that file either, so Program.cs returns this instead of falling back to COM.
+        /// </summary>
+        public const string FileReadOnlyCode = "DM_FILE_READ_ONLY";
+
+        private static CommandResult WriteOpenFailed(int openError)
+        {
+            bool readOnly = (SwDmDocumentOpenError)openError == SwDmDocumentOpenError.FileReadOnly;
+            return new CommandResult
+            {
+                Success = false,
+                Error = readOnly
+                    ? "Failed to open file for writing: the file is read-only on disk or open in another SolidWorks session"
+                    : $"Failed to open file for writing: error code {openError}",
+                ErrorCode = readOnly ? FileReadOnlyCode : null,
+            };
+        }
 
         /// <summary>
         /// Describe a SwDmDocumentSaveError code.

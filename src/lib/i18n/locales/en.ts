@@ -27,6 +27,8 @@ export const en: TranslationDict = {
     madeWritable: '{{count}} file(s) were already checked out and are now writable.',
     solidWorksStillReadonly:
       'Checked out and writable on disk, but SolidWorks still has the file open as read-only. In SolidWorks, use Edit → Read-Only Mode, or close and reopen the file.',
+    syncBlocked:
+      'Read-only on disk, so no metadata was written to: {{names}}. Check the file out again to make it writable.',
   },
   // Item Browser expandable sections
   itemBrowser: {

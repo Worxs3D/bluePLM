@@ -19,6 +19,8 @@ export const es: TranslationDict = {
     madeWritable: '{{count}} archivo(s) ya estaban extraídos y ahora se pueden modificar.',
     solidWorksStillReadonly:
       'Extraído y modificable en el disco, pero SolidWorks sigue teniendo el archivo abierto como solo lectura. En SolidWorks: Edición → Solo lectura, o cierre y vuelva a abrir el archivo.',
+    syncBlocked:
+      'Solo lectura en el disco, así que no se escribieron metadatos en: {{names}}. Vuelva a extraer el archivo para hacerlo modificable.',
   },
   common: {
     save: 'Guardar',

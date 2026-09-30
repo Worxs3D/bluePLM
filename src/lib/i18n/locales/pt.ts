@@ -19,6 +19,8 @@ export const pt: TranslationDict = {
     madeWritable: '{{count}} ficheiro(s) já estavam em checkout e agora podem ser gravados.',
     solidWorksStillReadonly:
       'Em checkout e gravável no disco, mas o SolidWorks ainda tem o ficheiro aberto como só de leitura. No SolidWorks: Editar → Só de leitura, ou feche e volte a abrir o ficheiro.',
+    syncBlocked:
+      'Só de leitura no disco, por isso não foram escritos metadados em: {{names}}. Faça checkout do ficheiro novamente para o tornar gravável.',
   },
   common: {
     save: 'Guardar',

@@ -19,6 +19,7 @@ export const zhCN: TranslationDict = {
     madeWritable: '{{count}} 个文件此前已签出，现在可以写入。',
     solidWorksStillReadonly:
       '已签出且磁盘上可写，但 SolidWorks 仍以只读方式打开该文件。在 SolidWorks 中：编辑 → 只读模式，或关闭后重新打开该文件。',
+    syncBlocked: '磁盘上为只读，因此未向以下文件写入元数据：{{names}}。请重新签出该文件使其可写。',
   },
   common: {
     save: '保存',

@@ -19,6 +19,7 @@ export const zhTW: TranslationDict = {
     madeWritable: '{{count}} 個檔案先前已簽出，現在可以寫入。',
     solidWorksStillReadonly:
       '已簽出且磁碟上可寫，但 SOLIDWORKS 仍以唯讀方式開啟該檔案。在 SOLIDWORKS 中：編輯 → 唯讀模式，或關閉後重新開啟該檔案。',
+    syncBlocked: '磁碟上為唯讀，因此未向以下檔案寫入中繼資料：{{names}}。請重新簽出該檔案使其可寫。',
   },
   common: {
     save: '儲存',

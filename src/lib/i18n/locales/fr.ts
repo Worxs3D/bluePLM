@@ -19,6 +19,8 @@ export const fr: TranslationDict = {
     madeWritable: '{{count}} fichier(s) étaient déjà récupérés et sont maintenant modifiables.',
     solidWorksStillReadonly:
       'Récupéré et modifiable sur le disque, mais SolidWorks a encore le fichier ouvert en lecture seule. Dans SolidWorks : Edition → Lecture seule, ou fermez et rouvrez le fichier.',
+    syncBlocked:
+      'En lecture seule sur le disque, aucune métadonnée n’a donc été écrite dans : {{names}}. Récupérez à nouveau le fichier pour le rendre modifiable.',
   },
   common: {
     save: 'Enregistrer',

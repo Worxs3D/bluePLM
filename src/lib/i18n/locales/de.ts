@@ -20,6 +20,8 @@ export const de: TranslationDict = {
     madeWritable: '{{count}} Datei(en) waren bereits ausgecheckt und sind jetzt beschreibbar.',
     solidWorksStillReadonly:
       'Ausgecheckt und auf dem Datenträger beschreibbar, aber SolidWorks hat die Datei noch schreibgeschützt geöffnet. In SolidWorks: Bearbeiten → Schreibgeschützt, oder die Datei schließen und erneut öffnen.',
+    syncBlocked:
+      'Auf dem Datenträger schreibgeschützt, daher wurden keine Metadaten geschrieben in: {{names}}. Checken Sie die Datei erneut aus, um sie beschreibbar zu machen.',
   },
   common: {
     save: 'Speichern',
