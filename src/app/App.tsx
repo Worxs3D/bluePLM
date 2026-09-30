@@ -14,6 +14,7 @@ import { executeTerminalCommand } from '@/lib/commands/parser'
 import { logUserAction, logExplorer } from '@/lib/userActionLogger'
 import { checkSchemaCompatibility } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
+import { applySettingsNavigationEvent } from '@/lib/settingsNavigation'
 import { getAccessibleVaults, syncFolder, deleteFolderByPath } from '@/lib/supabase'
 import { clearSwReferencesCache } from '@/lib/solidworks'
 import { syncDrawingReferencesInBackground } from '@/lib/solidworks/drawingReferenceSync'
@@ -69,6 +70,18 @@ export function App() {
   // Apply theme and language
   useTheme()
   useLanguage()
+
+  // Context menus dispatch this event because they can be mounted far below
+  // the shell. Keep the navigation at the app seam so every menu reaches the
+  // same view and tab state.
+  useEffect(() => {
+    const handleNavigation = (event: Event) => {
+      const { setActiveView, setSettingsTab } = usePDMStore.getState()
+      applySettingsNavigationEvent(event, { setActiveView, setSettingsTab })
+    }
+    window.addEventListener('navigate-settings-tab', handleNavigation)
+    return () => window.removeEventListener('navigate-settings-tab', handleNavigation)
+  }, [])
 
   // App startup orchestration - manages splash screen and initialization
   const startup = useAppStartup()
