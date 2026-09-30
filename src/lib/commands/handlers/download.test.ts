@@ -250,4 +250,39 @@ describe('downloadCommand.execute - cloud folder stays in the store', () => {
     ])
     expect(ctx.onRefresh).toHaveBeenCalledWith(false)
   })
+
+  it('skips hashless cloud files with one summary toast instead of per-file failures', async () => {
+    const parent = folder('0 - SHARED')
+    const ok = cloudFile('0 - SHARED/ok.sldprt')
+    const ghost = {
+      ...cloudFile('0 - SHARED/ghost.sldprt'),
+      pdmData: undefined,
+    }
+    const ctx = makeContext([parent, ok, ghost])
+
+    const result = await downloadCommand.execute({ files: [parent] }, ctx)
+
+    expect(result.success).toBe(true)
+    expect(result.succeeded).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(ctx.addToast).toHaveBeenCalledWith(
+      'warning',
+      '1 file had no downloadable hash',
+    )
+    expect(ctx.addExpectedFileChanges).toHaveBeenCalledWith(
+      expect.arrayContaining(['0 - SHARED', ok.relativePath]),
+    )
+  })
+
+  it('registers parent folders in expected changes, not just the downloaded files', async () => {
+    const parent = folder('Burn Wire Release')
+    const file = cloudFile('Burn Wire Release/nut.sldprt')
+    const ctx = makeContext([parent, file])
+
+    await downloadCommand.execute({ files: [parent] }, ctx)
+
+    expect(ctx.addExpectedFileChanges).toHaveBeenCalledWith(
+      expect.arrayContaining(['Burn Wire Release', file.relativePath]),
+    )
+  })
 })

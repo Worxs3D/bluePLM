@@ -382,6 +382,8 @@ export const fr: TranslationDict = {
     checkIn: 'Archiver',
     checkOut: 'Extraire',
     download: 'Télécharger',
+    downloadSkippedNoHash_one: '1 fichier n’avait pas de hash téléchargeable',
+    downloadSkippedNoHash_other: '{{count}} fichiers n’avaient pas de hash téléchargeable',
     getLatest: 'Obtenir la dernière version',
     upload: 'Envoyer',
     delete: 'Supprimer',

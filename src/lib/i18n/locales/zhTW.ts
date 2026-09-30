@@ -368,6 +368,8 @@ export const zhTW: TranslationDict = {
     checkIn: '簽入',
     checkOut: '簽出',
     download: '下載',
+    downloadSkippedNoHash_one: '1 個檔案沒有可下載的雜湊',
+    downloadSkippedNoHash_other: '{{count}} 個檔案沒有可下載的雜湊',
     getLatest: '取得最新版本',
     upload: '上傳',
     delete: '刪除',

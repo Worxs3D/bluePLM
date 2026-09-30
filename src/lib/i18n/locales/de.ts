@@ -384,6 +384,8 @@ export const de: TranslationDict = {
     checkIn: 'Einchecken',
     checkOut: 'Auschecken',
     download: 'Herunterladen',
+    downloadSkippedNoHash_one: '1 Datei hatte keinen herunterladbaren Hash',
+    downloadSkippedNoHash_other: '{{count}} Dateien hatten keinen herunterladbaren Hash',
     getLatest: 'Neueste Version abrufen',
     upload: 'Hochladen',
     delete: 'Löschen',

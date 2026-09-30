@@ -380,6 +380,8 @@ export const es: TranslationDict = {
     checkIn: 'Registrar',
     checkOut: 'Extraer',
     download: 'Descargar',
+    downloadSkippedNoHash_one: '1 archivo no tenía un hash descargable',
+    downloadSkippedNoHash_other: '{{count}} archivos no tenían un hash descargable',
     getLatest: 'Obtener la última versión',
     upload: 'Subir',
     delete: 'Eliminar',

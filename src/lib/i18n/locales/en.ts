@@ -407,6 +407,8 @@ export const en: TranslationDict = {
     checkIn: 'Check In',
     checkOut: 'Check Out',
     download: 'Download',
+    downloadSkippedNoHash_one: '1 file had no downloadable hash',
+    downloadSkippedNoHash_other: '{{count}} files had no downloadable hash',
     getLatest: 'Get Latest',
     upload: 'Upload',
     delete: 'Delete',

@@ -368,6 +368,8 @@ export const zhCN: TranslationDict = {
     checkIn: '签入',
     checkOut: '签出',
     download: '下载',
+    downloadSkippedNoHash_one: '1 个文件没有可下载的哈希',
+    downloadSkippedNoHash_other: '{{count}} 个文件没有可下载的哈希',
     getLatest: '获取最新版本',
     upload: '上传',
     delete: '删除',

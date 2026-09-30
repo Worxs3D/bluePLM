@@ -377,6 +377,8 @@ export const pt: TranslationDict = {
     checkIn: 'Check-In',
     checkOut: 'Check-Out',
     download: 'Transferir',
+    downloadSkippedNoHash_one: '1 ficheiro não tinha um hash transferível',
+    downloadSkippedNoHash_other: '{{count}} ficheiros não tinham um hash transferível',
     getLatest: 'Obter a versão mais recente',
     upload: 'Carregar',
     delete: 'Eliminar',
