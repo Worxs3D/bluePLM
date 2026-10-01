@@ -2,6 +2,7 @@
 const { execFileSync } = require('node:child_process')
 const { copyFileSync, existsSync, mkdirSync } = require('node:fs')
 const path = require('node:path')
+const { resolveNpmInvocation } = require('./resolve-npm-invocation')
 
 if (process.platform !== 'win32') {
   console.log('[eDrawings] Native preview is Windows-only; skipping.')
@@ -16,7 +17,8 @@ const resourceDirectory = path.join(root, 'resources', 'bin', 'win32')
 const electronVersion = require(path.join(root, 'node_modules', 'electron', 'package.json')).version
 
 if (!existsSync(gypEntrypoint)) {
-  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--ignore-scripts'], {
+  const { command, args } = resolveNpmInvocation()
+  execFileSync(command, args, {
     cwd: nativeDirectory,
     stdio: 'inherit',
   })
