@@ -6,7 +6,12 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['api/**/*.test.ts', 'src/**/*.test.ts', 'electron/**/*.test.ts'],
+    include: [
+      'api/**/*.test.ts',
+      'src/**/*.test.ts',
+      'electron/**/*.test.ts',
+      'scripts/**/*.test.ts',
+    ],
   },
   // Mirrors the alias in vite.config.js. Without it any module under test that
   // imports through '@/' fails to resolve, which rules out most of src.
