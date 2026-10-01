@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { mdbObjectStoragePath, normalizeMdbOrgVaultAccess } from './mdb'
+import { clearMdbConfig, mdbObjectStoragePath, normalizeMdbOrgVaultAccess, saveMdbConfig } from './mdb'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('mdbObjectStoragePath', () => {
   it('uses a content-addressed immutable object path', () => {
@@ -37,5 +41,19 @@ describe('normalizeMdbOrgVaultAccess', () => {
     }
 
     expect(normalizeMdbOrgVaultAccess(accessMap, ['vault-a', 'vault-b'])).toEqual(accessMap)
+  })
+})
+
+describe('MDB config backup bridge', () => {
+  it('does not require a renderer window in the Node test context', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    })
+
+    expect(() => saveMdbConfig({ version: 1, serverUrl: 'http://localhost:3000', accessToken: 'token' })).not.toThrow()
+    expect(() => clearMdbConfig()).not.toThrow()
   })
 })
