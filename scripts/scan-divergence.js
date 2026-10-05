@@ -165,7 +165,9 @@ async function pollUntilFinished(token) {
 }
 
 async function main() {
-  const args = process.argv.slice(2)
+  // The shell has already stripped the quotes; restore them so the terminal parser keeps a path
+  // with spaces in one piece.
+  const args = process.argv.slice(2).map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg))
   const token = readToken()
 
   if (!token) {

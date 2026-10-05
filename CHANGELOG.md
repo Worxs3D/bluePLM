@@ -4,6 +4,42 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.5] - 2026-10-05
+
+Renderer and preload only — no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Uploading a file no longer empties its item number and description in BluePLM.** Uploading
+  over a file the vault already had, from a copy BluePLM had no metadata for, wrote empty
+  values over the existing ones, and the version it created recorded neither. An upload now
+  only writes these columns when it carries a value, and the version records what the row
+  holds.
+- **Refreshing metadata from a SolidWorks file no longer empties a column the file has no
+  value for.** It writes only values the file actually holds.
+- **Checking a file out again warns before discarding unsaved metadata edits.** If your
+  checkout was released before you checked in — an admin forced a release, or you released it
+  from another machine — checking the file out again used to drop your unsaved item number,
+  description or revision edits silently. It now lists the edits it would discard and asks
+  first; cancel to keep them. They are never restored automatically. BluePLM also warns when
+  such a release arrives while you are working.
+- **The divergence report saves again.** `scan-divergence` could not write its report file;
+  it now saves to `logs/divergence/`.
+- **Terminal commands accept quoted paths with spaces**, e.g. `--path="0 - SHARED\01-TOOLBOX"`.
+
+### Added
+
+- **Fill empty from file, in Vault Audit.** A new group, "Empty in BluePLM, still in the file",
+  lists parts and assemblies whose item number or description is empty in BluePLM while the
+  file still holds one. An admin ticks the values, reviews exactly what would be written, and
+  fills them. A value is written only if the column is still empty at that moment, no version
+  is created, files checked out by someone else and fields with your unsaved edits are skipped,
+  and every file filled is recorded in the activity log.
+- **`restore-metadata-from-files` terminal command** — the same fill for a whole vault, with
+  `--path`, `--exclude` and `--limit`. Dry run unless `--apply`, which needs an admin.
+- The divergence report lists these values in their own section instead of under "leave alone".
+  Nothing in it is filled automatically.
+
 ## [4.4.4] - 2026-09-29
 
 Renderer and SolidWorks service — no schema change, no API change. Everything in

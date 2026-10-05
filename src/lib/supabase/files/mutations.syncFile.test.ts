@@ -28,6 +28,8 @@ interface FileRow {
   content_hash: string
   file_size: number
   revision: string
+  part_number?: string | null
+  description?: string | null
   workflow_state_id: string | null
   state: string | null
   deleted_at: string | null
@@ -224,7 +226,9 @@ class UpdateQuery {
   }
 }
 
-/** file_versions accepts everything; nothing under test reads it back. */
+/** Every file_versions insert, so the snapshot a sync records can be read back. */
+let versionInserts: Row[] = []
+
 const versionsInsert = {
   then<T>(onFulfilled?: ((value: { data: null; error: null }) => T) | null) {
     return Promise.resolve({ data: null, error: null }).then(onFulfilled)
@@ -242,7 +246,12 @@ const fakeClient = {
   },
   from(name: string) {
     if (name === 'file_versions') {
-      return { insert: () => versionsInsert }
+      return {
+        insert: (values: Row) => {
+          versionInserts.push(values)
+          return versionsInsert
+        },
+      }
     }
     expect(name).toBe('files')
     return {
@@ -313,9 +322,9 @@ function existingFile(filePath: string, overrides: Partial<FileRow> = {}): FileR
   }
 }
 
-function sync(filePath: string) {
+function sync(filePath: string, metadata?: Parameters<typeof syncFile>[9]) {
   const fileName = filePath.split('/').pop() ?? filePath
-  return syncFile(ORG, VAULT, USER, filePath, fileName, '.sldprt', 42, 'new-hash', '')
+  return syncFile(ORG, VAULT, USER, filePath, fileName, '.sldprt', 42, 'new-hash', '', metadata)
 }
 
 function warnings(): Array<{ message: string; data?: unknown }> {
@@ -330,6 +339,7 @@ beforeEach(() => {
   exactPathLookups = []
   ilikeLookups = []
   filesInsertAttempts = 0
+  versionInserts = []
   logged.length = 0
   // syncFile logs through window.electronAPI when it is there; the test
   // environment is node, so it has to be supplied to read the warn back.
@@ -488,5 +498,66 @@ describe('a 4.3.1 client against a schema-99 database', () => {
     expect(result.error).not.toBeNull()
     expect((result.error as QueryError).code).toBe(UNIQUE_VIOLATION)
     expect(warnings()).toHaveLength(1)
+  })
+})
+
+describe('uploading onto a row that already holds a part number and description', () => {
+  // The upload command passes the overlay's value for every field, and for a row the client
+  // never matched to the server that value is null: the client has nothing to say. The update
+  // used to write that null into the row, blanking metadata the file and the vault still held.
+  const held = { part_number: 'BR-100077', description: 'PCB, Fathom-X' }
+
+  it('keeps both columns when the upload carries no value for them', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', held))
+
+    const result = await sync('Parts/Bracket.SLDPRT', {
+      partNumber: null,
+      description: null,
+      revision: null,
+    })
+
+    expect(result.error).toBeNull()
+    expect(table[0].version).toBe(4)
+    expect(table[0].part_number).toBe('BR-100077')
+    expect(table[0].description).toBe('PCB, Fathom-X')
+  })
+
+  it('keeps both columns when the upload carries empty strings', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', held))
+
+    await sync('Parts/Bracket.SLDPRT', { partNumber: '', description: '  ' })
+
+    expect(table[0].part_number).toBe('BR-100077')
+    expect(table[0].description).toBe('PCB, Fathom-X')
+  })
+
+  it('keeps both columns on the case-insensitive collision path too', async () => {
+    table.push(existingFile('Parts/BRACKET.SLDPRT', held))
+
+    await sync('Parts/Bracket.SLDPRT', { partNumber: null, description: null })
+
+    expect(table[0].part_number).toBe('BR-100077')
+    expect(table[0].description).toBe('PCB, Fathom-X')
+  })
+
+  it('still writes a value the upload does carry', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', held))
+
+    await sync('Parts/Bracket.SLDPRT', { partNumber: 'BR-200000', description: null })
+
+    expect(table[0].part_number).toBe('BR-200000')
+    expect(table[0].description).toBe('PCB, Fathom-X')
+  })
+
+  it('snapshots the row it kept into the new version', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', held))
+
+    await sync('Parts/Bracket.SLDPRT', { partNumber: null, description: null })
+
+    expect(versionInserts).toHaveLength(1)
+    expect(versionInserts[0]).toMatchObject({
+      part_number: 'BR-100077',
+      description: 'PCB, Fathom-X',
+    })
   })
 })

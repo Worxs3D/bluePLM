@@ -1147,8 +1147,16 @@ export const en: TranslationDict = {
       '  {{count}} values are missing from the database, present in the file under the key BluePLM itself writes, and on a file the database demonstrably once recorded. Those three together are what makes writing them back a repair rather than a guess.',
     absentFromFileSummary:
       '  {{count}} values run the other way: the database holds them and the file does not. Nothing was lost - the document is behind the record - and the only write that settles one goes database to file.',
+    emptyColumnHeading:
+      '4. Item numbers and descriptions empty in BluePLM but still in the file - FILL ON REQUEST ONLY',
+    emptyColumnNone: '  None found.',
+    emptyColumnSummary:
+      '  {{count}} values across {{files}} parts and assemblies: BluePLM has no item number or description, and the file still holds one under a key BluePLM writes. Before 4.4.5 an upload or a refresh from the file could empty these columns, so this may be a lost value - or one BluePLM never had. Nothing here is filled automatically.',
+    emptyColumnLine: '  {{path}} {{field}}: file "{{value}}"',
+    emptyColumnHow:
+      '  To fill them, use Fill empty from file in Settings > Vault Audit, or run restore-metadata-from-files. Only columns that are still empty are written.',
     unattributedHeading:
-      '4. Values the file holds that the database never recorded - NEEDS A DECISION',
+      '5. Values the file holds that the database never recorded - NEEDS A DECISION',
     unattributedNone: '  None found.',
     unattributedSummary:
       '  {{count}} values are in the file and absent from the database, with nothing to show the database ever held them. They are not repairs: adopting one writes a value BluePLM never owned.',
@@ -1160,10 +1168,10 @@ export const en: TranslationDict = {
       notTranscribable:
         'the file holds a value, but not under a key BluePLM writes, so there is nothing that can be copied across without guessing what it means',
     },
-    disagreeingHeading: '5. Values the two sides disagree about',
+    disagreeingHeading: '6. Values the two sides disagree about',
     disagreeingSummary: '  {{count}} values differ between the two.',
-    fieldHeading: '6. Divergence per field',
-    timingHeading: '7. Cost of one read-back cycle',
+    fieldHeading: '7. Divergence per field',
+    timingHeading: '8. Cost of one read-back cycle',
     integrity:
       'Byte-identity: {{hashed}} files hashed before and after the read, {{breaches}} changed.',
     andMore: '  ...and {{count}} more (see the report file)',
@@ -1378,6 +1386,9 @@ export const en: TranslationDict = {
       absentFromFile: 'Copy BluePLM’s value into the file',
       absentFromFileDescription:
         'BluePLM holds these and the file does not. Nothing was lost — the document is behind the record.',
+      emptyInDatabase: 'Empty in BluePLM, still in the file',
+      emptyInDatabaseDescription:
+        'Item numbers and descriptions BluePLM has no value for, while the part or assembly still holds one under a key BluePLM writes. Before 4.4.5 an upload or a refresh from the file could empty these, so many are losses — but some may never have been BluePLM’s. Nothing here is filled unless you choose to.',
       unattributed: 'Leave these alone',
       unattributedDescription:
         'The file holds a value BluePLM never owned. Adopting one would invent a record rather than restore it, and erasing it is not BluePLM’s to do.',
@@ -1404,6 +1415,9 @@ export const en: TranslationDict = {
       fixOnParentModel: 'Fix on the parent model',
       fixOnParentModelHint:
         'A drawing’s part number and description are copies of the model’s. Writing either copy over the other leaves the model — the actual record — untouched.',
+      fillEmptyFromFile: 'Fill empty from file',
+      fillEmptyFromFileHint:
+        'Writes the file’s value into BluePLM only while the column is still empty. No new version is created and no document changes.',
       leaveAlone: 'Leave alone',
       leaveAloneHint:
         'BluePLM never owned this value, so writing it into BluePLM would invent a record and clearing it from the file would delete someone else’s data.',
@@ -1423,6 +1437,28 @@ export const en: TranslationDict = {
       heldByAnotherUser: 'someone else has this file checked out',
       fileNotLoaded: 'the file is not loaded, so BluePLM cannot safely preserve its other metadata',
       heldBy: 'checked out by {{user}}',
+      unsavedLocalEdit: 'you have an unsaved edit to this field on this machine',
+    },
+
+    fill: {
+      guarantee:
+        'Each value is written only if BluePLM’s column is still empty at that moment, so anything filled in since the scan is kept. No new version is created, no document is changed, and files checked out by someone else are skipped. Every file filled is recorded in the activity log.',
+      adminOnly: 'Only an admin can fill values from files.',
+      selectPrompt: 'Tick the values that should be copied from the file into BluePLM.',
+      selectedSummary: '{{values}} values selected across {{files}} files.',
+      review: 'Review {{count}} values',
+      previewHeading: 'These {{values}} values will be written into {{files}} files in BluePLM:',
+      previewLine: '{{path}} — {{field}}: "{{value}}"',
+      previewMore: 'and {{count}} more',
+      cancel: 'Cancel',
+      apply: 'Fill {{count}} values',
+      applying: 'Filling…',
+      receiptFilled: 'Filled {{count}} values.',
+      receiptAlreadySet: '{{count}} were already set by someone else and were left as they are.',
+      receiptHeld: '{{count}} files are checked out by someone else and were skipped.',
+      receiptRefused:
+        '{{refused}} values were not allowed by the database and {{failed}} files failed. Nothing else changed for them.',
+      appliedToast: 'Filled {{count}} values from files.',
     },
 
     difference: {
@@ -1875,5 +1911,57 @@ export const en: TranslationDict = {
     updateFailed: 'Failed to update folder visibility',
     updateNotPermitted: 'You may not have permission to change folder visibility',
     scanSkipped: 'Skipped {{count}} files in folders hidden from non-admins',
+  },
+
+  // restore-metadata-from-files terminal command
+  metadataRestore: {
+    noOrganization: 'Not signed in to an organization.',
+    noVault: 'No vault is connected.',
+    adminOnly:
+      'Only an admin can apply a metadata restore. Run without --apply to see what it would write.',
+    alreadyRunning: 'A metadata restore is already running.',
+    scanning:
+      'Reading the SolidWorks files read-only to find empty item numbers and descriptions. Nothing is written yet.',
+    cancelled: 'The scan was cancelled. Nothing was written.',
+    unread:
+      '{{count}} files could not be read (missing, unreadable or open in SolidWorks) and are not included.',
+    planLine: '  {{path}}: {{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: 'Item number',
+      description: 'Description',
+    },
+    heldByOther: '  Skipped {{path}}: checked out by another user.',
+    summary:
+      '{{files}} files, {{values}} values to fill. Excluded: {{excluded}}. Checked out by others: {{held}}. Pending edits kept: {{pending}}.',
+    dryRun: 'Dry run. Nothing was written. Run again with --apply to fill these values.',
+    fileFailed: 'Could not update {{path}}: {{reason}}',
+    fileRefused: 'The database did not allow the update for {{path}}.',
+    applied:
+      'Filled {{filled}} values. Already set by someone else: {{alreadySet}}. Not allowed: {{refused}}. Failed files: {{failed}}.',
+    failed: 'Metadata restore failed: {{reason}}',
+  },
+
+  // Unsaved metadata edits left behind when a checkout went away without a check-in
+  strandedEdits: {
+    checkoutLost:
+      'Your checkout of {{name}} was released while it had unsaved metadata edits. They can no longer be checked in. Checking the file out again will ask before discarding them — note them down if you need them.',
+    confirmTitle: 'Discard unsaved edits on {{count}} files?',
+    confirmMessage:
+      'These files were released while you had unsaved metadata edits, so the edits were never checked in. Checking them out again discards the edits below and they are not restored — someone may have checked in newer values since. Cancel to keep them on this machine and copy them down first.',
+    confirmContinue: 'Discard edits and check out',
+    cancelled: 'Check-out cancelled. Your unsaved edits on {{count}} files were kept.',
+    item: '{{path}}: {{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} cleared',
+    configurationEdit: '{{field}} in {{count}} configurations',
+    field: {
+      part_number: 'Item number',
+      tab_number: 'Tab number',
+      description: 'Description',
+      revision: 'Revision',
+      config_tabs: 'Configuration tab numbers',
+      config_descriptions: 'Configuration descriptions',
+    },
   },
 }

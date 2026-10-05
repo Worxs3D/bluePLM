@@ -7,6 +7,29 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
+4.4.5 is committed, not yet tagged (renderer and preload only — no schema change, no API change,
+service untouched). It answers Wilson's FATHOM-X-ELEC-PCB-R1 report and the ~130 files
+`scan-divergence` showed with an empty item number or description in BluePLM while the file
+still holds one. Two writers silently wrote `null` over populated columns: `syncFile` updating an
+existing row from a local entry with no metadata, and `syncSolidWorksFileMetadata` on a file read
+with no value. Both now write only non-empty values (`nonEmptyText`). Recovery is a guarded fill,
+never an overwrite: one conditional UPDATE per value (`is null or = ''`), no version, a
+server-side skip for files someone else holds, and an activity row (`fillEmptyFileMetadataBatch`).
+It is reachable two ways, from the `restore-metadata-from-files` terminal command and from Vault
+Audit's new "Empty in BluePLM, still in the file" category ("Fill empty from file", admin-only,
+preview before apply). Vault Audit is its home because it is the in-app face of
+`scan-divergence`; Re-align is about paths and never reads file metadata. One predicate,
+`isEmptyColumnWithFileValue`, drives the report section, the category and the planner, so the
+three cannot disagree. The scanner's recoverability is unchanged: these stay `unattributed`
+underneath, and nothing fills them automatically. Also in this release: unsaved metadata edits
+stranded by a lost checkout are now announced instead of vanishing. Realtime warns when this
+user's checkout goes away while edits are pending, and re-checkout lists the edits it would
+discard and asks first (`confirmDroppingStrandedEdits`; cancel aborts, no confirm refuses). They
+are never restored, because a colleague may have checked in newer values. The divergence report
+saves again through a dedicated IPC, and the terminal parser now accepts quoted paths with
+spaces. FATHOM's own cause is not proven: no logs from Wilson's machine exist. Report:
+`.cursor/plans/metadata-blank-in-db-report.md`.
+
 4.4.4 shipped (renderer and SolidWorks service 1.21.2 — no schema change, no API change):
 everything in beta.1 below, plus two follow-ups from Quinlan's BR-107599 push, where BluePLM
 showed the file as checked out while the attribute was still set. Sync Metadata now reads the

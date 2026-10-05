@@ -823,4 +823,102 @@ export const es: TranslationDict = {
     updateNotPermitted: 'Puede que no tengas permiso para cambiar la visibilidad de la carpeta',
     scanSkipped: 'Se omitieron {{count}} archivos en carpetas ocultas a los no administradores',
   },
+
+  metadataRestore: {
+    noOrganization: 'No has iniciado sesión en una organización.',
+    noVault: 'No hay ningún almacén conectado.',
+    adminOnly:
+      'Solo un administrador puede aplicar una restauración de metadatos. Ejecuta sin --apply para ver qué se escribiría.',
+    alreadyRunning: 'Ya hay una restauración de metadatos en curso.',
+    scanning:
+      'Leyendo los archivos de SolidWorks en modo de solo lectura para encontrar números de artículo y descripciones vacíos. Todavía no se escribe nada.',
+    cancelled: 'Se canceló el análisis. No se escribió nada.',
+    unread:
+      'No se pudieron leer {{count}} archivos (ausentes, ilegibles o abiertos en SolidWorks) y no se incluyen.',
+    planLine: '  {{path}}: {{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: 'Número de artículo',
+      description: 'Descripción',
+    },
+    heldByOther: '  Se omitió {{path}}: desprotegido por otro usuario.',
+    summary:
+      '{{files}} archivos, {{values}} valores por completar. Excluidos: {{excluded}}. Desprotegidos por otros: {{held}}. Ediciones pendientes conservadas: {{pending}}.',
+    dryRun:
+      'Simulación. No se escribió nada. Vuelve a ejecutar con --apply para completar estos valores.',
+    fileFailed: 'No se pudo actualizar {{path}}: {{reason}}',
+    fileRefused: 'La base de datos no permitió la actualización de {{path}}.',
+    applied:
+      'Se completaron {{filled}} valores. Ya establecidos por otra persona: {{alreadySet}}. No permitidos: {{refused}}. Archivos con error: {{failed}}.',
+    failed: 'La restauración de metadatos falló: {{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading:
+      '4. Números de artículo y descripciones vacíos en BluePLM pero aún presentes en el archivo - SOLO SE RELLENAN BAJO PETICIÓN',
+    emptyColumnNone: '  No se encontró ninguno.',
+    emptyColumnSummary:
+      '  {{count}} valores en {{files}} piezas y ensamblajes: BluePLM no tiene número de artículo ni descripción, y el archivo aún tiene uno bajo una clave que BluePLM escribe. Antes de 4.4.5 una subida o una actualización desde el archivo podía vaciar estas columnas, así que puede ser un valor perdido - o uno que BluePLM nunca tuvo. Aquí no se rellena nada automáticamente.',
+    emptyColumnLine: '  {{path}} {{field}}: archivo "{{value}}"',
+    emptyColumnHow:
+      '  Para rellenarlos, use "Rellenar vacíos desde el archivo" en Configuración > Vault Audit, o ejecute restore-metadata-from-files. Solo se escriben las columnas que siguen vacías.',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'Vacío en BluePLM, presente en el archivo',
+      emptyInDatabaseDescription:
+        'Números de artículo y descripciones para los que BluePLM no tiene valor, mientras la pieza o el ensamblaje aún tiene uno bajo una clave que BluePLM escribe. Antes de 4.4.5 una subida o una actualización desde el archivo podía vaciarlos, así que muchos son pérdidas - pero algunos quizá nunca fueron de BluePLM. Aquí no se rellena nada salvo que usted lo decida.',
+    },
+    resolution: {
+      fillEmptyFromFile: 'Rellenar vacíos desde el archivo',
+      fillEmptyFromFileHint:
+        'Escribe el valor del archivo en BluePLM solo mientras la columna siga vacía. No se crea ninguna versión nueva ni se modifica ningún documento.',
+    },
+    blocked: {
+      unsavedLocalEdit: 'tiene un cambio sin guardar en este campo en este equipo',
+    },
+    fill: {
+      guarantee:
+        'Cada valor se escribe solo si la columna de BluePLM sigue vacía en ese momento, así que se conserva todo lo rellenado desde el escaneo. No se crea ninguna versión nueva, no se modifica ningún documento y se omiten los archivos que otra persona tiene desprotegidos. Cada archivo rellenado queda registrado en el registro de actividad.',
+      adminOnly: 'Solo un administrador puede rellenar valores desde archivos.',
+      selectPrompt: 'Marque los valores que deben copiarse del archivo a BluePLM.',
+      selectedSummary: '{{values}} valores seleccionados en {{files}} archivos.',
+      review: 'Revisar {{count}} valores',
+      previewHeading: 'Estos {{values}} valores se escribirán en {{files}} archivos de BluePLM:',
+      previewLine: '{{path}} — {{field}}: "{{value}}"',
+      previewMore: 'y {{count}} más',
+      cancel: 'Cancelar',
+      apply: 'Rellenar {{count}} valores',
+      applying: 'Rellenando…',
+      receiptFilled: 'Se rellenaron {{count}} valores.',
+      receiptAlreadySet: '{{count}} ya los había establecido otra persona y se dejaron como estaban.',
+      receiptHeld: '{{count}} archivos están desprotegidos por otra persona y se omitieron.',
+      receiptRefused:
+        'La base de datos no permitió {{refused}} valores y {{failed}} archivos fallaron. Nada más cambió en ellos.',
+      appliedToast: 'Se rellenaron {{count}} valores desde archivos.',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      'Su desprotección de {{name}} se liberó mientras tenía cambios de metadatos sin guardar. Ya no se pueden proteger. Al volver a desproteger el archivo se le preguntará antes de descartarlos - anótelos si los necesita.',
+    confirmTitle: '¿Descartar los cambios sin guardar en {{count}} archivos?',
+    confirmMessage:
+      'Estos archivos se liberaron mientras tenía cambios de metadatos sin guardar, así que los cambios nunca se protegieron. Volver a desprotegerlos descarta los cambios de abajo y no se restauran - alguien puede haber protegido valores más recientes desde entonces. Cancele para conservarlos en este equipo y anotarlos primero.',
+    confirmContinue: 'Descartar cambios y desproteger',
+    cancelled: 'Desprotección cancelada. Se conservaron sus cambios sin guardar en {{count}} archivos.',
+    item: '{{path}}: {{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} vaciado',
+    configurationEdit: '{{field}} en {{count}} configuraciones',
+    field: {
+      part_number: 'Número de artículo',
+      tab_number: 'Número de pestaña',
+      description: 'Descripción',
+      revision: 'Revisión',
+      config_tabs: 'Números de pestaña de las configuraciones',
+      config_descriptions: 'Descripciones de las configuraciones',
+    },
+  },
 }

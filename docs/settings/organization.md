@@ -126,6 +126,39 @@ Define custom metadata columns for files:
 - Description
 - Custom fields
 
+### Vault Audit
+
+**Vault Audit** (admin only) reads the SolidWorks files in a vault read-only and compares the
+metadata they carry with what BluePLM has recorded. It is the in-app view of the
+`scan-divergence` terminal command — the same scan and the same report file — and it groups what
+it finds by what can be done about it: values to copy from the file, values to write into the
+file, conflicts that need a choice, values lost on both sides, and values to leave alone.
+
+**Empty in BluePLM, still in the file** lists parts and assemblies whose item number or
+description is empty in BluePLM while the file still holds one under a key BluePLM writes. Before
+4.4.5, uploading a file or refreshing its metadata from the file could empty these columns, so
+many of them are lost values — but some may never have been BluePLM's, which is why nothing in
+this group is filled automatically. To fill them:
+
+1. Run the audit and tick the values you want in this group.
+2. Click **Review** to see every file, field and value that would be written.
+3. Click **Fill** to write them.
+
+Each value is written only if BluePLM's column is still empty at that moment, so anything someone
+filled in since the scan is kept. No new version is created and no document is changed. Files
+checked out by someone else are skipped, and so are fields you have an unsaved edit to on this
+machine. Every file filled is recorded in the activity log, and the result lists how many were
+filled, already set, skipped or refused.
+
+The same fill is available from the terminal, which is useful for a whole vault at once:
+
+```
+restore-metadata-from-files                      # dry run: lists what it would fill
+restore-metadata-from-files --apply              # writes (admin only)
+restore-metadata-from-files --path="ELEC"        # only one folder
+restore-metadata-from-files --exclude="_ARCHIVE" # leave a folder out
+```
+
 ## RFQ Settings
 
 Configure request-for-quote workflow:

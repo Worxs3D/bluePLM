@@ -67,8 +67,13 @@ import {
  * 4 - `recoverability` gained `absent-from-file`, for the values the database holds and the file
  * does not. A version 3 report calls those `intact`, alongside the values both sides agree on, so
  * a reader cannot tell the two apart and the count of them is not in the summary at all.
+ *
+ * 5 - `summary.emptyColumns` names the part numbers and descriptions a part or assembly still
+ * holds while BluePLM's column is empty, and those values leave `summary.unattributed`. A version
+ * 4 report lists them among the values the database never owned, where nothing offered to act on
+ * them.
  */
-export const DIVERGENCE_REPORT_SCHEMA_VERSION = 4
+export const DIVERGENCE_REPORT_SCHEMA_VERSION = 5
 
 /** Supabase caps a single response; rows are pulled in pages of this size. */
 const ROW_PAGE_SIZE = 1000

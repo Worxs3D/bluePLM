@@ -4,6 +4,8 @@ import { buildConfigurationMapPayload } from '@/lib/metadata/configurationMaps'
 import { getSupabaseClient } from '../client'
 import { getCurrentUserEmail } from '../auth'
 
+import { nonEmptyText } from './metadataValue'
+
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
 
@@ -308,13 +310,16 @@ export async function syncSolidWorksFileMetadata(
     return { success: false, error: fetchError.message }
   }
 
+  // A file that holds no part number or description is not asking for the row's to be cleared:
+  // this relays what was read out of a document, and only check-in carries a user's clear. Both
+  // callers - the SolidWorks panel's refresh and the Vault Audit - would otherwise blank a
+  // populated column whenever the read came back empty.
+  const partNumber = nonEmptyText(metadata.part_number)
+  const description = nonEmptyText(metadata.description)
+
   // Check if any metadata actually changed
-  const partNumberChanged =
-    metadata.part_number !== undefined &&
-    (metadata.part_number || null) !== (file.part_number || null)
-  const descriptionChanged =
-    metadata.description !== undefined &&
-    (metadata.description || null) !== (file.description || null)
+  const partNumberChanged = partNumber !== null && partNumber !== (file.part_number || null)
+  const descriptionChanged = description !== null && description !== (file.description || null)
   const revisionChanged =
     metadata.revision !== undefined && (metadata.revision || null) !== (file.revision || null)
   const customPropsChanged = metadata.custom_properties !== undefined
@@ -330,11 +335,11 @@ export async function syncSolidWorksFileMetadata(
     updated_by: userId,
   }
 
-  if (metadata.part_number !== undefined) {
-    updateData.part_number = metadata.part_number
+  if (partNumberChanged) {
+    updateData.part_number = partNumber
   }
-  if (metadata.description !== undefined) {
-    updateData.description = metadata.description
+  if (descriptionChanged) {
+    updateData.description = description
   }
   if (metadata.revision !== undefined && metadata.revision !== null) {
     updateData.revision = metadata.revision
@@ -370,6 +375,8 @@ export async function syncSolidWorksFileMetadata(
       file_id: fileId,
       version: newVersion,
       revision: updateData.revision || file.revision || '',
+      part_number: updateData.part_number ?? file.part_number ?? null,
+      description: updateData.description ?? file.description ?? null,
       content_hash: file.content_hash || '',
       file_size: file.file_size,
       workflow_state_id: file.workflow_state_id,

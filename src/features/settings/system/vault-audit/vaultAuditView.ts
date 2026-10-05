@@ -24,7 +24,7 @@
  * loss. Every number below comes from `ConfigMapCoverage`, whose own membership tests are by name.
  */
 
-import { ownerOf } from '@/lib/metadata/divergence'
+import { isEmptyColumnWithFileValue, ownerOf } from '@/lib/metadata/divergence'
 import type {
   ComparedFileType,
   ConfigMapCoverage,
@@ -64,6 +64,7 @@ const CATEGORY_ORDER: readonly VaultAuditCategoryKind[] = [
   'lost',
   'conflicting',
   'recoverable',
+  'empty-in-database',
   'absent-from-file',
   'unattributed',
 ]
@@ -79,8 +80,30 @@ const CATEGORY_TONES: Record<VaultAuditCategoryKind, VaultAuditTone> = {
   lost: 'critical',
   conflicting: 'warning',
   recoverable: 'repairable',
+  // Not `repairable`: the file's value may be a loss or may never have been BluePLM's, and only
+  // the admin can say which.
+  'empty-in-database': 'warning',
   'absent-from-file': 'repairable',
   unattributed: 'neutral',
+}
+
+/**
+ * The page's category for one comparison, or null when it is not a finding.
+ *
+ * `empty-in-database` is carved out of the scanner's `unattributed` by the same predicate the
+ * report summary and `restore-metadata-from-files` use, so all three name the same values.
+ */
+function categoryOfComparison(
+  comparison: FieldComparison,
+  fileType: ComparedFileType,
+): VaultAuditCategoryKind | null {
+  if (
+    comparison.recoverability === 'unattributed' &&
+    isEmptyColumnWithFileValue(comparison, fileType)
+  ) {
+    return 'empty-in-database'
+  }
+  return categoryOf(comparison.recoverability)
 }
 
 /**
@@ -138,6 +161,7 @@ export function resolutionOf(
 ): VaultAuditResolution {
   // Neither of these reads the file's value as evidence, so neither can be misled by a projection.
   if (kind === 'lost') return 'nothing-to-restore'
+  if (kind === 'empty-in-database') return 'fill-empty-from-file'
   if (kind === 'absent-from-file') {
     // Revision is file-owned. A database-only revision must not be pushed into a document that
     // does not carry one; there is no file value for the audit to promote instead.
@@ -232,7 +256,7 @@ function toFinding(
     databaseValue: comparison.databaseValue,
     fileValue: comparison.fileValue,
     repairValue: comparison.databaseRepairValue,
-    unattributedReason: comparison.unattributedReason ?? null,
+    unattributedReason: kind === 'unattributed' ? (comparison.unattributedReason ?? null) : null,
   }
 }
 
@@ -353,7 +377,7 @@ export function buildVaultAuditView(
     for (const comparison of file.fieldComparisons) {
       if (comparison.recoverability === 'no-evidence') noEvidenceValues += 1
 
-      const kind = categoryOf(comparison.recoverability)
+      const kind = categoryOfComparison(comparison, file.fileType)
       if (!kind) continue
 
       // Counted before it is dropped, and reported. A filter whose effect is invisible is how a

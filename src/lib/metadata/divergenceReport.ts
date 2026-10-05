@@ -104,6 +104,34 @@ function unattributedLines(summary: DivergenceSummary): string[] {
 }
 
 /**
+ * Part numbers and descriptions BluePLM has lost track of while the file kept them.
+ *
+ * Listed with the value a fill would write, because that is what the person has to approve. The
+ * report never fills them; `restore-metadata-from-files` and Vault Audit's fill action do, on
+ * request.
+ */
+function emptyColumnLines(summary: DivergenceSummary): string[] {
+  if (summary.emptyColumnValues === 0) return [t('divergence.emptyColumnNone')]
+
+  const files = new Set(summary.emptyColumns.map((value) => value.fileId)).size
+  const lines = [t('divergence.emptyColumnSummary', { count: summary.emptyColumnValues, files })]
+  for (const value of summary.emptyColumns.slice(0, MAX_LISTED)) {
+    lines.push(
+      t('divergence.emptyColumnLine', {
+        path: value.relativePath,
+        field: fieldLabel(value.field),
+        value: value.repairValue,
+      }),
+    )
+  }
+  if (summary.emptyColumns.length > MAX_LISTED) {
+    lines.push(t('divergence.andMore', { count: summary.emptyColumns.length - MAX_LISTED }))
+  }
+  lines.push(t('divergence.emptyColumnHow'))
+  return lines
+}
+
+/**
  * Render the summary a person reads.
  *
  * Ordered by what the plan says matters: the extent of the configuration-map wipe first, then the
@@ -202,16 +230,20 @@ export function formatDivergenceReport(report: DivergenceReport): string[] {
   )
 
   lines.push('')
+  lines.push(t('divergence.emptyColumnHeading'))
+  lines.push(...emptyColumnLines(summary))
+
+  lines.push('')
   lines.push(
     t(
       'divergence.unattributedHeading',
-      '4. Values the file holds that the database never recorded - NEEDS A DECISION',
+      '5. Values the file holds that the database never recorded - NEEDS A DECISION',
     ),
   )
   lines.push(...unattributedLines(summary))
 
   lines.push('')
-  lines.push(t('divergence.disagreeingHeading', '5. Values the two sides disagree about'))
+  lines.push(t('divergence.disagreeingHeading', '6. Values the two sides disagree about'))
   lines.push(
     t('divergence.disagreeingSummary', { count: summary.disagreeingValues }),
   )
@@ -229,12 +261,12 @@ export function formatDivergenceReport(report: DivergenceReport): string[] {
   }
 
   lines.push('')
-  lines.push(t('divergence.fieldHeading', '6. Divergence per field'))
+  lines.push(t('divergence.fieldHeading', '7. Divergence per field'))
   lines.push(...fieldTallyLines(summary))
 
   if (report.readBackTimings.length > 0) {
     lines.push('')
-    lines.push(t('divergence.timingHeading', '7. Cost of one read-back cycle'))
+    lines.push(t('divergence.timingHeading', '8. Cost of one read-back cycle'))
     for (const timing of report.readBackTimings) {
       lines.push(
         `  ${timing.relativePath} (${timing.configurationCount} configurations): ` +
@@ -258,16 +290,13 @@ export function formatDivergenceReport(report: DivergenceReport): string[] {
   return lines
 }
 
-/** UTF-8 safe base64, because `writeFile` takes base64 and a description may hold any character. */
-function toBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
-}
-
 function timestampSlug(iso: string): string {
   return iso.replace(/[:.]/g, '-').replace('Z', '')
+}
+
+/** The artifact's file name. The main process accepts only names of this shape. */
+export function divergenceArtifactFileName(report: Pick<DivergenceReport, 'generatedAt'>): string {
+  return `divergence-report-${timestampSlug(report.generatedAt)}.json`
 }
 
 /**
@@ -275,20 +304,16 @@ function timestampSlug(iso: string): string {
  *
  * Not into the vault: the vault is what the scan is measuring, and dropping a file into it would
  * change the thing being measured and put a write inside the folder this phase exists to protect.
+ * That is also why this cannot use `writeFile`, which refuses every path outside the vault.
  */
 export async function writeDivergenceArtifact(report: DivergenceReport): Promise<string> {
-  const logsDir = await window.electronAPI?.getLogsDir?.()
-  if (!logsDir) throw new Error('Could not resolve the log directory')
+  const write = window.electronAPI?.writeDivergenceReport
+  if (!write) throw new Error('Writing the report is not available in this build')
 
-  const directory = `${logsDir}\\divergence`
-  await window.electronAPI?.ensureDir?.(directory)
+  const result = await write(divergenceArtifactFileName(report), JSON.stringify(report, null, 2))
+  if (!result.success || !result.path) {
+    throw new Error(result.error ?? 'Writing the report failed')
+  }
 
-  const path = `${directory}\\divergence-report-${timestampSlug(report.generatedAt)}.json`
-  const result = await window.electronAPI?.writeFile?.(
-    path,
-    toBase64(JSON.stringify(report, null, 2)),
-  )
-  if (!result?.success) throw new Error(result?.error ?? 'Writing the report failed')
-
-  return path
+  return result.path
 }

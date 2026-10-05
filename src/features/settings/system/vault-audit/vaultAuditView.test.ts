@@ -372,13 +372,14 @@ describe('buildVaultAuditView - categories', () => {
       'lost',
       'conflicting',
       'recoverable',
+      'empty-in-database',
       'absent-from-file',
       'unattributed',
     ])
   })
 
   it('always lists every category, including the empty ones', () => {
-    expect(view.categories).toHaveLength(5)
+    expect(view.categories).toHaveLength(6)
   })
 
   it('partitions every finding into exactly one category', () => {
@@ -403,6 +404,46 @@ describe('buildVaultAuditView - categories', () => {
   it('counts files with findings rather than findings', () => {
     expect(view.filesWithFindings).toBeLessThanOrEqual(4)
     expect(view.filesWithFindings).toBeGreaterThan(0)
+  })
+})
+
+/** Wilson's file: BluePLM's columns empty, the part still holding both under BluePLM's keys. */
+function emptiedColumns(fileType: ComparedFileType = 'part'): FileDivergence {
+  return compare(
+    'FATHOM-X-ELEC-PCB-R1.SLDPRT',
+    rowOf(),
+    {
+      configurations: ['Default'],
+      fileProperties: { 'Base Item Number': 'FATHOM-X-ELEC-PCB-R1', Description: 'Main PCB' },
+      configurationProperties: { Default: {} },
+    },
+    fileType,
+  )
+}
+
+describe('buildVaultAuditView - empty in BluePLM, still in the file', () => {
+  const view = buildVaultAuditView(reportOf([emptiedColumns()]))
+  const findings = view.findings.filter((finding) => finding.kind === 'empty-in-database')
+
+  it('groups file-scope item numbers and descriptions apart from values to leave alone', () => {
+    expect(findings.map((finding) => finding.field).sort()).toEqual(['description', 'part_number'])
+    expect(findings.every((finding) => finding.resolution === 'fill-empty-from-file')).toBe(true)
+    expect(findings.every((finding) => finding.unattributedReason === null)).toBe(true)
+  })
+
+  it('carries the file value a fill would write', () => {
+    const partNumber = findings.find((finding) => finding.field === 'part_number')
+    expect(partNumber?.repairValue).toBe('FATHOM-X-ELEC-PCB-R1')
+  })
+
+  it('counts them in their own category', () => {
+    const category = view.categories.find((entry) => entry.kind === 'empty-in-database')
+    expect(category?.valueCount).toBe(2)
+  })
+
+  it('leaves a drawing out, because its values are copies of the model', () => {
+    const drawing = buildVaultAuditView(reportOf([emptiedColumns('drawing')]))
+    expect(drawing.findings.some((finding) => finding.kind === 'empty-in-database')).toBe(false)
   })
 })
 
@@ -471,7 +512,7 @@ describe('buildVaultAuditView - an empty run', () => {
   const view = buildVaultAuditView(reportOf([]))
 
   it('produces every category at zero rather than none at all', () => {
-    expect(view.categories).toHaveLength(5)
+    expect(view.categories).toHaveLength(6)
     expect(view.categories.every((category) => category.valueCount === 0)).toBe(true)
     expect(view.findings).toEqual([])
     expect(view.coverage.files).toEqual([])

@@ -253,8 +253,11 @@ export interface RecoveryContext {
    * Whether the database's storage for this field exists on this row at all. At configuration
    * scope that is whether `custom_properties` carries the reserved map key - which is what tells
    * a map that was emptied apart from one that was never written, and those mean opposite things.
-   * At file scope it is always false: a column cannot be absent, and no known mechanism empties
-   * one, so an empty column is not evidence that anything was lost from it.
+   * At file scope it is always false: a column cannot be absent, so an empty one says nothing on
+   * its own about whether a value was lost from it. Before 4.4.5 two writers did empty these
+   * columns (`syncFile` over an existing row and `syncSolidWorksFileMetadata`), which is why the
+   * summary reports that shape as `emptyColumns` rather than leaving it among the values the
+   * database never owned - see `isEmptyColumnWithFileValue`.
    */
   databaseEverHeldField: boolean
   /** What a repair phase could write into the database, or null when there is no such value. */
@@ -693,6 +696,42 @@ export interface UnattributedValue {
   reason: UnattributedReason
 }
 
+/**
+ * A part number or description a part or assembly holds while BluePLM's column is empty.
+ *
+ * Carved out of `UnattributedValue` because it is the one unattributed shape a known writer used
+ * to produce. It is still never repaired automatically: the scan cannot tell a blanked column
+ * from one that never held a value, so filling it is an explicit, admin-run choice.
+ */
+export interface EmptyColumnValue {
+  fileId: string
+  relativePath: string
+  field: EmptyColumnField
+  fileValue: string | null
+  /** What a fill would write, read only from a key BluePLM writes. Never empty. */
+  repairValue: string
+}
+
+export type EmptyColumnField = 'part_number' | 'description'
+
+/**
+ * BluePLM's `part_number` / `description` column is empty and the part or assembly holds a
+ * transcribable value for it.
+ *
+ * The single definition the summary, the Vault Audit category and `restore-metadata-from-files`
+ * all use, so the three can never disagree about which values are in this group.
+ */
+export function isEmptyColumnWithFileValue(
+  comparison: FieldComparison,
+  fileType: ComparedFileType,
+): boolean {
+  if (fileType !== 'part' && fileType !== 'assembly') return false
+  if (comparison.scope !== 'file') return false
+  if (comparison.field !== 'part_number' && comparison.field !== 'description') return false
+  if (comparison.divergence !== 'database-empty') return false
+  return (comparison.databaseRepairValue?.trim() ?? '') !== ''
+}
+
 /** A file whose database configuration map describes fewer configurations than the file has. */
 export interface TruncatedConfigMap {
   fileId: string
@@ -729,7 +768,10 @@ export interface DivergenceSummary {
   recoverableValues: number
   unrecoverableValues: number
   disagreeingValues: number
+  /** Excludes `emptyColumnValues`, which are reported as their own group. */
   unattributedValues: number
+  /** Part numbers and descriptions empty in BluePLM and still in the file. */
+  emptyColumnValues: number
   noEvidenceValues: number
   /** Values the database holds that the file does not. Not a loss; the file is behind the record. */
   absentFromFileValues: number
@@ -737,6 +779,7 @@ export interface DivergenceSummary {
   unrecoverable: UnrecoverableValue[]
   disagreeing: DisagreeingValue[]
   unattributed: UnattributedValue[]
+  emptyColumns: EmptyColumnValue[]
 
   fieldTallies: FieldTally[]
 }
@@ -786,6 +829,7 @@ export function summarizeDivergence(files: readonly FileDivergence[]): Divergenc
   const unrecoverable: UnrecoverableValue[] = []
   const disagreeing: DisagreeingValue[] = []
   const unattributed: UnattributedValue[] = []
+  const emptyColumns: EmptyColumnValue[] = []
   const truncatedConfigMaps: TruncatedConfigMap[] = []
 
   let filesWithAnyDivergence = 0
@@ -835,6 +879,16 @@ export function summarizeDivergence(files: readonly FileDivergence[]): Divergenc
           })
           break
         case 'unattributed':
+          if (isEmptyColumnWithFileValue(comparison, file.fileType)) {
+            emptyColumns.push({
+              fileId: file.fileId,
+              relativePath: file.relativePath,
+              field: comparison.field as EmptyColumnField,
+              fileValue: comparison.fileValue,
+              repairValue: (comparison.databaseRepairValue ?? '').trim(),
+            })
+            break
+          }
           unattributed.push({
             fileId: file.fileId,
             relativePath: file.relativePath,
@@ -908,11 +962,13 @@ export function summarizeDivergence(files: readonly FileDivergence[]): Divergenc
     unrecoverableValues: unrecoverable.length,
     disagreeingValues: disagreeing.length,
     unattributedValues: unattributed.length,
+    emptyColumnValues: emptyColumns.length,
     noEvidenceValues,
     absentFromFileValues,
     unrecoverable,
     disagreeing,
     unattributed,
+    emptyColumns,
     fieldTallies,
   }
 }

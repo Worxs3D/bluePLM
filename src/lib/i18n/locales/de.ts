@@ -834,4 +834,102 @@ export const de: TranslationDict = {
       'Sie haben möglicherweise keine Berechtigung, die Ordnersichtbarkeit zu ändern',
     scanSkipped: '{{count}} Dateien in ausgeblendeten Ordnern übersprungen',
   },
+
+  metadataRestore: {
+    noOrganization: 'Nicht bei einer Organisation angemeldet.',
+    noVault: 'Kein Tresor verbunden.',
+    adminOnly:
+      'Nur ein Administrator kann eine Metadaten-Wiederherstellung anwenden. Ohne --apply ausführen, um zu sehen, was geschrieben würde.',
+    alreadyRunning: 'Eine Metadaten-Wiederherstellung läuft bereits.',
+    scanning:
+      'Die SolidWorks-Dateien werden schreibgeschützt gelesen, um leere Artikelnummern und Beschreibungen zu finden. Noch wird nichts geschrieben.',
+    cancelled: 'Der Scan wurde abgebrochen. Es wurde nichts geschrieben.',
+    unread:
+      '{{count}} Dateien konnten nicht gelesen werden (fehlend, unlesbar oder in SolidWorks geöffnet) und sind nicht enthalten.',
+    planLine: '  {{path}}: {{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: 'Artikelnummer',
+      description: 'Beschreibung',
+    },
+    heldByOther: '  {{path}} übersprungen: von einem anderen Benutzer ausgecheckt.',
+    summary:
+      '{{files}} Dateien, {{values}} Werte zu füllen. Ausgeschlossen: {{excluded}}. Von anderen ausgecheckt: {{held}}. Beibehaltene ausstehende Änderungen: {{pending}}.',
+    dryRun:
+      'Probelauf. Es wurde nichts geschrieben. Erneut mit --apply ausführen, um diese Werte zu füllen.',
+    fileFailed: '{{path}} konnte nicht aktualisiert werden: {{reason}}',
+    fileRefused: 'Die Datenbank hat die Aktualisierung für {{path}} nicht erlaubt.',
+    applied:
+      '{{filled}} Werte gefüllt. Bereits von jemand anderem gesetzt: {{alreadySet}}. Nicht erlaubt: {{refused}}. Fehlgeschlagene Dateien: {{failed}}.',
+    failed: 'Metadaten-Wiederherstellung fehlgeschlagen: {{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading:
+      '4. Artikelnummern und Beschreibungen, die in BluePLM leer sind, aber noch in der Datei stehen - NUR AUF ANFRAGE FÜLLEN',
+    emptyColumnNone: '  Keine gefunden.',
+    emptyColumnSummary:
+      '  {{count}} Werte in {{files}} Teilen und Baugruppen: BluePLM hat keine Artikelnummer oder Beschreibung, und die Datei enthält noch eine unter einem Schlüssel, den BluePLM schreibt. Vor 4.4.5 konnte ein Upload oder eine Aktualisierung aus der Datei diese Spalten leeren, daher kann dies ein verlorener Wert sein - oder einer, den BluePLM nie hatte. Hier wird nichts automatisch gefüllt.',
+    emptyColumnLine: '  {{path}} {{field}}: Datei "{{value}}"',
+    emptyColumnHow:
+      '  Zum Füllen "Leere Werte aus Datei füllen" unter Einstellungen > Vault Audit verwenden oder restore-metadata-from-files ausführen. Es werden nur Spalten geschrieben, die noch leer sind.',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'In BluePLM leer, in der Datei noch vorhanden',
+      emptyInDatabaseDescription:
+        'Artikelnummern und Beschreibungen, für die BluePLM keinen Wert hat, während das Teil oder die Baugruppe noch einen unter einem Schlüssel enthält, den BluePLM schreibt. Vor 4.4.5 konnte ein Upload oder eine Aktualisierung aus der Datei diese leeren, daher sind viele Verluste - manche gehörten aber vielleicht nie BluePLM. Hier wird nichts gefüllt, außer Sie entscheiden sich dafür.',
+    },
+    resolution: {
+      fillEmptyFromFile: 'Leere Werte aus Datei füllen',
+      fillEmptyFromFileHint:
+        'Schreibt den Wert der Datei nur in BluePLM, solange die Spalte noch leer ist. Es wird keine neue Version erstellt und kein Dokument geändert.',
+    },
+    blocked: {
+      unsavedLocalEdit: 'Sie haben auf diesem Rechner eine ungespeicherte Änderung an diesem Feld',
+    },
+    fill: {
+      guarantee:
+        'Jeder Wert wird nur geschrieben, wenn die Spalte in BluePLM in diesem Moment noch leer ist; alles, was seit dem Scan eingetragen wurde, bleibt erhalten. Es wird keine neue Version erstellt, kein Dokument geändert, und Dateien, die jemand anderes ausgecheckt hat, werden übersprungen. Jede gefüllte Datei wird im Aktivitätsprotokoll festgehalten.',
+      adminOnly: 'Nur ein Administrator kann Werte aus Dateien füllen.',
+      selectPrompt: 'Markieren Sie die Werte, die aus der Datei in BluePLM übernommen werden sollen.',
+      selectedSummary: '{{values}} Werte in {{files}} Dateien ausgewählt.',
+      review: '{{count}} Werte prüfen',
+      previewHeading: 'Diese {{values}} Werte werden in {{files}} Dateien in BluePLM geschrieben:',
+      previewLine: '{{path}} — {{field}}: "{{value}}"',
+      previewMore: 'und {{count}} weitere',
+      cancel: 'Abbrechen',
+      apply: '{{count}} Werte füllen',
+      applying: 'Wird gefüllt…',
+      receiptFilled: '{{count}} Werte gefüllt.',
+      receiptAlreadySet: '{{count}} waren bereits von jemand anderem gesetzt und wurden belassen.',
+      receiptHeld: '{{count}} Dateien sind von jemand anderem ausgecheckt und wurden übersprungen.',
+      receiptRefused:
+        '{{refused}} Werte wurden von der Datenbank nicht zugelassen und {{failed}} Dateien sind fehlgeschlagen. Für sie hat sich sonst nichts geändert.',
+      appliedToast: '{{count}} Werte aus Dateien gefüllt.',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      'Ihr Auschecken von {{name}} wurde aufgehoben, während ungespeicherte Metadatenänderungen offen waren. Sie können nicht mehr eingecheckt werden. Beim erneuten Auschecken werden Sie gefragt, bevor sie verworfen werden - notieren Sie sie, falls Sie sie brauchen.',
+    confirmTitle: 'Ungespeicherte Änderungen an {{count}} Dateien verwerfen?',
+    confirmMessage:
+      'Diese Dateien wurden freigegeben, während Sie ungespeicherte Metadatenänderungen hatten, daher wurden die Änderungen nie eingecheckt. Erneutes Auschecken verwirft die unten aufgeführten Änderungen, und sie werden nicht wiederhergestellt - inzwischen hat womöglich jemand neuere Werte eingecheckt. Brechen Sie ab, um sie auf diesem Rechner zu behalten und zuerst zu notieren.',
+    confirmContinue: 'Änderungen verwerfen und auschecken',
+    cancelled: 'Auschecken abgebrochen. Ihre ungespeicherten Änderungen an {{count}} Dateien wurden behalten.',
+    item: '{{path}}: {{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} geleert',
+    configurationEdit: '{{field}} in {{count}} Konfigurationen',
+    field: {
+      part_number: 'Artikelnummer',
+      tab_number: 'Tab-Nummer',
+      description: 'Beschreibung',
+      revision: 'Revision',
+      config_tabs: 'Tab-Nummern der Konfigurationen',
+      config_descriptions: 'Beschreibungen der Konfigurationen',
+    },
+  },
 }

@@ -792,4 +792,95 @@ export const zhTW: TranslationDict = {
     updateNotPermitted: '您可能沒有權限變更資料夾可見性',
     scanSkipped: '已略過對非管理員隱藏的資料夾中的 {{count}} 個檔案',
   },
+
+  metadataRestore: {
+    noOrganization: '未登入組織。',
+    noVault: '未連接保存庫。',
+    adminOnly: '只有管理員可以套用中繼資料還原。不帶 --apply 執行可查看將要寫入的內容。',
+    alreadyRunning: '中繼資料還原已在執行中。',
+    scanning: '正在以唯讀方式讀取 SolidWorks 檔案，尋找空白的料號和描述。尚未寫入任何內容。',
+    cancelled: '掃描已取消。未寫入任何內容。',
+    unread: '{{count}} 個檔案無法讀取（遺失、無法讀取或已在 SolidWorks 中開啟），未包含在內。',
+    planLine: '  {{path}}：{{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: '料號',
+      description: '描述',
+    },
+    heldByOther: '  已略過 {{path}}：已被其他使用者簽出。',
+    summary:
+      '{{files}} 個檔案，{{values}} 個值待填入。已排除：{{excluded}}。被他人簽出：{{held}}。保留的待提交編輯：{{pending}}。',
+    dryRun: '試執行。未寫入任何內容。使用 --apply 重新執行以填入這些值。',
+    fileFailed: '無法更新 {{path}}：{{reason}}',
+    fileRefused: '資料庫不允許更新 {{path}}。',
+    applied:
+      '已填入 {{filled}} 個值。已被他人設定：{{alreadySet}}。不允許：{{refused}}。失敗的檔案：{{failed}}。',
+    failed: '中繼資料還原失敗：{{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading: '4. BluePLM 中為空但檔案中仍有的料號和描述 - 僅在要求時填入',
+    emptyColumnNone: '  未發現。',
+    emptyColumnSummary:
+      '  {{files}} 個零件和組合件中的 {{count}} 個值：BluePLM 沒有料號或描述，而檔案中仍以 BluePLM 寫入的鍵保存著一個值。4.4.5 之前，上傳或從檔案重新整理可能會清空這些欄位，因此這可能是遺失的值 - 也可能是 BluePLM 從未有過的值。此處不會自動填入任何內容。',
+    emptyColumnLine: '  {{path}} {{field}}：檔案 "{{value}}"',
+    emptyColumnHow:
+      '  如需填入，請在 設定 > Vault Audit 中使用「從檔案填入空值」，或執行 restore-metadata-from-files。只會寫入仍為空的欄位。',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'BluePLM 中為空，檔案中仍有',
+      emptyInDatabaseDescription:
+        'BluePLM 中沒有值的料號和描述，而零件或組合件仍以 BluePLM 寫入的鍵保存著一個值。4.4.5 之前，上傳或從檔案重新整理可能會清空它們，因此其中很多是遺失的值 - 但有些可能從未屬於 BluePLM。除非您選擇，否則此處不會填入任何內容。',
+    },
+    resolution: {
+      fillEmptyFromFile: '從檔案填入空值',
+      fillEmptyFromFileHint: '僅在欄位仍為空時將檔案中的值寫入 BluePLM。不會建立新版本，也不會變更任何文件。',
+    },
+    blocked: {
+      unsavedLocalEdit: '您在此電腦上對該欄位有未儲存的編輯',
+    },
+    fill: {
+      guarantee:
+        '每個值只有在 BluePLM 的欄位當時仍為空時才會寫入，因此掃描之後填入的內容都會保留。不會建立新版本，不會變更任何文件，並會略過其他人已簽出的檔案。每個被填入的檔案都會記錄在活動記錄中。',
+      adminOnly: '只有管理員可以從檔案填入值。',
+      selectPrompt: '勾選應從檔案複製到 BluePLM 的值。',
+      selectedSummary: '已在 {{files}} 個檔案中選取 {{values}} 個值。',
+      review: '檢視 {{count}} 個值',
+      previewHeading: '這 {{values}} 個值將寫入 BluePLM 中的 {{files}} 個檔案：',
+      previewLine: '{{path}} — {{field}}：「{{value}}」',
+      previewMore: '還有 {{count}} 個',
+      cancel: '取消',
+      apply: '填入 {{count}} 個值',
+      applying: '正在填入…',
+      receiptFilled: '已填入 {{count}} 個值。',
+      receiptAlreadySet: '{{count}} 個值已由其他人設定，保持不變。',
+      receiptHeld: '{{count}} 個檔案已被其他人簽出，已略過。',
+      receiptRefused: '資料庫不允許 {{refused}} 個值，{{failed}} 個檔案失敗。它們的其他內容均未變更。',
+      appliedToast: '已從檔案填入 {{count}} 個值。',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      '您對 {{name}} 的簽出已被釋放，而它仍有未儲存的中繼資料編輯。這些編輯已無法簽入。再次簽出該檔案時，會在捨棄它們之前詢問您 - 如有需要請先記下。',
+    confirmTitle: '捨棄 {{count}} 個檔案上未儲存的編輯？',
+    confirmMessage:
+      '這些檔案在您有未儲存的中繼資料編輯時被釋放，因此這些編輯從未簽入。再次簽出會捨棄下列編輯，且不會還原 - 此後可能有人簽入了更新的值。按一下取消可將它們保留在此電腦上，以便先記下。',
+    confirmContinue: '捨棄編輯並簽出',
+    cancelled: '已取消簽出。已保留您在 {{count}} 個檔案上未儲存的編輯。',
+    item: '{{path}}：{{edits}}',
+    valueEdit: '{{field}}「{{value}}」',
+    clearedEdit: '{{field}} 已清空',
+    configurationEdit: '{{count}} 個組態中的{{field}}',
+    field: {
+      part_number: '料號',
+      tab_number: '標籤號',
+      description: '描述',
+      revision: '版本',
+      config_tabs: '組態標籤號',
+      config_descriptions: '組態描述',
+    },
+  },
 }

@@ -37,10 +37,39 @@ export interface TerminalOutput {
 }
 
 /**
+ * Split on whitespace, keeping double-quoted runs together and dropping the quotes.
+ *
+ * Backslash is not an escape: vault paths are Windows paths. Single quotes are literal, since
+ * file names carry apostrophes.
+ */
+export function tokenizeCommandString(input: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let inQuotes = false
+  let hasToken = false
+
+  for (const char of input) {
+    if (char === '"') {
+      inQuotes = !inQuotes
+      hasToken = true
+    } else if (!inQuotes && /\s/.test(char)) {
+      if (hasToken) tokens.push(current)
+      current = ''
+      hasToken = false
+    } else {
+      current += char
+      hasToken = true
+    }
+  }
+  if (hasToken) tokens.push(current)
+  return tokens
+}
+
+/**
  * Parse a command string into structured parts
  */
 export function parseCommandString(input: string): ParsedCommand {
-  const parts = input.trim().split(/\s+/)
+  const parts = tokenizeCommandString(input.trim())
   const command = parts[0]?.toLowerCase() || ''
   const args: string[] = []
   const flags: Record<string, string | boolean> = {}
@@ -49,7 +78,10 @@ export function parseCommandString(input: string): ParsedCommand {
     const part = parts[i]
     if (part.startsWith('--')) {
       // Long flag: --recursive or --message="hello"
-      const [key, value] = part.slice(2).split('=')
+      const body = part.slice(2)
+      const separator = body.indexOf('=')
+      const key = separator === -1 ? body : body.slice(0, separator)
+      const value = separator === -1 ? '' : body.slice(separator + 1)
       flags[key] = value || true
     } else if (part.startsWith('-')) {
       // Short flag: -r or -m "hello"
@@ -73,7 +105,7 @@ export function parseCommandString(input: string): ParsedCommand {
  */
 function resolvePathPattern(pattern: string, files: LocalFile[]): LocalFile[] {
   // Normalize the pattern - remove leading ./, trailing slashes, and normalize slashes
-  let normalizedPattern = pattern.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') // Remove trailing slashes
+  const normalizedPattern = pattern.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') // Remove trailing slashes
 
   // Check for wildcards
   if (normalizedPattern.includes('*')) {

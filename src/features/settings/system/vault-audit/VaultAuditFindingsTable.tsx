@@ -75,7 +75,10 @@ interface VaultAuditFindingsTableProps {
   totalMatching: number
   disabled: boolean
   onToggle: (row: VaultAuditFindingRow, shiftKey: boolean) => void
-  onChooseConflict: (row: VaultAuditFindingRow, direction: VaultAuditActionKind) => void
+  onChooseConflict: (
+    row: VaultAuditFindingRow,
+    direction: Exclude<VaultAuditActionKind, 'fill-empty'>,
+  ) => void
 }
 
 function ValueCell({ value, segments }: { value: string | null; segments: ValueSegments | null }) {

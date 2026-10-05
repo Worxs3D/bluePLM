@@ -792,4 +792,95 @@ export const zhCN: TranslationDict = {
     updateNotPermitted: '您可能没有权限更改文件夹可见性',
     scanSkipped: '已跳过对非管理员隐藏的文件夹中的 {{count}} 个文件',
   },
+
+  metadataRestore: {
+    noOrganization: '未登录到组织。',
+    noVault: '未连接库。',
+    adminOnly: '只有管理员可以应用元数据恢复。不带 --apply 运行可查看将要写入的内容。',
+    alreadyRunning: '元数据恢复已在运行。',
+    scanning: '正在以只读方式读取 SolidWorks 文件，查找为空的物料编号和描述。尚未写入任何内容。',
+    cancelled: '扫描已取消。未写入任何内容。',
+    unread: '{{count}} 个文件无法读取（缺失、不可读或已在 SolidWorks 中打开），未包含在内。',
+    planLine: '  {{path}}：{{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: '物料编号',
+      description: '描述',
+    },
+    heldByOther: '  已跳过 {{path}}：已被其他用户检出。',
+    summary:
+      '{{files}} 个文件，{{values}} 个值待填充。已排除：{{excluded}}。被他人检出：{{held}}。保留的待提交编辑：{{pending}}。',
+    dryRun: '试运行。未写入任何内容。使用 --apply 重新运行以填充这些值。',
+    fileFailed: '无法更新 {{path}}：{{reason}}',
+    fileRefused: '数据库不允许更新 {{path}}。',
+    applied:
+      '已填充 {{filled}} 个值。已被他人设置：{{alreadySet}}。不允许：{{refused}}。失败的文件：{{failed}}。',
+    failed: '元数据恢复失败：{{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading: '4. BluePLM 中为空但文件中仍有的料号和描述 - 仅在请求时填充',
+    emptyColumnNone: '  未发现。',
+    emptyColumnSummary:
+      '  {{files}} 个零件和装配体中的 {{count}} 个值：BluePLM 没有料号或描述，而文件中仍以 BluePLM 写入的键保存着一个值。4.4.5 之前，上传或从文件刷新可能会清空这些列，因此这可能是丢失的值 - 也可能是 BluePLM 从未有过的值。此处不会自动填充任何内容。',
+    emptyColumnLine: '  {{path}} {{field}}：文件 "{{value}}"',
+    emptyColumnHow:
+      '  如需填充，请在 设置 > Vault Audit 中使用"从文件填充空值"，或运行 restore-metadata-from-files。只会写入仍为空的列。',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'BluePLM 中为空，文件中仍有',
+      emptyInDatabaseDescription:
+        'BluePLM 中没有值的料号和描述，而零件或装配体仍以 BluePLM 写入的键保存着一个值。4.4.5 之前，上传或从文件刷新可能会清空它们，因此其中很多是丢失的值 - 但有些可能从未属于 BluePLM。除非您选择，否则此处不会填充任何内容。',
+    },
+    resolution: {
+      fillEmptyFromFile: '从文件填充空值',
+      fillEmptyFromFileHint: '仅在列仍为空时将文件中的值写入 BluePLM。不会创建新版本，也不会更改任何文档。',
+    },
+    blocked: {
+      unsavedLocalEdit: '您在此计算机上对该字段有未保存的编辑',
+    },
+    fill: {
+      guarantee:
+        '每个值只有在 BluePLM 的列当时仍为空时才会写入，因此扫描之后填入的内容都会保留。不会创建新版本，不会更改任何文档，并会跳过其他人已检出的文件。每个被填充的文件都会记录在活动日志中。',
+      adminOnly: '只有管理员可以从文件填充值。',
+      selectPrompt: '勾选应从文件复制到 BluePLM 的值。',
+      selectedSummary: '已在 {{files}} 个文件中选择 {{values}} 个值。',
+      review: '查看 {{count}} 个值',
+      previewHeading: '这 {{values}} 个值将写入 BluePLM 中的 {{files}} 个文件：',
+      previewLine: '{{path}} — {{field}}："{{value}}"',
+      previewMore: '还有 {{count}} 个',
+      cancel: '取消',
+      apply: '填充 {{count}} 个值',
+      applying: '正在填充…',
+      receiptFilled: '已填充 {{count}} 个值。',
+      receiptAlreadySet: '{{count}} 个值已由其他人设置，保持不变。',
+      receiptHeld: '{{count}} 个文件已被其他人检出，已跳过。',
+      receiptRefused: '数据库不允许 {{refused}} 个值，{{failed}} 个文件失败。它们的其他内容均未更改。',
+      appliedToast: '已从文件填充 {{count}} 个值。',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      '您对 {{name}} 的检出已被释放，而它仍有未保存的元数据编辑。这些编辑已无法检入。再次检出该文件时，会在丢弃它们之前询问您 - 如有需要请先记下。',
+    confirmTitle: '丢弃 {{count}} 个文件上未保存的编辑？',
+    confirmMessage:
+      '这些文件在您有未保存的元数据编辑时被释放，因此这些编辑从未检入。再次检出会丢弃下列编辑，且不会恢复 - 此后可能有人检入了更新的值。点击取消可将它们保留在此计算机上，以便先记下。',
+    confirmContinue: '丢弃编辑并检出',
+    cancelled: '已取消检出。已保留您在 {{count}} 个文件上未保存的编辑。',
+    item: '{{path}}：{{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} 已清空',
+    configurationEdit: '{{count}} 个配置中的{{field}}',
+    field: {
+      part_number: '料号',
+      tab_number: '标签号',
+      description: '描述',
+      revision: '版本',
+      config_tabs: '配置标签号',
+      config_descriptions: '配置描述',
+    },
+  },
 }

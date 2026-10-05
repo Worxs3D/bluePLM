@@ -51,6 +51,8 @@ export function categoryLabel(kind: VaultAuditCategoryKind): string {
       return t('vaultAudit.category.conflicting')
     case 'recoverable':
       return t('vaultAudit.category.recoverable')
+    case 'empty-in-database':
+      return t('vaultAudit.category.emptyInDatabase')
     case 'absent-from-file':
       return t('vaultAudit.category.absentFromFile')
     case 'unattributed':
@@ -66,6 +68,8 @@ export function categoryDescription(kind: VaultAuditCategoryKind): string {
       return t('vaultAudit.category.conflictingDescription')
     case 'recoverable':
       return t('vaultAudit.category.recoverableDescription')
+    case 'empty-in-database':
+      return t('vaultAudit.category.emptyInDatabaseDescription')
     case 'absent-from-file':
       return t('vaultAudit.category.absentFromFileDescription')
     case 'unattributed':
@@ -95,6 +99,8 @@ export function resolutionLabel(resolution: VaultAuditResolution): string {
       return t('vaultAudit.resolution.fixOnParentModel')
     case 'leave-alone':
       return t('vaultAudit.resolution.leaveAlone')
+    case 'fill-empty-from-file':
+      return t('vaultAudit.resolution.fillEmptyFromFile')
   }
 }
 
@@ -115,6 +121,8 @@ export function resolutionHint(resolution: VaultAuditResolution): string {
       return t('vaultAudit.resolution.fixOnParentModelHint')
     case 'leave-alone':
       return t('vaultAudit.resolution.leaveAloneHint')
+    case 'fill-empty-from-file':
+      return t('vaultAudit.resolution.fillEmptyFromFileHint')
   }
 }
 
@@ -134,6 +142,8 @@ export function blockedReasonLabel(reason: VaultAuditBlockedReason): string {
       return t('vaultAudit.blocked.entryAlreadyRecorded')
     case 'held-by-another-user':
       return t('vaultAudit.blocked.heldByAnotherUser')
+    case 'unsaved-local-edit':
+      return t('vaultAudit.blocked.unsavedLocalEdit')
   }
 }
 
@@ -166,7 +176,9 @@ export function differenceLabel(kind: ValueDifferenceKind): string | null {
 export function resolutionDirection(
   resolution: VaultAuditResolution,
 ): 'file-to-vault' | 'vault-to-file' | null {
-  if (resolution === 'adopt-file-value') return 'file-to-vault'
+  if (resolution === 'adopt-file-value' || resolution === 'fill-empty-from-file') {
+    return 'file-to-vault'
+  }
   if (resolution === 'push-vault-value') return 'vault-to-file'
   return null
 }
