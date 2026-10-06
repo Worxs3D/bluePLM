@@ -1,3 +1,5 @@
+/* global __dirname, clearInterval, console, process, require, setInterval, setTimeout */
+/* eslint-disable @typescript-eslint/no-require-imports -- This manual Electron smoke loads the runtime-only native CommonJS addon. */
 /*
  * Manual Windows integration check for the optional eDrawings embedding path.
  * Requires eDrawings and a local CAD sample below C:\BluePLM.
@@ -7,13 +9,24 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const resultPath = path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-result.json')
-const checkpointPath = path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-checkpoint.json')
-fs.rmSync(resultPath, { force: true })
-fs.rmSync(checkpointPath, { force: true })
+const artifactDirectory = process.env.BLUEPLM_PREVIEW_TEST_ARTIFACT_DIR
+const legacyArtifactPaths = [
+  path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-result.json'),
+  path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-checkpoint.json'),
+]
+
+for (const legacyArtifactPath of legacyArtifactPaths) {
+  fs.rmSync(legacyArtifactPath, { force: true })
+}
+
+function writeArtifact(name, value) {
+  if (!artifactDirectory) return
+  fs.mkdirSync(artifactDirectory, { recursive: true })
+  fs.writeFileSync(path.join(artifactDirectory, name), JSON.stringify(value))
+}
 
 function checkpoint(stage) {
-  fs.writeFileSync(checkpointPath, JSON.stringify({ stage, at: new Date().toISOString() }))
+  writeArtifact('checkpoint.json', { stage, at: new Date().toISOString() })
 }
 
 function findCadFile(directory) {
@@ -76,19 +89,33 @@ app.whenReady().then(async () => {
   }
   checkpoint('after-initial-bounds')
   checkpoint('before-load-file')
-  const loaded = await preview.loadFile(sample, host)
+  let mainLoopTicksDuringLoad = 0
+  const loadStartedAt = Date.now()
+  const mainLoopTicker = setInterval(() => {
+    mainLoopTicksDuringLoad += 1
+  }, 10)
+  let loaded
+  try {
+    loaded = await preview.loadFile(sample, host)
+  } finally {
+    clearInterval(mainLoopTicker)
+  }
+  const loadDurationMs = Date.now() - loadStartedAt
   if (expectedErrorCode) {
     const result = {
       sample,
       loaded,
       expectedErrorCode,
+      loadDurationMs,
+      mainLoopTicksDuringLoad,
       windowState: preview.getWindowState(),
       error: preview.lastError(),
     }
-    fs.writeFileSync(resultPath, JSON.stringify(result))
     checkpoint('expected-error-written')
     preview.destroy()
+    result.destroyedWindowState = preview.getWindowState()
     window.destroy()
+    writeArtifact('result.json', result)
     console.log(JSON.stringify(result))
     app.exit(loaded.errorCode === expectedErrorCode ? 0 : 1)
     return
@@ -111,12 +138,15 @@ app.whenReady().then(async () => {
       visual,
       lifecycle,
       windowState: preview.getWindowState(),
+      loadDurationMs,
+      mainLoopTicksDuringLoad,
       error: preview.lastError(),
     }
-    fs.writeFileSync(resultPath, JSON.stringify(result))
     checkpoint('result-written')
     preview.destroy()
+    result.destroyedWindowState = preview.getWindowState()
     window.destroy()
+    writeArtifact('result.json', result)
     console.log(JSON.stringify(result))
     app.exit(rendered ? 0 : 1)
   }
