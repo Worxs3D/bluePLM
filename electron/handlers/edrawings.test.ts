@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
@@ -23,6 +24,8 @@ import {
   findEDrawingsExecutable,
   getEDrawingsNativeModuleCandidates,
   getEDrawingsPreviewHostCandidates,
+  openEDrawingsFileExternally,
+  type EDrawingsExternalOpenDependencies,
   registerEDrawingsHandlers,
   type NativeEDrawingsLoadResult,
   type NativeEDrawingsPreview,
@@ -315,6 +318,60 @@ describe('embedded eDrawings preview controller', () => {
 })
 
 describe('external eDrawings opening', () => {
+  it('treats a nonempty shell fallback result as a failed launch', async () => {
+    const logWarn = vi.fn()
+    const openPath = vi.fn().mockResolvedValue('No application is associated with this file')
+    const result = await openEDrawingsFileExternally('C:\\vault\\part.sldprt', {
+      findExecutable: () => null,
+      openPath,
+      spawnProcess: vi.fn() as unknown as EDrawingsExternalOpenDependencies['spawnProcess'],
+      logWarn,
+    })
+
+    expect(result).toBeNull()
+    expect(logWarn).toHaveBeenCalledWith('[eDrawings] External shell fallback failed', {
+      error: 'No application is associated with this file',
+    })
+  })
+
+  it('reports an asynchronous child-process spawn error instead of claiming success', async () => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() }) as unknown as ChildProcess
+    const logWarn = vi.fn()
+    const opening = openEDrawingsFileExternally('C:\\vault\\part.sldprt', {
+      findExecutable: () => 'C:\\Program Files\\eDrawings.exe',
+      openPath: vi.fn(),
+      spawnProcess: vi.fn(
+        () => child,
+      ) as unknown as EDrawingsExternalOpenDependencies['spawnProcess'],
+      logWarn,
+    })
+
+    child.emit('error', new Error('spawn ENOENT'))
+
+    await expect(opening).resolves.toBeNull()
+    expect(child.unref).not.toHaveBeenCalled()
+    expect(logWarn).toHaveBeenCalledWith('[eDrawings] Failed to start the external viewer', {
+      error: 'Error: spawn ENOENT',
+    })
+  })
+
+  it('waits for the child-process spawn event before reporting viewer success', async () => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() }) as unknown as ChildProcess
+    const opening = openEDrawingsFileExternally('C:\\vault\\part.sldprt', {
+      findExecutable: () => 'C:\\Program Files\\eDrawings.exe',
+      openPath: vi.fn(),
+      spawnProcess: vi.fn(
+        () => child,
+      ) as unknown as EDrawingsExternalOpenDependencies['spawnProcess'],
+      logWarn: vi.fn(),
+    })
+
+    child.emit('spawn')
+
+    await expect(opening).resolves.toBe('viewer')
+    expect(child.unref).toHaveBeenCalledOnce()
+  })
+
   it('validates the owning renderer and canonical vault CAD path before external fallback', async () => {
     const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'blueplm-edrawings-vault-'))
     const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'blueplm-edrawings-outside-'))
