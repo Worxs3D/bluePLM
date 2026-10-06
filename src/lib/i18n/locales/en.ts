@@ -1264,6 +1264,128 @@ export const en: TranslationDict = {
       parts: 'Parts',
       drawings: 'Drawings',
     },
+    // Copy or move files to another connected vault. One flat group: translations nest three
+    // levels at most, and the reasons below are looked up by their camel-cased enum value.
+    vaultTransfer: {
+      copyTo: 'Copy to Vault',
+      moveTo: 'Move to Vault',
+      chooseLocation: 'Choose location in',
+      keepFolderPath: 'Keep folder path in',
+      noPermission: 'You do not have permission to do this',
+
+      fileCountOne: '1 file',
+      fileCountOther: '{{count}} files',
+      itemCountOne: '1 item',
+      itemCountOther: '{{count}} items',
+
+      // Why the command refused to start
+      validationOffline: 'Cannot transfer files between vaults while offline',
+      validationNotSignedIn: 'Please sign in first',
+      validationNoVault: 'Open a vault first',
+      validationNoSelection: 'No files selected',
+      validationNotConnected: 'The destination vault is not connected on this computer',
+      validationSameVault: 'Choose a different vault as the destination',
+      validationOverlap:
+        'The two vaults share a folder on this computer, so files cannot be transferred between them',
+      validationInvalidFolder: 'The destination folder is not valid',
+      validationBusy: 'Another file operation is still running. Wait for it to finish.',
+      validationItemsBusy: 'Some of the selected files are busy with another operation',
+      validationNoAccess: 'You do not have access to the destination vault',
+      validationDesktopOnly: 'Transfers between vaults need the desktop app',
+
+      // Why the destination could not be checked
+      prepareDestinationMissing: "The destination vault's folder was not found on this computer",
+      prepareDestinationUnreadable: 'Could not read the destination vault: {{error}}',
+      prepareNothingToTransfer: 'Nothing can be transferred: every file was skipped',
+
+      progressCopy: 'Copying {{files}} to {{vault}}...',
+      progressMove: 'Moving {{files}} to {{vault}}...',
+      progressRemoving: 'Removing the moved files from this vault...',
+
+      resultCopied: 'Copied {{files}} to {{vault}}',
+      resultMoved: 'Moved {{files}} to {{vault}}',
+      resultNothingCopied: 'No files were copied to {{vault}}',
+      resultNothingMoved: 'No files were moved to {{vault}}',
+      resultSkipped: '{{count}} skipped',
+      resultFailed: '{{count}} failed',
+      resultCancelled: '{{count}} cancelled',
+      resultNoLocalCopy: '{{count}} not copied to disk',
+      resultKeptInSource: '{{count}} left in this vault',
+      resultFoldersFailed: '{{count}} folders not created',
+      resultReferencesFailed: 'references not copied',
+      resultFolderFailed: 'Folder could not be created',
+      resultAndMore: '...and {{count}} more',
+
+      // Why a file is left out of a transfer
+      skipOutdated: 'Newer on the server. Get latest first.',
+      skipIgnored: 'Ignored by this vault',
+      skipDeletedOnServer: 'Deleted on the server',
+      skipNoContent: 'Nothing is stored for this file',
+      skipExistsInDestination: 'Already exists in the destination vault',
+      skipExistsOnDisk: 'A file is already at that path on disk in the destination vault',
+      skipDuplicateInSelection: 'Another selected file has the same destination path',
+      skipPathTooLong: 'The destination path is too long for Windows',
+      skipModified: 'Has changes that are not checked in',
+      skipCheckedOut: 'Is checked out. Check it in or undo the checkout first.',
+      skipPendingMove: 'Has a pending move. Resolve it first.',
+
+      // Why a file that should have gone did not
+      failureSourceLocked: 'In use by another program. Save your work and try again.',
+      failureSourceUnreadable: 'Could not be read',
+      failureExistsOnDisk: 'A file is already at that path on disk in the destination vault',
+      failureExistsInDestination: 'Was created in the destination vault in the meantime',
+      failureServerError: 'The server refused it',
+      failureCancelled: 'Cancelled',
+
+      // Why a moved file is still in this vault
+      keptNotVerified: 'The copy in the destination vault could not be verified',
+      keptSourceChanged: 'Changed here after the move began',
+      keptSourceUnverified: 'Could not confirm it is unchanged',
+      keptLocalDeleteFailed:
+        'Could not be removed from disk. It may be open in another program.',
+      keptServerDeleteFailed: 'Could not be deleted from the server',
+
+      localCopyFailed: 'Is in the destination vault but could not be copied to its disk',
+      localCopyDiverged:
+        'Changed on disk since the vault last saw it, so the disk copy was discarded',
+
+      dialogTitleCopy: 'Copy to {{vault}}',
+      dialogTitleMove: 'Move to {{vault}}',
+      dialogSelected: '{{items}} selected',
+      dialogDestinationVault: 'Destination vault',
+      dialogDestinationFolder: 'Destination folder',
+      dialogFolderPlaceholder: 'Vault root',
+      dialogFolderHint: 'Type a folder path or pick one. Folders that do not exist are created.',
+      dialogRootOption: 'Vault root',
+      dialogNoFolders: 'This vault has no folders yet',
+      dialogInvalidFolder: 'That is not a valid folder path',
+      dialogKeepPath: 'Keep the folder path from this vault',
+      dialogKeepPathHint:
+        'Items are placed at the same path under the destination folder, not directly in it.',
+      dialogChecking: 'Checking the destination...',
+      dialogWillCopy: '{{files}} will be copied ({{size}})',
+      dialogWillMove: '{{files}} will be moved ({{size}})',
+      dialogNothingToTransfer: 'Nothing can be transferred with these settings.',
+      dialogSkippedHeading: '{{count}} will be skipped',
+      dialogSkippedMore: '...and {{count}} more',
+      dialogCloudOnly:
+        '{{count}} are only on the server. They are not downloaded; the destination vault lists them as cloud files.',
+      dialogUpload: '{{size}} will be read from disk and uploaded.',
+      dialogMoveNote:
+        'Moved files are removed from this vault: the local copy goes to the Recycle Bin and the server copy to the vault trash.',
+      dialogHistoryNote: 'Version history comes along. Reviews, ECO tags and workflow state do not.',
+      dialogWorkflowNote:
+        '{{count}} have a workflow state. It does not carry over, so they start as new files in the destination.',
+      dialogMissingChildren:
+        '{{count}} files that the selection references are not included (for example {{examples}}). Assemblies and drawings in the destination will not find them.',
+      dialogExternalParents:
+        '{{count}} files outside the selection reference it (for example {{examples}}). After the move they point at files that are no longer here.',
+      dialogReferencesUnavailable: 'References could not be checked.',
+      dialogCancel: 'Cancel',
+      dialogCopyButton: 'Copy {{files}}',
+      dialogMoveButton: 'Move {{files}}',
+      dialogFailed: 'Could not prepare the transfer: {{error}}',
+    },
   },
 
   // Admin-only Vault Audit page - presents the read-only divergence scan

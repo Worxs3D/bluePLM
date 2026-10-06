@@ -623,6 +623,23 @@ export interface AdoptServerPathsParams {
   fileIds?: string[]
 }
 
+/**
+ * Parameters for the copy-to-vault and move-to-vault commands.
+ *
+ * Transfers files, and the folders they sit in, from the active vault into another connected
+ * vault of the same organization. Neither command overwrites anything in the destination: a path
+ * that is already taken is skipped and reported. A move deletes a source only after the
+ * destination copy is verified.
+ */
+export interface VaultTransferParams extends BaseCommandParams {
+  /** The destination vault's id. It must be connected on this machine and differ from the active vault. */
+  destVaultId: string
+  /** Vault-relative folder in the destination. Empty places items at the vault root. */
+  destFolder: string
+  /** Reproduce each item's source folder path under `destFolder` instead of placing it directly there. */
+  keepPath: boolean
+}
+
 // ============================================
 // Command Definition
 // ============================================
@@ -658,6 +675,8 @@ export type CommandId =
   | 'match-ghost-file'
   | 'reconcile-moved-paths'
   | 'adopt-server-paths'
+  | 'copy-to-vault'
+  | 'move-to-vault'
 
 export interface Command<TParams = unknown> {
   // Identifier
@@ -712,6 +731,8 @@ export type CommandMap = {
   'match-ghost-file': Command<MatchGhostFileParams>
   'reconcile-moved-paths': Command<ReconcileMovedPathsParams>
   'adopt-server-paths': Command<AdoptServerPathsParams>
+  'copy-to-vault': Command<VaultTransferParams>
+  'move-to-vault': Command<VaultTransferParams>
 }
 
 // ============================================

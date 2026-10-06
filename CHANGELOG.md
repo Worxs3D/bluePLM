@@ -6,6 +6,22 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-10-06
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Added
+
+- **Copy to Vault and Move to Vault.** Right-click files or folders to carry them into another vault
+  connected on this computer, either to a folder you pick or with their folder path. A dialog
+  previews what goes and what is skipped before anything is written. Nothing in the destination is
+  ever overwritten (an existing path is skipped), version history comes along, cloud-only files are
+  not downloaded to be moved, and references between transferred files are recreated. Workflow
+  state, reviews and ECO tags are not carried. A Move copies and verifies first, then sends the
+  original to the Recycle Bin and the vault trash; a file that cannot be removed stays where it
+  was. Move skips files that are modified or checked out. Renderer only: no schema change, no API
+  change.
+
 ### Changed
 
 - **`npm run build` now builds the SolidWorks service on Windows before packaging.** A clean local

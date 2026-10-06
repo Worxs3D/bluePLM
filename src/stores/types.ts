@@ -601,6 +601,16 @@ export interface UISlice {
     confirmText?: string
   } | null
 
+  // Copy/move to another vault: the selection and the preset the context menu chose. The dialog
+  // that reviews and confirms it is mounted once in AppShell, because the menu that opens it
+  // unmounts as soon as it closes.
+  pendingVaultTransfer: {
+    files: LocalFile[]
+    mode: 'copy' | 'move'
+    destVaultId: string
+    keepPath: boolean
+  } | null
+
   // First-run picker shown when several SOLIDWORKS releases are installed
   showSolidworksVersionModal: boolean
 
@@ -654,6 +664,9 @@ export interface UISlice {
 
   // Command confirmation dialog
   setPendingCommandConfirm: (confirm: UISlice['pendingCommandConfirm']) => void
+
+  // Copy/move to another vault dialog
+  setPendingVaultTransfer: (transfer: UISlice['pendingVaultTransfer']) => void
 
   // SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show: boolean) => void

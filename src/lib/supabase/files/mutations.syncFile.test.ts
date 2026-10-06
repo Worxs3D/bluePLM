@@ -63,6 +63,9 @@ let exactPathLookups: string[] = []
 /** file_path patterns passed to `.ilike()`, i.e. the schema-99 fallback scans. */
 let ilikeLookups: string[] = []
 let filesInsertAttempts = 0
+/** Whether storage already holds the content for the hash being synced. */
+let storageHasContent = true
+let uploads = 0
 const logged: Array<{ level: string; message: string; data?: unknown }> = []
 
 /** Turns a LIKE/ILIKE pattern (as `escapeLikePattern` produces it) into a case-insensitive RegExp. */
@@ -240,8 +243,11 @@ const fakeClient = {
     from: () => ({
       // Report the content as already stored so the upload path is skipped -
       // this suite is about the database write, not about storage.
-      list: async () => ({ data: [{ name: 'hash' }], error: null }),
-      upload: async () => ({ data: null, error: null }),
+      list: async () => ({ data: storageHasContent ? [{ name: 'hash' }] : [], error: null }),
+      upload: async () => {
+        uploads++
+        return { data: null, error: null }
+      },
     }),
   },
   from(name: string) {
@@ -301,7 +307,7 @@ vi.mock('../auth', () => ({
   getCurrentUserEmail: async () => 'someone@example.com',
 }))
 
-const { syncFile } = await import('./mutations')
+const { syncFile, isSyncFileExistsError } = await import('./mutations')
 
 function existingFile(filePath: string, overrides: Partial<FileRow> = {}): FileRow {
   return {
@@ -339,6 +345,8 @@ beforeEach(() => {
   exactPathLookups = []
   ilikeLookups = []
   filesInsertAttempts = 0
+  storageHasContent = true
+  uploads = 0
   versionInserts = []
   logged.length = 0
   // syncFile logs through window.electronAPI when it is there; the test
@@ -559,5 +567,141 @@ describe('uploading onto a row that already holds a part number and description'
       part_number: 'BR-100077',
       description: 'PCB, Fathom-X',
     })
+  })
+})
+
+describe('creating a row only (insertOnly)', () => {
+  // Cross-vault copy has already shown the user what exists at the destination. If the path was
+  // taken in the meantime, replacing that file with a new version is the one outcome it must not
+  // produce: it would overwrite a colleague's work with a copy.
+  function syncInsertOnly(filePath: string, content: string | null = '') {
+    const fileName = filePath.split('/').pop() ?? filePath
+    return syncFile(
+      ORG,
+      VAULT,
+      USER,
+      filePath,
+      fileName,
+      '.sldprt',
+      42,
+      'new-hash',
+      content,
+      undefined,
+      undefined,
+      { insertOnly: true },
+    )
+  }
+
+  it('creates the row when the path is free', async () => {
+    const result = await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(result.error).toBeNull()
+    expect(result.isNew).toBe(true)
+    expect(table).toHaveLength(1)
+  })
+
+  it('refuses an exact match and leaves the existing row untouched', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+
+    const result = await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(result.file).toBeNull()
+    expect(isSyncFileExistsError(result.error)).toBe(true)
+    expect(table).toHaveLength(1)
+    expect(table[0].version).toBe(3)
+    expect(table[0].content_hash).toBe('old-hash')
+    expect(versionInserts).toHaveLength(0)
+  })
+
+  it('refuses a case-insensitive collision instead of updating that row', async () => {
+    table.push(existingFile('Parts/BRACKET.SLDPRT'))
+
+    const result = await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(result.file).toBeNull()
+    expect(isSyncFileExistsError(result.error)).toBe(true)
+    expect(table).toHaveLength(1)
+    expect(table[0].version).toBe(3)
+    expect(table[0].content_hash).toBe('old-hash')
+  })
+
+  it('refuses the collision on a schema-99 database as well', async () => {
+    rpcMissing = true
+    table.push(existingFile('Parts/BRACKET.SLDPRT'))
+
+    const result = await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(isSyncFileExistsError(result.error)).toBe(true)
+    expect(table[0].version).toBe(3)
+  })
+
+  it('does not call its refusal a failure worth a warning', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+
+    await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(warnings()).toHaveLength(0)
+  })
+
+  it('leaves the default behaviour an upsert', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+
+    const result = await sync('Parts/Bracket.SLDPRT')
+
+    expect(result.error).toBeNull()
+    expect(result.isNew).toBe(false)
+    expect(table[0].version).toBe(4)
+  })
+
+  it('does not mistake an ordinary failure for the refusal', async () => {
+    phantomConflict = true
+
+    const result = await syncInsertOnly('Parts/Bracket.SLDPRT')
+
+    expect(result.error).not.toBeNull()
+    expect(isSyncFileExistsError(result.error)).toBe(false)
+  })
+})
+
+describe('content already in storage (null base64)', () => {
+  it('creates the row without uploading', async () => {
+    const result = await syncFile(
+      ORG,
+      VAULT,
+      USER,
+      'Parts/Bracket.SLDPRT',
+      'Bracket.SLDPRT',
+      '.sldprt',
+      42,
+      'new-hash',
+      null,
+    )
+
+    expect(result.error).toBeNull()
+    expect(result.isNew).toBe(true)
+    expect(uploads).toBe(0)
+    expect(table).toHaveLength(1)
+  })
+
+  it('fails without creating a row when the content is not stored after all', async () => {
+    storageHasContent = false
+
+    const result = await syncFile(
+      ORG,
+      VAULT,
+      USER,
+      'Parts/Bracket.SLDPRT',
+      'Bracket.SLDPRT',
+      '.sldprt',
+      42,
+      'new-hash',
+      null,
+    )
+
+    expect(result.file).toBeNull()
+    expect(result.error).not.toBeNull()
+    expect(uploads).toBe(0)
+    expect(table).toHaveLength(0)
+    expect(filesInsertAttempts).toBe(0)
   })
 })

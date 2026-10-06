@@ -7,7 +7,9 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 ## Active plan
 
-4.4.5 is committed, not yet tagged (renderer and preload only — no schema change, no API change,
+Copy to Vault / Move to Vault: 4.5.0 adds both to the file context menus (renderer only - no schema change, no API change). The menu only picks a mode, a destination vault and keep-path; `VaultTransferDialog` (mounted once in `AppShell` through `pendingVaultTransfer`) previews and confirms, then the `copy-to-vault` / `move-to-vault` commands run. The planner, engine, removal and report are in `src/lib/vaultTransfer/`; the command is `src/lib/commands/handlers/vaultTransfer.ts`. Rules that must not loosen: skip-only conflicts (`syncFile` with `insertOnly`, never an overwrite), a Move verifies the destination and re-checks the source row before the Recycle Bin and soft delete, cloud-only files transfer as a row only, workflow state / reviews / ECO tags are not carried. Not yet covered by tests: the Supabase/Electron wrappers in `deps.ts` and `serverOps.ts`.
+
+4.4.5 shipped (renderer and preload only — no schema change, no API change,
 service untouched). It answers Wilson's FATHOM-X-ELEC-PCB-R1 report and the ~130 files
 `scan-divergence` showed with an empty item number or description in BluePLM while the file
 still holds one. Two writers silently wrote `null` over populated columns: `syncFile` updating an

@@ -86,6 +86,7 @@ export {
   getMyCheckedOutFiles,
   getAllCheckedOutFiles,
   syncFile,
+  isSyncFileExistsError,
   checkoutFile,
   checkinFile,
   syncSolidWorksFileMetadata,

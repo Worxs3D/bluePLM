@@ -25,6 +25,7 @@ import { NavigationItems } from './items/NavigationItems'
 import { AdminItems } from './items/AdminItems'
 import { DeleteItems } from './items/DeleteItems'
 import { MovedFileItems } from './items/MovedFileItems'
+import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
 
 // Dialog components
 import { DeleteConfirmDialog } from './dialogs'
@@ -373,6 +374,9 @@ export function FileContextMenu({
           onPaste={onPaste}
           onClose={onClose}
         />
+
+        {/* Copy / Move to another connected vault (hidden when there is none to go to) */}
+        <VaultTransferMenuItems contextFiles={contextFiles} onClose={onClose} />
 
         {/* Collaboration Items */}
         <CollaborationItems

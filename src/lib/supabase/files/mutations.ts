@@ -1,4 +1,5 @@
 import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePattern'
+import type { Json } from '@/types/supabase'
 
 import { getSupabaseClient } from '../client'
 import { getCurrentUser, getCurrentUserEmail } from '../auth'
@@ -265,6 +266,38 @@ async function findActiveFileByPathLegacy(
 // Sync Operations
 // ============================================
 
+/** Code carried by the error `syncFile` returns when `insertOnly` found the path already taken. */
+export const SYNC_FILE_EXISTS = 'SYNC_FILE_EXISTS'
+
+/** True for the refusal `syncFile` returns under `insertOnly` when an active row holds the path. */
+export function isSyncFileExistsError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === SYNC_FILE_EXISTS
+  )
+}
+
+/** The refusal itself, shaped like the PostgREST errors `syncFile` already returns. */
+function syncFileExistsError(filePath: string): Error & { code: string } {
+  return Object.assign(new Error(`A file already exists at ${filePath}`), {
+    code: SYNC_FILE_EXISTS,
+  })
+}
+
+export interface SyncFileOptions {
+  /**
+   * Create a row or fail; never write a new version over one that is already there.
+   *
+   * Every existing caller wants the upsert - a first check-in onto a path somebody else
+   * created first is supposed to land as the next version. A caller that has decided the path
+   * is free (copying into another vault, where the user was shown what already exists) wants
+   * the opposite: if the path was taken in the meantime, say so rather than silently replacing a
+   * colleague's work. Covers the case-insensitive collision as well as the exact match.
+   */
+  insertOnly?: boolean
+}
+
 export async function syncFile(
   orgId: string,
   vaultId: string,
@@ -274,14 +307,22 @@ export async function syncFile(
   extension: string,
   fileSize: number,
   contentHash: string,
-  base64Content: string,
+  /**
+   * The file's bytes, base64. `null` states that the content is already in storage under
+   * `contentHash` - the storage path is keyed by org and hash, so a file copied into another
+   * vault of the same org needs a row, not an upload. When the content is not there after all,
+   * the call fails instead of creating a row that points at nothing.
+   */
+  base64Content: string | null,
   metadata?: {
     partNumber?: string | null
     description?: string | null
     revision?: string | null
-    customProperties?: Record<string, string | number | null>
+    /** Stored as the row's `custom_properties`, nested values (the per-configuration maps) included. */
+    customProperties?: { [key: string]: Json | undefined }
   },
   copiedFromFileId?: string,
+  options?: SyncFileOptions,
 ) {
   const client = getSupabaseClient()
 
@@ -337,6 +378,16 @@ export async function syncFile(
     }
 
     if (!existingFile || existingFile.length === 0) {
+      if (base64Content === null) {
+        // The caller asserted the bytes are already stored. Inserting a row anyway would
+        // create a file that cannot be downloaded, so refuse before touching the table.
+        logFn('error', '[syncFile] Content expected in storage but not found', {
+          filePath,
+          storagePath,
+        })
+        throw new Error(`Content for ${filePath} is not in storage`)
+      }
+
       // Convert base64 to blob
       logFn('debug', '[syncFile] Uploading to storage', { filePath, size: base64Content.length })
       const binaryString = atob(base64Content)
@@ -531,6 +582,10 @@ export async function syncFile(
 
     // If active file exists with same org, update it
     if (activeFile) {
+      if (options?.insertOnly) {
+        logFn('info', '[syncFile] Path already taken, insert-only call refused', { filePath })
+        return { file: null, error: syncFileExistsError(filePath), isNew: false }
+      }
       return await updateExistingFile(activeFile)
     }
 
@@ -603,6 +658,13 @@ export async function syncFile(
         )
 
         if (collidingFile) {
+          if (options?.insertOnly) {
+            logFn('info', '[syncFile] Path already held in another case, insert-only call refused', {
+              filePath,
+              existingId: collidingFile.id,
+            })
+            return { file: null, error: syncFileExistsError(filePath), isNew: false }
+          }
           logFn('info', '[syncFile] Path already held in another case, updating that row', {
             filePath,
             existingId: collidingFile.id,

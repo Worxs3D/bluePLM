@@ -31,6 +31,7 @@ import {
   ExportMetadataTableActions,
   useContextMenuSelectionState,
 } from './actions'
+import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
 import { ContextMenuGroup, ExpandableSection } from './components'
 import { shouldShowExpandableSection, countCollaborationActions } from './utils'
 
@@ -364,6 +365,9 @@ export function FileContextMenu({
             handlePaste={handlePaste}
           />
         </ContextMenuGroup>
+
+        {/* Copy / Move to another connected vault (hidden when there is none to go to) */}
+        <VaultTransferMenuItems contextFiles={contextFiles} onClose={handleCloseMenu} />
 
         {/* Export submenu (SolidWorks STEP, IGES, STL, PDF, DXF) */}
         <ContextMenuGroup label="Export" icon={FileOutput} hasItems={hasExportActions}>

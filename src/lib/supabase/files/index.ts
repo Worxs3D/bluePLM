@@ -37,6 +37,8 @@ export {
 // Mutation functions - sync and metadata updates
 export {
   syncFile,
+  isSyncFileExistsError,
+  SYNC_FILE_EXISTS,
   updateFileMetadata,
   updateFilePath,
   updateFolderPath,
@@ -46,7 +48,12 @@ export {
 } from './mutations'
 
 // Export types for file references
-export type { SWReference, UpsertReferencesResult, SkippedReferenceReason } from './mutations'
+export type {
+  SWReference,
+  UpsertReferencesResult,
+  SkippedReferenceReason,
+  SyncFileOptions,
+} from './mutations'
 
 // Trash functions - soft delete, restore, permanent delete
 export {

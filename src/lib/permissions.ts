@@ -26,6 +26,10 @@ export const OPERATION_PERMISSIONS = {
   'add-files': { resource: 'module:explorer', action: 'create' as PermissionAction },
   'add-folder': { resource: 'module:explorer', action: 'create' as PermissionAction },
 
+  // Cross-vault transfer. Copy creates files in the other vault; Move also deletes them here.
+  'copy-to-vault': { resource: 'module:explorer', action: 'create' as PermissionAction },
+  'move-to-vault': { resource: 'module:explorer', action: 'delete' as PermissionAction },
+
   // File download operations (read access)
   download: { resource: 'module:explorer', action: 'view' as PermissionAction },
   'get-latest': { resource: 'module:explorer', action: 'view' as PermissionAction },
@@ -88,6 +92,8 @@ export function getPermissionDeniedMessage(operation: OperationId): string {
     sync: 'sync files to server',
     'add-files': 'add files',
     'add-folder': 'create folders',
+    'copy-to-vault': 'copy files to another vault',
+    'move-to-vault': 'move files to another vault',
     download: 'download files',
     'get-latest': 'get latest versions',
     'delete-server': 'delete files from server',

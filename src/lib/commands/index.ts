@@ -87,6 +87,7 @@ import { packAndGoCommand } from './handlers/packAndGo'
 import { matchGhostFileCommand } from './handlers/matchGhostFile'
 import { reconcileMovedPathsCommand } from './handlers/reconcileMovedPaths'
 import { adoptServerPathsCommand } from './handlers/adoptServerPaths'
+import { copyToVaultCommand, moveToVaultCommand } from './handlers/vaultTransfer'
 
 // Register all commands on module load
 function initializeCommands() {
@@ -134,6 +135,10 @@ function initializeCommands() {
   // ResolveMovedFilesDialog (or the terminal). Local wins for reconcile, server wins for adopt.
   registerCommand('reconcile-moved-paths', reconcileMovedPathsCommand)
   registerCommand('adopt-server-paths', adoptServerPathsCommand)
+
+  // Between vaults. Reached through the file context menus' Copy to Vault / Move to Vault.
+  registerCommand('copy-to-vault', copyToVaultCommand)
+  registerCommand('move-to-vault', moveToVaultCommand)
 }
 
 // Initialize on import

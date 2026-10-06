@@ -13,3 +13,4 @@ export { UploadSizeWarningDialog, type LargeFile } from './UploadSizeWarningDial
 export { UploadSizeWarningContainer } from './UploadSizeWarningContainer'
 
 export { CommandConfirmContainer } from './CommandConfirmContainer'
+export { VaultTransferContainer } from './VaultTransferContainer'

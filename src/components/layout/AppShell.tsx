@@ -15,6 +15,7 @@ import {
   StagedCheckinConflictDialog,
   UploadSizeWarningContainer,
   CommandConfirmContainer,
+  VaultTransferContainer,
   SolidWorksVersionModal,
 } from '@/components/shared/Dialogs'
 
@@ -229,6 +230,9 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
 
       {/* Command Confirmation Dialog (ctx.confirm from command handlers) */}
       <CommandConfirmContainer />
+
+      {/* Copy / Move to Vault (opened from the file context menus) */}
+      <VaultTransferContainer onRefresh={loadFiles} />
 
       {/* Vault Not Found Dialog */}
       {vaultNotFoundPath && (

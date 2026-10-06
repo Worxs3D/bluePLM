@@ -50,6 +50,9 @@ export const createUISlice: StateCreator<
   // Initial state - Command confirmation dialog
   pendingCommandConfirm: null,
 
+  // Initial state - Copy/move to another vault dialog
+  pendingVaultTransfer: null,
+
   // Initial state - SOLIDWORKS version picker
   showSolidworksVersionModal: false,
 
@@ -239,6 +242,9 @@ export const createUISlice: StateCreator<
 
   // Actions - Command confirmation dialog
   setPendingCommandConfirm: (confirm) => set({ pendingCommandConfirm: confirm }),
+
+  // Actions - Copy/move to another vault dialog
+  setPendingVaultTransfer: (transfer) => set({ pendingVaultTransfer: transfer }),
 
   // Actions - SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show) => set({ showSolidworksVersionModal: show }),

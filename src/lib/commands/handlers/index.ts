@@ -42,6 +42,7 @@ export * from './packAndGo'
 export * from './matchGhostFile'
 export * from './reconcileMovedPaths'
 export * from './adoptServerPaths'
+export * from './vaultTransfer'
 
 // Re-export registry for external use
 export * from '../registry'
