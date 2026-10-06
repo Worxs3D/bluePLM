@@ -38,7 +38,7 @@ import { VendorsTab } from './VendorsTab'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
 import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
 import { CommentSidebar } from './components/CommentSidebar'
-import { EDrawingsEmbeddedPreview } from './components/EDrawingsEmbeddedPreview'
+import { EmbeddedCadPreview } from './components/EmbeddedCadPreview'
 import {
   FileBox,
   Layers,
@@ -836,7 +836,7 @@ export function DetailsPanel() {
               {/* Preview tab for SolidWorks files */}
               {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
                 cadPreviewMode === 'edrawings-embedded' ? (
-                  <EDrawingsEmbeddedPreview fileName={file.name} filePath={file.path} onOpenExternal={handleOpenInEDrawings} />
+                  <EmbeddedCadPreview file={file} onOpenExternal={handleOpenInEDrawings} />
                 ) : (
                   <SWDatacardPanel file={file} />
                 )
@@ -1097,7 +1097,7 @@ export function DetailsPanel() {
                     // CAD file - show thumbnail or eDrawings based on setting
                     <div className="w-full h-full flex flex-col">
                       {cadPreviewMode === 'edrawings-embedded' ? (
-                        <EDrawingsEmbeddedPreview fileName={file.name} filePath={file.path} onOpenExternal={handleOpenInEDrawings} />
+                        <EmbeddedCadPreview file={file} onOpenExternal={handleOpenInEDrawings} />
                       ) : cadPreviewMode === 'edrawings' ? (
                         // eDrawings mode - just show button to open externally
                         eDrawingsStatus.installed ? (

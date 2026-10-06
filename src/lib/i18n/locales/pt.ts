@@ -18,6 +18,14 @@ export const pt: TranslationDict = {
     previewStartFailed: 'Não foi possível iniciar a pré-visualização incorporada do eDrawings.',
     previewUnavailable:
       'A pré-visualização opcional do eDrawings para Windows não está disponível neste computador.',
+    previewServiceUnavailable: 'O serviço de pré-visualização do eDrawings não está disponível.',
+    previewSessionUnavailable: 'A sessão de pré-visualização do eDrawings já não está ativa.',
+    previewHostUnavailable: 'O anfitrião da pré-visualização incorporada do eDrawings não está disponível.',
+    previewHostTimeout: 'A pré-visualização incorporada do eDrawings demorou demasiado a iniciar.',
+    previewDocumentLoadFailed: 'Não foi possível carregar o documento selecionado no eDrawings.',
+    previewFileUnavailable: 'Este ficheiro não está disponível para a pré-visualização incorporada do eDrawings.',
+    previewNotLocal: 'Transfira este ficheiro antes de abrir a pré-visualização incorporada do eDrawings.',
+    previewBoundsUnavailable: 'Não foi possível posicionar a pré-visualização incorporada do eDrawings.',
     openInEDrawings: 'Abrir no eDrawings',
   },
   checkoutDisplay: {

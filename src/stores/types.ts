@@ -23,6 +23,7 @@ import type { VaultAuditSlice } from './slices/vaultAuditSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
+import type { CadPreviewMode } from '../types/CadPreviewMode'
 import type {
   MetadataWriteAddress,
   MetadataWriteState,
@@ -680,7 +681,7 @@ export interface UISlice {
 
 export interface SettingsSlice {
   // State - Preview & Topbar
-  cadPreviewMode: 'thumbnail' | 'edrawings' | 'edrawings-embedded'
+  cadPreviewMode: CadPreviewMode
   topbarConfig: {
     showFps: boolean
     showZoom: boolean
@@ -787,7 +788,7 @@ export interface SettingsSlice {
   testFolderName: string // Name of the temporary test folder inside vault root (default "0 - Tests")
 
   // Actions - Preview & Topbar
-  setCadPreviewMode: (mode: 'thumbnail' | 'edrawings' | 'edrawings-embedded') => void
+  setCadPreviewMode: (mode: CadPreviewMode) => void
   setTopbarConfig: (config: Partial<SettingsSlice['topbarConfig']>) => void
 
   // Actions - SolidWorks

@@ -23,6 +23,7 @@ import {
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
 import { getDefaultModuleConfig, MODULES, getChildModules } from '../types/modules'
 import type { KeybindingsConfig, SettingsTab } from '../types/settings'
+import type { CadPreviewMode } from '../types/CadPreviewMode'
 import type {
   PDMStoreState,
   Tab,
@@ -488,7 +489,7 @@ export const usePDMStore = create<PDMStoreState>()(
           // Convert expandedPendingSections back to Set
           expandedPendingSections: new Set((persisted.expandedPendingSections as string[]) || []),
           // Ensure cadPreviewMode has a default
-          cadPreviewMode: (persisted.cadPreviewMode as 'thumbnail' | 'edrawings' | 'edrawings-embedded') || 'thumbnail',
+          cadPreviewMode: (persisted.cadPreviewMode as CadPreviewMode) || 'thumbnail',
           // Merge topbarConfig over defaults so newly added toggles (e.g. showSolidworks)
           // aren't left undefined for users with a pre-existing persisted config.
           topbarConfig: {

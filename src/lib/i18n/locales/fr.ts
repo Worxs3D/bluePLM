@@ -18,6 +18,14 @@ export const fr: TranslationDict = {
     previewStartFailed: 'Impossible de démarrer l’aperçu eDrawings intégré.',
     previewUnavailable:
       'L’aperçu eDrawings optionnel pour Windows n’est pas disponible sur cet ordinateur.',
+    previewServiceUnavailable: 'Le service d’aperçu eDrawings n’est pas disponible.',
+    previewSessionUnavailable: 'La session d’aperçu eDrawings n’est plus active.',
+    previewHostUnavailable: 'L’hôte d’aperçu eDrawings intégré n’est pas disponible.',
+    previewHostTimeout: 'Le démarrage de l’aperçu eDrawings intégré a pris trop de temps.',
+    previewDocumentLoadFailed: 'Le document sélectionné n’a pas pu être chargé dans eDrawings.',
+    previewFileUnavailable: 'Ce fichier n’est pas disponible pour l’aperçu eDrawings intégré.',
+    previewNotLocal: 'Téléchargez ce fichier avant d’ouvrir l’aperçu eDrawings intégré.',
+    previewBoundsUnavailable: 'L’aperçu eDrawings intégré n’a pas pu être positionné.',
     openInEDrawings: 'Ouvrir dans eDrawings',
   },
   checkoutDisplay: {
