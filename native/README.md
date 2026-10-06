@@ -1,84 +1,72 @@
 # eDrawings Preview Native Addon
 
-Optional Windows addon for embedding an eDrawings preview in Electron.
+Optional Windows-only component for BluePLM's embedded eDrawings preview. It is
+an Electron-main-process integration, not a renderer API and not a general
+external-viewer launcher.
 
-## Prerequisites
+## Runtime prerequisites
 
-- **Windows** (eDrawings is Windows-only)
-- **Node.js** with node-gyp
-- **Visual Studio Build Tools** (C++ workload)
-- **eDrawings** installed (for runtime)
-- **.NET 8 Windows Desktop Runtime (x64)** for the optional WinForms ActiveX
-  preview host. The host is framework-dependent to avoid shipping a duplicate
-  .NET runtime; the .NET SDK is only needed to build it.
+- Windows x64
+- A registered eDrawings ActiveX control with ProgID
+  `EModelView.EModelViewControl`
+- **.NET 8 Windows Desktop Runtime (x64)**
 
-## Building
+The accompanying `BluePLM.EDrawingsPreviewHost.exe` is a `net8.0-windows` x64,
+framework-dependent WinForms host. It creates the registered eDrawings ActiveX
+control through `AxHost` and observes COM events through `ComEventsHelper`.
+BluePLM therefore does rely on ActiveX for the embedded path; a missing or
+unregistered control makes that path unavailable. No .NET Framework 4.8
+targeting pack is required at runtime.
 
-```bash
-# Install dependencies
-cd native
-npm install
+The normal external-viewer IPC is separate. Electron discovers an installed
+`eDrawings.exe` for `edrawings:check-installed` and `edrawings:open-file`; that
+executable is not the preview host and is never passed to the addon.
 
-# Build the addon
-npm run build
+## Electron contract
+
+The preload bridge exposes the embedded-preview commands, which invoke these
+main-process IPC channels:
+
+- `edrawings:native-available`
+- `edrawings:create-preview`, `edrawings:attach-preview`, and
+  `edrawings:load-file`
+- `edrawings:set-bounds`, `edrawings:show-preview`,
+  `edrawings:hide-preview`, and `edrawings:destroy-preview`
+
+`create-preview` returns a session ID. Every subsequent embedded-preview
+operation must supply that ID; BluePLM binds it to the creating renderer and
+rejects stale or foreign requests. File paths are validated by the main process
+before loading.
+
+The production contract used by the main process is:
+
+- `isAvailable(): boolean`
+- `new EDrawingsPreview()` with `attachToWindow`, asynchronous
+  `loadFile(filePath, previewHostPath)`, `setBounds`, `show`, `hide`,
+  `destroy`, and `lastError`
+
+`previewHostPath` is the path to `BluePLM.EDrawingsPreviewHost.exe`. A
+successful `loadFile` promise reports an accepted, ready preview; it does not
+take an `eDrawings.exe` path. The historical `native/index.js` wrapper is not
+the Electron IPC contract and must not be used to infer addon exports.
+
+## Building and packaging
+
+Development builds need Node.js, Python 3, and Visual Studio Build Tools with
+the C++ workload. The root build scripts retain the Windows `cmd.exe` npm
+bootstrap needed by Node 25. Missing optional Windows toolchains produce a
+clear skip after deleting only the corresponding generated eDrawings resource
+payload; actual `node-gyp` or `dotnet publish` errors fail the build.
+
+The package contains:
+
+```text
+resources/bin/win32/edrawings_preview.node
+resources/bin/win32/edrawings-preview-host/BluePLM.EDrawingsPreviewHost.exe
 ```
 
-## Troubleshooting
-
-### "Cannot find module" error
-The native addon needs to be built first. Run `npm run build` in the `native` folder.
-
-### Build errors with node-gyp
-Make sure you have:
-1. Visual Studio Build Tools with C++ workload
-2. Python 3.x installed
-3. Run `npm config set msvs_version 2022` (or your VS version)
-
-### eDrawings not detected
-The addon checks these paths:
-- `C:\Program Files\SOLIDWORKS Corp\eDrawings\`
-- `C:\Program Files\eDrawings\`
-- `C:\Program Files (x86)\eDrawings\`
-
-## API
-
-```javascript
-const edrawings = require('./native');
-
-// Check if eDrawings is installed
-const status = edrawings.checkEDrawingsInstalled();
-// { installed: true, path: "C:\\Program Files\\..." }
-
-// Open file in external eDrawings
-edrawings.openInEDrawings('C:\\path\\to\\file.sldprt');
-
-// Create embedded preview (Windows-only, experimental)
-const preview = new edrawings.EDrawingsPreview();
-preview.attachToWindow(hwnd);
-preview.loadFile('C:\\path\\to\\file.sldprt', 'C:\\Program Files\\Common Files\\eDrawings2026\\eDrawings.exe');
-preview.setBounds(x, y, width, height);
-```
-
-## Note
-
-The module launches an eDrawings process owned by BluePLM and re-parents only
-that window into BluePLM. This avoids relying on the legacy ActiveX control,
-which is absent from some current eDrawings installations. It is deliberately
-optional: when the module, Windows, or eDrawings are unavailable, BluePLM uses
-the normal thumbnail or external-viewer workflow.
-
-### Packaged preview host
-
-BluePLM builds `edrawings-preview-host` as a `net8.0-windows` x64,
-framework-dependent WinForms executable. Its `AxHost` and
-`ComEventsHelper` usage is supported by the .NET 8 Windows Desktop reference
-assemblies; no .NET Framework 4.8 targeting pack is required. A released
-Windows installation therefore needs both the x64 .NET 8 Windows Desktop
-Runtime and a registered eDrawings ActiveX control. The build prints the final
-host payload size so the packaging cost is visible in CI logs.
-
-The build scripts delete their own generated `resources/bin/win32` eDrawings
-payload before an intentional platform/toolchain skip. A skip is consequently
-never evidence that a locally left-over binary is current; the release artifact
-verification treats the missing component as a failure.
+The host's DLL, `.deps.json`, and `.runtimeconfig.json` remain beside the EXE.
+The build logs the native and host payload sizes. Release verification requires
+these source artifacts and their matching Electron Builder copies in
+`release/win-unpacked/resources/bin`; stale or partial output fails the check.
 
