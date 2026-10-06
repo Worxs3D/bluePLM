@@ -12,6 +12,10 @@ export interface NativePreviewVisibilityController {
   setOverlayCount(count: number): void
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return Boolean(value) && typeof (value as { then?: unknown }).then === 'function'
+}
+
 /** Keeps native child-window visibility derived from the two actual states. */
 export function createNativePreviewVisibilityController(api: {
   prepareShow?: () => unknown
@@ -22,25 +26,46 @@ export function createNativePreviewVisibilityController(api: {
   let contextMenuOpen = false
   let overlayCount = 0
   let revision = 0
-  const sync = () => {
+  let hideInFlight: Promise<unknown> | undefined
+  const shouldHide = () => !ready || contextMenuOpen || overlayCount > 0
+
+  function requestHide(): void {
+    if (hideInFlight) return
+    const pending = api.hide()
+    if (!isPromiseLike(pending)) return
+    const currentHide = Promise.resolve(pending)
+    hideInFlight = currentHide
+    const completeHide = () => {
+      if (hideInFlight !== currentHide) return
+      hideInFlight = undefined
+      if (shouldHide()) return
+      sync()
+    }
+    void currentHide.then(completeHide, completeHide)
+  }
+
+  function reconcileVisibility(): void {
+    if (shouldHide()) requestHide()
+  }
+
+  function sync(): void {
     const requestedRevision = ++revision
     if (!ready) return
     if (contextMenuOpen || overlayCount > 0) {
-      void api.hide()
+      requestHide()
       return
     }
+    if (hideInFlight) return
     const show = () => {
       if (!ready || contextMenuOpen || overlayCount > 0 || requestedRevision !== revision) return
       const pending = api.show()
-      if (pending && typeof (pending as { then?: unknown }).then === 'function') {
-        void (pending as PromiseLike<void>).then(() => {
-          if (!ready || requestedRevision !== revision || contextMenuOpen || overlayCount > 0) void api.hide()
-        })
+      if (isPromiseLike(pending)) {
+        void Promise.resolve(pending).then(reconcileVisibility, reconcileVisibility)
       }
     }
     const preparation = api.prepareShow?.()
-    if (preparation && typeof (preparation as { then?: unknown }).then === 'function') {
-      void (preparation as PromiseLike<void>).then(show)
+    if (isPromiseLike(preparation)) {
+      void Promise.resolve(preparation).then(show, reconcileVisibility)
     } else {
       show()
     }
