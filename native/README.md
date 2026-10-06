@@ -8,6 +8,9 @@ Optional Windows addon for embedding an eDrawings preview in Electron.
 - **Node.js** with node-gyp
 - **Visual Studio Build Tools** (C++ workload)
 - **eDrawings** installed (for runtime)
+- **.NET 8 Windows Desktop Runtime (x64)** for the optional WinForms ActiveX
+  preview host. The host is framework-dependent to avoid shipping a duplicate
+  .NET runtime; the .NET SDK is only needed to build it.
 
 ## Building
 
@@ -63,4 +66,19 @@ that window into BluePLM. This avoids relying on the legacy ActiveX control,
 which is absent from some current eDrawings installations. It is deliberately
 optional: when the module, Windows, or eDrawings are unavailable, BluePLM uses
 the normal thumbnail or external-viewer workflow.
+
+### Packaged preview host
+
+BluePLM builds `edrawings-preview-host` as a `net8.0-windows` x64,
+framework-dependent WinForms executable. Its `AxHost` and
+`ComEventsHelper` usage is supported by the .NET 8 Windows Desktop reference
+assemblies; no .NET Framework 4.8 targeting pack is required. A released
+Windows installation therefore needs both the x64 .NET 8 Windows Desktop
+Runtime and a registered eDrawings ActiveX control. The build prints the final
+host payload size so the packaging cost is visible in CI logs.
+
+The build scripts delete their own generated `resources/bin/win32` eDrawings
+payload before an intentional platform/toolchain skip. A skip is consequently
+never evidence that a locally left-over binary is current; the release artifact
+verification treats the missing component as a failure.
 
