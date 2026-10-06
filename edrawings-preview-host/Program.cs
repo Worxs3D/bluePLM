@@ -70,6 +70,7 @@ internal sealed class PreviewHostForm : Form
     private Delegate? _finishedLoadingHandler;
     private Delegate? _failedLoadingHandler;
     private int _terminalStatusWritten;
+    private string _openDocumentResult = "not-called";
 
     public PreviewHostForm(PreviewHostOptions options)
     {
@@ -111,8 +112,9 @@ internal sealed class PreviewHostForm : Form
             _control.CreateControl();
             var activeX = _control.ActiveXInstance ?? throw new COMException("The eDrawings ActiveX instance was not created.");
             SubscribeToLoadEvents(activeX);
-            _ = activeX.GetType().InvokeMember("OpenDoc", BindingFlags.InvokeMethod, null, activeX,
+            var openDocumentResult = activeX.GetType().InvokeMember("OpenDoc", BindingFlags.InvokeMethod, null, activeX,
                 [_options.DocumentPath, false, false, true, string.Empty]);
+            _openDocumentResult = DescribeOpenDocumentResult(openDocumentResult);
         }
         catch
         {
@@ -139,7 +141,15 @@ internal sealed class PreviewHostForm : Form
     private void PublishTerminalStatus(string status)
     {
         if (Interlocked.Exchange(ref _terminalStatusWritten, 1) != 0) return;
-        HostStatusFile.Write(_options.StatusFilePath, status, Handle);
+        HostStatusFile.Write(_options.StatusFilePath, status, Handle, _openDocumentResult);
+    }
+
+    private static string DescribeOpenDocumentResult(object? result)
+    {
+        if (result is null) return "null";
+        if (result is bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal)
+            return string.Format(CultureInfo.InvariantCulture, "{0}:{1}", result.GetType().Name, result);
+        return result.GetType().Name;
     }
 }
 
@@ -152,11 +162,13 @@ internal sealed class EDrawingsAxHost(Guid classId) : AxHost(classId.ToString("B
 
 internal static class HostStatusFile
 {
-    public static void Write(string path, string status, nint window)
+    public static void Write(string path, string status, nint window, string? detail = null)
     {
         try
         {
-            File.WriteAllText(path, string.Format(CultureInfo.InvariantCulture, "{0} {1}", status, window.ToInt64()));
+            File.WriteAllText(path, string.IsNullOrEmpty(detail)
+                ? string.Format(CultureInfo.InvariantCulture, "{0} {1}", status, window.ToInt64())
+                : string.Format(CultureInfo.InvariantCulture, "{0} {1} {2}", status, window.ToInt64(), detail));
         }
         catch
         {
