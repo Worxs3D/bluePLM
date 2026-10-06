@@ -109,28 +109,11 @@ jobs:
       - name: Download restic binary
         run: npm run download-restic -- --current
 
-      # Blocking, deliberately. This step carried `continue-on-error: true` from 2fc2bd9, where the
-      # comment read "will fail on GitHub-hosted runners (no SolidWorks), but works on self-hosted
-      # runners". That stopped being true in 7d165b2, which moved the interop assemblies to
-      # SolidWorks.Interop.* NuGet PackageReferences and says so in the csproj: the Document Manager
-      # API is bound dynamically at runtime, "no compile-time reference needed... this allows CI/CD
-      # builds to succeed". Nothing here needs SOLIDWORKS installed, so a failure is a real failure.
-      - name: Build SolidWorks Service
-        run: dotnet build solidworks-service/BluePLM.SolidWorksService -c Release
+      - name: Build Electron app
+        run: npm run build -- --publish never
 
-      - name: Copy SolidWorks Service to resources
-        run: |
-          New-Item -ItemType Directory -Force -Path resources/bin/win32
-          Copy-Item solidworks-service/BluePLM.SolidWorksService/bin/Release/*.exe resources/bin/win32/
-          Copy-Item solidworks-service/BluePLM.SolidWorksService/bin/Release/*.dll resources/bin/win32/
-          Copy-Item solidworks-service/BluePLM.SolidWorksService/bin/Release/*.config resources/bin/win32/
-          Write-Host "SolidWorks service copied to resources/bin/win32"
-
-      # Belt and braces for the same defect from the other end. electron-builder skips an
-      # extraResources entry whose `from` directory is missing rather than failing, and
-      # `if-no-files-found: error` below only guards the installer itself, so an absent service
-      # binary produces a green release and an installer with no SOLIDWORKS integration. Assert the
-      # binary exists while the cause is still on screen, rather than discovering it from a user.
+      # electron-builder skips an extraResources entry whose `from` directory is missing rather
+      # than failing. Verify after the build that its expected service binary exists.
       - name: Verify SolidWorks service binary is present
         run: |
           $exe = 'resources/bin/win32/BluePLM.SolidWorksService.exe'
@@ -138,9 +121,6 @@ jobs:
             throw "Missing $exe - the installer would ship without SOLIDWORKS integration."
           }
           Write-Host "Found $exe ($((Get-Item $exe).Length) bytes)"
-
-      - name: Build Electron app
-        run: npm run build -- --publish never
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v6

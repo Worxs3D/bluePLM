@@ -42,6 +42,19 @@ npm run dev      # Development with hot reload
 npm run build    # Production build
 ```
 
+### Windows SolidWorks service build
+
+On Windows, `npm run build` also builds the SolidWorks service before packaging. Install the
+.NET SDK and the .NET Framework 4.8 Targeting Pack first.
+
+To deliberately skip the SolidWorks service for a local Windows build, set
+`BLUEPLM_SKIP_SW_SERVICE=1`:
+
+```powershell
+$env:BLUEPLM_SKIP_SW_SERVICE = '1'
+npm run build
+```
+
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start Electron app with hot reload |
