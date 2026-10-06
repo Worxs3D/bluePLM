@@ -285,6 +285,7 @@ LANGUAGE sql IMMUTABLE AS $$
     ('core', NULL, 'table', 'schema_remediation_log', NULL),
     ('core', NULL, 'function', 'record_remediation(text,integer,jsonb,text)', NULL),
     ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns'),
+    ('core', NULL, 'function', 'set_color_swatch_creator()', 'auth.uid'),
     -- The two org-scoped RPCs core.sql owns that used to hand-write the
     -- membership test out of auth.uid().
     ('core', NULL, 'function', 'get_org_module_defaults(uuid)', 'require_org_member'),
@@ -3541,6 +3542,34 @@ DO $$ BEGIN
   ALTER TABLE color_swatches ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
   ALTER TABLE color_swatches ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
   ALTER TABLE color_swatches ALTER COLUMN user_id DROP NOT NULL;
+
+  -- Legacy schema.sql named this duplicate constraint differently.
+  ALTER TABLE color_swatches DROP CONSTRAINT IF EXISTS color_swatch_scope;
+
+  -- ADD COLUMN IF NOT EXISTS leaves the legacy no-action foreign key in
+  -- place. Upgrade it only when it does not already null creators on deletion.
+  IF EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_created_by_fkey'
+       AND contype = 'f'
+       AND confdeltype <> 'n'
+  ) THEN
+    ALTER TABLE color_swatches DROP CONSTRAINT color_swatches_created_by_fkey;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_created_by_fkey'
+       AND contype = 'f'
+  ) THEN
+    ALTER TABLE color_swatches
+      ADD CONSTRAINT color_swatches_created_by_fkey
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+
   UPDATE color_swatches SET created_by = user_id WHERE created_by IS NULL;
   IF NOT EXISTS (
     SELECT 1
@@ -3556,7 +3585,10 @@ DO $$ BEGIN
 END $$;
 
 -- Creator attribution is assigned by the database. Authenticated clients
--- cannot impersonate another user by supplying or changing created_by.
+-- cannot impersonate another user by supplying or changing created_by. Schema
+-- maintenance without auth.uid() may backfill a legacy NULL or let the FK
+-- clear an attribution when its creator is deleted. PostgreSQL executes that
+-- FK action through a nested trigger, unlike a direct client update.
 CREATE OR REPLACE FUNCTION set_color_swatch_creator()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -3567,7 +3599,8 @@ BEGIN
     IF auth.uid() IS NOT NULL THEN
       NEW.created_by := auth.uid();
     END IF;
-  ELSE
+  ELSIF (auth.uid() IS NOT NULL AND pg_trigger_depth() = 1)
+    OR (OLD.created_by IS NOT NULL AND NEW.created_by IS NOT NULL) THEN
     NEW.created_by := OLD.created_by;
   END IF;
   RETURN NEW;
@@ -3586,6 +3619,8 @@ ALTER TABLE color_swatches ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view their color swatches" ON color_swatches;
 DROP POLICY IF EXISTS "Users can view accessible color swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can view own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can view org swatches" ON color_swatches;
 CREATE POLICY "Users can view accessible color swatches"
   ON color_swatches FOR SELECT
   USING (
@@ -3599,15 +3634,21 @@ CREATE POLICY "Users can view accessible color swatches"
 
 DROP POLICY IF EXISTS "Users can manage their color swatches" ON color_swatches;
 DROP POLICY IF EXISTS "Users can manage accessible color swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can create own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Admins can create org swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can delete own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Admins can delete org swatches" ON color_swatches;
 CREATE POLICY "Users can manage accessible color swatches"
   ON color_swatches FOR ALL
   USING (
     user_id = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid()
-        AND users.org_id = color_swatches.org_id
-        AND users.role = 'admin'
+    OR (
+      is_org_admin()
+      AND EXISTS (
+        SELECT 1 FROM users
+        WHERE users.id = auth.uid()
+          AND users.org_id = color_swatches.org_id
+      )
     )
   )
   WITH CHECK (
@@ -3615,11 +3656,11 @@ CREATE POLICY "Users can manage accessible color swatches"
     OR (
       user_id IS NULL
       AND org_id IS NOT NULL
+      AND is_org_admin()
       AND EXISTS (
         SELECT 1 FROM users
         WHERE users.id = auth.uid()
           AND users.org_id = color_swatches.org_id
-          AND users.role = 'admin'
       )
     )
   );
