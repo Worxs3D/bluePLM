@@ -134,4 +134,128 @@ describe('native preview context-menu seam', () => {
 
     expect(hide).toHaveBeenCalled()
   })
+
+  it('waits for a delayed hide before restoring after a persistent menu and independent overlays close', async () => {
+    let resolveHide!: () => void
+    const hidden = new Promise<void>((resolve) => { resolveHide = resolve })
+    const hide = vi.fn(() => hidden)
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setReady(true)
+    show.mockClear()
+    controller.setContextMenuOpen(true)
+    controller.setOverlayCount(2)
+    controller.setOverlayCount(1)
+    controller.setOverlayCount(0)
+
+    expect(show).not.toHaveBeenCalled()
+
+    controller.setContextMenuOpen(false)
+
+    expect(show).not.toHaveBeenCalled()
+
+    resolveHide()
+    await Promise.resolve()
+
+    expect(show).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send duplicate hides while one delayed hide already covers additional overlays', () => {
+    const hidden = new Promise<void>(() => undefined)
+    const hide = vi.fn(() => hidden)
+    const controller = createNativePreviewVisibilityController({ hide, show: vi.fn() })
+
+    controller.setReady(true)
+    controller.setOverlayCount(1)
+    controller.setOverlayCount(2)
+
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start another hide after a resolved hide while the menu remains open', async () => {
+    const nextHide = new Promise<void>(() => undefined)
+    const hide = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(nextHide)
+    const controller = createNativePreviewVisibilityController({ hide, show: vi.fn() })
+
+    controller.setContextMenuOpen(true)
+    controller.setReady(true)
+    await Promise.resolve()
+
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not resynchronize visibility after setReady(false) during a delayed hide', async () => {
+    let resolveHide!: () => void
+    const hidden = new Promise<void>((resolve) => { resolveHide = resolve })
+    const hide = vi.fn(() => hidden)
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setContextMenuOpen(true)
+    controller.setReady(true)
+    controller.setReady(false)
+    resolveHide()
+    await Promise.resolve()
+
+    expect(hide).toHaveBeenCalledTimes(1)
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('keeps the newer preview visible when an older show resolves after the menu closes', async () => {
+    let resolveShowA!: () => void
+    let resolveShowB!: () => void
+    const showA = new Promise<void>((resolve) => { resolveShowA = resolve })
+    const showB = new Promise<void>((resolve) => { resolveShowB = resolve })
+    let nativeVisible = false
+    const show = vi.fn()
+      .mockImplementationOnce(() => {
+        nativeVisible = true
+        return showA
+      })
+      .mockImplementationOnce(() => {
+        nativeVisible = true
+        return showB
+      })
+    const hide = vi.fn(() => { nativeVisible = false })
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setReady(true)
+    controller.setContextMenuOpen(true)
+    controller.setContextMenuOpen(false)
+    resolveShowB()
+    await Promise.resolve()
+    expect(nativeVisible).toBe(true)
+
+    resolveShowA()
+    await Promise.resolve()
+
+    expect(nativeVisible).toBe(true)
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the newer preview visible when an older show rejects after the menu closes', async () => {
+    let rejectShowA!: (reason: Error) => void
+    const showA = new Promise<void>((_, reject) => { rejectShowA = reject })
+    let nativeVisible = false
+    const show = vi.fn()
+      .mockImplementationOnce(() => {
+        nativeVisible = true
+        return showA
+      })
+      .mockImplementationOnce(() => { nativeVisible = true })
+    const hide = vi.fn(() => { nativeVisible = false })
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setReady(true)
+    controller.setContextMenuOpen(true)
+    controller.setContextMenuOpen(false)
+    rejectShowA(new Error('show A failed'))
+    await Promise.resolve()
+
+    expect(nativeVisible).toBe(true)
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
 })
