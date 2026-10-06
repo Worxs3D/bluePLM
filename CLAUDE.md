@@ -194,8 +194,11 @@ The points that most often get violated:
   `EXPECTED_API_VERSION` in `src/lib/apiVersion.ts`, with an `API_VERSION_DESCRIPTIONS` entry.
 - **State goes in `usePDMStore` slices.** Never create a new Zustand store.
 - **No `console.log`** in production code — use `log.*` (Pino in the API).
-- **No hardcoded user-facing strings** — use `t()` from `src/lib/i18n`, and add new keys to every
-  locale in `src/lib/i18n/locales/`; `newKeys.test.ts` enforces this.
+- **No hardcoded user-facing strings** — use `t()` from `src/lib/i18n`. A new namespace gets every
+  locale in `src/lib/i18n/locales/` plus a test asserting it (see `resolveMovesKeys.test.ts`). Keys
+  added to an existing English-only namespace such as `contextMenu` go in `en.ts` only, since other
+  locales fall back to English per key. `newKeys.test.ts` checks only its own key list, not every
+  locale.
 - **No `any`.** Canonical domain types live in `src/types/`; `src/types/supabase.ts` is generated
   and must not be hand-edited.
 - **Move, rename, and delete files with real filesystem operations**, never by writing a new file
