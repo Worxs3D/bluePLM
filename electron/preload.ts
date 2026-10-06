@@ -709,13 +709,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Embedded eDrawings preview
   isEDrawingsNativeAvailable: () => ipcRenderer.invoke('edrawings:native-available'),
   createEDrawingsPreview: () => ipcRenderer.invoke('edrawings:create-preview'),
-  attachEDrawingsPreview: () => ipcRenderer.invoke('edrawings:attach-preview'),
-  loadEDrawingsFile: (filePath: string) => ipcRenderer.invoke('edrawings:load-file', filePath),
-  setEDrawingsBounds: (x: number, y: number, w: number, h: number) =>
-    ipcRenderer.invoke('edrawings:set-bounds', x, y, w, h),
-  showEDrawingsPreview: () => ipcRenderer.invoke('edrawings:show-preview'),
-  hideEDrawingsPreview: () => ipcRenderer.invoke('edrawings:hide-preview'),
-  destroyEDrawingsPreview: () => ipcRenderer.invoke('edrawings:destroy-preview'),
+  attachEDrawingsPreview: (sessionId?: string) =>
+    ipcRenderer.invoke('edrawings:attach-preview', sessionId),
+  loadEDrawingsFile: (sessionId?: string, filePath?: string) =>
+    ipcRenderer.invoke('edrawings:load-file', sessionId, filePath),
+  setEDrawingsBounds: (
+    sessionIdOrX?: string | number,
+    xOrY?: number,
+    yOrWidth?: number,
+    widthOrHeight?: number,
+    height?: number,
+  ) =>
+    ipcRenderer.invoke(
+      'edrawings:set-bounds',
+      sessionIdOrX,
+      xOrY,
+      yOrWidth,
+      widthOrHeight,
+      height,
+    ),
+  showEDrawingsPreview: (sessionId?: string) =>
+    ipcRenderer.invoke('edrawings:show-preview', sessionId),
+  hideEDrawingsPreview: (sessionId?: string) =>
+    ipcRenderer.invoke('edrawings:hide-preview', sessionId),
+  destroyEDrawingsPreview: (sessionId?: string) =>
+    ipcRenderer.invoke('edrawings:destroy-preview', sessionId),
 
   // Auto Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
@@ -1801,18 +1819,26 @@ declare global {
 
       // Embedded eDrawings preview
       isEDrawingsNativeAvailable: () => Promise<boolean>
-      createEDrawingsPreview: () => Promise<{ success: boolean; error?: string }>
-      attachEDrawingsPreview: () => Promise<{ success: boolean; error?: string }>
-      loadEDrawingsFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+      createEDrawingsPreview: () => Promise<{
+        success: boolean
+        sessionId?: string
+        error?: string
+      }>
+      attachEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      loadEDrawingsFile: (
+        sessionId?: string,
+        filePath?: string,
+      ) => Promise<{ success: boolean; accepted?: boolean; ready?: false; error?: string }>
       setEDrawingsBounds: (
-        x: number,
-        y: number,
-        w: number,
-        h: number,
-      ) => Promise<{ success: boolean }>
-      showEDrawingsPreview: () => Promise<{ success: boolean }>
-      hideEDrawingsPreview: () => Promise<{ success: boolean }>
-      destroyEDrawingsPreview: () => Promise<{ success: boolean }>
+        sessionIdOrX?: string | number,
+        xOrY?: number,
+        yOrWidth?: number,
+        widthOrHeight?: number,
+        height?: number,
+      ) => Promise<{ success: boolean; error?: string }>
+      showEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      hideEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      destroyEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
 
       // Auto Updater
       checkForUpdates: () => Promise<{ success: boolean; updateInfo?: unknown; error?: string }>
