@@ -86,6 +86,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function isCadPreviewMode(value: unknown): value is CadPreviewMode {
+  return value === 'thumbnail' || value === 'edrawings' || value === 'edrawings-embedded'
+}
+
 function getLocalStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage
@@ -488,8 +492,10 @@ export const usePDMStore = create<PDMStoreState>()(
           expandedFolders: new Set((persisted.expandedFolders as string[]) || []),
           // Convert expandedPendingSections back to Set
           expandedPendingSections: new Set((persisted.expandedPendingSections as string[]) || []),
-          // Ensure cadPreviewMode has a default
-          cadPreviewMode: (persisted.cadPreviewMode as CadPreviewMode) || 'thumbnail',
+          // Keep only known preview modes from persisted state.
+          cadPreviewMode: isCadPreviewMode(persisted.cadPreviewMode)
+            ? persisted.cadPreviewMode
+            : 'thumbnail',
           // Merge topbarConfig over defaults so newly added toggles (e.g. showSolidworks)
           // aren't left undefined for users with a pre-existing persisted config.
           topbarConfig: {
