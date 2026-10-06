@@ -4,6 +4,17 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+### Changed
+
+- **`npm run build` now builds the SolidWorks service on Windows before packaging.** A clean local
+  build used to produce an installer with no service binary, because electron-builder skips a
+  missing `extraResources` folder without failing. It now needs the .NET SDK and the .NET
+  Framework 4.8 Targeting Pack; set `BLUEPLM_SKIP_SW_SERVICE=1` to skip the service build. The
+  release workflow builds the service once, through `npm run build`, and verifies the binary
+  after the build. Thanks to @Worxs3D (#79).
+
 ## [4.4.5] - 2026-10-05
 
 Renderer and preload only — no schema change, no API change, SolidWorks service unchanged.

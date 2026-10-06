@@ -9,7 +9,7 @@
  * Requirements:
  * - Windows (SolidWorks is Windows-only)
  * - .NET SDK installed (dotnet CLI)
- * - SolidWorks installed (for the Document Manager API DLL)
+ * - .NET Framework 4.8 Targeting Pack
  * 
  * Usage:
  *   npm run build-sw-service
@@ -22,6 +22,11 @@ const path = require('path')
 
 const PROJECT_PATH = 'solidworks-service/BluePLM.SolidWorksService'
 const OUTPUT_DIR = 'resources/bin/win32'
+
+if (process.env.BLUEPLM_SKIP_SW_SERVICE === '1') {
+  console.log('⏭️  Skipping SolidWorks Service build because BLUEPLM_SKIP_SW_SERVICE=1.')
+  process.exit(0)
+}
 
 console.log('🔧 Building SolidWorks Service...\n')
 
@@ -54,13 +59,11 @@ try {
     encoding: 'utf8'
   })
   console.log('✓ Build successful')
-} catch (err) {
+} catch (error) {
   console.error('\n❌ Build failed.')
   console.error('\nCommon issues:')
-  console.error('  - SolidWorks not installed (required for Document Manager API DLL)')
-  console.error('  - Missing .NET Framework 4.8 targeting pack')
-  console.error('\nThe Document Manager API DLL is located at:')
-  console.error('  C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\api\\redist\\SolidWorks.Interop.swdocumentmgr.dll')
+  console.error('  - Missing .NET SDK')
+  console.error('  - Missing .NET Framework 4.8 Targeting Pack')
   process.exit(1)
 }
 
