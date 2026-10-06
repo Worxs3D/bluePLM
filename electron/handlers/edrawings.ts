@@ -28,13 +28,30 @@ export interface EDrawingsPreviewFileDependencies {
 
 export interface NativeEDrawingsPreview {
   attachToWindow(handle: Buffer): boolean | Promise<boolean>
-  loadFile(filePath: string, previewHostPath: string): boolean | Promise<boolean>
+  loadFile(
+    filePath: string,
+    previewHostPath: string,
+  ): NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult>
   setBounds(x: number, y: number, width: number, height: number): boolean | Promise<boolean>
   show(): boolean | Promise<boolean>
   hide(): boolean | Promise<boolean>
   destroy(): boolean | Promise<boolean>
   lastError(): string
 }
+
+/**
+ * The current native bridge returns a boolean until the preview host reports
+ * completion. `true` means only that the request was accepted. Phase B will
+ * return the object form and may set `ready` only after its host handshake and
+ * document-completion callback have both succeeded.
+ */
+export type NativeEDrawingsLoadResult =
+  | boolean
+  | {
+      accepted: boolean
+      ready: boolean
+      errorCode?: EDrawingsPreviewErrorCode
+    }
 
 interface NativeEDrawingsModule {
   EDrawingsPreview: new () => NativeEDrawingsPreview
@@ -73,28 +90,50 @@ interface PreviewSession {
   disposeLifecycle: () => void
 }
 
-interface PreviewResult {
-  success: boolean
-  error?: string
+export type EDrawingsPreviewErrorCode =
+  | 'external-open-failed'
+  | 'preview-service-unavailable'
+  | 'preview-session-not-active'
+  | 'preview-request-not-from-window'
+  | 'preview-module-unavailable'
+  | 'preview-host-unavailable'
+  | 'preview-host-handshake-failed'
+  | 'preview-host-timeout'
+  | 'preview-host-exited'
+  | 'preview-document-load-failed'
+  | 'preview-file-invalid'
+  | 'preview-vault-unavailable'
+  | 'preview-vault-not-local'
+  | 'preview-file-not-allowed'
+  | 'preview-file-type-unsupported'
+  | 'preview-file-not-available'
+  | 'preview-file-outside-vault'
+  | 'preview-bounds-invalid'
+  | 'preview-operation-failed'
+
+export type PreviewFailure = {
+  success: false
+  errorCode: EDrawingsPreviewErrorCode
 }
 
-interface PreviewCreateResult extends PreviewResult {
-  sessionId?: string
-}
+export type PreviewResult = { success: true } | PreviewFailure
 
-interface PreviewLoadResult extends PreviewResult {
-  /**
-   * `accepted` means the native bridge accepted the launch request. It is not a
-   * visual-ready signal: the preview host has no completion callback yet.
-   */
-  accepted?: boolean
-  ready?: false
-}
+export type PreviewCreateResult =
+  | { success: true; sessionId: string }
+  | PreviewFailure
+
+export type PreviewLoadResult =
+  | { success: true; accepted: true; ready: boolean }
+  | PreviewFailure
+
+type PreviewFileValidationResult =
+  | { success: true; filePath: string }
+  | PreviewFailure
 
 interface EDrawingsPreviewControllerDependencies {
   createPreview: () => NativeEDrawingsPreview | null
   getPreviewHostPath: () => string | null
-  validateFile: (filePath: unknown) => PreviewResult & { filePath?: string }
+  validateFile: (filePath: unknown) => PreviewFileValidationResult
   logWarn: (message: string, data?: unknown) => void
   createSessionId?: () => string
 }
@@ -239,23 +278,26 @@ export function validateEDrawingsPreviewFile(
       }
     },
   },
-): PreviewResult & { filePath?: string } {
+): PreviewFileValidationResult {
   if (typeof filePath !== 'string' || filePath.length === 0 || filePath.includes('\0')) {
-    return { success: false, error: 'The preview file path is invalid' }
+    return { success: false, errorCode: 'preview-file-invalid' }
   }
-  if (!vaultRoot) return { success: false, error: 'No active vault directory is available' }
+  if (!vaultRoot) return { success: false, errorCode: 'preview-vault-unavailable' }
+  if (isUncPath(vaultRoot)) {
+    return { success: false, errorCode: 'preview-vault-not-local' }
+  }
   if (isUncPath(filePath) || hasTraversalSegment(filePath) || !path.isAbsolute(filePath)) {
-    return { success: false, error: 'The preview file path is not allowed' }
+    return { success: false, errorCode: 'preview-file-not-allowed' }
   }
   if (!CAD_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
-    return { success: false, error: 'The preview file type is not supported' }
+    return { success: false, errorCode: 'preview-file-type-unsupported' }
   }
 
   try {
     const realVaultRoot = dependencies.realpath(vaultRoot)
     const realFilePath = dependencies.realpath(filePath)
     if (isUncPath(realVaultRoot) || isUncPath(realFilePath) || !dependencies.isFile(realFilePath)) {
-      return { success: false, error: 'The preview file is not available locally' }
+      return { success: false, errorCode: 'preview-file-not-available' }
     }
 
     const relativePath = path.relative(realVaultRoot, realFilePath)
@@ -265,12 +307,12 @@ export function validateEDrawingsPreviewFile(
       relativePath.startsWith(`..${path.sep}`) ||
       path.isAbsolute(relativePath)
     ) {
-      return { success: false, error: 'The preview file is outside the active vault' }
+      return { success: false, errorCode: 'preview-file-outside-vault' }
     }
 
     return { success: true, filePath: realFilePath }
   } catch {
-    return { success: false, error: 'The preview file is not available locally' }
+    return { success: false, errorCode: 'preview-file-not-available' }
   }
 }
 
@@ -349,10 +391,14 @@ export function createEDrawingsPreviewController(
       })
   }
 
-  const stale = (): PreviewResult => ({
-    success: false,
-    error: 'The preview session is no longer active',
-  })
+  const stale = (): PreviewFailure => ({ success: false, errorCode: 'preview-session-not-active' })
+
+  const failedOperation = (current: PreviewSession, operation: string): PreviewFailure => {
+    dependencies.logWarn(`[eDrawings] Embedded preview ${operation} failed`, {
+      error: current.preview.lastError(),
+    })
+    return { success: false, errorCode: 'preview-operation-failed' }
+  }
 
   const invoke = async (
     sessionId: unknown,
@@ -366,10 +412,11 @@ export function createEDrawingsPreviewController(
       if (!isCurrentSession(current)) return stale()
       return succeeded
         ? { success: true }
-        : { success: false, error: current.preview.lastError() || 'The preview operation failed' }
-    } catch (error) {
+        : failedOperation(current, 'operation')
+    } catch (error: unknown) {
       if (!isCurrentSession(current)) return stale()
-      return { success: false, error: String(error) }
+      dependencies.logWarn('[eDrawings] Embedded preview operation threw', { error: String(error) })
+      return { success: false, errorCode: 'preview-operation-failed' }
     }
   }
 
@@ -380,7 +427,7 @@ export function createEDrawingsPreviewController(
         owner.webContents.isDestroyed() ||
         owner.webContents.id !== senderId
       ) {
-        return { success: false, error: 'The preview request did not come from the application window' }
+        return { success: false, errorCode: 'preview-request-not-from-window' }
       }
 
       let preview: NativeEDrawingsPreview | null
@@ -390,9 +437,9 @@ export function createEDrawingsPreviewController(
         dependencies.logWarn('[eDrawings] Failed to create embedded preview', {
           error: String(error),
         })
-        return { success: false, error: 'Optional Windows preview module is unavailable' }
+        return { success: false, errorCode: 'preview-module-unavailable' }
       }
-      if (!preview) return { success: false, error: 'Optional Windows preview module is unavailable' }
+      if (!preview) return { success: false, errorCode: 'preview-module-unavailable' }
 
       destroyCurrentSession()
       const sessionId = (dependencies.createSessionId ?? randomUUID)()
@@ -447,26 +494,36 @@ export function createEDrawingsPreviewController(
       const current = getSession(sessionId, senderId)
       if (!current) return stale()
       const checkedFile = dependencies.validateFile(filePath)
-      if (!checkedFile.success || !checkedFile.filePath) return checkedFile
+      if (!checkedFile.success) return checkedFile
       const previewHostPath = dependencies.getPreviewHostPath()
       if (!previewHostPath) {
-        return { success: false, error: 'The eDrawings preview host is unavailable' }
+        return { success: false, errorCode: 'preview-host-unavailable' }
       }
       try {
-        const accepted = await current.preview.loadFile(checkedFile.filePath, previewHostPath)
+        const nativeResult = await current.preview.loadFile(checkedFile.filePath, previewHostPath)
         if (!isCurrentSession(current)) return stale()
-        return accepted
-          ? { success: true, accepted: true, ready: false }
-          : { success: false, error: current.preview.lastError() || 'eDrawings could not host this file' }
-      } catch (error) {
+        if (typeof nativeResult === 'boolean') {
+          return nativeResult
+            ? { success: true, accepted: true, ready: false }
+            : failedOperation(current, 'load')
+        }
+        if (!nativeResult.accepted) {
+          return {
+            success: false,
+            errorCode: nativeResult.errorCode ?? 'preview-operation-failed',
+          }
+        }
+        return { success: true, accepted: true, ready: nativeResult.ready }
+      } catch (error: unknown) {
         if (!isCurrentSession(current)) return stale()
-        return { success: false, error: String(error) }
+        dependencies.logWarn('[eDrawings] Embedded preview load threw', { error: String(error) })
+        return { success: false, errorCode: 'preview-operation-failed' }
       }
     },
 
     setBounds(sessionId, senderId, bounds) {
       if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)) {
-        return Promise.resolve({ success: false, error: 'The preview bounds are invalid' })
+        return Promise.resolve({ success: false, errorCode: 'preview-bounds-invalid' })
       }
       return invoke(sessionId, senderId, (current) => {
         current.bounds = {
@@ -491,7 +548,8 @@ export function createEDrawingsPreviewController(
         }
         const { x, y, width, height } = current.bounds
         const bounded = await current.preview.setBounds(x, y, width, height)
-        return bounded && current.preview.show()
+        if (!bounded || !isCurrentSession(current)) return false
+        return current.preview.show()
       })
     },
 
@@ -584,15 +642,18 @@ export function registerEDrawingsHandlers(
         await shell.openPath(filePath)
         return { success: true, fallback: true }
       } catch {
-        return { success: false, error: 'eDrawings not found' }
+        return { success: false, errorCode: 'external-open-failed' }
       }
     }
 
     try {
       spawn(eDrawingsPath, [filePath], { detached: true, stdio: 'ignore' }).unref()
       return { success: true }
-    } catch (error) {
-      return { success: false, error: String(error) }
+    } catch (error: unknown) {
+      dependencies.logWarn('[eDrawings] Failed to open the external viewer', {
+        error: String(error),
+      })
+      return { success: false, errorCode: 'external-open-failed' }
     }
   })
 
@@ -604,26 +665,26 @@ export function registerEDrawingsHandlers(
   ipcMain.handle('edrawings:create-preview', (event) =>
     previewController?.create(window, event.sender.id) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
   ipcMain.handle('edrawings:attach-preview', (event, sessionId: unknown) =>
     previewController?.attach(sessionId, event.sender.id) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
   ipcMain.handle('edrawings:load-file', (event, sessionId: unknown, filePath: unknown) =>
     previewController?.load(sessionId, event.sender.id, filePath) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
   ipcMain.handle(
     'edrawings:set-bounds',
     (event, sessionId: unknown, x: unknown, y: unknown, width: unknown, height: unknown) => {
       if (![x, y, width, height].every((value) => typeof value === 'number')) {
-        return { success: false, error: 'The preview bounds are invalid' }
+        return { success: false, errorCode: 'preview-bounds-invalid' }
       }
       return previewController?.setBounds(sessionId, event.sender.id, {
         x: x as number,
@@ -632,26 +693,26 @@ export function registerEDrawingsHandlers(
         height: height as number,
       }) ?? {
         success: false,
-        error: 'The preview service is unavailable',
+        errorCode: 'preview-service-unavailable',
       }
     },
   )
   ipcMain.handle('edrawings:show-preview', (event, sessionId: unknown) =>
     previewController?.show(sessionId, event.sender.id) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
   ipcMain.handle('edrawings:hide-preview', (event, sessionId: unknown) =>
     previewController?.hide(sessionId, event.sender.id) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
   ipcMain.handle('edrawings:destroy-preview', (event, sessionId: unknown) =>
     previewController?.destroy(sessionId, event.sender.id) ?? {
       success: false,
-      error: 'The preview service is unavailable',
+      errorCode: 'preview-service-unavailable',
     },
   )
 }

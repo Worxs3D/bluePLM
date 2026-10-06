@@ -14,6 +14,7 @@ import {
   findEDrawingsExecutable,
   getEDrawingsNativeModuleCandidates,
   getEDrawingsPreviewHostCandidates,
+  type NativeEDrawingsLoadResult,
   type NativeEDrawingsPreview,
   type PreviewOwner,
   validateEDrawingsPreviewFile,
@@ -26,21 +27,22 @@ class FakePreview implements NativeEDrawingsPreview {
   loadCalls = 0
   setBoundsCalls = 0
   showCalls = 0
-  loadResult: boolean | Promise<boolean> = true
+  loadResult: NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult> = true
+  setBoundsResult: boolean | Promise<boolean> = true
 
   attachToWindow(): boolean {
     this.attachCalls += 1
     return true
   }
 
-  loadFile(): boolean | Promise<boolean> {
+  loadFile(): NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult> {
     this.loadCalls += 1
     return this.loadResult
   }
 
-  setBounds(): boolean {
+  setBounds(): boolean | Promise<boolean> {
     this.setBoundsCalls += 1
-    return true
+    return this.setBoundsResult
   }
 
   show(): boolean {
@@ -107,7 +109,7 @@ function createController(previews: FakePreview[]) {
     validateFile: (filePath) =>
       typeof filePath === 'string'
         ? { success: true, filePath }
-        : { success: false, error: 'invalid file' },
+        : { success: false, errorCode: 'preview-file-invalid' },
     logWarn: vi.fn(),
   })
 }
@@ -139,6 +141,7 @@ describe('embedded eDrawings preview controller', () => {
 
     const createdA = controller.create(owner, 17)
     expect(createdA).toEqual({ success: true, sessionId: 'session-1' })
+    if (!createdA.success) throw new Error('expected preview session A')
     expect(await controller.attach(createdA.sessionId, 17)).toEqual({ success: true })
     await expect(controller.load(createdA.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual({
       success: true,
@@ -150,6 +153,7 @@ describe('embedded eDrawings preview controller', () => {
 
     const createdB = controller.create(owner, 17)
     expect(createdB).toEqual({ success: true, sessionId: 'session-2' })
+    if (!createdB.success) throw new Error('expected preview session B')
     expect(previewA.destroyCalls).toBe(1)
     expect(await controller.destroy(createdA.sessionId, 17)).toMatchObject({ success: false })
     expect(previewB.destroyCalls).toBe(0)
@@ -165,15 +169,57 @@ describe('embedded eDrawings preview controller', () => {
     const controller = createController([previewA, previewB])
     const owner = new FakeOwner(17)
     const createdA = controller.create(owner, 17)
+    if (!createdA.success) throw new Error('expected preview session A')
     const loadingA = controller.load(createdA.sessionId, 17, 'C:\\vault\\part.sldprt')
 
     const createdB = controller.create(owner, 17)
+    if (!createdB.success) throw new Error('expected preview session B')
     resolveLoad(true)
 
     await expect(loadingA).resolves.toMatchObject({ success: false })
     expect(previewA.destroyCalls).toBe(1)
     expect(await controller.attach(createdB.sessionId, 17)).toEqual({ success: true })
     expect(previewB.attachCalls).toBe(1)
+  })
+
+  it('preserves a future native ready result without treating the current boolean as ready', async () => {
+    const preview = new FakePreview()
+    preview.loadResult = { accepted: true, ready: true }
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    await expect(controller.load(created.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual({
+      success: true,
+      accepted: true,
+      ready: true,
+    })
+  })
+
+  it('cannot show a superseded preview after its delayed bounds update resolves', async () => {
+    let resolveBounds: (bounded: boolean) => void = () => undefined
+    const previewA = new FakePreview()
+    previewA.setBoundsResult = new Promise<boolean>((resolve) => {
+      resolveBounds = resolve
+    })
+    const previewB = new FakePreview()
+    const controller = createController([previewA, previewB])
+    const owner = new FakeOwner(17)
+    const createdA = controller.create(owner, 17)
+    if (!createdA.success) throw new Error('expected preview session A')
+
+    const showingA = controller.show(createdA.sessionId, 17)
+    const createdB = controller.create(owner, 17)
+    if (!createdB.success) throw new Error('expected preview session B')
+    resolveBounds(true)
+
+    await expect(showingA).resolves.toEqual({
+      success: false,
+      errorCode: 'preview-session-not-active',
+    })
+    expect(previewA.showCalls).toBe(0)
+    expect(await controller.attach(createdB.sessionId, 17)).toEqual({ success: true })
   })
 
   it.each(['render-process-gone', 'did-start-navigation'] as const)(
@@ -183,6 +229,7 @@ describe('embedded eDrawings preview controller', () => {
       const controller = createController([preview])
       const owner = new FakeOwner(17)
       const created = controller.create(owner, 17)
+      if (!created.success) throw new Error('expected preview session')
 
       owner.emitRendererLifecycle(event)
 
@@ -196,6 +243,7 @@ describe('embedded eDrawings preview controller', () => {
     const controller = createController([preview])
     const owner = new FakeOwner(17)
     const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
 
     owner.emit('closed')
 
@@ -251,5 +299,18 @@ describe('embedded eDrawings resource and file validation', () => {
     expect(validateEDrawingsPreviewFile(symlink, vaultRoot, dependencies)).toMatchObject({ success: false })
     expect(validateEDrawingsPreviewFile(path.join(vaultRoot, 'notes.txt'), vaultRoot, dependencies))
       .toMatchObject({ success: false })
+  })
+
+  it('rejects a UNC vault root before resolving it from the main process', () => {
+    const realpath = vi.fn((candidate: string) => candidate)
+
+    expect(
+      validateEDrawingsPreviewFile(
+        'C:\\vault\\part.sldprt',
+        '\\\\server\\vault',
+        { realpath, isFile: () => true },
+      ),
+    ).toEqual({ success: false, errorCode: 'preview-vault-not-local' })
+    expect(realpath).not.toHaveBeenCalled()
   })
 })
