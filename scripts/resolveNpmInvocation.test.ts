@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 type NpmInvocation = { command: string; args: string[] }
 
 const require = createRequire(import.meta.url)
-const { resolveNpmInvocation } = require('../scripts/resolve-npm-invocation.js') as {
+const { resolveNpmInvocation } = require('./resolve-npm-invocation.js') as {
   resolveNpmInvocation: (platform?: string, environment?: Record<string, string>) => NpmInvocation
 }
 
