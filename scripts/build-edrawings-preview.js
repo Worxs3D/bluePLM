@@ -1,34 +1,95 @@
 /* Build the optional Windows native eDrawings preview module for Electron. */
-const { execFileSync } = require('node:child_process')
-const { copyFileSync, existsSync, mkdirSync } = require('node:fs')
+const { execFileSync, spawnSync } = require('node:child_process')
+const { copyFileSync, existsSync, mkdirSync, rmSync, statSync } = require('node:fs')
 const path = require('node:path')
 const { resolveNpmInvocation } = require('./resolve-npm-invocation')
 
-if (process.platform !== 'win32') {
-  console.log('[eDrawings] Native preview is Windows-only; skipping.')
-  process.exit(0)
+function formatBytes(bytes) {
+  return `${(bytes / 1024).toFixed(1)} KiB`
 }
 
-const root = path.resolve(__dirname, '..')
-const nativeDirectory = path.join(root, 'native')
-const gypEntrypoint = path.join(nativeDirectory, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
-const output = path.join(nativeDirectory, 'build', 'Release', 'edrawings_preview.node')
-const resourceDirectory = path.join(root, 'resources', 'bin', 'win32')
-const electronVersion = require(path.join(root, 'node_modules', 'electron', 'package.json')).version
+function commandExists(command, args) {
+  const result = spawnSync(command, args, { stdio: 'ignore', windowsHide: true })
+  return result.error?.code !== 'ENOENT'
+}
 
-if (!existsSync(gypEntrypoint)) {
-  const { command, args } = resolveNpmInvocation()
-  execFileSync(command, args, {
+function hasVisualCppToolchain() {
+  if (commandExists('cl.exe', ['/?'])) return true
+
+  const vswhere = path.join(
+    process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+    'Microsoft Visual Studio',
+    'Installer',
+    'vswhere.exe',
+  )
+  if (!existsSync(vswhere)) return false
+
+  const result = spawnSync(
+    vswhere,
+    ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
+    { encoding: 'utf8', windowsHide: true },
+  )
+  return result.status === 0 && result.stdout.trim().length > 0
+}
+
+function removeStaleResourceOutput(resourceFile) {
+  rmSync(resourceFile, { force: true })
+}
+
+function skip(reason) {
+  console.warn(`[eDrawings] Skipping optional native preview: ${reason}`)
+}
+
+function main() {
+  const root = path.resolve(__dirname, '..')
+  const nativeDirectory = path.join(root, 'native')
+  const resourceDirectory = path.join(root, 'resources', 'bin', 'win32')
+  const resourceFile = path.join(resourceDirectory, 'edrawings_preview.node')
+  removeStaleResourceOutput(resourceFile)
+
+  if (process.platform !== 'win32') {
+    skip('it is supported only on Windows.')
+    return
+  }
+
+  if (!commandExists('python.exe', ['--version']) && !commandExists('py.exe', ['-3', '--version'])) {
+    skip('Python 3 was not found; install it before building the optional node-gyp addon.')
+    return
+  }
+
+  if (!hasVisualCppToolchain()) {
+    skip('Visual Studio Build Tools with the C++ workload were not found.')
+    return
+  }
+
+  let gypEntrypoint = path.join(nativeDirectory, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
+  if (!existsSync(gypEntrypoint)) {
+    const { command, args } = resolveNpmInvocation()
+    // Keep the cmd.exe npm bootstrap: it is required for Node 25 on Windows.
+    execFileSync(command, args, { cwd: nativeDirectory, stdio: 'inherit' })
+    gypEntrypoint = path.join(nativeDirectory, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
+  }
+
+  if (!existsSync(gypEntrypoint)) {
+    throw new Error(`node-gyp bootstrap completed without producing ${gypEntrypoint}`)
+  }
+
+  const output = path.join(nativeDirectory, 'build', 'Release', 'edrawings_preview.node')
+  const electronVersion = require(path.join(root, 'node_modules', 'electron', 'package.json')).version
+  execFileSync(process.execPath, [gypEntrypoint, 'rebuild', `--target=${electronVersion}`, '--arch=x64', '--dist-url=https://electronjs.org/headers'], {
     cwd: nativeDirectory,
     stdio: 'inherit',
   })
+
+  if (!existsSync(output)) {
+    throw new Error(`node-gyp completed without producing ${output}`)
+  }
+
+  mkdirSync(resourceDirectory, { recursive: true })
+  copyFileSync(output, resourceFile)
+  console.log(`[eDrawings] Built native preview module for Electron ${electronVersion} (${formatBytes(statSync(resourceFile).size)}).`)
 }
 
-execFileSync(process.execPath, [gypEntrypoint, 'rebuild', `--target=${electronVersion}`, '--arch=x64', '--dist-url=https://electronjs.org/headers'], {
-  cwd: nativeDirectory,
-  stdio: 'inherit',
-})
+if (require.main === module) main()
 
-mkdirSync(resourceDirectory, { recursive: true })
-copyFileSync(output, path.join(resourceDirectory, 'edrawings_preview.node'))
-console.log(`[eDrawings] Built optional preview module for Electron ${electronVersion}.`)
+module.exports = { commandExists, formatBytes, hasVisualCppToolchain, removeStaleResourceOutput }
