@@ -1109,7 +1109,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 // Type declarations for the renderer process
 declare global {
   type EDrawingsPreviewErrorCode =
-    | 'external-open-failed'
     | 'preview-service-unavailable'
     | 'preview-session-not-active'
     | 'preview-request-not-from-window'
@@ -1137,7 +1136,7 @@ declare global {
   type EDrawingsPreviewOperationResult = { success: true } | EDrawingsPreviewFailure
   type EDrawingsExternalOpenResult =
     | { success: true; fallback?: true }
-    | EDrawingsPreviewFailure
+    | { success: false; errorCode: 'external-open-failed' }
   type EDrawingsPreviewCreateResult =
     | { success: true; sessionId: string }
     | EDrawingsPreviewFailure

@@ -91,7 +91,6 @@ interface PreviewSession {
 }
 
 export type EDrawingsPreviewErrorCode =
-  | 'external-open-failed'
   | 'preview-service-unavailable'
   | 'preview-session-not-active'
   | 'preview-request-not-from-window'
