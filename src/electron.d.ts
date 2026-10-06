@@ -201,7 +201,7 @@ declare global {
     | { success: true; sessionId: string }
     | EDrawingsPreviewFailure
   type EDrawingsPreviewLoadResult =
-    | { success: true; accepted: true; ready: boolean }
+    | { success: true; accepted: true; ready: true }
     | EDrawingsPreviewFailure
 
   /**

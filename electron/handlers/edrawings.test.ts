@@ -27,22 +27,21 @@ class FakePreview implements NativeEDrawingsPreview {
   loadCalls = 0
   setBoundsCalls = 0
   showCalls = 0
-  loadResult: NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult> = true
-  setBoundsResult: boolean | Promise<boolean> = true
+  loadResult: Promise<NativeEDrawingsLoadResult> = Promise.resolve({ accepted: true, ready: true })
 
   attachToWindow(): boolean {
     this.attachCalls += 1
     return true
   }
 
-  loadFile(): NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult> {
+  loadFile(): Promise<NativeEDrawingsLoadResult> {
     this.loadCalls += 1
     return this.loadResult
   }
 
-  setBounds(): boolean | Promise<boolean> {
+  setBounds(): boolean {
     this.setBoundsCalls += 1
-    return this.setBoundsResult
+    return true
   }
 
   show(): boolean {
@@ -146,7 +145,7 @@ describe('embedded eDrawings preview controller', () => {
     await expect(controller.load(createdA.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual({
       success: true,
       accepted: true,
-      ready: false,
+      ready: true,
     })
     expect(await controller.hide(createdA.sessionId, 18)).toMatchObject({ success: false })
     expect(previewA.hideCalls).toBe(0)
@@ -160,9 +159,9 @@ describe('embedded eDrawings preview controller', () => {
   })
 
   it('returns stale when a delayed older load resolves after a newer session supersedes it', async () => {
-    let resolveLoad: (accepted: boolean) => void = () => undefined
+    let resolveLoad: (result: NativeEDrawingsLoadResult) => void = () => undefined
     const previewA = new FakePreview()
-    previewA.loadResult = new Promise<boolean>((resolve) => {
+    previewA.loadResult = new Promise<NativeEDrawingsLoadResult>((resolve) => {
       resolveLoad = resolve
     })
     const previewB = new FakePreview()
@@ -174,7 +173,7 @@ describe('embedded eDrawings preview controller', () => {
 
     const createdB = controller.create(owner, 17)
     if (!createdB.success) throw new Error('expected preview session B')
-    resolveLoad(true)
+    resolveLoad({ accepted: true, ready: true })
 
     await expect(loadingA).resolves.toMatchObject({ success: false })
     expect(previewA.destroyCalls).toBe(1)
@@ -182,9 +181,9 @@ describe('embedded eDrawings preview controller', () => {
     expect(previewB.attachCalls).toBe(1)
   })
 
-  it('preserves a future native ready result without treating the current boolean as ready', async () => {
+  it('reports ready only after the native host has completed loading', async () => {
     const preview = new FakePreview()
-    preview.loadResult = { accepted: true, ready: true }
+    preview.loadResult = Promise.resolve({ accepted: true, ready: true })
     const controller = createController([preview])
     const owner = new FakeOwner(17)
     const created = controller.create(owner, 17)
@@ -197,12 +196,26 @@ describe('embedded eDrawings preview controller', () => {
     })
   })
 
-  it('cannot show a superseded preview after its delayed bounds update resolves', async () => {
-    let resolveBounds: (bounded: boolean) => void = () => undefined
-    const previewA = new FakePreview()
-    previewA.setBoundsResult = new Promise<boolean>((resolve) => {
-      resolveBounds = resolve
+  it('passes through a native host completion failure code', async () => {
+    const preview = new FakePreview()
+    preview.loadResult = Promise.resolve({
+      accepted: false,
+      ready: false,
+      errorCode: 'preview-host-timeout',
     })
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    await expect(controller.load(created.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual({
+      success: false,
+      errorCode: 'preview-host-timeout',
+    })
+  })
+
+  it('cannot show a superseded preview after its bounds await yields', async () => {
+    const previewA = new FakePreview()
     const previewB = new FakePreview()
     const controller = createController([previewA, previewB])
     const owner = new FakeOwner(17)
@@ -212,7 +225,6 @@ describe('embedded eDrawings preview controller', () => {
     const showingA = controller.show(createdA.sessionId, 17)
     const createdB = controller.create(owner, 17)
     if (!createdB.success) throw new Error('expected preview session B')
-    resolveBounds(true)
 
     await expect(showingA).resolves.toEqual({
       success: false,
