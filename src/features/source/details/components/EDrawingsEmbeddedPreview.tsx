@@ -8,7 +8,7 @@ import {
   createNativePreviewVisibilityController,
   observeNativePreviewOverlays,
 } from './nativePreviewOverlay'
-import { createPreviewSessionLifecycle } from './previewSessionLifecycle'
+import { createPreviewSessionController } from './previewSessionLifecycle'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
 type EDrawingsPreviewApi = NonNullable<Window['electronAPI']>
@@ -62,21 +62,19 @@ export function EDrawingsEmbeddedPreview({
   const [errorCode, setErrorCode] = useState<EDrawingsPreviewErrorCode | null>(null)
 
   useEffect(() => {
-    const lifecycle = createPreviewSessionLifecycle()
-    let destroyed = false
     let observer: ResizeObserver | undefined
     let stopObservingOverlays: (() => void) | undefined
     const api = window.electronAPI
+    const session = api ? createPreviewSessionController(api) : undefined
 
     const isActiveSession = (expectedSessionId: string) =>
-      lifecycle.isActive(expectedSessionId)
+      session?.isActive(expectedSessionId) === true
 
     const destroy = async () => {
-      const currentSessionId = lifecycle.sessionId
-      if (!api || !currentSessionId || destroyed) return
-      destroyed = true
+      const currentSessionId = session?.sessionId
+      if (!session || !currentSessionId) return
       try {
-        await api.destroyEDrawingsPreview(currentSessionId)
+        await session.destroy()
         if (!isActiveSession(currentSessionId)) return
       } catch (error) {
         if (!isActiveSession(currentSessionId)) return
@@ -85,9 +83,9 @@ export function EDrawingsEmbeddedPreview({
     }
 
     const fail = (code: EDrawingsPreviewErrorCode) => {
-      const currentSessionId = lifecycle.sessionId
+      const currentSessionId = session?.sessionId
       if (currentSessionId && !isActiveSession(currentSessionId)) return
-      if (lifecycle.disposed) return
+      if (!session || session.disposed) return
       log.error('[EDrawingsPreview]', 'Embedded preview request failed', { code, filePath })
       setErrorCode(code)
       setState('error')
@@ -95,18 +93,18 @@ export function EDrawingsEmbeddedPreview({
     }
 
     const syncBounds = async (expectedSessionId: string): Promise<boolean> => {
-      if (!api || !isActiveSession(expectedSessionId)) return false
+      if (!session || !isActiveSession(expectedSessionId)) return false
       const rect = host.current?.getBoundingClientRect()
       if (!rect || rect.width < 1 || rect.height < 1) return true
       const scale = window.devicePixelRatio || 1
-      const result = await api.setEDrawingsBounds(
-        expectedSessionId,
+      const result = await session.setBounds(
         rect.left * scale,
         rect.top * scale,
         rect.width * scale,
         rect.height * scale,
       )
       if (!isActiveSession(expectedSessionId)) return false
+      if (!result) return false
       if (!result.success) {
         fail(result.errorCode)
         return false
@@ -115,36 +113,38 @@ export function EDrawingsEmbeddedPreview({
     }
 
     const syncActiveBounds = () => {
-      if (lifecycle.sessionId) void syncBounds(lifecycle.sessionId)
+      if (session?.sessionId) void syncBounds(session.sessionId)
     }
 
     const visibility = createNativePreviewVisibilityController({
       hide: async () => {
-        const currentSessionId = lifecycle.sessionId
-        if (!api || !currentSessionId || !isActiveSession(currentSessionId)) return
-        const result = await api.hideEDrawingsPreview(currentSessionId)
+        const currentSessionId = session?.sessionId
+        if (!session || !currentSessionId || !isActiveSession(currentSessionId)) return
+        const result = await session.hide()
+        if (!result) return
         if (!isActiveSession(currentSessionId)) return
         if (!result.success) fail(result.errorCode)
       },
       prepareShow: () => {
-        const currentSessionId = lifecycle.sessionId
+        const currentSessionId = session?.sessionId
         return currentSessionId ? syncBounds(currentSessionId) : undefined
       },
       show: async () => {
-        const currentSessionId = lifecycle.sessionId
-        if (!api || !currentSessionId || !isActiveSession(currentSessionId)) return
-        const result = await api.showEDrawingsPreview(currentSessionId)
+        const currentSessionId = session?.sessionId
+        if (!session || !currentSessionId || !isActiveSession(currentSessionId)) return
+        const result = await session.show()
+        if (!result) return
         if (!isActiveSession(currentSessionId)) return
         if (!result.success) fail(result.errorCode)
       },
     })
 
     const handleContextMenuOpen = () => {
-      if (lifecycle.disposed) return
+      if (!session || session.disposed) return
       visibility.setContextMenuOpen(true)
     }
     const handleContextMenuClose = () => {
-      if (lifecycle.disposed) return
+      if (!session || session.disposed) return
       visibility.setContextMenuOpen(false)
     }
     const handleOutsideContextMenu = (event: PointerEvent) => {
@@ -157,33 +157,34 @@ export function EDrawingsEmbeddedPreview({
 
     const start = async () => {
       if (!hasLocalContent) {
-        if (!lifecycle.disposed) {
+        if (!session?.disposed) {
           setErrorCode('preview-vault-not-local')
           setState('error')
         }
         return
       }
       if (!api) {
-        if (!lifecycle.disposed) setState('unavailable')
+        if (!session) setState('unavailable')
         return
       }
       const nativeAvailable = await api.isEDrawingsNativeAvailable()
-      if (lifecycle.disposed) return
+      if (!session || session.disposed) return
       if (!nativeAvailable) {
-        if (!lifecycle.disposed) setState('unavailable')
+        if (!session.disposed) setState('unavailable')
         return
       }
-      const created = await api.createEDrawingsPreview()
+      const created = await session.create()
+      if (!created) return
       if (!created.success) {
-        if (!lifecycle.disposed) fail(created.errorCode)
+        if (!session.disposed) fail(created.errorCode)
         return
       }
-      lifecycle.registerSession(created.sessionId)
       if (!isActiveSession(created.sessionId)) {
         void destroy()
         return
       }
-      const attached = await api.attachEDrawingsPreview(created.sessionId)
+      const attached = await session.attach()
+      if (!attached) return
       if (!isActiveSession(created.sessionId)) return
       if (!attached.success) {
         fail(attached.errorCode)
@@ -192,7 +193,8 @@ export function EDrawingsEmbeddedPreview({
       // The Windows host embeds itself during process creation, so it needs
       // the final panel bounds before we start it rather than afterwards.
       if (!(await syncBounds(created.sessionId)) || !isActiveSession(created.sessionId)) return
-      const loaded = await api.loadEDrawingsFile(created.sessionId, filePath)
+      const loaded = await session.load(filePath)
+      if (!loaded) return
       if (!isActiveSession(created.sessionId)) return
       if (!loaded.success) {
         fail(loaded.errorCode)
@@ -227,7 +229,7 @@ export function EDrawingsEmbeddedPreview({
     setState('loading')
     setErrorCode(null)
     void start().catch((error) => {
-      if (lifecycle.disposed) return
+      if (!session || session.disposed) return
       log.error('[EDrawingsPreview]', 'Failed to start embedded preview', {
         error: error instanceof Error ? error.message : String(error),
         filePath,
@@ -235,7 +237,7 @@ export function EDrawingsEmbeddedPreview({
       fail('preview-operation-failed')
     })
     return () => {
-      lifecycle.dispose()
+      session?.dispose()
       visibility.setReady(false)
       observer?.disconnect()
       stopObservingOverlays?.()

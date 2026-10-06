@@ -55,7 +55,9 @@ export function createNativePreviewVisibilityController(api: {
       sync()
     },
     setOverlayCount(count) {
-      overlayCount = Math.max(0, count)
+      const nextOverlayCount = Math.max(0, count)
+      if (nextOverlayCount === overlayCount) return
+      overlayCount = nextOverlayCount
       sync()
     },
   }

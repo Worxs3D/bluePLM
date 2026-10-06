@@ -67,6 +67,21 @@ describe('native preview context-menu seam', () => {
     expect(show).toHaveBeenCalledTimes(1)
   })
 
+  it('does not issue visibility IPC again when an observed DOM mutation leaves the overlay count unchanged', () => {
+    const hide = vi.fn()
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setReady(true)
+    controller.setOverlayCount(0)
+    controller.setOverlayCount(0)
+    controller.setOverlayCount(1)
+    controller.setOverlayCount(1)
+
+    expect(show).toHaveBeenCalledTimes(1)
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
   it('does not show when the menu reopens during asynchronous preparation', async () => {
     let resolvePreparation!: () => void
     const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })
