@@ -515,8 +515,11 @@ export function createEDrawingsPreviewController(
       const restoreForOwner = () => syncOwnerPreview(owner, true)
       const syncBoundsForOwner = () => syncOwnerPreview(owner)
       const disposeLifecycle = () => {
-        owner.webContents.removeListener('render-process-gone', cleanup)
-        owner.webContents.removeListener('did-start-navigation', cleanup)
+        if (owner.isDestroyed()) return
+        if (!owner.webContents.isDestroyed()) {
+          owner.webContents.removeListener('render-process-gone', cleanup)
+          owner.webContents.removeListener('did-start-navigation', cleanup)
+        }
         owner.removeListener('closed', cleanup)
         owner.removeListener('minimize', hideForOwner)
         owner.removeListener('hide', hideForOwner)
