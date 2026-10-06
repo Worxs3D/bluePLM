@@ -501,13 +501,15 @@ private:
 
     Napi::Value GetWindowState(const Napi::CallbackInfo& info) {
         HWND viewer = nullptr, host = nullptr;
+        bool jobActive = false;
         std::string openDocumentResult;
-        { std::lock_guard lock(m_state->mutex); viewer = m_state->viewer; host = m_state->host; openDocumentResult = m_state->openDocumentResult; }
+        { std::lock_guard lock(m_state->mutex); viewer = m_state->viewer; host = m_state->host; jobActive = m_state->job != nullptr; openDocumentResult = m_state->openDocumentResult; }
         Napi::Object result = Napi::Object::New(info.Env()); const bool exists = viewer && IsWindow(viewer); const HWND owner = exists ? GetWindow(viewer, GW_OWNER) : nullptr;
         result.Set("exists", Napi::Boolean::New(info.Env(), exists)); result.Set("visible", Napi::Boolean::New(info.Env(), exists && IsWindowVisible(viewer)));
         result.Set("ownedByHost", Napi::Boolean::New(info.Env(), exists && owner == host)); result.Set("hostHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(host))));
         result.Set("ownerHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(owner))));
         result.Set("openDocumentResult", Napi::String::New(info.Env(), openDocumentResult));
+        result.Set("jobActive", Napi::Boolean::New(info.Env(), jobActive));
         const LONG_PTR extendedStyle = exists ? GetWindowLongPtrW(viewer, GWL_EXSTYLE) : 0; result.Set("topmost", Napi::Boolean::New(info.Env(), (extendedStyle & WS_EX_TOPMOST) != 0));
         RECT viewerRect{};
         RECT hostClient{};
