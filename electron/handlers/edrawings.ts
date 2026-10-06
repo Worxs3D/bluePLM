@@ -152,6 +152,11 @@ const CAD_FILE_EXTENSIONS = new Set([
   '.sldprt',
   '.sldasm',
   '.slddrw',
+  '.step',
+  '.stp',
+  '.stl',
+  '.iges',
+  '.igs',
   '.eprt',
   '.easm',
   '.edrw',
@@ -641,11 +646,21 @@ export function registerEDrawingsHandlers(
     }
   })
 
-  ipcMain.handle('edrawings:open-file', async (_, filePath: string) => {
+  ipcMain.handle('edrawings:open-file', async (event, filePath: unknown) => {
+    if (!isApplicationWindowSender(event.sender)) {
+      return { success: false, errorCode: 'external-open-failed' }
+    }
+    const checkedFile = validateEDrawingsPreviewFile(
+      filePath,
+      dependencies.getWorkingDirectory(),
+    )
+    if (!checkedFile.success) {
+      return { success: false, errorCode: 'external-open-failed' }
+    }
     const eDrawingsPath = findEDrawingsExecutable()
     if (!eDrawingsPath) {
       try {
-        await shell.openPath(filePath)
+        await shell.openPath(checkedFile.filePath)
         return { success: true, fallback: true }
       } catch {
         return { success: false, errorCode: 'external-open-failed' }
@@ -653,7 +668,7 @@ export function registerEDrawingsHandlers(
     }
 
     try {
-      spawn(eDrawingsPath, [filePath], { detached: true, stdio: 'ignore' }).unref()
+      spawn(eDrawingsPath, [checkedFile.filePath], { detached: true, stdio: 'ignore' }).unref()
       return { success: true }
     } catch (error: unknown) {
       dependencies.logWarn('[eDrawings] Failed to open the external viewer', {
