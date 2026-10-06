@@ -19,6 +19,8 @@ export const pt: TranslationDict = {
     madeWritable: '{{count}} ficheiro(s) já estavam em checkout e agora podem ser gravados.',
     solidWorksStillReadonly:
       'Em checkout e gravável no disco, mas o SolidWorks ainda tem o ficheiro aberto como só de leitura. No SolidWorks: Editar → Só de leitura, ou feche e volte a abrir o ficheiro.',
+    syncBlocked:
+      'Só de leitura no disco, por isso não foram escritos metadados em: {{names}}. Faça checkout do ficheiro novamente para o tornar gravável.',
   },
   common: {
     save: 'Guardar',
@@ -377,6 +379,8 @@ export const pt: TranslationDict = {
     checkIn: 'Check-In',
     checkOut: 'Check-Out',
     download: 'Transferir',
+    downloadSkippedNoHash_one: '1 ficheiro não tinha um hash transferível',
+    downloadSkippedNoHash_other: '{{count}} ficheiros não tinham um hash transferível',
     getLatest: 'Obter a versão mais recente',
     upload: 'Carregar',
     delete: 'Eliminar',
@@ -819,5 +823,103 @@ export const pt: TranslationDict = {
     updateFailed: 'Não foi possível atualizar a visibilidade da pasta',
     updateNotPermitted: 'Pode não ter permissão para alterar a visibilidade da pasta',
     scanSkipped: 'Foram ignorados {{count}} ficheiros em pastas ocultas de não administradores',
+  },
+
+  metadataRestore: {
+    noOrganization: 'Sem sessão iniciada numa organização.',
+    noVault: 'Nenhum cofre ligado.',
+    adminOnly:
+      'Apenas um administrador pode aplicar um restauro de metadados. Execute sem --apply para ver o que seria escrito.',
+    alreadyRunning: 'Já está a decorrer um restauro de metadados.',
+    scanning:
+      'A ler os ficheiros SolidWorks apenas em leitura para encontrar números de artigo e descrições vazios. Ainda nada é escrito.',
+    cancelled: 'A análise foi cancelada. Nada foi escrito.',
+    unread:
+      'Não foi possível ler {{count}} ficheiros (em falta, ilegíveis ou abertos no SolidWorks) e não estão incluídos.',
+    planLine: '  {{path}}: {{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: 'Número de artigo',
+      description: 'Descrição',
+    },
+    heldByOther: '  {{path}} ignorado: com check-out por outro utilizador.',
+    summary:
+      '{{files}} ficheiros, {{values}} valores a preencher. Excluídos: {{excluded}}. Com check-out por outros: {{held}}. Edições pendentes mantidas: {{pending}}.',
+    dryRun:
+      'Simulação. Nada foi escrito. Execute novamente com --apply para preencher estes valores.',
+    fileFailed: 'Não foi possível atualizar {{path}}: {{reason}}',
+    fileRefused: 'A base de dados não permitiu a atualização de {{path}}.',
+    applied:
+      '{{filled}} valores preenchidos. Já definidos por outra pessoa: {{alreadySet}}. Não permitidos: {{refused}}. Ficheiros com falha: {{failed}}.',
+    failed: 'O restauro de metadados falhou: {{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading:
+      '4. Números de artigo e descrições vazios no BluePLM mas ainda no ficheiro - PREENCHER APENAS A PEDIDO',
+    emptyColumnNone: '  Nenhum encontrado.',
+    emptyColumnSummary:
+      '  {{count}} valores em {{files}} peças e montagens: o BluePLM não tem número de artigo nem descrição, e o ficheiro ainda tem um sob uma chave que o BluePLM escreve. Antes da 4.4.5, um envio ou uma atualização a partir do ficheiro podia esvaziar estas colunas, por isso pode ser um valor perdido - ou um que o BluePLM nunca teve. Nada aqui é preenchido automaticamente.',
+    emptyColumnLine: '  {{path}} {{field}}: ficheiro "{{value}}"',
+    emptyColumnHow:
+      '  Para os preencher, use "Preencher vazios a partir do ficheiro" em Definições > Vault Audit, ou execute restore-metadata-from-files. Só são escritas as colunas que continuam vazias.',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'Vazio no BluePLM, ainda no ficheiro',
+      emptyInDatabaseDescription:
+        'Números de artigo e descrições sem valor no BluePLM, enquanto a peça ou montagem ainda tem um sob uma chave que o BluePLM escreve. Antes da 4.4.5, um envio ou uma atualização a partir do ficheiro podia esvaziá-los, por isso muitos são perdas - mas alguns talvez nunca tenham sido do BluePLM. Nada aqui é preenchido a menos que o decida.',
+    },
+    resolution: {
+      fillEmptyFromFile: 'Preencher vazios a partir do ficheiro',
+      fillEmptyFromFileHint:
+        'Escreve o valor do ficheiro no BluePLM apenas enquanto a coluna continuar vazia. Não é criada nenhuma versão nova e nenhum documento é alterado.',
+    },
+    blocked: {
+      unsavedLocalEdit: 'tem uma alteração não guardada a este campo neste computador',
+    },
+    fill: {
+      guarantee:
+        'Cada valor só é escrito se a coluna do BluePLM ainda estiver vazia nesse momento, por isso tudo o que foi preenchido desde a análise é mantido. Não é criada nenhuma versão nova, nenhum documento é alterado e os ficheiros com check-out de outra pessoa são ignorados. Cada ficheiro preenchido fica registado no registo de atividade.',
+      adminOnly: 'Só um administrador pode preencher valores a partir de ficheiros.',
+      selectPrompt: 'Assinale os valores que devem ser copiados do ficheiro para o BluePLM.',
+      selectedSummary: '{{values}} valores selecionados em {{files}} ficheiros.',
+      review: 'Rever {{count}} valores',
+      previewHeading: 'Estes {{values}} valores serão escritos em {{files}} ficheiros no BluePLM:',
+      previewLine: '{{path}} — {{field}}: "{{value}}"',
+      previewMore: 'e mais {{count}}',
+      cancel: 'Cancelar',
+      apply: 'Preencher {{count}} valores',
+      applying: 'A preencher…',
+      receiptFilled: '{{count}} valores preenchidos.',
+      receiptAlreadySet: '{{count}} já tinham sido definidos por outra pessoa e ficaram como estavam.',
+      receiptHeld: '{{count}} ficheiros têm check-out de outra pessoa e foram ignorados.',
+      receiptRefused:
+        'A base de dados não permitiu {{refused}} valores e {{failed}} ficheiros falharam. Nada mais mudou neles.',
+      appliedToast: '{{count}} valores preenchidos a partir de ficheiros.',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      'O seu check-out de {{name}} foi libertado enquanto tinha alterações de metadados não guardadas. Já não podem ser enviadas por check-in. Ao fazer check-out do ficheiro novamente, será perguntado antes de as descartar - anote-as se precisar delas.',
+    confirmTitle: 'Descartar alterações não guardadas em {{count}} ficheiros?',
+    confirmMessage:
+      'Estes ficheiros foram libertados enquanto tinha alterações de metadados não guardadas, por isso as alterações nunca foram enviadas por check-in. Fazer check-out novamente descarta as alterações abaixo e elas não são restauradas - alguém pode ter feito check-in de valores mais recentes entretanto. Cancele para as manter neste computador e anotá-las primeiro.',
+    confirmContinue: 'Descartar alterações e fazer check-out',
+    cancelled: 'Check-out cancelado. As suas alterações não guardadas em {{count}} ficheiros foram mantidas.',
+    item: '{{path}}: {{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} limpo',
+    configurationEdit: '{{field}} em {{count}} configurações',
+    field: {
+      part_number: 'Número de artigo',
+      tab_number: 'Número de separador',
+      description: 'Descrição',
+      revision: 'Revisão',
+      config_tabs: 'Números de separador das configurações',
+      config_descriptions: 'Descrições das configurações',
+    },
   },
 }

@@ -41,6 +41,11 @@ export type VaultAuditActionKind =
   | 'write-to-vault'
   /** Rebuild this document's BluePLM-owned properties from the row. Per file. */
   | 'write-to-file'
+  /**
+   * Copy the file's value into an empty `part_number` / `description` column, only if it is still
+   * empty at write time. Per value.
+   */
+  | 'fill-empty'
 
 /** Why a finding whose resolution is known still has no button. */
 export type VaultAuditBlockedReason =
@@ -65,6 +70,11 @@ export type VaultAuditBlockedReason =
    * every file anyone happens to be holding.
    */
   | 'held-by-another-user'
+  /**
+   * The resolution is to fill an empty column, and you have an unsaved edit to that field. Your
+   * check-in is what commits it, so the fill leaves the field alone.
+   */
+  | 'unsaved-local-edit'
 
 export type VaultAuditRowAction =
   | { available: true; kind: VaultAuditActionKind }
@@ -88,6 +98,11 @@ export function repairCandidateIdOf(finding: VaultAuditFinding): string | null {
   return `${finding.fileId}:${finding.field}:${finding.configuration}`
 }
 
+/** The key an unsaved local edit to one field of one file is known by. */
+export function unsavedEditKeyOf(fileId: string, field: string): string {
+  return `${fileId}:${field}`
+}
+
 /**
  * What this row's checkbox would do, or why it has none.
  *
@@ -104,6 +119,7 @@ export function actionForFinding(
   finding: VaultAuditFinding,
   repairable: ReadonlySet<string>,
   heldByOthers: ReadonlySet<string> = EMPTY,
+  unsavedEdits: ReadonlySet<string> = EMPTY,
 ): VaultAuditRowAction {
   // Revision is always driven by the file. Keep this guard even though `resolutionOf` currently
   // avoids these directions, because stale or externally-produced reports must not expose a file
@@ -131,6 +147,17 @@ export function actionForFinding(
       if (repairable.has(id)) return { available: true, kind: 'write-to-vault' }
       return { available: false, reason: 'entry-already-recorded' }
     }
+
+    case 'fill-empty-from-file':
+      // Unlike the configuration-map repair, this writes a column a colleague's check-in will
+      // overwrite, so their checkout blocks it. The writer re-checks the row before writing.
+      if (heldByOthers.has(finding.fileId)) {
+        return { available: false, reason: 'held-by-another-user' }
+      }
+      if (unsavedEdits.has(unsavedEditKeyOf(finding.fileId, finding.field))) {
+        return { available: false, reason: 'unsaved-local-edit' }
+      }
+      return { available: true, kind: 'fill-empty' }
 
     case 'nothing-to-restore':
     case 'file-is-authoritative':
@@ -179,6 +206,8 @@ export function categoryDirectionOf(
         return 'write-to-file'
       case 'adopt-file-value':
         return 'write-to-vault'
+      case 'fill-empty-from-file':
+        return 'fill-empty'
       default:
         continue
     }

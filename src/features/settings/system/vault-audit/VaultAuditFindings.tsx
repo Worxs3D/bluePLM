@@ -32,7 +32,9 @@ import { VaultAuditConflictActionBar } from './VaultAuditConflictActionBar'
 import { useVaultAuditPush } from './useVaultAuditPush'
 import { useVaultAuditConflict } from './useVaultAuditConflict'
 import { useVaultAuditRepair } from './useVaultAuditRepair'
+import { useVaultAuditFill } from './useVaultAuditFill'
 import { VaultAuditActionBar } from './VaultAuditActionBar'
+import { VaultAuditFillActionBar } from './VaultAuditFillActionBar'
 import { VaultAuditFindingsTable, type VaultAuditFindingRow } from './VaultAuditFindingsTable'
 import { actionForFinding, categoryDirectionOf, repairCandidateIdOf } from './vaultAuditActions'
 import { compareForDisplay } from './valueDifference'
@@ -71,6 +73,7 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
   const repair = useVaultAuditRepair()
   const push = useVaultAuditPush(findings)
   const conflict = useVaultAuditConflict(findings)
+  const fill = useVaultAuditFill(findings, push.heldByOthers)
   const {
     blockedReasonFor,
     canAdoptFileValue,
@@ -102,27 +105,41 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
 
   const rows = useMemo<VaultAuditFindingRow[]>(() => {
     return filtered.slice(0, MAX_ROWS).map((finding) => {
-      const rowAction = actionForFinding(finding, repairable, push.heldByOthers)
+      const rowAction = actionForFinding(
+        finding,
+        repairable,
+        push.heldByOthers,
+        fill.unsavedEdits,
+      )
       const candidateId = repairCandidateIdOf(finding)
       const isConflict = finding.resolution === 'choose-a-side'
+      const isFill = finding.resolution === 'fill-empty-from-file'
       const toVault = !isConflict && rowAction.available && rowAction.kind === 'write-to-vault'
-      const selectionId = toVault && candidateId ? candidateId : finding.fileId
+      const selectionId = isFill
+        ? finding.id
+        : toVault && candidateId
+          ? candidateId
+          : finding.fileId
       const fileChoiceBlockedReason = blockedReasonFor(finding)
 
       return {
         finding,
         action: rowAction,
         selectionId,
-        selected: isConflict
-          ? push.selectedFileIds.has(finding.fileId) || selectedConflictIds.has(finding.id)
-          : toVault
-            ? repair.selectedIds.has(selectionId)
-            : push.selectedFileIds.has(selectionId),
-        settled: isConflict
-          ? push.writtenFileIds.has(finding.fileId) || settledConflictIds.has(finding.id)
-          : toVault
-            ? repair.settledIds.has(selectionId)
-            : push.writtenFileIds.has(selectionId),
+        selected: isFill
+          ? fill.selectedIds.has(finding.id)
+          : isConflict
+            ? push.selectedFileIds.has(finding.fileId) || selectedConflictIds.has(finding.id)
+            : toVault
+              ? repair.selectedIds.has(selectionId)
+              : push.selectedFileIds.has(selectionId),
+        settled: isFill
+          ? fill.settledIds.has(finding.id)
+          : isConflict
+            ? push.writtenFileIds.has(finding.fileId) || settledConflictIds.has(finding.id)
+            : toVault
+              ? repair.settledIds.has(selectionId)
+              : push.writtenFileIds.has(selectionId),
         comparison: compareForDisplay(finding.databaseValue, finding.fileValue),
         availability: push.availability.get(finding.fileId) ?? null,
         conflict: isConflict
@@ -154,6 +171,9 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     repairable,
     repair.selectedIds,
     repair.settledIds,
+    fill.selectedIds,
+    fill.settledIds,
+    fill.unsavedEdits,
     push.selectedFileIds,
     push.writtenFileIds,
     push.heldByOthers,
@@ -176,7 +196,7 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     [selectable],
   )
 
-  const busy = repair.applying || push.running || conflict.applying
+  const busy = repair.applying || push.running || conflict.applying || fill.applying
 
   const applySelection = (targets: readonly VaultAuditFindingRow[], selected: boolean) => {
     const toVault = targets.filter(
@@ -185,7 +205,16 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     const toFile = targets.filter(
       (row) => row.action.available && row.action.kind === 'write-to-file',
     )
+    const toFill = targets.filter(
+      (row) => row.action.available && row.action.kind === 'fill-empty',
+    )
 
+    if (toFill.length > 0) {
+      fill.setMany(
+        toFill.map((row) => row.selectionId),
+        selected,
+      )
+    }
     if (toVault.length > 0) {
       repair.setMany(
         toVault.map((row) => row.selectionId),
@@ -315,6 +344,8 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
           <div className="pt-2">
             {kind === 'conflicting' ? (
               <VaultAuditConflictActionBar conflict={conflict} push={push} />
+            ) : kind === 'empty-in-database' ? (
+              <VaultAuditFillActionBar fill={fill} />
             ) : (
               <VaultAuditActionBar action={action} repair={repair} push={push} />
             )}

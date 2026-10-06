@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import { compareOwnedMetadata, summarizeDivergence, type DatabaseMetadata } from './divergence'
-import { formatDivergenceReport } from './divergenceReport'
+import { divergenceArtifactFileName, formatDivergenceReport } from './divergenceReport'
 import { DIVERGENCE_REPORT_SCHEMA_VERSION, type DivergenceReport } from './divergenceScan'
+
+describe('divergenceArtifactFileName', () => {
+  // electron/handlers/divergenceReportPath.test.ts asserts the main process accepts this exact
+  // name; the two configs cannot import each other, so the literal is the contract.
+  it('names the report the way the main process expects', () => {
+    expect(divergenceArtifactFileName({ generatedAt: '2026-10-01T16:02:11.123Z' })).toBe(
+      'divergence-report-2026-10-01T16-02-11-123.json',
+    )
+  })
+})
 
 /**
  * A row that never used the reserved maps, against a part whose configurations carry properties
@@ -95,6 +105,43 @@ describe('formatDivergenceReport', () => {
 
   it('numbers its sections in order', () => {
     const headings = lines.filter((line) => /^\d\. /.test(line))
-    expect(headings.map((heading) => heading[0])).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(headings.map((heading) => heading[0])).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+  })
+
+  it('says when no column is empty in BluePLM but held by the file', () => {
+    expect(text).toContain('FILL ON REQUEST ONLY')
+    expect(lines).toContain('  None found.')
+  })
+})
+
+describe('formatDivergenceReport - columns empty in BluePLM, still in the file', () => {
+  const emptied = compareOwnedMetadata(
+    {
+      fileId: 'file-2',
+      relativePath: 'ELEC/FATHOM-X-ELEC-PCB-R1.SLDPRT',
+      fileName: 'FATHOM-X-ELEC-PCB-R1.SLDPRT',
+      fileType: 'part',
+    },
+    emptyRow,
+    {
+      configurations: ['Default'],
+      fileProperties: { 'Base Item Number': 'FATHOM-X-ELEC-PCB-R1', Description: 'Main PCB' },
+      configurationProperties: { Default: {} },
+    },
+  )
+  const report: DivergenceReport = {
+    ...reportOf(),
+    summary: summarizeDivergence([emptied]),
+    files: [emptied],
+  }
+  const text = formatDivergenceReport(report).join('\n')
+
+  it('lists them in their own section, never as a value to leave alone', () => {
+    expect(report.summary.emptyColumnValues).toBe(2)
+    expect(report.summary.unattributedValues).toBe(0)
+    expect(text).toContain('2 values across 1 parts and assemblies')
+    expect(text).toContain('ELEC/FATHOM-X-ELEC-PCB-R1.SLDPRT')
+    expect(text).toContain('"FATHOM-X-ELEC-PCB-R1"')
+    expect(text).toContain('restore-metadata-from-files')
   })
 })

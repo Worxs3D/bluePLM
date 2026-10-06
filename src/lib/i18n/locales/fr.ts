@@ -19,6 +19,8 @@ export const fr: TranslationDict = {
     madeWritable: '{{count}} fichier(s) étaient déjà récupérés et sont maintenant modifiables.',
     solidWorksStillReadonly:
       'Récupéré et modifiable sur le disque, mais SolidWorks a encore le fichier ouvert en lecture seule. Dans SolidWorks : Edition → Lecture seule, ou fermez et rouvrez le fichier.',
+    syncBlocked:
+      'En lecture seule sur le disque, aucune métadonnée n’a donc été écrite dans : {{names}}. Récupérez à nouveau le fichier pour le rendre modifiable.',
   },
   common: {
     save: 'Enregistrer',
@@ -382,6 +384,8 @@ export const fr: TranslationDict = {
     checkIn: 'Archiver',
     checkOut: 'Extraire',
     download: 'Télécharger',
+    downloadSkippedNoHash_one: '1 fichier n’avait pas de hash téléchargeable',
+    downloadSkippedNoHash_other: '{{count}} fichiers n’avaient pas de hash téléchargeable',
     getLatest: 'Obtenir la dernière version',
     upload: 'Envoyer',
     delete: 'Supprimer',
@@ -825,5 +829,103 @@ export const fr: TranslationDict = {
     updateNotPermitted:
       "Vous n'avez peut-être pas l'autorisation de modifier la visibilité du dossier",
     scanSkipped: '{{count}} fichiers ignorés dans des dossiers masqués aux non-administrateurs',
+  },
+
+  metadataRestore: {
+    noOrganization: 'Non connecté à une organisation.',
+    noVault: 'Aucun coffre connecté.',
+    adminOnly:
+      "Seul un administrateur peut appliquer une restauration des métadonnées. Exécutez sans --apply pour voir ce qui serait écrit.",
+    alreadyRunning: 'Une restauration des métadonnées est déjà en cours.',
+    scanning:
+      "Lecture des fichiers SolidWorks en lecture seule pour trouver les numéros d'article et descriptions vides. Rien n'est encore écrit.",
+    cancelled: "L'analyse a été annulée. Rien n'a été écrit.",
+    unread:
+      "{{count}} fichiers n'ont pas pu être lus (absents, illisibles ou ouverts dans SolidWorks) et ne sont pas inclus.",
+    planLine: '  {{path}} : {{values}}',
+    fieldValue: '{{field}} = "{{value}}"',
+    field: {
+      part_number: "Numéro d'article",
+      description: 'Description',
+    },
+    heldByOther: '  {{path}} ignoré : extrait par un autre utilisateur.',
+    summary:
+      '{{files}} fichiers, {{values}} valeurs à remplir. Exclus : {{excluded}}. Extraits par d’autres : {{held}}. Modifications en attente conservées : {{pending}}.',
+    dryRun:
+      "Simulation. Rien n'a été écrit. Relancez avec --apply pour remplir ces valeurs.",
+    fileFailed: 'Impossible de mettre à jour {{path}} : {{reason}}',
+    fileRefused: "La base de données n'a pas autorisé la mise à jour de {{path}}.",
+    applied:
+      '{{filled}} valeurs remplies. Déjà définies par quelqu’un d’autre : {{alreadySet}}. Non autorisées : {{refused}}. Fichiers en échec : {{failed}}.',
+    failed: 'La restauration des métadonnées a échoué : {{reason}}',
+  },
+
+  divergence: {
+    emptyColumnHeading:
+      '4. Numéros d’article et descriptions vides dans BluePLM mais toujours présents dans le fichier - REMPLIS UNIQUEMENT SUR DEMANDE',
+    emptyColumnNone: '  Aucun trouvé.',
+    emptyColumnSummary:
+      '  {{count}} valeurs dans {{files}} pièces et assemblages : BluePLM n’a ni numéro d’article ni description, et le fichier en contient encore un sous une clé que BluePLM écrit. Avant 4.4.5, un envoi ou une actualisation depuis le fichier pouvait vider ces colonnes ; il peut donc s’agir d’une valeur perdue - ou d’une valeur que BluePLM n’a jamais eue. Rien n’est rempli automatiquement ici.',
+    emptyColumnLine: '  {{path}} {{field}} : fichier "{{value}}"',
+    emptyColumnHow:
+      '  Pour les remplir, utilisez "Remplir les vides depuis le fichier" dans Paramètres > Vault Audit, ou lancez restore-metadata-from-files. Seules les colonnes encore vides sont écrites.',
+  },
+
+  vaultAudit: {
+    category: {
+      emptyInDatabase: 'Vide dans BluePLM, présent dans le fichier',
+      emptyInDatabaseDescription:
+        'Numéros d’article et descriptions sans valeur dans BluePLM, alors que la pièce ou l’assemblage en contient encore une sous une clé que BluePLM écrit. Avant 4.4.5, un envoi ou une actualisation depuis le fichier pouvait les vider ; beaucoup sont donc des pertes - mais certaines n’ont peut-être jamais appartenu à BluePLM. Rien n’est rempli ici sauf si vous le décidez.',
+    },
+    resolution: {
+      fillEmptyFromFile: 'Remplir les vides depuis le fichier',
+      fillEmptyFromFileHint:
+        'Écrit la valeur du fichier dans BluePLM uniquement tant que la colonne est encore vide. Aucune nouvelle version n’est créée et aucun document n’est modifié.',
+    },
+    blocked: {
+      unsavedLocalEdit: 'vous avez une modification non enregistrée de ce champ sur cet ordinateur',
+    },
+    fill: {
+      guarantee:
+        'Chaque valeur n’est écrite que si la colonne de BluePLM est encore vide à ce moment-là ; tout ce qui a été rempli depuis l’analyse est conservé. Aucune nouvelle version n’est créée, aucun document n’est modifié et les fichiers extraits par quelqu’un d’autre sont ignorés. Chaque fichier rempli est consigné dans le journal d’activité.',
+      adminOnly: 'Seul un administrateur peut remplir des valeurs depuis les fichiers.',
+      selectPrompt: 'Cochez les valeurs à copier du fichier vers BluePLM.',
+      selectedSummary: '{{values}} valeurs sélectionnées dans {{files}} fichiers.',
+      review: 'Vérifier {{count}} valeurs',
+      previewHeading: 'Ces {{values}} valeurs seront écrites dans {{files}} fichiers de BluePLM :',
+      previewLine: '{{path}} — {{field}} : "{{value}}"',
+      previewMore: 'et {{count}} de plus',
+      cancel: 'Annuler',
+      apply: 'Remplir {{count}} valeurs',
+      applying: 'Remplissage…',
+      receiptFilled: '{{count}} valeurs remplies.',
+      receiptAlreadySet: '{{count}} étaient déjà définies par quelqu’un d’autre et ont été laissées telles quelles.',
+      receiptHeld: '{{count}} fichiers sont extraits par quelqu’un d’autre et ont été ignorés.',
+      receiptRefused:
+        '{{refused}} valeurs n’ont pas été autorisées par la base de données et {{failed}} fichiers ont échoué. Rien d’autre n’a changé pour eux.',
+      appliedToast: '{{count}} valeurs remplies depuis les fichiers.',
+    },
+  },
+
+  strandedEdits: {
+    checkoutLost:
+      'Votre extraction de {{name}} a été libérée alors qu’il avait des modifications de métadonnées non enregistrées. Elles ne peuvent plus être archivées. En extrayant à nouveau le fichier, vous serez averti avant qu’elles soient supprimées - notez-les si vous en avez besoin.',
+    confirmTitle: 'Supprimer les modifications non enregistrées sur {{count}} fichiers ?',
+    confirmMessage:
+      'Ces fichiers ont été libérés alors que vous aviez des modifications de métadonnées non enregistrées ; elles n’ont donc jamais été archivées. Les extraire à nouveau supprime les modifications ci-dessous, qui ne sont pas restaurées - quelqu’un a peut-être archivé des valeurs plus récentes depuis. Annulez pour les conserver sur cet ordinateur et les noter d’abord.',
+    confirmContinue: 'Supprimer les modifications et extraire',
+    cancelled: 'Extraction annulée. Vos modifications non enregistrées sur {{count}} fichiers ont été conservées.',
+    item: '{{path}} : {{edits}}',
+    valueEdit: '{{field}} "{{value}}"',
+    clearedEdit: '{{field}} effacé',
+    configurationEdit: '{{field}} dans {{count}} configurations',
+    field: {
+      part_number: 'Numéro d’article',
+      tab_number: 'Numéro d’onglet',
+      description: 'Description',
+      revision: 'Révision',
+      config_tabs: 'Numéros d’onglet des configurations',
+      config_descriptions: 'Descriptions des configurations',
+    },
   },
 }

@@ -251,6 +251,10 @@ declare global {
       }>
       log: (level: string, message: string, data?: unknown) => void
       getLogsDir: () => Promise<string>
+      writeDivergenceReport: (
+        fileName: string,
+        content: string,
+      ) => Promise<{ success: boolean; path?: string; error?: string }>
       listLogFiles: () => Promise<{
         success: boolean
         files?: Array<{

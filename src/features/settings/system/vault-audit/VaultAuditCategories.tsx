@@ -10,9 +10,9 @@ interface VaultAuditCategoriesProps {
 }
 
 /**
- * The five categories, worst first.
+ * The six categories, worst first.
  *
- * All five are always shown, including the empty ones, because "no values are lost" is the answer
+ * All six are always shown, including the empty ones, because "no values are lost" is the answer
  * an administrator came for and a card that disappears when it hits zero cannot give it.
  *
  * Each is titled by what resolving it consists of rather than by what the evidence is. The two

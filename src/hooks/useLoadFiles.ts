@@ -59,6 +59,7 @@ import {
 } from './loadFilesCoordination'
 import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
+import { cloudRowsForFolderRefresh } from './useLoadFiles/refreshFolderCloudRows'
 
 const CHECKOUT_PROFILE_MAX_ATTEMPTS = 3
 const CHECKOUT_PROFILE_RETRY_BASE_MS = 200
@@ -459,6 +460,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         currentVaultId: loadingForVaultId,
         silent,
         forceHashComputation,
+        changedPathCount: changedRelativePaths?.length ?? 0,
+        changedPaths: changedRelativePaths?.slice(0, 10),
       })
       log.info('[CheckoutHydration]', 'Load context captured', {
         requestId: loadContext.requestId,
@@ -684,6 +687,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
         window.electronAPI?.log('info', '[LoadFiles] Scanned local items', {
           count: localResult.files.length,
+          wasFullScan: 'wasFullScan' in localResult ? localResult.wasFullScan : !canDeltaScan,
+          deltaScan: canDeltaScan,
         })
 
         // Skip the merge when none of its four inputs moved - see `shouldSkipMerge`
@@ -1741,6 +1746,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // Empty folders that exist locally should NOT be marked as cloud
         // Process folders bottom-up (deepest first) so parent folders see updated child statuses
 
+        const postMergeFolderStart = performance.now()
+
         // OPTIMIZATION: Build parent->children index in O(n) instead of O(n²) filtering
         // This reduces 25,000 files × 2,500 folders = 62.5M ops down to ~27,500 ops
         const childrenByParent = new Map<string, typeof localFiles>()
@@ -1783,6 +1790,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           }
         }
 
+        window.electronAPI?.log('info', '[LoadFiles] Post-merge folder status', {
+          durationMs: Math.round(performance.now() - postMergeFolderStart),
+          folderCount: folders.length,
+          childrenByParentSize: childrenByParent.size,
+        })
+
         // Record merge timing
         const mergeDuration = performance.now() - mergeStart
         recordMetric('VaultLoad', 'Merge complete', { durationMs: Math.round(mergeDuration) })
@@ -1812,6 +1825,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // Detect externally deleted synced files and add auto-download exclusions
         // This prevents auto-download from re-downloading files the user deleted via Windows Explorer
         // Detection: files that had local copies but now show as cloud-only
+        const postMergeExclusionStart = performance.now()
         if (currentVaultId) {
           const previousFiles = usePDMStore.getState().files
 
@@ -1892,6 +1906,11 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             }
           }
         }
+        window.electronAPI?.log('info', '[LoadFiles] Post-merge exclusion pass', {
+          durationMs: Math.round(performance.now() - postMergeExclusionStart),
+          previousFileCount: usePDMStore.getState().files.length,
+          incomingCount: localFiles.length,
+        })
 
         // A file operation landed after the scan read the disk, so the local half of
         // this merge describes the vault before the operation while the server half
@@ -1912,7 +1931,19 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           return
         }
 
+        const setFilesStart = performance.now()
+        const previousStoreCount = usePDMStore.getState().files.length
+        window.electronAPI?.log('info', '[LoadFiles] Calling setFiles', {
+          incomingCount: localFiles.length,
+          previousStoreCount,
+        })
         setFiles(localFiles)
+        window.electronAPI?.log('info', '[LoadFiles] setFiles returned', {
+          durationMs: Math.round(performance.now() - setFilesStart),
+          incomingCount: localFiles.length,
+          previousStoreCount,
+          storeCount: usePDMStore.getState().files.length,
+        })
         setFilesLoaded(true) // Mark that initial load is complete
         committedMerge = true
 
@@ -2808,33 +2839,41 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // 6. Add cloud-only files in this folder (exist on server but not locally),
         // or a 'moved_away' stub when this path is claimed by a rename recorded
         // elsewhere in the store (see the comment on claimedServerPathToLocalPath above).
+        //
+        // Same hash-move skip as `reconcileCloudFiles`: a CAD vault is full of
+        // intentional copies, and treating "this hash is already local" as a new
+        // cloud file resurrects hashless ghosts Download cannot fetch (Rai's 642).
         const localPathSet = new Set(
-          localResult.files.map((f: any) => f.relativePath.toLowerCase()),
+          localResult.files.map((f: { relativePath: string }) => f.relativePath.toLowerCase()),
         )
-        for (const sf of serverFiles) {
-          const sfPath = sf.file_path.toLowerCase()
-          const isInFolder = folderPath === '' || sfPath.startsWith(folderPrefix)
-          if (!isInFolder || localPathSet.has(sfPath)) continue
-
-          // Use complete pdmData from existing files if available
-          const completePdmData = existingPdmMap.get(sfPath)
-          const movedToRelativePath = claimedServerPathToLocalPath.get(sfPath)
-
-          refreshedFolderFiles.push({
-            name: sf.name,
-            path: buildFullPath(vaultPath, sf.file_path),
-            relativePath: sf.file_path,
-            isDirectory: false,
-            extension: sf.extension || '',
-            size: completePdmData?.file_size || 0,
-            modifiedTime: completePdmData?.updated_at || '',
-            pdmData: completePdmData || undefined,
-            isSynced: false,
-            ...(movedToRelativePath
-              ? { diffStatus: 'moved_away' as const, movedToRelativePath }
-              : { diffStatus: 'cloud' as const }),
-          })
+        const localContentHashes = new Set<string>()
+        for (const localFile of localResult.files) {
+          if (!localFile.isDirectory && localFile.hash) {
+            localContentHashes.add(localFile.hash)
+          }
         }
+        for (const existing of existingFiles) {
+          if (existing.isDirectory || !existing.localHash) continue
+          const existingPath = existing.relativePath.toLowerCase()
+          const inThisFolder =
+            folderPath === '' ||
+            existingPath === folderPath.toLowerCase() ||
+            existingPath.startsWith(folderPrefix)
+          if (inThisFolder) continue
+          localContentHashes.add(existing.localHash)
+        }
+
+        const cloudRows = cloudRowsForFolderRefresh({
+          serverFiles,
+          localPathSet,
+          existingPdmMap,
+          claimedServerPathToLocalPath,
+          localContentHashes,
+          folderPath,
+          folderPrefix,
+          vaultPath,
+        })
+        refreshedFolderFiles.push(...cloudRows.rows)
 
         // 7. Combine: files outside folder + refreshed folder files + current folder entry
         // The current folder entry must be preserved so navigation back works correctly
@@ -2857,6 +2896,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           inFolder: refreshedFolderFiles.length,
           total: combinedFiles.length,
           suppressedClaimedServerPaths: claimedServerPaths.size,
+          skippedHashDuplicates: cloudRows.skippedHashDuplicates,
+          skippedHashless: cloudRows.skippedHashless,
         })
 
         // A refresh reconciles; it does not discover. Growing the store while the

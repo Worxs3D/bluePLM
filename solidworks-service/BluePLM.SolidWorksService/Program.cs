@@ -35,7 +35,7 @@ namespace BluePLM.SolidWorksService
         /// Service version - bump this when making changes that affect functionality.
         /// The app checks this version and warns if there's a mismatch.
         /// </summary>
-        private const string SERVICE_VERSION = "1.21.1";
+        private const string SERVICE_VERSION = "1.21.2";
 
         /// <summary>
         /// Error code returned for an action this build does not implement. The app matches on this
@@ -1033,8 +1033,9 @@ namespace BluePLM.SolidWorksService
                 }
 
                 // DM failed - fall back to the full SolidWorks COM API (may cold-start SW),
-                // preserving the previous behavior and error handling.
-                if (_swApi == null) return dmResult;
+                // preserving the previous behavior and error handling. Not for a read-only file:
+                // SolidWorks opens it read-only too and refuses the save after a full open.
+                if (_swApi == null || dmResult.ErrorCode == DocumentManagerAPI.FileReadOnlyCode) return dmResult;
                 Console.Error.WriteLine($"[Service] DM property write failed ({dmResult.Error}); falling back to SolidWorks COM API");
             }
 
@@ -1067,7 +1068,7 @@ namespace BluePLM.SolidWorksService
                 var dmResult = _dmApi!.DeleteCustomProperties(filePath, propertyNames, configuration);
                 if (dmResult.Success) return dmResult;
 
-                if (_swApi == null) return dmResult;
+                if (_swApi == null || dmResult.ErrorCode == DocumentManagerAPI.FileReadOnlyCode) return dmResult;
                 Console.Error.WriteLine($"[Service] DM property delete failed ({dmResult.Error}); falling back to SolidWorks COM API");
             }
 
@@ -1098,7 +1099,7 @@ namespace BluePLM.SolidWorksService
                     return dmResult;
                 }
 
-                if (_swApi == null) return dmResult;
+                if (_swApi == null || dmResult.ErrorCode == DocumentManagerAPI.FileReadOnlyCode) return dmResult;
                 Console.Error.WriteLine($"[Service] DM batch write failed ({dmResult.Error}); falling back to SolidWorks COM API");
             }
 

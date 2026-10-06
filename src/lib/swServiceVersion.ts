@@ -94,6 +94,9 @@
  *                   nothing outside the service can: a stale value equal to the intended one reads
  *                   exactly like one the write put there. The app now refuses to confirm any scope
  *                   in a batch reporting a shortfall, which on this service is never
+ * - Version 1.21.2: A property write Document Manager refuses as read-only (open error 4) is
+ *                   returned as DM_FILE_READ_ONLY instead of falling back to SolidWorks COM, which
+ *                   opened the file read-only too and refused the save after a full open per scope
  * - Version 1.21.1: Log Document Manager open failures with DescribeOpenError. Code 4 is
  *                   file-read-only; the previous table called it a non-native file
  * - Version 1.21.0: Add getPropertiesDocumentManager, which resolves straight to
@@ -114,7 +117,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.21.1'
+export const EXPECTED_SW_SERVICE_VERSION = '1.21.2'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -171,6 +174,8 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Auditing a whole vault for metadata that has drifted no longer goes anywhere near the SOLIDWORKS you have open. The audit reads each file with the standalone library instead of through your session, so a walk over several thousand documents cannot slow your window down or close something you were working on. The service also says plainly when BluePLM asks it for a command it does not have, rather than reporting it as a file that could not be read - which is what made an out-of-date service look like a vault full of broken files',
   '1.21.1':
     'A file SolidWorks refuses to open for writing because it is read-only is now logged as read-only. The previous message called that same failure a file that is not a SolidWorks file, which sent people looking at the file format when the file on disk was simply locked',
+  '1.21.2':
+    'Writing metadata into a read-only file now fails straight away. The service used to try again through SOLIDWORKS, which opened the file read-only as well and refused to save it - once for the file and once per configuration, over a minute on a four-configuration assembly - before reporting the same failure',
 }
 
 /**

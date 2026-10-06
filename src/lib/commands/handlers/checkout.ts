@@ -24,6 +24,7 @@ import { log } from '@/lib/logger'
 import { sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { makeFilesWritable } from '../../files/localReadonly'
+import { confirmDroppingStrandedEdits } from './checkoutStrandedEdits'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
@@ -285,6 +286,16 @@ export const checkoutCommand: Command<CheckoutParams> = {
         succeeded: writable.length,
         failed: stillReadonly.length,
       }
+    }
+
+    // A fresh checkout clears pendingMetadata, so edits stranded when an earlier checkout went
+    // away without a check-in would vanish here. Ask first; never restore them.
+    const strandedCheck = await confirmDroppingStrandedEdits(filesToCheckout, ctx, operationId)
+    if (!strandedCheck.proceed) {
+      tracker.endOperation('failed', 'Stranded metadata edits kept')
+      const message = t('strandedEdits.cancelled', { count: strandedCheck.stranded.length })
+      ctx.addToast('info', message)
+      return { success: false, message, total: 0, succeeded: 0, failed: 0 }
     }
 
     // Track folders and files being processed (for spinner display)

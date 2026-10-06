@@ -3,6 +3,8 @@ import { app, ipcMain, BrowserWindow, shell, dialog } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
+import { resolveDivergenceReportPath } from './divergenceReportPath'
+
 // Log retention settings interface
 export interface LogRetentionSettings {
   maxFiles: number
@@ -580,6 +582,26 @@ export function registerLoggingHandlers(
   ipcMain.handle('logs:get-dir', (): string => {
     return getLogsDirectory()
   })
+
+  // Write a scan-divergence report. fs:write-file is confined to the vault, which is the one place
+  // this report must not go, so the report has its own writer confined to logs/divergence.
+  ipcMain.handle(
+    'logs:write-divergence-report',
+    async (_, fileName: string, content: string): Promise<ExportLogsResponse> => {
+      if (typeof fileName !== 'string' || typeof content !== 'string') {
+        return { success: false, error: 'Invalid report' }
+      }
+      const reportPath = resolveDivergenceReportPath(getLogsDirectory(), fileName)
+      if (!reportPath) return { success: false, error: 'Invalid report file name' }
+      try {
+        await fs.promises.mkdir(path.dirname(reportPath), { recursive: true })
+        await fs.promises.writeFile(reportPath, content, 'utf8')
+        return { success: true, path: reportPath }
+      } catch (error) {
+        return { success: false, error: String(error) }
+      }
+    },
+  )
 
   // Get crashes directory
   ipcMain.handle('logs:get-crashes-dir', (): string => {

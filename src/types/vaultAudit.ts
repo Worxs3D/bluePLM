@@ -71,7 +71,7 @@ export interface VaultAuditProgress {
 // ============================================
 
 /**
- * The five things that can be true of one value, ordered by how little can be done about it.
+ * The six things that can be true of one value, ordered by how little can be done about it.
  *
  * They partition the scanner's `Recoverability`: `intact` and `no-evidence` are not findings and
  * are reported as counts elsewhere. Because they partition it, a value appears in exactly one
@@ -88,6 +88,14 @@ export type VaultAuditCategoryKind =
   | 'conflicting'
   /** Gone from the database, still in the file under the key BluePLM writes. Mechanically fixable. */
   | 'recoverable'
+  /**
+   * A part or assembly's part number or description: empty in BluePLM's column, still in the file.
+   *
+   * The scanner calls these `unattributed` because nothing proves the column ever held a value,
+   * and that stays true. They are split out because two writers did empty these columns before
+   * 4.4.5, so some of them are losses. Filled only when an admin asks, and only while still empty.
+   */
+  | 'empty-in-database'
   /** In the database, absent from the file. Nothing lost; the document is behind the record. */
   | 'absent-from-file'
   /** In the file, never the database's to hold. Adopting one invents data rather than restoring it. */
@@ -131,6 +139,11 @@ export type VaultAuditResolution =
   | 'fix-on-parent-model'
   /** The file's value was never BluePLM's. Adopting it invents a record; erasing it is not ours. */
   | 'leave-alone'
+  /**
+   * Copy the file's value into an empty BluePLM column, if it is still empty when written. Never
+   * overwrites, never cuts a version, and only on an admin's explicit request.
+   */
+  | 'fill-empty-from-file'
 
 export interface VaultAuditCategory {
   kind: VaultAuditCategoryKind
@@ -289,7 +302,7 @@ export interface VaultAuditView {
   unread: VaultAuditUnread
   integrity: VaultAuditIntegrity
   coverage: VaultAuditCoverage
-  /** Ordered worst first. Always holds all five kinds, including empty ones. */
+  /** Ordered worst first. Always holds all six kinds, including empty ones. */
   categories: VaultAuditCategory[]
   findings: VaultAuditFinding[]
   /** The scanner's per-field breakdown, passed through unchanged. */
@@ -408,6 +421,19 @@ export interface VaultAuditRepairOutcome {
   entriesRequested: number
   entriesAdded: number
   files: VaultAuditRepairFileOutcome[]
+}
+
+/** What one "Fill empty from file" apply did, counted in values except where noted. */
+export interface VaultAuditFillOutcome {
+  filled: number
+  /** Already held a value when the write ran - someone checked one in after the scan. */
+  alreadySet: number
+  /** Not allowed by the database, or the row is gone or trashed. */
+  refused: number
+  /** Files skipped because another user had them checked out at write time. */
+  heldByOther: number
+  /** Files whose write failed outright. */
+  failed: number
 }
 
 /**
