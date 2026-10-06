@@ -1297,18 +1297,26 @@ declare global {
 
       // Embedded eDrawings preview
       isEDrawingsNativeAvailable: () => Promise<boolean>
-      createEDrawingsPreview: () => Promise<{ success: boolean; error?: string }>
-      attachEDrawingsPreview: () => Promise<{ success: boolean; error?: string }>
-      loadEDrawingsFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+      createEDrawingsPreview: () => Promise<{
+        success: boolean
+        sessionId?: string
+        error?: string
+      }>
+      attachEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      loadEDrawingsFile: (
+        sessionId?: string,
+        filePath?: string,
+      ) => Promise<{ success: boolean; accepted?: boolean; ready?: false; error?: string }>
       setEDrawingsBounds: (
-        x: number,
-        y: number,
-        w: number,
-        h: number,
-      ) => Promise<{ success: boolean }>
-      showEDrawingsPreview: () => Promise<{ success: boolean }>
-      hideEDrawingsPreview: () => Promise<{ success: boolean }>
-      destroyEDrawingsPreview: () => Promise<{ success: boolean }>
+        sessionIdOrX?: string | number,
+        xOrY?: number,
+        yOrWidth?: number,
+        widthOrHeight?: number,
+        height?: number,
+      ) => Promise<{ success: boolean; error?: string }>
+      showEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      hideEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
+      destroyEDrawingsPreview: (sessionId?: string) => Promise<{ success: boolean; error?: string }>
 
       // Machine identification (for backup service)
       getMachineId: () => Promise<string | null>
