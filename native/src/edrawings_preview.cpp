@@ -36,6 +36,16 @@ std::wstring utf8ToWide(const std::string& value) {
     return result;
 }
 
+std::string wideToUtf8(const std::wstring& value) {
+    if (value.empty()) return "";
+    const int length = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1) return "";
+    std::string result(static_cast<size_t>(length), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, &result[0], length, nullptr, nullptr);
+    result.pop_back();
+    return result;
+}
+
 std::wstring quote(const std::wstring& value) { return L"\"" + value + L"\""; }
 
 std::string lastErrorMessage(DWORD error) {
@@ -55,7 +65,27 @@ struct HostStatus {
     enum class Kind { None, Handshake, Ready, Failed };
     Kind kind = Kind::None;
     HWND window = nullptr;
+    std::wstring detail;
 };
+
+struct ChildWindowProbe {
+    int visibleCount = 0;
+    HWND firstVisible = nullptr;
+    RECT firstWindowRect{};
+    RECT firstClientRect{};
+};
+
+BOOL CALLBACK captureVisibleChild(HWND child, LPARAM parameter) {
+    auto* probe = reinterpret_cast<ChildWindowProbe*>(parameter);
+    if (!IsWindowVisible(child)) return TRUE;
+    ++probe->visibleCount;
+    if (!probe->firstVisible) {
+        probe->firstVisible = child;
+        GetWindowRect(child, &probe->firstWindowRect);
+        GetClientRect(child, &probe->firstClientRect);
+    }
+    return TRUE;
+}
 
 HostStatus readStatusFile(const std::wstring& statusPath) {
     std::wifstream input(statusPath);
@@ -69,6 +99,7 @@ HostStatus readStatusFile(const std::wstring& statusPath) {
     else if (state == L"failed") status.kind = HostStatus::Kind::Failed;
     else return {};
     status.window = reinterpret_cast<HWND>(static_cast<uintptr_t>(windowValue));
+    input >> status.detail;
     return status;
 }
 
@@ -91,6 +122,7 @@ struct PreviewState {
     uint64_t generation = 0;
     bool ready = false;
     std::string asyncLastError;
+    std::string openDocumentResult;
     std::shared_ptr<std::atomic_bool> cancellation;
 
     uint64_t beginOperation() {
@@ -127,12 +159,13 @@ struct PreviewState {
         CloseHandle(candidateJob);
     }
 
-    void finish(uint64_t candidate, HWND candidateViewer, bool succeeded, const std::string& message) {
+    void finish(uint64_t candidate, HWND candidateViewer, bool succeeded, const std::string& message, const std::string& openDocumentResult) {
         std::lock_guard lock(mutex);
         if (generation != candidate) return;
         viewer = candidateViewer;
         ready = succeeded;
         asyncLastError = succeeded ? "" : message;
+        this->openDocumentResult = openDocumentResult;
         // A successful host must remain in its kill-on-close job until destroy.
         // A failed/timed-out host is torn down immediately.
         if (!succeeded) closeJobHandle(job);
@@ -229,7 +262,7 @@ public:
             CloseHandle(process.hThread);
             CloseHandle(process.hProcess);
             fail("preview-host-exited", "The eDrawings preview request was cancelled before the host could start.");
-            m_state->finish(m_generation, nullptr, false, m_message);
+            m_state->finish(m_generation, nullptr, false, m_message, "");
             cleanupStatusFile();
             return;
         }
@@ -238,8 +271,10 @@ public:
         const auto started = std::chrono::steady_clock::now();
         bool handshakeReceived = false;
         HWND viewer = nullptr;
+        std::string openDocumentResult;
         while (m_state->isCurrent(m_generation)) {
             const HostStatus status = readStatusFile(m_statusPath);
+            if (!status.detail.empty()) openDocumentResult = wideToUtf8(status.detail);
             if (status.kind == HostStatus::Kind::Handshake) {
                 handshakeReceived = true;
                 viewer = status.window;
@@ -249,14 +284,22 @@ public:
                 break;
             } else if (status.kind == HostStatus::Kind::Failed) {
                 viewer = status.window;
-                fail("preview-document-load-failed", "The eDrawings host reported that the document could not be loaded.");
+                const bool hostReachedDocumentLoad = handshakeReceived || status.window != nullptr;
+                fail(hostReachedDocumentLoad ? "preview-document-load-failed" : "preview-host-handshake-failed",
+                    hostReachedDocumentLoad
+                        ? "The eDrawings host reported that the document could not be loaded."
+                        : "The eDrawings preview host failed before completing its startup handshake.");
                 break;
             }
             if (WaitForSingleObject(process.hProcess, 0) != WAIT_TIMEOUT) {
                 const HostStatus finalStatus = readStatusFile(m_statusPath);
                 if (finalStatus.kind == HostStatus::Kind::Failed) {
                     viewer = finalStatus.window;
-                    fail("preview-document-load-failed", "The eDrawings host reported that the document could not be loaded.");
+                    const bool hostReachedDocumentLoad = handshakeReceived || finalStatus.window != nullptr;
+                    fail(hostReachedDocumentLoad ? "preview-document-load-failed" : "preview-host-handshake-failed",
+                        hostReachedDocumentLoad
+                            ? "The eDrawings host reported that the document could not be loaded."
+                            : "The eDrawings preview host failed before completing its startup handshake.");
                 } else {
                     fail(handshakeReceived ? "preview-host-exited" : "preview-host-handshake-failed",
                         "The eDrawings preview host exited before it became ready.");
@@ -279,7 +322,7 @@ public:
         if (m_succeeded) {
             DuplicateHandle(GetCurrentProcess(), process.hProcess, GetCurrentProcess(), &m_monitorProcess, 0, FALSE, DUPLICATE_SAME_ACCESS);
         }
-        m_state->finish(m_generation, viewer, m_succeeded, m_message);
+        m_state->finish(m_generation, viewer, m_succeeded, m_message, openDocumentResult);
         CloseHandle(process.hProcess);
         cleanupStatusFile();
     }
@@ -458,11 +501,13 @@ private:
 
     Napi::Value GetWindowState(const Napi::CallbackInfo& info) {
         HWND viewer = nullptr, host = nullptr;
-        { std::lock_guard lock(m_state->mutex); viewer = m_state->viewer; host = m_state->host; }
+        std::string openDocumentResult;
+        { std::lock_guard lock(m_state->mutex); viewer = m_state->viewer; host = m_state->host; openDocumentResult = m_state->openDocumentResult; }
         Napi::Object result = Napi::Object::New(info.Env()); const bool exists = viewer && IsWindow(viewer); const HWND owner = exists ? GetWindow(viewer, GW_OWNER) : nullptr;
         result.Set("exists", Napi::Boolean::New(info.Env(), exists)); result.Set("visible", Napi::Boolean::New(info.Env(), exists && IsWindowVisible(viewer)));
         result.Set("ownedByHost", Napi::Boolean::New(info.Env(), exists && owner == host)); result.Set("hostHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(host))));
         result.Set("ownerHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(owner))));
+        result.Set("openDocumentResult", Napi::String::New(info.Env(), openDocumentResult));
         const LONG_PTR extendedStyle = exists ? GetWindowLongPtrW(viewer, GWL_EXSTYLE) : 0; result.Set("topmost", Napi::Boolean::New(info.Env(), (extendedStyle & WS_EX_TOPMOST) != 0));
         RECT viewerRect{};
         RECT hostClient{};
@@ -475,6 +520,23 @@ private:
         Napi::Object hostBounds = Napi::Object::New(info.Env());
         hostBounds.Set("width", Napi::Number::New(info.Env(), hostClient.right - hostClient.left)); hostBounds.Set("height", Napi::Number::New(info.Env(), hostClient.bottom - hostClient.top));
         result.Set("hostClientBounds", hostBounds); result.Set("hasHostClientBounds", Napi::Boolean::New(info.Env(), hasHostBounds));
+        const HWND directChild = exists ? GetWindow(viewer, GW_CHILD) : nullptr;
+        RECT directChildClient{};
+        const bool hasDirectChildClientBounds = directChild && GetClientRect(directChild, &directChildClient);
+        Napi::Object directChildBounds = Napi::Object::New(info.Env());
+        directChildBounds.Set("width", Napi::Number::New(info.Env(), directChildClient.right - directChildClient.left));
+        directChildBounds.Set("height", Napi::Number::New(info.Env(), directChildClient.bottom - directChildClient.top));
+        result.Set("hasDirectChildClientBounds", Napi::Boolean::New(info.Env(), hasDirectChildClientBounds));
+        result.Set("directChildClientBounds", directChildBounds);
+        ChildWindowProbe childProbe;
+        if (exists) EnumChildWindows(viewer, captureVisibleChild, reinterpret_cast<LPARAM>(&childProbe));
+        result.Set("visibleChildCount", Napi::Number::New(info.Env(), childProbe.visibleCount));
+        Napi::Object firstChildBounds = Napi::Object::New(info.Env());
+        firstChildBounds.Set("width", Napi::Number::New(info.Env(), childProbe.firstWindowRect.right - childProbe.firstWindowRect.left));
+        firstChildBounds.Set("height", Napi::Number::New(info.Env(), childProbe.firstWindowRect.bottom - childProbe.firstWindowRect.top));
+        firstChildBounds.Set("clientWidth", Napi::Number::New(info.Env(), childProbe.firstClientRect.right - childProbe.firstClientRect.left));
+        firstChildBounds.Set("clientHeight", Napi::Number::New(info.Env(), childProbe.firstClientRect.bottom - childProbe.firstClientRect.top));
+        result.Set("firstVisibleChildBounds", firstChildBounds);
         return result;
     }
 
