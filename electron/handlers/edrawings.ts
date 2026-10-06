@@ -27,34 +27,28 @@ export interface EDrawingsPreviewFileDependencies {
 }
 
 export interface NativeEDrawingsPreview {
-  attachToWindow(handle: Buffer): boolean | Promise<boolean>
-  loadFile(
-    filePath: string,
-    previewHostPath: string,
-  ): NativeEDrawingsLoadResult | Promise<NativeEDrawingsLoadResult>
-  setBounds(x: number, y: number, width: number, height: number): boolean | Promise<boolean>
-  show(): boolean | Promise<boolean>
-  hide(): boolean | Promise<boolean>
-  destroy(): boolean | Promise<boolean>
+  attachToWindow(handle: Buffer): boolean
+  loadFile(filePath: string, previewHostPath: string): Promise<NativeEDrawingsLoadResult>
+  setBounds(x: number, y: number, width: number, height: number): boolean
+  show(): boolean
+  hide(): boolean
+  destroy(): boolean
   lastError(): string
 }
 
-/**
- * The current native bridge returns a boolean until the preview host reports
- * completion. `true` means only that the request was accepted. Phase B will
- * return the object form and may set `ready` only after its host handshake and
- * document-completion callback have both succeeded.
- */
 export type NativeEDrawingsLoadResult =
-  | boolean
-  | {
-      accepted: boolean
-      ready: boolean
-      errorCode?: EDrawingsPreviewErrorCode
-    }
+  | { accepted: true; ready: true }
+  | { accepted: false; ready: false; errorCode: NativeEDrawingsLoadErrorCode }
+
+export type NativeEDrawingsLoadErrorCode =
+  | 'preview-host-handshake-failed'
+  | 'preview-host-timeout'
+  | 'preview-host-exited'
+  | 'preview-document-load-failed'
 
 interface NativeEDrawingsModule {
   EDrawingsPreview: new () => NativeEDrawingsPreview
+  isAvailable(): boolean
 }
 
 interface PreviewWebContents {
@@ -122,7 +116,7 @@ export type PreviewCreateResult =
   | PreviewFailure
 
 export type PreviewLoadResult =
-  | { success: true; accepted: true; ready: boolean }
+  | { success: true; accepted: true; ready: true }
   | PreviewFailure
 
 type PreviewFileValidationResult =
@@ -501,18 +495,13 @@ export function createEDrawingsPreviewController(
       try {
         const nativeResult = await current.preview.loadFile(checkedFile.filePath, previewHostPath)
         if (!isCurrentSession(current)) return stale()
-        if (typeof nativeResult === 'boolean') {
-          return nativeResult
-            ? { success: true, accepted: true, ready: false }
-            : failedOperation(current, 'load')
-        }
         if (!nativeResult.accepted) {
           return {
             success: false,
-            errorCode: nativeResult.errorCode ?? 'preview-operation-failed',
+            errorCode: nativeResult.errorCode,
           }
         }
-        return { success: true, accepted: true, ready: nativeResult.ready }
+        return { success: true, accepted: true, ready: true }
       } catch (error: unknown) {
         if (!isCurrentSession(current)) return stale()
         dependencies.logWarn('[eDrawings] Embedded preview load threw', { error: String(error) })
@@ -586,7 +575,10 @@ export function registerEDrawingsHandlers(
       if (!fs.existsSync(candidate)) continue
       try {
         const loaded = loadNativeModule(candidate) as NativeEDrawingsModule
-        if (typeof loaded.EDrawingsPreview === 'function') {
+        if (
+          typeof loaded.EDrawingsPreview === 'function' &&
+          typeof loaded.isAvailable === 'function'
+        ) {
           nativeEDrawingsModule = loaded
           return loaded
         }
@@ -630,9 +622,18 @@ export function registerEDrawingsHandlers(
     return { installed: eDrawingsPath !== null, path: eDrawingsPath }
   })
 
-  ipcMain.handle('edrawings:native-available', () =>
-    Boolean(findEDrawingsExecutable() && getPreviewHostPath() && getNativeModule()),
-  )
+  ipcMain.handle('edrawings:native-available', () => {
+    const nativeModule = getNativeModule()
+    if (!nativeModule || !getPreviewHostPath()) return false
+    try {
+      return nativeModule.isAvailable()
+    } catch (error) {
+      dependencies.logWarn('[eDrawings] Native availability check failed', {
+        error: String(error),
+      })
+      return false
+    }
+  })
 
   ipcMain.handle('edrawings:open-file', async (_, filePath: string) => {
     const eDrawingsPath = findEDrawingsExecutable()
