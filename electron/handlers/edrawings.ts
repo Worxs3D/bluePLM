@@ -501,6 +501,12 @@ export function createEDrawingsPreviewController(
             errorCode: nativeResult.errorCode,
           }
         }
+        if (nativeResult.ready !== true) {
+          dependencies.logWarn('[eDrawings] Native preview accepted a load without a ready confirmation', {
+            nativeResult,
+          })
+          return { success: false, errorCode: 'preview-document-load-failed' }
+        }
         return { success: true, accepted: true, ready: true }
       } catch (error: unknown) {
         if (!isCurrentSession(current)) return stale()
