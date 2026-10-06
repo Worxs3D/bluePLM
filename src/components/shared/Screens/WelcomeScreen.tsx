@@ -23,18 +23,12 @@ import {
 } from 'lucide-react'
 import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
 import {
-  signInWithGoogle,
-  signInWithEmail,
-  signUpWithEmail,
-  signInWithPhone,
-  verifyPhoneOTP,
-  isSupabaseConfigured,
   supabase,
   getAccessibleVaults,
   signOut as supabaseSignOut,
-  getOrgAuthProviders,
-  type AuthProviders,
 } from '@/lib/supabase'
+import { resolveBackend } from '@/lib/backend'
+import type { AuthProviders } from '@/lib/backend/contracts/identity'
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
@@ -166,7 +160,13 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
       log.info('[WelcomeScreen]', 'Fetching auth providers for org', {
         orgSlug: config?.orgSlug || '(fallback)',
       })
-      const providers = await getOrgAuthProviders(config?.orgSlug)
+      const resolution = resolveBackend()
+      if (resolution.status !== 'ready') {
+        log.warn('[WelcomeScreen]', 'Backend is not configured; auth provider settings unavailable')
+        return
+      }
+
+      const providers = await resolution.backend.identity.getOrgAuthProviders(config?.orgSlug)
       if (providers) {
         log.info('[WelcomeScreen]', 'Auth providers loaded', { providers })
         setOrgAuthProviders(providers)
@@ -524,7 +524,8 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     logAuth('Sign in with Google clicked')
     log.info('[WelcomeScreen]', 'Sign in button clicked')
 
-    if (!isSupabaseConfigured()) {
+    const resolution = resolveBackend()
+    if (resolution.status !== 'ready') {
       log.warn('[WelcomeScreen]', 'Supabase not configured')
       setStatusMessage('Supabase not configured')
       return
@@ -550,7 +551,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     }, 30000)
 
     try {
-      const { data, error } = await signInWithGoogle()
+      const { data, error } = await resolution.backend.auth.signInWithGoogle()
 
       // Clear timeout if sign-in completes
       if (signInTimeoutRef.current) {
@@ -607,10 +608,15 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     setAuthError(null)
 
     try {
+      const resolution = resolveBackend()
+      if (resolution.status !== 'ready') {
+        throw new Error()
+      }
+
       if (isNewAccount) {
         // Sign up
         log.info('[WelcomeScreen]', 'Starting email sign-up', { accountType })
-        const { data, error } = await signUpWithEmail(
+        const { data, error } = await resolution.backend.auth.signUpWithEmail(
           authEmail,
           authPassword,
           authName || undefined,
@@ -632,7 +638,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
       } else {
         // Sign in
         log.info('[WelcomeScreen]', 'Starting email sign-in', { accountType })
-        const { error } = await signInWithEmail(authEmail, authPassword)
+        const { error } = await resolution.backend.auth.signInWithEmail(authEmail, authPassword)
 
         if (error) {
           setAuthError(error.message)
@@ -659,8 +665,13 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     setAuthError(null)
 
     try {
+      const resolution = resolveBackend()
+      if (resolution.status !== 'ready') {
+        throw new Error()
+      }
+
       log.info('[WelcomeScreen]', 'Sending phone OTP', { accountType })
-      const { error } = await signInWithPhone(authPhone)
+      const { error } = await resolution.backend.auth.signInWithPhone(authPhone)
 
       if (error) {
         setAuthError(error.message)
@@ -686,8 +697,13 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     setAuthError(null)
 
     try {
+      const resolution = resolveBackend()
+      if (resolution.status !== 'ready') {
+        throw new Error()
+      }
+
       log.info('[WelcomeScreen]', 'Verifying phone OTP', { accountType })
-      const { error } = await verifyPhoneOTP(authPhone, phoneOtp)
+      const { error } = await resolution.backend.auth.verifyPhoneOTP(authPhone, phoneOtp)
 
       if (error) {
         setAuthError(error.message)
@@ -1194,7 +1210,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
                   <div className="flex gap-2">
                     <button
                       onClick={handleSignIn}
-                      disabled={isSigningIn || !isSupabaseConfigured()}
+                      disabled={isSigningIn || resolveBackend().status !== 'ready'}
                       className="flex-1 btn btn-primary btn-lg gap-3 justify-center py-4"
                     >
                       {isSigningIn ? (

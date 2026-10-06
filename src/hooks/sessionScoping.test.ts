@@ -16,7 +16,7 @@ vi.mock('@/lib/supabase', () => ({
   syncUserSessionsOrgId: vi.fn(),
   updateLastOnline: vi.fn(),
 }))
-vi.mock('@/lib/supabaseConfig', () => ({ clearConfig: vi.fn() }))
+vi.mock('@/lib/supabaseConfig', () => ({ clearConfig: vi.fn(), loadConfig: vi.fn(() => null) }))
 vi.mock('@/lib/userActionLogger', () => ({ logUserAction: vi.fn() }))
 vi.mock('@/lib/logger', () => ({
   log: {

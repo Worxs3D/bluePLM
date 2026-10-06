@@ -29,14 +29,13 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
 import {
-  signInWithGoogle,
-  signOut,
-  isSupabaseConfigured,
   getActiveSessions,
   endRemoteSession,
+  signOut as signOutWithSupabase,
   UserSession,
   supabase,
 } from '@/lib/supabase'
+import { resolveBackend } from '@/lib/backend'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { logAuth } from '@/lib/userActionLogger'
 import { OnlineUsersIndicator } from '@/components/shared/OnlineUsers'
@@ -336,7 +335,8 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     logAuth('Sign in button clicked')
     log.info('[MenuBar]', 'Sign in button clicked from MenuBar')
 
-    if (!isSupabaseConfigured()) {
+    const resolution = resolveBackend()
+    if (resolution.status !== 'ready') {
       log.warn('[MenuBar]', 'Supabase not configured')
       addToast(
         'error',
@@ -349,7 +349,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     log.info('[MenuBar]', 'Starting Google sign-in flow from MenuBar')
 
     try {
-      const { data, error } = await signInWithGoogle()
+      const { data, error } = await resolution.backend.auth.signInWithGoogle()
       log.info('[MenuBar]', 'signInWithGoogle returned', {
         hasData: !!data,
         hasError: !!error,
@@ -377,7 +377,11 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   const handleSignOut = async () => {
     logAuth('Sign out clicked')
     log.info('[MenuBar]', 'Sign out clicked')
-    const { error } = await signOut()
+    const resolution = resolveBackend()
+    const { error } =
+      resolution.status === 'ready'
+        ? await resolution.backend.auth.signOut()
+        : await signOutWithSupabase()
     if (error) {
       log.error('[MenuBar]', 'Sign out error', { error: error.message })
     } else {
