@@ -80,15 +80,20 @@ class FakePreview implements NativeEDrawingsPreview {
 
 class FakeOwner extends EventEmitter implements PreviewOwner {
   private readonly rendererEvents = new EventEmitter()
+  private windowDestroyed = false
+  private webContentsDestroyed = false
   webContents: PreviewOwner['webContents']
 
   constructor(id: number) {
     super()
     this.webContents = {
       id,
-      isDestroyed: () => false,
+      isDestroyed: () => this.webContentsDestroyed,
       on: (event, listener) => this.rendererEvents.on(event, listener),
-      removeListener: (event, listener) => this.rendererEvents.removeListener(event, listener),
+      removeListener: (event, listener) => {
+        if (this.webContentsDestroyed) throw new Error('Object has been destroyed')
+        return this.rendererEvents.removeListener(event, listener)
+      },
     }
   }
 
@@ -97,7 +102,7 @@ class FakeOwner extends EventEmitter implements PreviewOwner {
   }
 
   isDestroyed(): boolean {
-    return false
+    return this.windowDestroyed
   }
 
   isMinimized(): boolean {
@@ -110,6 +115,11 @@ class FakeOwner extends EventEmitter implements PreviewOwner {
 
   emitRendererLifecycle(event: 'render-process-gone' | 'did-start-navigation'): void {
     this.rendererEvents.emit(event)
+  }
+
+  destroyWindow(): void {
+    this.windowDestroyed = true
+    this.webContentsDestroyed = true
   }
 }
 
@@ -193,6 +203,28 @@ describe('embedded eDrawings preview controller', () => {
     expect(await controller.destroy(createdA.sessionId, 17)).toMatchObject({ success: false })
     expect(previewB.destroyCalls).toBe(0)
   })
+
+  it.each(['render-process-gone', 'did-start-navigation'] as const)(
+    'does not let stale owner %s cleanup destroy its successor',
+    async (event) => {
+      const previewA = new FakePreview()
+      const previewB = new FakePreview()
+      const controller = createController([previewA, previewB])
+      const ownerA = new FakeOwner(17)
+      const ownerB = new FakeOwner(18)
+      const createdA = controller.create(ownerA, 17)
+      if (!createdA.success) throw new Error('expected preview session A')
+      const createdB = controller.create(ownerB, 18)
+      if (!createdB.success) throw new Error('expected preview session B')
+
+      ownerA.emitRendererLifecycle(event)
+
+      expect(previewA.destroyCalls).toBe(1)
+      expect(previewB.destroyCalls).toBe(0)
+      await expect(controller.attach(createdB.sessionId, 18)).resolves.toEqual({ success: true })
+      expect(previewB.attachCalls).toBe(1)
+    },
+  )
 
   it('returns stale when a delayed older load resolves after a newer session supersedes it', async () => {
     let resolveLoad: (result: NativeEDrawingsLoadResult) => void = () => undefined
@@ -314,6 +346,21 @@ describe('embedded eDrawings preview controller', () => {
 
     expect(preview.destroyCalls).toBe(1)
     await expect(controller.hide(created.sessionId, 17)).resolves.toMatchObject({ success: false })
+  })
+
+  it('cleans up after closed when the BrowserWindow and webContents are already destroyed', () => {
+    const preview = new FakePreview()
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    owner.destroyWindow()
+
+    expect(() => owner.emit('closed')).not.toThrow()
+    expect(preview.destroyCalls).toBe(1)
+    expect(() => controller.cleanup()).not.toThrow()
+    expect(preview.destroyCalls).toBe(1)
   })
 })
 
