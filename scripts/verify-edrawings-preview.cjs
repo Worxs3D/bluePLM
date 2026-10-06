@@ -47,6 +47,9 @@ app.whenReady().then(async () => {
   checkpoint('window-loaded')
 
   const addon = require(path.join(__dirname, '..', 'resources', 'bin', 'win32', 'edrawings_preview.node'))
+  if (typeof addon.isAvailable !== 'function' || !addon.isAvailable()) {
+    throw new Error('The eDrawings ActiveX registration is unavailable.')
+  }
   const host = path.join(
     __dirname,
     '..',
@@ -69,7 +72,8 @@ app.whenReady().then(async () => {
   }
   checkpoint('after-initial-bounds')
   checkpoint('before-load-file')
-  if (!preview.loadFile(sample, host) || !preview.show()) {
+  const loaded = await preview.loadFile(sample, host)
+  if (!loaded.accepted || !loaded.ready || !preview.show()) {
     throw new Error(preview.lastError() || 'Could not size or show the embedded preview.')
   }
   checkpoint('after-load-and-show')
