@@ -4,6 +4,68 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [4.4.5] - 2026-10-05
+
+Renderer and preload only — no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Uploading a file no longer empties its item number and description in BluePLM.** Uploading
+  over a file the vault already had, from a copy BluePLM had no metadata for, wrote empty
+  values over the existing ones, and the version it created recorded neither. An upload now
+  only writes these columns when it carries a value, and the version records what the row
+  holds.
+- **Refreshing metadata from a SolidWorks file no longer empties a column the file has no
+  value for.** It writes only values the file actually holds.
+- **Checking a file out again warns before discarding unsaved metadata edits.** If your
+  checkout was released before you checked in — an admin forced a release, or you released it
+  from another machine — checking the file out again used to drop your unsaved item number,
+  description or revision edits silently. It now lists the edits it would discard and asks
+  first; cancel to keep them. They are never restored automatically. BluePLM also warns when
+  such a release arrives while you are working.
+- **The divergence report saves again.** `scan-divergence` could not write its report file;
+  it now saves to `logs/divergence/`.
+- **Terminal commands accept quoted paths with spaces**, e.g. `--path="0 - SHARED\01-TOOLBOX"`.
+
+### Added
+
+- **Fill empty from file, in Vault Audit.** A new group, "Empty in BluePLM, still in the file",
+  lists parts and assemblies whose item number or description is empty in BluePLM while the
+  file still holds one. An admin ticks the values, reviews exactly what would be written, and
+  fills them. A value is written only if the column is still empty at that moment, no version
+  is created, files checked out by someone else and fields with your unsaved edits are skipped,
+  and every file filled is recorded in the activity log.
+- **`restore-metadata-from-files` terminal command** — the same fill for a whole vault, with
+  `--path`, `--exclude` and `--limit`. Dry run unless `--apply`, which needs an admin.
+- The divergence report lists these values in their own section instead of under "leave alone".
+  Nothing in it is filled automatically.
+
+## [4.4.4] - 2026-09-29
+
+Renderer and SolidWorks service — no schema change, no API change. Everything in
+4.4.4-beta.1, plus the following.
+
+### Fixed
+
+- **Sync Metadata refuses a file that is still read-only on disk, and says which.** A file
+  BluePLM showed as checked out could still carry the read-only attribute, and Sync Metadata
+  pushed into it anyway: over a minute of refused SolidWorks saves on a four-configuration
+  assembly, then "4 of 4 configurations did not take the change." It now checks first, names
+  the read-only files, and points at Check Out, which makes a file you already hold writable.
+- **A read-only write fails straight away in the SolidWorks service.** When Document Manager
+  refuses a write because the file is read-only, the service no longer retries it through
+  SolidWorks, which opened the file read-only too and could only refuse the save. SolidWorks
+  service 1.21.2.
+- **Downloading a folder no longer fails once per leftover row with no file behind it.**
+  Server rows with no content hash are skipped with one summary warning, and a hash missing
+  from the row is filled from the server index when it has one.
+- **Refreshing a folder no longer brings back cloud rows a full load hides.** Refresh now
+  skips rows with no hash and rows whose content already exists locally at another path,
+  the same way a full vault load does, so they stop reappearing as downloadable.
+- **Download and Get Latest no longer trigger a background vault reload.** Writing a file
+  fires a change event on its folder, which the file watcher treated as an outside edit;
+  those folders are now registered as BluePLM's own changes.
+
 ## [4.4.4-beta.1] - 2026-09-22
 
 Renderer and SolidWorks service — no schema change, no API change.

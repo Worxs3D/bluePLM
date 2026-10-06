@@ -805,22 +805,67 @@ export function getUnsyncedFilesFromSelection(
   return [...new Map(result.map((f) => [f.path, f])).values()]
 }
 
-// Helper to get cloud-only files from selection
+/**
+ * Attach a downloadable hash from the slim server index when the store row is missing
+ * `pdmData.content_hash`. Returns null when neither source has a hash — those rows are
+ * skipped, not failed, so a folder download does not spam 34 "No content hash" errors.
+ */
+export function withResolvableDownloadHash(
+  file: LocalFile,
+  serverFilesByPath?: ReadonlyMap<string, ServerFile>,
+): LocalFile | null {
+  if (file.pdmData?.content_hash) return file
+  const sf = serverFilesByPath?.get(file.relativePath.toLowerCase())
+  if (!sf?.content_hash) return null
+  return {
+    ...file,
+    pdmData: file.pdmData
+      ? { ...file.pdmData, content_hash: sf.content_hash, id: file.pdmData.id || sf.id }
+      : ({
+          id: sf.id,
+          file_path: sf.file_path,
+          file_name: sf.name,
+          extension: sf.extension,
+          content_hash: sf.content_hash,
+        } as LocalFile['pdmData']),
+  }
+}
+
+// Helper to get cloud-only files from selection.
+// When `serverFiles` is passed, hashless leftovers are omitted and a missing hash is
+// filled from the server index so Download can fetch genuine cloud rows Refresh
+// synthesized incompletely. Call sites that only need "is this cloud?" (Move) omit it.
 export function getCloudOnlyFilesFromSelection(
   files: LocalFile[],
   selection: LocalFile[],
+  serverFiles?: ServerFile[],
 ): LocalFile[] {
   const result: LocalFile[] = []
+  const serverByPath = serverFiles
+    ? new Map(serverFiles.map((sf) => [sf.file_path.toLowerCase(), sf]))
+    : undefined
 
   for (const item of selection) {
     if (item.isDirectory) {
       const filesInFolder = getFilesInFolder(files, item.relativePath)
-      const cloudOnly = filesInFolder.filter((f) => f.diffStatus === 'cloud')
-      result.push(...cloudOnly)
-    } else if (item.diffStatus === 'cloud' && item.pdmData) {
+      for (const folderFile of filesInFolder) {
+        if (folderFile.diffStatus !== 'cloud') continue
+        if (!serverByPath) {
+          result.push(folderFile)
+          continue
+        }
+        const resolved = withResolvableDownloadHash(folderFile, serverByPath)
+        if (resolved) result.push(resolved)
+      }
+    } else if (item.diffStatus === 'cloud') {
       // Look up fresh file from files array (selection may have stale reference)
-      const freshFile = files.find((f) => f.path === item.path)
-      result.push(freshFile || item)
+      const freshFile = files.find((f) => f.path === item.path) || item
+      if (!serverByPath) {
+        if (freshFile.pdmData) result.push(freshFile)
+        continue
+      }
+      const resolved = withResolvableDownloadHash(freshFile, serverByPath)
+      if (resolved) result.push(resolved)
     }
   }
 

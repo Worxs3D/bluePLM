@@ -210,3 +210,48 @@ describe('eligibility excludes rows with nothing on disk, even when checked out 
     expect(syncMetadataCommand.validate({ files: [newFile] }, ctx)).toBeNull()
   })
 })
+
+describe('a checked-out file that is still read-only on disk', () => {
+  function stubReadonly(readonlyPaths: readonly string[]): void {
+    const electronAPI = (window as unknown as { electronAPI: Record<string, unknown> }).electronAPI
+    electronAPI.isReadonly = vi.fn(async (path: string) => ({
+      success: true,
+      readonly: readonlyPaths.includes(path),
+    }))
+  }
+
+  it('is refused before the push, named in an error toast, and counted as failed', async () => {
+    const assembly = localFile('FATHOM/ASM.SLDASM', {
+      pdmData: { id: PART_ID, checked_out_by: USER_ID } as PDMFile,
+    })
+    stubReadonly([assembly.path])
+    const ctx = makeContext([assembly])
+
+    const result = await syncMetadataCommand.execute({ files: [assembly] }, ctx)
+
+    expect(pushPartAssemblyMetadata).not.toHaveBeenCalled()
+    expect(result.success).toBe(false)
+    expect(result.failed).toBe(1)
+    expect(result.errors?.[0]).toContain('ASM.SLDASM')
+    expect(ctx.addToast).toHaveBeenCalledWith('error', expect.stringContaining('ASM.SLDASM'))
+  })
+
+  it('does not hold back a writable file in the same selection', async () => {
+    const readonlyPart = localFile('A.sldprt', {
+      pdmData: { id: 'a', checked_out_by: USER_ID } as PDMFile,
+    })
+    const writablePart = localFile('B.sldprt', {
+      pdmData: { id: 'b', checked_out_by: USER_ID } as PDMFile,
+    })
+    stubReadonly([readonlyPart.path])
+    const ctx = makeContext([readonlyPart, writablePart])
+
+    const result = await syncMetadataCommand.execute({ files: [readonlyPart, writablePart] }, ctx)
+
+    expect(pushPartAssemblyMetadata).toHaveBeenCalledTimes(1)
+    const [file] = pushPartAssemblyMetadata.mock.calls[0] as [LocalFile, string]
+    expect(file.name).toBe('B.sldprt')
+    expect(result.succeeded).toBe(1)
+    expect(result.failed).toBe(1)
+  })
+})

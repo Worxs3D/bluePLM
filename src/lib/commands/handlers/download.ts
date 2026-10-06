@@ -5,7 +5,7 @@
  * Creates necessary parent directories and makes files read-only.
  */
 
-import type { Command, DownloadParams, CommandResult } from '../types'
+import type { Command, CommandContext, DownloadParams, CommandResult } from '../types'
 import { getCloudOnlyFilesFromSelection, buildFullPath, getParentDir } from '../types'
 import { ProgressTracker } from '../executor'
 import { getDownloadUrl } from '../../storage'
@@ -15,6 +15,14 @@ import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency
 import { log } from '@/lib/logger'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
+import { t } from '@/lib/i18n'
+import { withExpectedParentFolders } from '../expectedFileChanges'
+
+function toastSkippedNoHash(ctx: CommandContext, count: number): void {
+  if (count <= 0) return
+  const suffix = count === 1 ? '_one' : '_other'
+  ctx.addToast('warning', t(`fileOps.downloadSkippedNoHash${suffix}`, { count }))
+}
 
 // Number of retry attempts for failed downloads
 const MAX_RETRY_ATTEMPTS = 3
@@ -125,7 +133,7 @@ export const downloadCommand: Command<DownloadParams> = {
     }
 
     // Get cloud-only files
-    const cloudFiles = getCloudOnlyFilesFromSelection(ctx.files, files)
+    const cloudFiles = getCloudOnlyFilesFromSelection(ctx.files, files, ctx.serverFiles)
 
     // Also allow empty cloud-only folders (to create them locally)
     const hasCloudOnlyFolders = files.some((f) => f.isDirectory && f.diffStatus === 'cloud')
@@ -143,7 +151,11 @@ export const downloadCommand: Command<DownloadParams> = {
     const operationId = `download-${Date.now()}`
 
     // Get cloud-only files from selection (for tracker initialization)
-    const cloudFilesForTracker = getCloudOnlyFilesFromSelection(ctx.files, files)
+    const cloudFilesForTracker = getCloudOnlyFilesFromSelection(
+      ctx.files,
+      files,
+      ctx.serverFiles,
+    )
 
     // Initialize file operation tracker for DevTools monitoring
     const tracker = FileOperationTracker.start(
@@ -160,8 +172,12 @@ export const downloadCommand: Command<DownloadParams> = {
       selectedPaths: files.map((f) => f.relativePath),
     })
 
-    // Get cloud-only files from selection
-    const cloudFiles = getCloudOnlyFilesFromSelection(ctx.files, files)
+    // Get cloud-only files from selection. Hashless leftovers are skipped, not failed —
+    // a folder of 34 ghosts used to raise 34 per-file errors.
+    const selectedCloud = getCloudOnlyFilesFromSelection(ctx.files, files)
+    const cloudFiles = getCloudOnlyFilesFromSelection(ctx.files, files, ctx.serverFiles)
+    const skippedNoHash = selectedCloud.length - cloudFiles.length
+    toastSkippedNoHash(ctx, skippedNoHash)
     const cloudOnlyFolders = files.filter((f) => f.isDirectory && f.diffStatus === 'cloud')
 
     logDownload('debug', 'Filtered cloud files', {
@@ -266,8 +282,13 @@ export const downloadCommand: Command<DownloadParams> = {
     const allPathsToTrack = [...new Set([...cloudFilePaths, ...selectedFolderPaths])]
     ctx.addProcessingFoldersSync(allPathsToTrack, 'download')
 
-    // Register expected file changes to suppress file watcher during operation
-    ctx.addExpectedFileChanges(cloudFilePaths)
+    // Register expected file changes to suppress file watcher during operation.
+    // Parent folders are included because creating a file fires a directory event
+    // on the parent; omitting them is what scheduled the silent loadFiles after
+    // Rai's download. Adding them also suppresses onDirectoryAdded/Removed sync
+    // for those folders — correct here: the folder came from the server.
+    const expectedChangePaths = withExpectedParentFolders(cloudFilePaths)
+    ctx.addExpectedFileChanges(expectedChangePaths)
 
     // Yield to event loop so React can render spinners before starting download
     // Use 16ms (roughly one frame) to ensure React has time to process state update and re-render
@@ -611,7 +632,7 @@ export const downloadCommand: Command<DownloadParams> = {
 
     // Delay clearing expected file changes to allow file watcher suppression to work
     // The 5 second window ensures late file system events are still suppressed
-    const pathsToClear = [...cloudFilePaths]
+    const pathsToClear = [...expectedChangePaths]
     setTimeout(() => {
       ctx.clearExpectedFileChanges(pathsToClear)
       logDownload('debug', 'Expected file changes cleared (delayed)', {

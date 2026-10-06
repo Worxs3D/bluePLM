@@ -257,6 +257,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   log: (level: string, message: string, data?: unknown) =>
     ipcRenderer.send('logs:write', level, message, data),
   getLogsDir: () => ipcRenderer.invoke('logs:get-dir'),
+  writeDivergenceReport: (fileName: string, content: string) =>
+    ipcRenderer.invoke('logs:write-divergence-report', fileName, content),
   listLogFiles: () => ipcRenderer.invoke('logs:list-files'),
   readLogFile: (filePath: string) => ipcRenderer.invoke('logs:read-file', filePath),
   openLogsDir: () => ipcRenderer.invoke('logs:open-dir'),
@@ -1121,6 +1123,10 @@ declare global {
       }>
       log: (level: string, message: string, data?: unknown) => void
       getLogsDir: () => Promise<string>
+      writeDivergenceReport: (
+        fileName: string,
+        content: string,
+      ) => Promise<{ success: boolean; path?: string; error?: string }>
       listLogFiles: () => Promise<{
         success: boolean
         files?: Array<{

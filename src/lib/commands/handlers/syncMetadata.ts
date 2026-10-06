@@ -34,6 +34,8 @@ import type { Command, CommandResult, LocalFile, SyncMetadataParams } from '../t
 import { buildFullPath } from '../types'
 import { ProgressTracker } from '../executor'
 import { usePDMStore } from '../../../stores/pdmStore'
+import { readDiskWriteAccess } from '@/lib/files/localReadonly'
+import { t } from '@/lib/i18n'
 import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
 import type { PendingMetadata } from '@/stores/types'
 import { buildCanonicalFileMap, hasLocalContent } from '../../fileOperations/assemblyResolver'
@@ -123,6 +125,19 @@ function isEligibleForMetadataSync(file: LocalFile, userId: string | undefined):
   const isLocalOnly = !file.pdmData?.id
   const isCheckedOutByMe = file.pdmData?.checked_out_by === userId
   return (isLocalOnly || isCheckedOutByMe) && hasLocalContent(file)
+}
+
+/**
+ * The error to report instead of pushing into `file`, or null when the push may go ahead.
+ *
+ * Being checked out does not make a file writable: the attribute can survive a checkout, and a
+ * push into a read-only file costs a full SolidWorks open per scope before the save is refused.
+ * This does not clear the attribute; checkout owns that, and checking the file out again repairs it.
+ */
+async function readOnlyPushRefusal(file: LocalFile, fullPath: string): Promise<string | null> {
+  if ((await readDiskWriteAccess(fullPath)) !== 'readonly') return null
+  logSync('warn', 'Skipping push: file is read-only on disk', { filePath: file.path })
+  return t('fileReadonly.syncBlocked', { names: file.name })
 }
 
 export const syncMetadataCommand: Command<SyncMetadataParams> = {
@@ -266,6 +281,7 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
     let drawingsNeedingSw = 0 // Drawings that need SW for parent inheritance
     let drawingsNeedingSwComFix = 0 // Drawings where SW COM is inaccessible
     const errors: string[] = []
+    const readOnlyNames: string[] = []
 
     // Get vault path for full path construction
     const vaultPath = ctx.vaultPath || ''
@@ -340,7 +356,11 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
                   strategy: metadata.parentInferenceStrategy,
                 })
               } else {
-                const writeResult = await pushDrawingMetadata(file, fullPath, metadata)
+                const refusal = await readOnlyPushRefusal(file, fullPath)
+                if (refusal) readOnlyNames.push(file.name)
+                const writeResult = refusal
+                  ? { success: false, error: refusal }
+                  : await pushDrawingMetadata(file, fullPath, metadata)
 
                 if (writeResult.success) {
                   drawingsCorrected++
@@ -366,14 +386,21 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
           // PUSH: Write metadata from BluePLM -> into SW file
           logSync('debug', 'Processing part/assembly (PUSH)', { fullPath })
 
-          const result = await pushPartAssemblyMetadata(file, fullPath, {
-            omitRevision: omitRevisionOnModels,
-          })
+          const refusal = await readOnlyPushRefusal(file, fullPath)
+          const result = refusal
+            ? { success: false, error: refusal }
+            : await pushPartAssemblyMetadata(file, fullPath, {
+                omitRevision: omitRevisionOnModels,
+              })
 
           if (result.success) {
             pushed++
             succeeded++
             logSync('info', 'PUSH complete - wrote to SW file', { filePath: file.path })
+          } else if (refusal) {
+            failed++
+            errors.push(refusal)
+            readOnlyNames.push(file.name)
           } else {
             failed++
             const errorMsg = `Failed to write ${file.name}: ${result.error}`
@@ -414,6 +441,10 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
       )
     if (skippedCount > 0) parts.push(`${skippedCount} skipped (not checked out)`)
     if (failed > 0) parts.push(`${failed} failed`)
+
+    if (readOnlyNames.length > 0) {
+      ctx.addToast('error', t('fileReadonly.syncBlocked', { names: readOnlyNames.join(', ') }))
+    }
 
     if (failed > 0) {
       ctx.addToast('warning', `Sync complete: ${parts.join(', ')}`)

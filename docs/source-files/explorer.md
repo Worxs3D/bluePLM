@@ -61,6 +61,13 @@ Before editing a file, check it out to lock it:
 - Others see who has it locked
 - Prevents conflicting edits
 
+Metadata edits (item number, description, revision) stay unsaved until you check the file in. If
+your checkout is released before then — an admin forces a release, or you release it from another
+machine — BluePLM warns you that those edits can no longer be checked in. Checking the file out
+again lists the edits it would discard and asks first; cancel to keep them on screen and copy them
+down. They are never restored automatically, because someone may have checked in newer values in
+the meantime.
+
 ### Check In
 When done editing, check in your changes:
 - Uploads your modified file

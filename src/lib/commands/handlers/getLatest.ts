@@ -16,6 +16,7 @@ import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
+import { withExpectedParentFolders } from '../expectedFileChanges'
 
 // Retry configuration
 const MAX_RETRY_ATTEMPTS = 3
@@ -233,9 +234,13 @@ export const getLatestCommand: Command<GetLatestParams> = {
     const filesToProcess = outdatedFiles
     const missingStorageFiles: LocalFile[] = [] // Populated during download if any fail
 
-    // Register expected file changes to suppress file watcher during operation
+    // Register expected file changes to suppress file watcher during operation.
+    // Parent folders are included because writing a file fires a directory event
+    // on the parent. Clear the same list after the suppression window — this set
+    // must not grow for the life of the session.
     const filePaths = filesToProcess.map((f) => f.relativePath)
-    ctx.addExpectedFileChanges(filePaths)
+    const expectedChangePaths = withExpectedParentFolders(filePaths)
+    ctx.addExpectedFileChanges(expectedChangePaths)
 
     const total = filesToProcess.length
 
@@ -493,7 +498,7 @@ export const getLatestCommand: Command<GetLatestParams> = {
 
     // Delay clearing expected file changes to allow file watcher suppression to work
     // The 5 second window ensures late file system events are still suppressed
-    const pathsToClear = [...filePaths] // Only file paths, not folder paths
+    const pathsToClear = [...expectedChangePaths]
     setTimeout(() => {
       ctx.clearExpectedFileChanges(pathsToClear)
       logGetLatest('debug', 'Expected file changes cleared (delayed)', {

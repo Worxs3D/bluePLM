@@ -24,6 +24,7 @@ import { StateCreator } from 'zustand'
 
 import type { DivergenceReport } from '../../lib/metadata/divergenceScan'
 import type {
+  VaultAuditFillOutcome,
   VaultAuditProgress,
   VaultAuditRepairOutcome,
   VaultAuditRunState,
@@ -147,6 +148,28 @@ export const EMPTY_VAULT_AUDIT_CONFLICT: VaultAuditConflictState = {
   error: null,
 }
 
+/**
+ * What the administrator approved for filling empty part numbers and descriptions from the files.
+ *
+ * Per finding, like the conflict choices, because the writer works per value.
+ */
+export interface VaultAuditFillState {
+  selectedFindingIds: string[]
+  /** Finding ids whose value was written during this audit session. */
+  settledFindingIds: string[]
+  applying: boolean
+  error: string | null
+  outcome: VaultAuditFillOutcome | null
+}
+
+export const EMPTY_VAULT_AUDIT_FILL: VaultAuditFillState = {
+  selectedFindingIds: [],
+  settledFindingIds: [],
+  applying: false,
+  error: null,
+  outcome: null,
+}
+
 export interface VaultAuditSlice {
   // ═══════════════════════════════════════════════════════════════
   // State
@@ -182,6 +205,9 @@ export interface VaultAuditSlice {
 
   /** Explicit choices for conflict rows. Session-scoped, never persisted. */
   vaultAuditConflict: VaultAuditConflictState
+
+  /** Approved fills of empty columns. Session-scoped, never persisted. */
+  vaultAuditFill: VaultAuditFillState
 
   // ═══════════════════════════════════════════════════════════════
   // Actions
@@ -225,6 +251,16 @@ export interface VaultAuditSlice {
     settledFindingIds?: readonly string[]
     error?: string | null
   }) => void
+
+  setVaultAuditFillSelection: (findingIds: readonly string[]) => void
+  startVaultAuditFill: () => void
+  finishVaultAuditFill: (result: {
+    /** Every finding the apply was asked to write, settled or not. */
+    requestedFindingIds: readonly string[]
+    settledFindingIds: readonly string[]
+    outcome: VaultAuditFillOutcome | null
+    error?: string | null
+  }) => void
 }
 
 // ============================================================================
@@ -245,6 +281,7 @@ export const createVaultAuditSlice: StateCreator<
   vaultAuditRepair: EMPTY_VAULT_AUDIT_REPAIR,
   vaultAuditPush: EMPTY_VAULT_AUDIT_PUSH,
   vaultAuditConflict: EMPTY_VAULT_AUDIT_CONFLICT,
+  vaultAuditFill: EMPTY_VAULT_AUDIT_FILL,
 
   setVaultAuditScope: (scope: VaultAuditScope) => set({ vaultAuditScope: scope }),
 
@@ -274,6 +311,7 @@ export const createVaultAuditSlice: StateCreator<
         cancelRequested: false,
       },
       vaultAuditConflict: EMPTY_VAULT_AUDIT_CONFLICT,
+      vaultAuditFill: EMPTY_VAULT_AUDIT_FILL,
     })
     return id
   },
@@ -312,6 +350,7 @@ export const createVaultAuditSlice: StateCreator<
       vaultAuditRepair: EMPTY_VAULT_AUDIT_REPAIR,
       vaultAuditPush: EMPTY_VAULT_AUDIT_PUSH,
       vaultAuditConflict: EMPTY_VAULT_AUDIT_CONFLICT,
+      vaultAuditFill: EMPTY_VAULT_AUDIT_FILL,
     }),
 
   setVaultAuditRepairSelection: (ids: readonly string[]) =>
@@ -428,6 +467,41 @@ export const createVaultAuditSlice: StateCreator<
                 ]),
               ]
             : state.vaultAuditConflict.settledFindingIds,
+        },
+      }
+    }),
+
+  setVaultAuditFillSelection: (findingIds: readonly string[]) =>
+    set((state) => ({
+      vaultAuditFill: {
+        ...state.vaultAuditFill,
+        selectedFindingIds: [...findingIds],
+        error: null,
+        outcome: null,
+      },
+    })),
+
+  startVaultAuditFill: () =>
+    set((state) => ({
+      vaultAuditFill: { ...state.vaultAuditFill, applying: true, error: null, outcome: null },
+    })),
+
+  finishVaultAuditFill: (result) =>
+    set((state) => {
+      // Requested values leave the selection whatever happened to them: a value that was already
+      // set, held or refused would be refused again by a second click.
+      const requested = new Set(result.requestedFindingIds)
+      return {
+        vaultAuditFill: {
+          applying: false,
+          error: result.error ?? null,
+          outcome: result.outcome,
+          selectedFindingIds: state.vaultAuditFill.selectedFindingIds.filter(
+            (id) => !requested.has(id),
+          ),
+          settledFindingIds: [
+            ...new Set([...state.vaultAuditFill.settledFindingIds, ...result.settledFindingIds]),
+          ],
         },
       }
     }),

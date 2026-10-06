@@ -12,7 +12,9 @@ import {
   type FolderRealtimeRow,
 } from '@/lib/realtime'
 import { buildFullPath } from '@/lib/commands/types'
+import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { checkoutLostWithEdits } from '@/lib/metadata/strandedEdits'
 import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
@@ -22,6 +24,7 @@ import {
 
 const LOCATION_FLUSH_DEBOUNCE_MS = 100
 const NOTIFICATION_BATCH_MS = 500
+const STRANDED_EDIT_TOAST_MS = 15_000
 
 /**
  * A folder delete produces one row UPDATE per file inside it, each arriving as its own
@@ -424,6 +427,26 @@ export function useRealtimeSubscriptions(
             // This prevents realtime events from overwriting user's unsaved edits
             if (hasPendingMetadata) {
               log.debug('[Realtime]', 'SKIP: file with pending metadata', { fileId: newFile.id })
+              if (
+                localFile &&
+                checkoutLostWithEdits({
+                  previousHolder: localFile.pdmData?.checked_out_by,
+                  nextHolder: newFile.checked_out_by,
+                  userId: currentUserId,
+                  pending: localFile.pendingMetadata,
+                })
+              ) {
+                log.warn('[Realtime]', 'Checkout lost while unsaved metadata edits are pending', {
+                  fileId: hashCheckoutIdentifier(newFile.id),
+                  path: localFile.relativePath,
+                  pending: localFile.pendingMetadata,
+                })
+                addToast(
+                  'warning',
+                  t('strandedEdits.checkoutLost', { name: localFile.name }),
+                  STRANDED_EDIT_TOAST_MS,
+                )
+              }
               break
             }
 

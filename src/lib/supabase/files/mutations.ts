@@ -4,6 +4,8 @@ import { getSupabaseClient } from '../client'
 import { getCurrentUser, getCurrentUserEmail } from '../auth'
 import { withRetry } from '../../network'
 
+import { nonEmptyText } from './metadataValue'
+
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
 
@@ -444,12 +446,16 @@ export async function syncFile(
         updated_by: userId,
       }
 
-      // Only update metadata if provided (preserve existing values otherwise)
-      if (metadata?.partNumber !== undefined) {
-        updatePayload.part_number = metadata.partNumber
+      // Only a value overwrites. The upload passes the overlay for every field, and for a row the
+      // client never matched to this one that is null - nothing known, not a clear - so writing it
+      // would blank metadata the vault already holds.
+      const partNumber = nonEmptyText(metadata?.partNumber)
+      if (partNumber !== null) {
+        updatePayload.part_number = partNumber
       }
-      if (metadata?.description !== undefined) {
-        updatePayload.description = metadata.description
+      const description = nonEmptyText(metadata?.description)
+      if (description !== null) {
+        updatePayload.description = description
       }
       if (metadata?.customProperties !== undefined) {
         updatePayload.custom_properties = metadata.customProperties
@@ -476,6 +482,8 @@ export async function syncFile(
       // Type assertion after validation - we know the structure from Supabase schema
       const fileData = updatedFile as {
         revision: string
+        part_number: string | null
+        description: string | null
         workflow_state_id: string | null
         state: string | null
       }
@@ -487,6 +495,8 @@ export async function syncFile(
             file_id: existingFile.id,
             version: existingFile.version + 1,
             revision: fileData.revision,
+            part_number: fileData.part_number,
+            description: fileData.description,
             content_hash: contentHash,
             file_size: fileSize,
             workflow_state_id: fileData.workflow_state_id,

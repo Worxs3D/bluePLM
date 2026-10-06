@@ -967,6 +967,12 @@ const DELIBERATE: readonly Allowance[] = [
     reason: 'Merges one edit into the pending set, which is the one thing the overlay is not about.',
   },
   {
+    file: 'lib/metadata/strandedEdits.ts',
+    symbols: ['editedValueText'],
+    reason:
+      'Shows the user the edit a checkout is about to discard. The edit itself is what would be lost, so resolving it against the committed side would show a value the user is not losing.',
+  },
+  {
     file: 'lib/metadata/writePlan.ts',
     symbols: ['buildMetadataWritePlan'],
     reason:
