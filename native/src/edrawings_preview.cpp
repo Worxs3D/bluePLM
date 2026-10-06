@@ -464,6 +464,17 @@ private:
         result.Set("ownedByHost", Napi::Boolean::New(info.Env(), exists && owner == host)); result.Set("hostHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(host))));
         result.Set("ownerHandle", Napi::String::New(info.Env(), std::to_string(reinterpret_cast<uintptr_t>(owner))));
         const LONG_PTR extendedStyle = exists ? GetWindowLongPtrW(viewer, GWL_EXSTYLE) : 0; result.Set("topmost", Napi::Boolean::New(info.Env(), (extendedStyle & WS_EX_TOPMOST) != 0));
+        RECT viewerRect{};
+        RECT hostClient{};
+        const bool hasViewerBounds = exists && GetWindowRect(viewer, &viewerRect);
+        const bool hasHostBounds = host && IsWindow(host) && GetClientRect(host, &hostClient);
+        Napi::Object viewerBounds = Napi::Object::New(info.Env());
+        viewerBounds.Set("left", Napi::Number::New(info.Env(), viewerRect.left)); viewerBounds.Set("top", Napi::Number::New(info.Env(), viewerRect.top));
+        viewerBounds.Set("width", Napi::Number::New(info.Env(), viewerRect.right - viewerRect.left)); viewerBounds.Set("height", Napi::Number::New(info.Env(), viewerRect.bottom - viewerRect.top));
+        result.Set("viewerBounds", viewerBounds); result.Set("hasViewerBounds", Napi::Boolean::New(info.Env(), hasViewerBounds));
+        Napi::Object hostBounds = Napi::Object::New(info.Env());
+        hostBounds.Set("width", Napi::Number::New(info.Env(), hostClient.right - hostClient.left)); hostBounds.Set("height", Napi::Number::New(info.Env(), hostClient.bottom - hostClient.top));
+        result.Set("hostClientBounds", hostBounds); result.Set("hasHostClientBounds", Napi::Boolean::New(info.Env(), hasHostBounds));
         return result;
     }
 
