@@ -37,8 +37,11 @@ app.whenReady().then(async () => {
   if (!fs.existsSync(sample)) throw new Error(`CAD sample does not exist: ${sample}`)
 
   const window = new BrowserWindow({
+    // GetVisualState samples desktop pixels, so a hidden owner makes the
+    // render assertion meaningless. CI can opt out explicitly if it only
+    // needs the protocol check.
     show:
-      process.env.BLUEPLM_SHOW_PREVIEW_TEST === '1' ||
+      process.env.BLUEPLM_SHOW_PREVIEW_TEST !== '0' ||
       process.env.BLUEPLM_PREVIEW_TEST_MINIMIZE === '1',
     width: 960,
     height: 640,
@@ -90,6 +93,7 @@ app.whenReady().then(async () => {
       suspiciousWhiteDialog,
       visual,
       lifecycle,
+      windowState: preview.getWindowState(),
       error: preview.lastError(),
     }
     fs.writeFileSync(resultPath, JSON.stringify(result))
