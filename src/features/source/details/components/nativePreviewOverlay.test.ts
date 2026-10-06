@@ -50,6 +50,23 @@ describe('native preview context-menu seam', () => {
     expect(calls).toEqual(['hide'])
   })
 
+  it('keeps the native preview hidden until every simultaneous overlay closes', () => {
+    const hide = vi.fn()
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+
+    controller.setOverlayCount(2)
+    controller.setReady(true)
+    controller.setOverlayCount(1)
+
+    expect(show).not.toHaveBeenCalled()
+    expect(hide).toHaveBeenCalledTimes(2)
+
+    controller.setOverlayCount(0)
+
+    expect(show).toHaveBeenCalledTimes(1)
+  })
+
   it('does not show when the menu reopens during asynchronous preparation', async () => {
     let resolvePreparation!: () => void
     const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })

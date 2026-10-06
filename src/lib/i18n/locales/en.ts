@@ -18,6 +18,14 @@ export const en: TranslationDict = {
     previewStartFailed: 'The embedded eDrawings preview could not be started.',
     previewUnavailable:
       'The optional Windows eDrawings preview is unavailable on this computer.',
+    previewServiceUnavailable: 'The eDrawings preview service is unavailable.',
+    previewSessionUnavailable: 'The eDrawings preview session is no longer active.',
+    previewHostUnavailable: 'The embedded eDrawings preview host is unavailable.',
+    previewHostTimeout: 'The embedded eDrawings preview took too long to start.',
+    previewDocumentLoadFailed: 'The selected document could not be loaded in eDrawings.',
+    previewFileUnavailable: 'This file is not available for the embedded eDrawings preview.',
+    previewNotLocal: 'Download this file before opening the embedded eDrawings preview.',
+    previewBoundsUnavailable: 'The embedded eDrawings preview could not be positioned.',
     openInEDrawings: 'Open in eDrawings',
   },
   app: {

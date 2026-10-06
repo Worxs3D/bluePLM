@@ -21,6 +21,14 @@ const requiredKeys = [
   'previewStarting',
   'previewStartFailed',
   'previewUnavailable',
+  'previewServiceUnavailable',
+  'previewSessionUnavailable',
+  'previewHostUnavailable',
+  'previewHostTimeout',
+  'previewDocumentLoadFailed',
+  'previewFileUnavailable',
+  'previewNotLocal',
+  'previewBoundsUnavailable',
   'openInEDrawings',
 ] as const
 
@@ -50,6 +58,14 @@ describe('eDrawings translations', () => {
         'previewStarting',
         'previewStartFailed',
         'previewUnavailable',
+        'previewServiceUnavailable',
+        'previewSessionUnavailable',
+        'previewHostUnavailable',
+        'previewHostTimeout',
+        'previewDocumentLoadFailed',
+        'previewFileUnavailable',
+        'previewNotLocal',
+        'previewBoundsUnavailable',
         'openInEDrawings',
       ]) {
         expect(settings[key], key).not.toBe(english[key])
