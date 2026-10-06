@@ -32,9 +32,10 @@ function findCadFile(directory) {
 app.whenReady().then(async () => {
   checkpoint('app-ready')
   const requestedSample = process.env.BLUEPLM_PREVIEW_TEST_FILE
+  const expectedErrorCode = process.env.BLUEPLM_PREVIEW_TEST_EXPECT_ERROR_CODE
   const sample = requestedSample || findCadFile('C:\\BluePLM')
   if (!sample) throw new Error('No local CAD sample found below C:\\BluePLM.')
-  if (!fs.existsSync(sample)) throw new Error(`CAD sample does not exist: ${sample}`)
+  if (!expectedErrorCode && !fs.existsSync(sample)) throw new Error(`CAD sample does not exist: ${sample}`)
 
   const window = new BrowserWindow({
     // GetVisualState samples desktop pixels, so a hidden owner makes the
@@ -76,6 +77,22 @@ app.whenReady().then(async () => {
   checkpoint('after-initial-bounds')
   checkpoint('before-load-file')
   const loaded = await preview.loadFile(sample, host)
+  if (expectedErrorCode) {
+    const result = {
+      sample,
+      loaded,
+      expectedErrorCode,
+      windowState: preview.getWindowState(),
+      error: preview.lastError(),
+    }
+    fs.writeFileSync(resultPath, JSON.stringify(result))
+    checkpoint('expected-error-written')
+    preview.destroy()
+    window.destroy()
+    console.log(JSON.stringify(result))
+    app.exit(loaded.errorCode === expectedErrorCode ? 0 : 1)
+    return
+  }
   if (!loaded.accepted || !loaded.ready || !preview.show()) {
     throw new Error(preview.lastError() || 'Could not size or show the embedded preview.')
   }
