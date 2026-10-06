@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },
@@ -10,14 +12,23 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  ipcMain,
+  shell,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+} from 'electron'
+
+import {
   createEDrawingsPreviewController,
   findEDrawingsExecutable,
   getEDrawingsNativeModuleCandidates,
   getEDrawingsPreviewHostCandidates,
+  registerEDrawingsHandlers,
   type NativeEDrawingsLoadResult,
   type NativeEDrawingsPreview,
   type PreviewOwner,
   validateEDrawingsPreviewFile,
+  unregisterEDrawingsHandlers,
 } from './edrawings'
 
 class FakePreview implements NativeEDrawingsPreview {
@@ -112,6 +123,28 @@ function createController(previews: FakePreview[]) {
     logWarn: vi.fn(),
   })
 }
+
+type ExternalOpenHandler = (event: IpcMainInvokeEvent, filePath: unknown) => Promise<unknown>
+
+function registerExternalOpenHandler(vaultRoot: string) {
+  vi.mocked(ipcMain.handle).mockClear()
+  const owner = new FakeOwner(17)
+  registerEDrawingsHandlers(owner as unknown as BrowserWindow, {
+    getWorkingDirectory: () => vaultRoot,
+    logWarn: vi.fn(),
+  })
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(
+    ([channel]) => channel === 'edrawings:open-file',
+  )?.[1]
+  if (!handler) throw new Error('expected external eDrawings handler')
+  return { owner, handler: handler as unknown as ExternalOpenHandler }
+}
+
+afterEach(() => {
+  unregisterEDrawingsHandlers()
+  vi.mocked(ipcMain.handle).mockClear()
+  vi.mocked(shell.openPath).mockClear()
+})
 
 describe('findEDrawingsExecutable', () => {
   it('finds the current Common Files eDrawings year layout', () => {
@@ -281,6 +314,47 @@ describe('embedded eDrawings preview controller', () => {
   })
 })
 
+describe('external eDrawings opening', () => {
+  it('validates the owning renderer and canonical vault CAD path before external fallback', async () => {
+    const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'blueplm-edrawings-vault-'))
+    const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'blueplm-edrawings-outside-'))
+    const allowedFile = path.join(vaultRoot, 'part.sldprt')
+    const outsideFile = path.join(outsideRoot, 'part.sldprt')
+    const unsupportedFile = path.join(vaultRoot, 'notes.txt')
+    fs.writeFileSync(allowedFile, '')
+    fs.writeFileSync(outsideFile, '')
+    fs.writeFileSync(unsupportedFile, '')
+
+    try {
+      const { owner, handler } = registerExternalOpenHandler(vaultRoot)
+      const foreignOwner = new FakeOwner(18)
+      const invoke = (sender: FakeOwner['webContents'], filePath: unknown) =>
+        handler({ sender } as unknown as IpcMainInvokeEvent, filePath)
+
+      await expect(invoke(foreignOwner.webContents, allowedFile)).resolves.toEqual({
+        success: false,
+        errorCode: 'external-open-failed',
+      })
+      await expect(invoke(owner.webContents, '\\\\server\\vault\\part.sldprt')).resolves.toEqual({
+        success: false,
+        errorCode: 'external-open-failed',
+      })
+      await expect(invoke(owner.webContents, outsideFile)).resolves.toEqual({
+        success: false,
+        errorCode: 'external-open-failed',
+      })
+      await expect(invoke(owner.webContents, unsupportedFile)).resolves.toEqual({
+        success: false,
+        errorCode: 'external-open-failed',
+      })
+      expect(shell.openPath).not.toHaveBeenCalled()
+    } finally {
+      fs.rmSync(vaultRoot, { recursive: true, force: true })
+      fs.rmSync(outsideRoot, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('embedded eDrawings resource and file validation', () => {
   it('resolves packaged native resources only from process.resourcesPath', () => {
     const packaged = {
@@ -329,6 +403,23 @@ describe('embedded eDrawings resource and file validation', () => {
     expect(validateEDrawingsPreviewFile(path.join(vaultRoot, 'notes.txt'), vaultRoot, dependencies))
       .toMatchObject({ success: false })
   })
+
+  it.each(['.step', '.stp', '.stl', '.iges', '.igs'])(
+    'accepts the externally documented eDrawings CAD format %s exposed by the UI',
+    (extension) => {
+      const vaultRoot = path.resolve('vault')
+      const filePath = path.join(vaultRoot, `model${extension}`)
+      const dependencies = {
+        realpath: (candidate: string) => candidate,
+        isFile: (candidate: string) => candidate === filePath,
+      }
+
+      expect(validateEDrawingsPreviewFile(filePath, vaultRoot, dependencies)).toEqual({
+        success: true,
+        filePath,
+      })
+    },
+  )
 
   it('rejects a UNC vault root before resolving it from the main process', () => {
     const realpath = vi.fn((candidate: string) => candidate)
