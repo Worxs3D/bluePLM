@@ -214,6 +214,23 @@ describe('embedded eDrawings preview controller', () => {
     })
   })
 
+  it('rejects an accepted native response without an explicit ready confirmation', async () => {
+    const preview = new FakePreview()
+    preview.loadResult = Promise.resolve({
+      accepted: true,
+      ready: false,
+    } as unknown as NativeEDrawingsLoadResult)
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    await expect(controller.load(created.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual({
+      success: false,
+      errorCode: 'preview-document-load-failed',
+    })
+  })
+
   it('cannot show a superseded preview after its bounds await yields', async () => {
     const previewA = new FakePreview()
     const previewB = new FakePreview()
