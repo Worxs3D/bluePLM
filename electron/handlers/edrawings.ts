@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -14,6 +14,15 @@ export interface EDrawingsHandlerDependencies {
   getWorkingDirectory: () => string | null
   logWarn: (message: string, data?: unknown) => void
 }
+
+export interface EDrawingsExternalOpenDependencies {
+  findExecutable: () => string | null
+  openPath: (filePath: string) => Promise<string>
+  spawnProcess: typeof spawn
+  logWarn: (message: string, data?: unknown) => void
+}
+
+type EDrawingsExternalOpenMode = 'fallback' | 'viewer'
 
 export interface EDrawingsPreviewPathDependencies {
   isPackaged: boolean
@@ -312,6 +321,64 @@ export function validateEDrawingsPreviewFile(
   } catch {
     return { success: false, errorCode: 'preview-file-not-available' }
   }
+}
+
+/**
+ * Starts the external viewer only after the operating system acknowledges the
+ * child process spawn. `shell.openPath` reports failures as a return value,
+ * whereas Node reports spawn failures on the process object's error event.
+ */
+export async function openEDrawingsFileExternally(
+  filePath: string,
+  dependencies: EDrawingsExternalOpenDependencies = {
+    findExecutable: findEDrawingsExecutable,
+    openPath: shell.openPath,
+    spawnProcess: spawn,
+    logWarn: console.warn,
+  },
+): Promise<EDrawingsExternalOpenMode | null> {
+  const eDrawingsPath = dependencies.findExecutable()
+  if (!eDrawingsPath) {
+    try {
+      const shellError = await dependencies.openPath(filePath)
+      if (!shellError) return 'fallback'
+      dependencies.logWarn('[eDrawings] External shell fallback failed', { error: shellError })
+    } catch (error) {
+      dependencies.logWarn('[eDrawings] External shell fallback threw', { error: String(error) })
+    }
+    return null
+  }
+
+  return new Promise((resolve) => {
+    let child: ChildProcess
+    try {
+      child = dependencies.spawnProcess(eDrawingsPath, [filePath], {
+        detached: true,
+        stdio: 'ignore',
+      })
+    } catch (error) {
+      dependencies.logWarn('[eDrawings] Failed to start the external viewer', {
+        error: String(error),
+      })
+      resolve(null)
+      return
+    }
+
+    const onSpawn = () => {
+      child.removeListener('error', onError)
+      child.unref()
+      resolve('viewer')
+    }
+    const onError = (error: Error) => {
+      child.removeListener('spawn', onSpawn)
+      dependencies.logWarn('[eDrawings] Failed to start the external viewer', {
+        error: String(error),
+      })
+      resolve(null)
+    }
+    child.once('spawn', onSpawn)
+    child.once('error', onError)
+  })
 }
 
 /**
@@ -657,25 +724,14 @@ export function registerEDrawingsHandlers(
     if (!checkedFile.success) {
       return { success: false, errorCode: 'external-open-failed' }
     }
-    const eDrawingsPath = findEDrawingsExecutable()
-    if (!eDrawingsPath) {
-      try {
-        await shell.openPath(checkedFile.filePath)
-        return { success: true, fallback: true }
-      } catch {
-        return { success: false, errorCode: 'external-open-failed' }
-      }
-    }
-
-    try {
-      spawn(eDrawingsPath, [checkedFile.filePath], { detached: true, stdio: 'ignore' }).unref()
-      return { success: true }
-    } catch (error: unknown) {
-      dependencies.logWarn('[eDrawings] Failed to open the external viewer', {
-        error: String(error),
-      })
-      return { success: false, errorCode: 'external-open-failed' }
-    }
+    const openMode = await openEDrawingsFileExternally(checkedFile.filePath, {
+      findExecutable: findEDrawingsExecutable,
+      openPath: shell.openPath,
+      spawnProcess: spawn,
+      logWarn: dependencies.logWarn,
+    })
+    if (!openMode) return { success: false, errorCode: 'external-open-failed' }
+    return openMode === 'fallback' ? { success: true, fallback: true } : { success: true }
   })
 
   ipcMain.handle('edrawings:get-window-handle', (event) => {
