@@ -27,6 +27,12 @@ function namedImports(filePath: string, moduleSpecifier: string): string[] {
   })
 }
 
+function expectNoImports(actualImports: string[], forbiddenImports: string[]): void {
+  for (const forbiddenImport of forbiddenImports) {
+    expect(actualImports).not.toContain(forbiddenImport)
+  }
+}
+
 describe('authentication call-site import boundaries', () => {
   it('routes auth and identity operations through the backend boundary while retaining only documented Supabase helpers', () => {
     const callSites = [
@@ -47,32 +53,26 @@ describe('authentication call-site import boundaries', () => {
     for (const callSite of callSites) {
       expect(imports(callSite, '@/lib/backend')).toContain('resolveBackend')
     }
-    expect(useAuthImports).not.toEqual(
-      expect.arrayContaining([
-        'supabase',
-        'isSupabaseConfigured',
-        'getUserProfile',
-        'linkUserToOrganization',
-      ]),
-    )
-    expect(welcomeImports).not.toEqual(
-      expect.arrayContaining([
-        'isSupabaseConfigured',
-        'signInWithEmail',
-        'signInWithPhone',
-        'signUpWithEmail',
-        'verifyPhoneOTP',
-      ]),
-    )
-    expect(menuBarImports).not.toEqual(
-      expect.arrayContaining([
-        'isSupabaseConfigured',
-        'signInWithEmail',
-        'signInWithGoogle',
-        'signInWithPhone',
-        'signUpWithEmail',
-        'verifyPhoneOTP',
-      ]),
-    )
+    expectNoImports(useAuthImports, [
+      'supabase',
+      'isSupabaseConfigured',
+      'getUserProfile',
+      'linkUserToOrganization',
+    ])
+    expectNoImports(welcomeImports, [
+      'isSupabaseConfigured',
+      'signInWithEmail',
+      'signInWithPhone',
+      'signUpWithEmail',
+      'verifyPhoneOTP',
+    ])
+    expectNoImports(menuBarImports, [
+      'isSupabaseConfigured',
+      'signInWithEmail',
+      'signInWithGoogle',
+      'signInWithPhone',
+      'signUpWithEmail',
+      'verifyPhoneOTP',
+    ])
   })
 })
