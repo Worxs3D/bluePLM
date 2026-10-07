@@ -160,23 +160,6 @@ internal sealed class EDrawingsAxHost(Guid classId) : AxHost(classId.ToString("B
     public object? ActiveXInstance => GetOcx();
 }
 
-internal static class HostStatusFile
-{
-    public static void Write(string path, string status, nint window, string? detail = null)
-    {
-        try
-        {
-            File.WriteAllText(path, string.IsNullOrEmpty(detail)
-                ? string.Format(CultureInfo.InvariantCulture, "{0} {1}", status, window.ToInt64())
-                : string.Format(CultureInfo.InvariantCulture, "{0} {1} {2}", status, window.ToInt64(), detail));
-        }
-        catch
-        {
-            // The native caller converts an absent status into a specific handshake/exit failure.
-        }
-    }
-}
-
 internal static class NativeWindow
 {
     private const int GwlHwndParent = -8;
