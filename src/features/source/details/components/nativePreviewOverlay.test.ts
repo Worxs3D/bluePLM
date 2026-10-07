@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   CONTEXT_MENU_CLOSE_EVENT,
@@ -170,6 +172,24 @@ describe('native preview context-menu seam', () => {
 
     expect(onOverlayCountChange).toHaveBeenCalledWith(1)
     stopObserving()
+  })
+
+  it('marks source-browser overlays that coexist with the details preview', () => {
+    const sourceRoot = join(__dirname, '..', '..')
+    const fileTree = readFileSync(join(sourceRoot, 'explorer', 'FileTree.tsx'), 'utf8')
+    const cardFields = readFileSync(
+      join(sourceRoot, 'browser', 'components', 'Toolbar', 'CardViewFieldsPopover.tsx'),
+      'utf8',
+    )
+    const cardTooltip = readFileSync(
+      join(sourceRoot, 'browser', 'components', 'FileGrid', 'FileCardMetadata.tsx'),
+      'utf8',
+    )
+
+    expect(fileTree).toContain('data-native-preview-overlay="context-menu"')
+    expect(fileTree.match(/data-native-preview-overlay="modal"/g)).toHaveLength(3)
+    expect(cardFields).toContain('data-native-preview-overlay="dropdown"')
+    expect(cardTooltip).toContain('data-native-preview-overlay="tooltip"')
   })
 
   it('ignores a permanent non-overlay with z-50 and aria-live', () => {
