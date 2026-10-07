@@ -204,9 +204,6 @@ export function EDrawingsEmbeddedPreview({
       // this same request with ready:true only after native document completion.
       if (!loaded.ready) return
       if (!(await syncBounds(created.sessionId)) || !isActiveSession(created.sessionId)) return
-      if (host.current) {
-        stopObservingOverlays = observeNativePreviewOverlays(host.current, visibility.setOverlayCount)
-      }
       // The controller is the only production show/hide seam. A menu opened
       // during startup therefore results in hide, never an unconditional show.
       visibility.setReady(true)
@@ -225,6 +222,11 @@ export function EDrawingsEmbeddedPreview({
     window.addEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
     document.addEventListener('pointerdown', handleOutsideContextMenu)
     document.addEventListener('keydown', handleEscape)
+    if (host.current) {
+      // Observe before create/load. The native host starts hidden and may only
+      // become visible after this controller has the current overlay state.
+      stopObservingOverlays = observeNativePreviewOverlays(host.current, visibility.setOverlayCount)
+    }
 
     setState('loading')
     setErrorCode(null)

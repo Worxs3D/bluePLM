@@ -182,7 +182,6 @@ internal static class NativeWindow
     private const int GwlHwndParent = -8;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoZOrder = 0x0004;
-    private const uint SwpShowWindow = 0x0040;
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] private static extern nint SetWindowLongPtr(nint window, int index, nint value);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(nint window, nint insertAfter, int x, int y, int width, int height, uint flags);
@@ -198,7 +197,9 @@ internal static class NativeWindow
         _ = SetWindowLongPtr(ownedWindow, GwlHwndParent, ownerWindow);
         var ownershipError = Marshal.GetLastPInvokeError();
         if (ownershipError != 0) throw new Win32Exception(ownershipError, "Windows could not assign the BluePLM preview owner.");
-        if (!SetWindowPos(ownedWindow, 0, point.X, point.Y, width, height, SwpNoActivate | SwpNoZOrder | SwpShowWindow))
+        // The process starts hidden. Electron shows it only after document readiness
+        // and after the renderer confirms that no menu, dialog, or tooltip covers it.
+        if (!SetWindowPos(ownedWindow, 0, point.X, point.Y, width, height, SwpNoActivate | SwpNoZOrder))
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows could not position the eDrawings preview.");
     }
 }

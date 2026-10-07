@@ -140,6 +140,28 @@ describe('native preview context-menu seam', () => {
     expect(calls).toEqual(['hide'])
   })
 
+  it('never shows when a portal overlay opens during a slow native load', async () => {
+    const overlayDom = stubOverlayDom([])
+    let finishLoad!: () => void
+    const loading = new Promise<void>((resolve) => { finishLoad = resolve })
+    const hide = vi.fn()
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      controller.setOverlayCount,
+    )
+    const completeStartup = loading.then(() => controller.setReady(true))
+
+    overlayDom.replaceOverlays([{ width: 640, height: 480 }])
+    finishLoad()
+    await completeStartup
+
+    expect(hide).toHaveBeenCalledTimes(1)
+    expect(show).not.toHaveBeenCalled()
+    stopObserving()
+  })
+
   it('keeps the native preview hidden until every simultaneous overlay closes', () => {
     const hide = vi.fn()
     const show = vi.fn()
