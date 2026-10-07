@@ -616,6 +616,9 @@ export const zhCN: TranslationDict = {
   terminal: {
     confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
+    cadPreviewModeHelp: 'cadPreviewMode 可选值：thumbnail、edrawings、edrawings-embedded',
+    cadPreviewModeInvalid:
+      'cadPreviewMode 必须是以下值之一：“thumbnail”、“edrawings”或“edrawings-embedded”。',
   },
 
   resolveMoves: {

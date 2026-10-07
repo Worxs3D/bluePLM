@@ -644,6 +644,9 @@ export const pt: TranslationDict = {
   terminal: {
     confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
+    cadPreviewModeHelp: 'Valores de cadPreviewMode: thumbnail, edrawings, edrawings-embedded',
+    cadPreviewModeInvalid:
+      'cadPreviewMode deve ser um destes valores: "thumbnail", "edrawings" ou "edrawings-embedded".',
   },
 
   resolveMoves: {
