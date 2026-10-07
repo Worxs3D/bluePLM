@@ -10,7 +10,10 @@ import {
   createNativePreviewVisibilityController,
   observeNativePreviewOverlays,
 } from './nativePreviewOverlay'
-import { createPreviewSessionController } from './previewSessionLifecycle'
+import {
+  createPreviewSessionController,
+  schedulePreviewStart,
+} from './previewSessionLifecycle'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
 type EDrawingsPreviewApi = NonNullable<Window['electronAPI']>
@@ -232,15 +235,18 @@ export function EDrawingsEmbeddedPreview({
 
     setState('loading')
     setErrorCode(null)
-    void start().catch((error) => {
-      if (!session || session.disposed) return
-      log.error('[EDrawingsPreview]', 'Failed to start embedded preview', {
-        error: error instanceof Error ? error.message : String(error),
-        filePath,
+    const cancelScheduledStart = schedulePreviewStart(() => {
+      void start().catch((error) => {
+        if (!session || session.disposed) return
+        log.error('[EDrawingsPreview]', 'Failed to start embedded preview', {
+          error: error instanceof Error ? error.message : String(error),
+          filePath,
+        })
+        fail('preview-operation-failed')
       })
-      fail('preview-operation-failed')
     })
     return () => {
+      cancelScheduledStart()
       session?.dispose()
       visibility.setReady(false)
       observer?.disconnect()

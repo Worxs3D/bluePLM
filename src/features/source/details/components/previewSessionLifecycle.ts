@@ -6,6 +6,17 @@ export interface PreviewSessionLifecycle {
   dispose(): void
 }
 
+export const PREVIEW_SELECTION_DEBOUNCE_MS = 120
+
+/**
+ * Defers native host creation just long enough to collapse arrow-key selection
+ * bursts. The panel can still render its loading state immediately.
+ */
+export function schedulePreviewStart(start: () => void): () => void {
+  const timer = globalThis.setTimeout(start, PREVIEW_SELECTION_DEBOUNCE_MS)
+  return () => globalThis.clearTimeout(timer)
+}
+
 export type EDrawingsPreviewApi = Pick<
   NonNullable<Window['electronAPI']>,
   | 'createEDrawingsPreview'
