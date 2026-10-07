@@ -99,6 +99,11 @@
  *                   opened the file read-only too and refused the save after a full open per scope
  * - Version 1.21.1: Log Document Manager open failures with DescribeOpenError. Code 4 is
  *                   file-read-only; the previous table called it a non-native file
+ * - Version 1.22.0: getPreview takes the shell-thumbnail size from the caller (clamped 16-1024,
+ *                   defaulting to 256), so the details-panel preview can ask for a sharp 1024px
+ *                   render of a drawing - which disables Document Manager on modern formats and
+ *                   lands on the shell path - while grid thumbnails stay at 256px instead of being
+ *                   fetched at 16x the pixels
  * - Version 1.21.0: Add getPropertiesDocumentManager, which resolves straight to
  *                   DocumentManagerAPI.GetCustomProperties with no IsFileOpenInSolidWorks probe,
  *                   so a bulk reader cannot route thousands of COM round-trips through the
@@ -117,7 +122,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.21.2'
+export const EXPECTED_SW_SERVICE_VERSION = '1.22.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -176,6 +181,8 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'A file SolidWorks refuses to open for writing because it is read-only is now logged as read-only. The previous message called that same failure a file that is not a SolidWorks file, which sent people looking at the file format when the file on disk was simply locked',
   '1.21.2':
     'Writing metadata into a read-only file now fails straight away. The service used to try again through SOLIDWORKS, which opened the file read-only as well and refused to save it - once for the file and once per configuration, over a minute on a four-configuration assembly - before reporting the same failure',
+  '1.22.0':
+    'Drawing previews are sharper: when a file has no Document Manager preview (common for modern formats) the caller now chooses the Windows thumbnail size, so the details panel asks for a 1024px render while file-browser grid icons stay at 256px instead of being fetched at many times the pixels they need',
 }
 
 /**
