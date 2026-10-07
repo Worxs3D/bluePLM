@@ -1338,6 +1338,7 @@ declare global {
         sessionId: string,
         filePath: string,
       ) => Promise<EDrawingsPreviewLoadResult>
+      getEDrawingsPreviewStatus: (sessionId: string) => Promise<EDrawingsPreviewOperationResult>
       setEDrawingsBounds: (
         sessionId: string,
         x: number,

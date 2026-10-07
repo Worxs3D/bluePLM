@@ -713,6 +713,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('edrawings:attach-preview', sessionId),
   loadEDrawingsFile: (sessionId: string, filePath: string) =>
     ipcRenderer.invoke('edrawings:load-file', sessionId, filePath),
+  getEDrawingsPreviewStatus: (sessionId: string) =>
+    ipcRenderer.invoke('edrawings:preview-status', sessionId),
   setEDrawingsBounds: (sessionId: string, x: number, y: number, width: number, height: number) =>
     ipcRenderer.invoke('edrawings:set-bounds', sessionId, x, y, width, height),
   showEDrawingsPreview: (sessionId: string) =>
@@ -1846,6 +1848,7 @@ declare global {
         sessionId: string,
         filePath: string,
       ) => Promise<EDrawingsPreviewLoadResult>
+      getEDrawingsPreviewStatus: (sessionId: string) => Promise<EDrawingsPreviewOperationResult>
       setEDrawingsBounds: (
         sessionId: string,
         x: number,

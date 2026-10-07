@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createPreviewSessionController,
   createPreviewSessionLifecycle,
+  observePreviewHealth,
+  PREVIEW_HEALTH_CHECK_INTERVAL_MS,
   schedulePreviewStart,
   type EDrawingsPreviewApi,
 } from './previewSessionLifecycle'
@@ -19,6 +21,26 @@ function deferred<T>() {
 }
 
 describe('embedded eDrawings preview session lifecycle', () => {
+  it('propagates a host exit after ready and stops checking after cleanup', async () => {
+    vi.useFakeTimers()
+    const check = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValue({ success: false, errorCode: 'preview-host-exited' })
+    const onFailure = vi.fn()
+    const stop = observePreviewHealth(check, onFailure, vi.fn())
+
+    await vi.advanceTimersByTimeAsync(PREVIEW_HEALTH_CHECK_INTERVAL_MS)
+    expect(onFailure).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(PREVIEW_HEALTH_CHECK_INTERVAL_MS)
+    expect(onFailure).toHaveBeenCalledWith('preview-host-exited')
+
+    stop()
+    await vi.advanceTimersByTimeAsync(PREVIEW_HEALTH_CHECK_INTERVAL_MS)
+    expect(check).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+  })
+
   it('debounces rapid selection and only starts the final preview', async () => {
     vi.useFakeTimers()
     const startFirst = vi.fn()
@@ -83,6 +105,7 @@ describe('embedded eDrawings preview session lifecycle', () => {
         .mockReturnValueOnce(createB.promise),
       attachEDrawingsPreview: vi.fn().mockResolvedValue({ success: true }),
       loadEDrawingsFile: vi.fn().mockReturnValue(loadB.promise),
+      getEDrawingsPreviewStatus: vi.fn().mockResolvedValue({ success: true }),
       setEDrawingsBounds: vi.fn().mockResolvedValue({ success: true }),
       showEDrawingsPreview: vi.fn().mockResolvedValue({ success: true }),
       hideEDrawingsPreview: vi.fn().mockResolvedValue({ success: true }),
@@ -99,6 +122,7 @@ describe('embedded eDrawings preview session lifecycle', () => {
     await pendingCreateB
 
     await previewB.attach()
+    await previewB.status()
     await previewB.setBounds(1, 2, 3, 4)
     await previewB.show()
     await previewB.hide()
@@ -116,6 +140,7 @@ describe('embedded eDrawings preview session lifecycle', () => {
     await previewB.destroy()
 
     expect(api.attachEDrawingsPreview).toHaveBeenCalledWith('preview-b')
+    expect(api.getEDrawingsPreviewStatus).toHaveBeenCalledWith('preview-b')
     expect(api.setEDrawingsBounds).toHaveBeenCalledWith('preview-b', 1, 2, 3, 4)
     expect(api.showEDrawingsPreview).toHaveBeenCalledWith('preview-b')
     expect(api.hideEDrawingsPreview).toHaveBeenCalledWith('preview-b')

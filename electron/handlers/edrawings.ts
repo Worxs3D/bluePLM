@@ -42,6 +42,7 @@ export interface NativeEDrawingsPreview {
   show(): boolean
   hide(): boolean
   destroy(): boolean
+  isLoaded(): boolean
   lastError(): string
 }
 
@@ -95,6 +96,7 @@ interface PreviewSession {
   ownerWebContentsId: number
   preview: NativeEDrawingsPreview
   bounds: PreviewBounds
+  ready: boolean
   disposeLifecycle: () => void
 }
 
@@ -143,6 +145,7 @@ export interface EDrawingsPreviewController {
   create(owner: PreviewOwner, senderId: number): PreviewCreateResult
   attach(sessionId: unknown, senderId: number): Promise<PreviewResult>
   load(sessionId: unknown, senderId: number, filePath: unknown): Promise<PreviewLoadResult>
+  status(sessionId: unknown, senderId: number): Promise<PreviewResult>
   setBounds(sessionId: unknown, senderId: number, bounds: PreviewBounds): Promise<PreviewResult>
   show(sessionId: unknown, senderId: number): Promise<PreviewResult>
   hide(sessionId: unknown, senderId: number): Promise<PreviewResult>
@@ -446,11 +449,15 @@ export function createEDrawingsPreviewController(
 
   const stale = (): PreviewFailure => ({ success: false, errorCode: 'preview-session-not-active' })
 
-  const failedOperation = (current: PreviewSession, operation: string): PreviewFailure => {
+  const failedOperation = (
+    current: PreviewSession,
+    operation: string,
+    errorCode: EDrawingsPreviewErrorCode = 'preview-operation-failed',
+  ): PreviewFailure => {
     dependencies.logWarn(`[eDrawings] Embedded preview ${operation} failed`, {
       error: current.preview.lastError(),
     })
-    return { success: false, errorCode: 'preview-operation-failed' }
+    return { success: false, errorCode }
   }
 
   const invoke = async (
@@ -461,9 +468,17 @@ export function createEDrawingsPreviewController(
     const current = getSession(sessionId, senderId)
     if (!current) return stale()
     try {
+      if (current.ready && !current.preview.isLoaded()) {
+        return failedOperation(current, 'host status check', 'preview-host-exited')
+      }
       const succeeded = await action(current)
       if (!isCurrentSession(current)) return stale()
-      return succeeded ? { success: true } : failedOperation(current, 'operation')
+      if (succeeded) return { success: true }
+      const errorCode =
+        current.ready && !current.preview.isLoaded()
+          ? 'preview-host-exited'
+          : 'preview-operation-failed'
+      return failedOperation(current, 'operation', errorCode)
     } catch (error: unknown) {
       if (!isCurrentSession(current)) return stale()
       dependencies.logWarn('[eDrawings] Embedded preview operation threw', { error: String(error) })
@@ -525,6 +540,7 @@ export function createEDrawingsPreviewController(
         ownerWebContentsId: senderId,
         preview,
         bounds: { ...EMPTY_BOUNDS },
+        ready: false,
         disposeLifecycle,
       }
       owner.webContents.on('render-process-gone', cleanup)
@@ -574,12 +590,20 @@ export function createEDrawingsPreviewController(
           )
           return { success: false, errorCode: 'preview-document-load-failed' }
         }
+        current.ready = true
+        if (!current.preview.isLoaded()) {
+          return failedOperation(current, 'host status check', 'preview-host-exited')
+        }
         return { success: true, accepted: true, ready: true }
       } catch (error: unknown) {
         if (!isCurrentSession(current)) return stale()
         dependencies.logWarn('[eDrawings] Embedded preview load threw', { error: String(error) })
         return { success: false, errorCode: 'preview-operation-failed' }
       }
+    },
+
+    status(sessionId, senderId) {
+      return invoke(sessionId, senderId, () => true)
     },
 
     setBounds(sessionId, senderId, bounds) {
@@ -756,6 +780,14 @@ export function registerEDrawingsHandlers(
       },
   )
   ipcMain.handle(
+    'edrawings:preview-status',
+    (event, sessionId: unknown) =>
+      previewController?.status(sessionId, event.sender.id) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
+  )
+  ipcMain.handle(
     'edrawings:set-bounds',
     (event, sessionId: unknown, x: unknown, y: unknown, width: unknown, height: unknown) => {
       if (![x, y, width, height].every((value) => typeof value === 'number')) {
@@ -811,6 +843,7 @@ export function unregisterEDrawingsHandlers(): void {
     'edrawings:create-preview',
     'edrawings:attach-preview',
     'edrawings:load-file',
+    'edrawings:preview-status',
     'edrawings:set-bounds',
     'edrawings:show-preview',
     'edrawings:hide-preview',
