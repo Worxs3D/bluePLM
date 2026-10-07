@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createPreviewSessionController,
   createPreviewSessionLifecycle,
+  schedulePreviewStart,
   type EDrawingsPreviewApi,
 } from './previewSessionLifecycle'
 
@@ -18,6 +19,37 @@ function deferred<T>() {
 }
 
 describe('embedded eDrawings preview session lifecycle', () => {
+  it('debounces rapid selection and only starts the final preview', async () => {
+    vi.useFakeTimers()
+    const startFirst = vi.fn()
+    const startFinal = vi.fn()
+
+    const cancelFirst = schedulePreviewStart(startFirst)
+    cancelFirst()
+    schedulePreviewStart(startFinal)
+
+    await vi.advanceTimersByTimeAsync(119)
+    expect(startFirst).not.toHaveBeenCalled()
+    expect(startFinal).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(startFirst).not.toHaveBeenCalled()
+    expect(startFinal).toHaveBeenCalledOnce()
+    vi.useRealTimers()
+  })
+
+  it('cleans up a scheduled preview before unmount', async () => {
+    vi.useFakeTimers()
+    const start = vi.fn()
+
+    const cancel = schedulePreviewStart(start)
+    cancel()
+    await vi.runAllTimersAsync()
+
+    expect(start).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
   it('rejects a session created after its component unmounts while retaining its token for cleanup', () => {
     const lifecycle = createPreviewSessionLifecycle()
 
