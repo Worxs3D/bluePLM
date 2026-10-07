@@ -1,7 +1,98 @@
-import { describe, expect, it, vi } from 'vitest'
-import { CONTEXT_MENU_CLOSE_EVENT, CONTEXT_MENU_OPEN_EVENT, createNativePreviewVisibilityController, notifyNativePreviewContextMenu } from './nativePreviewOverlay'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  CONTEXT_MENU_CLOSE_EVENT,
+  CONTEXT_MENU_OPEN_EVENT,
+  createNativePreviewVisibilityController,
+  notifyNativePreviewContextMenu,
+  observeNativePreviewOverlays,
+} from './nativePreviewOverlay'
+
+type FakeRectangle = { width: number; height: number }
+
+class FakeElement {
+  constructor(private readonly rectangles: FakeRectangle[] = []) {}
+  contains() { return false }
+  getClientRects() { return this.rectangles }
+}
+
+function stubOverlayDom(initialRectangles: FakeRectangle[]) {
+  const host = new FakeElement()
+  let overlays = [new FakeElement(initialRectangles)]
+  let reportMutation: () => void = () => undefined
+
+  class FakeMutationObserver {
+    constructor(callback: () => void) {
+      reportMutation = callback
+    }
+    observe() {}
+    disconnect() {}
+  }
+
+  vi.stubGlobal('HTMLElement', FakeElement)
+  vi.stubGlobal('MutationObserver', FakeMutationObserver)
+  vi.stubGlobal('document', {
+    body: {},
+    querySelectorAll: () => overlays,
+  })
+  vi.stubGlobal('window', {
+    getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
+  })
+
+  return {
+    host: host as unknown as HTMLElement,
+    replaceOverlays(rectangles: FakeRectangle[]) {
+      overlays = rectangles.length > 0 ? [new FakeElement(rectangles)] : []
+      reportMutation()
+    },
+  }
+}
 
 describe('native preview context-menu seam', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps a loaded preview visible beside a persistent zero-area portal root', () => {
+    const { host } = stubOverlayDom([{ width: 0, height: 0 }])
+    let nativeVisible = true
+    const hide = vi.fn(() => { nativeVisible = false })
+    const show = vi.fn(() => { nativeVisible = true })
+    const visibility = createNativePreviewVisibilityController({ hide, show })
+    const stopObserving = observeNativePreviewOverlays(host, visibility.setOverlayCount)
+
+    visibility.setReady(true)
+
+    expect(nativeVisible).toBe(true)
+    expect(hide).not.toHaveBeenCalled()
+    expect(show).toHaveBeenCalledTimes(1)
+    stopObserving()
+  })
+
+  it('hides for a positive-area portal overlay and restores after it is removed', () => {
+    const overlayDom = stubOverlayDom([{ width: 640, height: 480 }])
+    let nativeVisible = true
+    const hide = vi.fn(() => { nativeVisible = false })
+    const show = vi.fn(() => { nativeVisible = true })
+    const visibility = createNativePreviewVisibilityController({ hide, show })
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      visibility.setOverlayCount,
+    )
+
+    visibility.setReady(true)
+
+    expect(nativeVisible).toBe(false)
+    expect(hide).toHaveBeenCalledTimes(1)
+    expect(show).not.toHaveBeenCalled()
+
+    overlayDom.replaceOverlays([])
+
+    expect(nativeVisible).toBe(true)
+    expect(show).toHaveBeenCalledTimes(1)
+    stopObserving()
+  })
+
   it('emits a hide event before the menu and a restore event after it closes', () => {
     vi.stubGlobal('window', new EventTarget())
     const events: string[] = []
@@ -16,7 +107,6 @@ describe('native preview context-menu seam', () => {
     expect(events).toEqual(['open', 'close'])
     window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, onOpen)
     window.removeEventListener(CONTEXT_MENU_CLOSE_EVENT, onClose)
-    vi.restoreAllMocks()
   })
 
   it('hides and restores the native preview for actual menu state transitions', () => {
