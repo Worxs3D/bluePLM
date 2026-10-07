@@ -10,7 +10,7 @@ function formatBytes(bytes) {
 
 function commandExists(command, args) {
   const result = spawnSync(command, args, { stdio: 'ignore', windowsHide: true })
-  return result.error?.code !== 'ENOENT'
+  return !result.error && result.status === 0
 }
 
 function hasVisualCppToolchain() {

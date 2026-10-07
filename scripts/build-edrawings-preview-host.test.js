@@ -1,10 +1,28 @@
 const assert = require('node:assert/strict')
-const { mkdirSync, mkdtempSync, writeFileSync } = require('node:fs')
+const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { directorySize, formatBytes } = require('./build-edrawings-preview-host')
+const {
+  commandExists,
+  directorySize,
+  formatBytes,
+  removeStaleResourceOutput,
+} = require('./build-edrawings-preview-host')
+
+test('treats a command with a nonzero exit status as unavailable', () => {
+  assert.equal(commandExists(process.execPath, ['-e', 'process.exit(3)']), false)
+})
+
+test('removes a stale host payload before a toolchain skip', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'blueplm-edrawings-host-resource-'))
+  writeFileSync(path.join(directory, 'stale.exe'), 'stale')
+
+  removeStaleResourceOutput(directory)
+
+  assert.equal(existsSync(directory), false)
+})
 
 test('measures the complete host payload recursively', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'blueplm-edrawings-host-'))

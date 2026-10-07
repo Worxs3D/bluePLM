@@ -15,7 +15,7 @@
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:electron": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:api": "tsc --noEmit -p api/tsconfig.json",
-    "test": "vitest run",
+    "test": "node scripts/run-tests.js",
     "test:watch": "vitest",
     "test:sw-service": "dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release",
     "scan:divergence": "node scripts/scan-divergence.js",
