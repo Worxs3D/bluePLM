@@ -5,7 +5,7 @@ const path = require('node:path')
 
 function commandExists(command, args) {
   const result = spawnSync(command, args, { stdio: 'ignore', windowsHide: true })
-  return result.error?.code !== 'ENOENT'
+  return !result.error && result.status === 0
 }
 
 function directorySize(directory) {
@@ -23,6 +23,10 @@ function skip(reason) {
   console.warn(`[eDrawings] Skipping optional preview host: ${reason}`)
 }
 
+function removeStaleResourceOutput(resourceDirectory) {
+  rmSync(resourceDirectory, { recursive: true, force: true })
+}
+
 function main() {
   const root = path.resolve(__dirname, '..')
   const project = path.join(root, 'edrawings-preview-host', 'BluePLM.EDrawingsPreviewHost.csproj')
@@ -30,7 +34,7 @@ function main() {
   const resourceDirectory = path.join(root, 'resources', 'bin', 'win32', 'edrawings-preview-host')
   // A skip may happen after a successful local build. Remove only this generated
   // payload so a later package verification cannot mistake it for a fresh build.
-  rmSync(resourceDirectory, { recursive: true, force: true })
+  removeStaleResourceOutput(resourceDirectory)
 
   if (process.platform !== 'win32') {
     skip('it is supported only on Windows.')
@@ -74,4 +78,9 @@ function main() {
 
 if (require.main === module) main()
 
-module.exports = { commandExists, directorySize, formatBytes }
+module.exports = {
+  commandExists,
+  directorySize,
+  formatBytes,
+  removeStaleResourceOutput,
+}

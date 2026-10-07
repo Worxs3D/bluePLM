@@ -4,7 +4,15 @@ const { tmpdir } = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { formatBytes, removeStaleResourceOutput } = require('./build-edrawings-preview')
+const {
+  commandExists,
+  formatBytes,
+  removeStaleResourceOutput,
+} = require('./build-edrawings-preview')
+
+test('treats a command with a nonzero exit status as unavailable', () => {
+  assert.equal(commandExists(process.execPath, ['-e', 'process.exit(3)']), false)
+})
 
 test('removes only the stale native resource artifact before a skip', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'blueplm-edrawings-'))
