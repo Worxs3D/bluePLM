@@ -319,6 +319,22 @@ describe('embedded eDrawings preview controller', () => {
     expect(await controller.attach(createdB.sessionId, 17)).toEqual({ success: true })
   })
 
+  it('does not request a show after a hidden overlay receives an owner move', async () => {
+    const preview = new FakePreview()
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    await expect(controller.hide(created.sessionId, 17)).resolves.toEqual({ success: true })
+    owner.emit('move')
+    await Promise.resolve()
+
+    expect(preview.hideCalls).toBe(1)
+    expect(preview.setBoundsCalls).toBe(1)
+    expect(preview.showCalls).toBe(0)
+  })
+
   it.each(['render-process-gone', 'did-start-navigation'] as const)(
     'destroys the preview when the renderer emits %s',
     async (event) => {
