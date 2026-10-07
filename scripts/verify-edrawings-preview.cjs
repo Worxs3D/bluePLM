@@ -8,6 +8,7 @@ const { app, BrowserWindow } = require('electron')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { classifyRenderedVisual } = require('./edrawings-render-classifier.cjs')
 
 const artifactDirectory = process.env.BLUEPLM_PREVIEW_TEST_ARTIFACT_DIR
 const legacyArtifactPaths = [
@@ -189,6 +190,76 @@ app.whenReady().then(async () => {
     })
     window.minimize()
   }
+  const verifyHiddenBoundsLifecycle = (visual, suspiciousWhiteDialog) => {
+    const shown = preview.getWindowState()
+    const visibleBounds = preview.setBounds(8, 8, 944, 624)
+    setTimeout(() => {
+      const afterVisibleBounds = preview.getWindowState()
+      const hidden = () => {
+        const afterHide = preview.getWindowState()
+        const bounded = preview.setBounds(0, 0, 960, 640)
+        setTimeout(() => {
+          const afterBounds = preview.getWindowState()
+          const remainsHidden =
+            shown.exists && shown.visible === true &&
+            visibleBounds && afterVisibleBounds.exists && afterVisibleBounds.visible === true &&
+            afterHide.exists && afterHide.visible === false &&
+            bounded && afterBounds.exists && afterBounds.visible === false
+          finish(remainsHidden, visual, suspiciousWhiteDialog, {
+            shown,
+            visibleBounds,
+            afterVisibleBounds,
+            afterHide,
+            bounded,
+            afterBounds,
+            remainsHidden,
+          })
+        }, 750)
+      }
+      if (!visibleBounds || !preview.hide()) {
+        finish(false, visual, suspiciousWhiteDialog, { shown, visibleBounds, afterVisibleBounds })
+        return
+      }
+      // Hide and bounds placement are asynchronous Win32 operations.  Sample
+      // between them and after the bounds request so the assertion observes the
+      // production Show -> Hide -> SetBounds sequence rather than call order.
+      setTimeout(hidden, 750)
+    }, 750)
+  }
+  const verifyRenderTimeline = () => {
+    const requestedInterval = Number.parseInt(process.env.BLUEPLM_PREVIEW_TEST_TIMELINE_INTERVAL_MS ?? '4000', 10)
+    const intervalMs = Number.isFinite(requestedInterval) && requestedInterval > 0 ? requestedInterval : 4000
+    const samples = []
+    const capture = () => {
+      const visual = preview.getVisualState()
+      const windowState = preview.getWindowState()
+      samples.push({
+        elapsedMs: samples.length * intervalMs,
+        visual,
+        windowVisible: windowState.visible,
+        ownedByHost: windowState.ownedByHost,
+        topmost: windowState.topmost,
+        classification: classifyRenderedVisual(visual),
+      })
+      if (samples.length === 8) {
+        const stable = samples.every((sample) =>
+          sample.windowVisible === true &&
+          sample.ownedByHost === true &&
+          sample.topmost === false &&
+          sample.classification === 'model-or-mixed',
+        )
+        finish(stable, visual, false, { renderTimeline: samples, stable })
+        return
+      }
+      const inset = samples.length % 2 === 0 ? 0 : 8
+      if (!preview.setBounds(inset, inset, 960 - inset * 2, 640 - inset * 2)) {
+        finish(false, visual, false, { renderTimeline: samples, boundsUpdateFailed: true })
+        return
+      }
+      setTimeout(capture, intervalMs)
+    }
+    capture()
+  }
   const sampleVisualState = () => {
     const visual = preview.getVisualState()
     // A valid eDrawings viewport includes its grey scene background and model.
@@ -196,6 +267,14 @@ app.whenReady().then(async () => {
     // former one-shot check incorrectly accepted as a successful preview.
     const { suspiciousWhiteDialog, rendered } = isRenderedVisual(visual)
     if (rendered || Date.now() >= deadline) {
+      if (rendered && process.env.BLUEPLM_PREVIEW_TEST_RENDER_TIMELINE === '1') {
+        verifyRenderTimeline()
+        return
+      }
+      if (rendered && process.env.BLUEPLM_PREVIEW_TEST_VISIBILITY_RACE === '1') {
+        verifyHiddenBoundsLifecycle(visual, suspiciousWhiteDialog)
+        return
+      }
       if (rendered && process.env.BLUEPLM_PREVIEW_TEST_MINIMIZE === '1') {
         verifyMinimizeLifecycle(visual, suspiciousWhiteDialog)
         return

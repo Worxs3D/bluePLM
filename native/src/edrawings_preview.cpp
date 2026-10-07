@@ -452,8 +452,10 @@ private:
         if (!viewer || !host || !IsWindow(viewer)) return Napi::Boolean::New(info.Env(), true);
         POINT origin{x, y};
         if (!ClientToScreen(host, &origin)) return Napi::Boolean::New(info.Env(), false);
-        return Napi::Boolean::New(info.Env(), SetWindowPos(viewer, HWND_TOP, origin.x, origin.y, width > 0 ? width : 1, height > 0 ? height : 1,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS) != FALSE);
+        // Bounds synchronization is allowed while the renderer overlay is hidden.
+        // It must neither change visibility nor raise the preview above menus.
+        return Napi::Boolean::New(info.Env(), SetWindowPos(viewer, nullptr, origin.x, origin.y, width > 0 ? width : 1, height > 0 ? height : 1,
+            SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS) != FALSE);
     }
 
     Napi::Value Show(const Napi::CallbackInfo& info) { return SetVisibility(info, SW_SHOW); }
