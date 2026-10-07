@@ -5,6 +5,7 @@
  * Requires eDrawings and a local CAD sample below C:\BluePLM.
  */
 const { app, BrowserWindow } = require('electron')
+const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -28,6 +29,51 @@ function writeArtifact(name, value) {
 
 function checkpoint(stage) {
   writeArtifact('checkpoint.json', { stage, at: new Date().toISOString() })
+}
+
+function listPreviewHostProcessIds() {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-Command',
+      '(Get-Process -Name "BluePLM.EDrawingsPreviewHost" -ErrorAction SilentlyContinue).Id -join ","',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  )
+  if (result.status !== 0) throw new Error(result.stderr || 'Could not query preview host processes.')
+  return result.stdout
+    .trim()
+    .split(',')
+    .filter(Boolean)
+    .map(value => Number.parseInt(value, 10))
+}
+
+function hasExclusiveFileAccess(filePath) {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-Command',
+      '$stream=[IO.File]::Open($env:BLUEPLM_LOCK_PROBE_FILE,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$stream.Dispose()',
+    ],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, BLUEPLM_LOCK_PROBE_FILE: filePath },
+      windowsHide: true,
+    },
+  )
+  return result.status === 0
+}
+
+async function waitForNoNewPreviewHosts(baselineProcessIds, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const remaining = listPreviewHostProcessIds().filter(id => !baselineProcessIds.includes(id))
+    if (remaining.length === 0) return []
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  return listPreviewHostProcessIds().filter(id => !baselineProcessIds.includes(id))
 }
 
 function findCadFile(directory) {
@@ -89,6 +135,31 @@ app.whenReady().then(async () => {
     throw new Error(preview.lastError() || 'Could not size the embedded preview.')
   }
   checkpoint('after-initial-bounds')
+  if (process.env.BLUEPLM_PREVIEW_TEST_FAST_NAVIGATION === '1') {
+    const baselineProcessIds = listPreviewHostProcessIds()
+    const loadAttempts = []
+    for (let index = 0; index < 5; index += 1) {
+      loadAttempts.push(preview.loadFile(sample, host))
+      await new Promise(resolve => setTimeout(resolve, 40))
+    }
+    const loadResults = await Promise.all(loadAttempts)
+    const exclusiveFileAccessWhileLoaded = hasExclusiveFileAccess(sample)
+    preview.destroy()
+    window.destroy()
+    const orphanProcessIds = await waitForNoNewPreviewHosts(baselineProcessIds)
+    const result = {
+      sample,
+      loadResults,
+      exclusiveFileAccessWhileLoaded,
+      baselineProcessIds,
+      orphanProcessIds,
+    }
+    writeArtifact('result.json', result)
+    console.log(JSON.stringify(result))
+    const finalLoad = loadResults.at(-1)
+    app.exit(finalLoad?.accepted && finalLoad?.ready && orphanProcessIds.length === 0 ? 0 : 1)
+    return
+  }
   checkpoint('before-load-file')
   let mainLoopTicksDuringLoad = 0
   const loadStartedAt = Date.now()

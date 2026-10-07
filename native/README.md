@@ -50,6 +50,14 @@ successful `loadFile` promise reports an accepted, ready preview; it does not
 take an `eDrawings.exe` path. The historical `native/index.js` wrapper is not
 the Electron IPC contract and must not be used to infer addon exports.
 
+The host calls `IEModelViewControl.OpenDoc(file, false, false, true, "")`:
+the file is not treated as a disposable temporary download, save prompts are
+disabled, and the document is requested read-only. The final empty command
+string is required by the eDrawings API. These API flags do not by themselves
+prove whether a particular eDrawings version keeps an operating-system file
+handle open. Treat file locking as unverified unless the live fast-navigation
+verification reports its exclusive-access probe for the tested file/version.
+
 ## Building and packaging
 
 Development builds need Node.js, Python 3, and Visual Studio Build Tools with
@@ -57,6 +65,21 @@ the C++ workload. The root build scripts retain the Windows `cmd.exe` npm
 bootstrap needed by Node 25. Missing optional Windows toolchains produce a
 clear skip after deleting only the corresponding generated eDrawings resource
 payload; actual `node-gyp` or `dotnet publish` errors fail the build.
+
+Normal builds exclude the desktop `GetPixel` and window-state diagnostics.
+Build their exports explicitly before running the manual visual verifier:
+
+```text
+npm run build:edrawings-preview:verify
+npx electron scripts/verify-edrawings-preview.cjs
+```
+
+`BLUEPLM_PREVIEW_TEST_FAST_NAVIGATION=1` makes that verifier issue five rapid
+loads, probe exclusive access to the selected file without modifying it, then
+destroy the preview and fail if any new `BluePLM.EDrawingsPreviewHost.exe`
+process remains. Re-run the normal build afterwards so the resource path does
+not retain verify-only exports. `npm run test:edrawings-native-exports` checks
+both export surfaces and restores the production build automatically.
 
 The package contains:
 

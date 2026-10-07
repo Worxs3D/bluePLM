@@ -36,11 +36,20 @@ function removeStaleResourceOutput(resourceFile) {
   rmSync(resourceFile, { force: true })
 }
 
+function resolveNativeBuildOptions(args) {
+  const verify = args.includes('--verify')
+  return {
+    verify,
+    gypDefine: `edrawings_verify=${verify ? 1 : 0}`,
+  }
+}
+
 function skip(reason) {
   console.warn(`[eDrawings] Skipping optional native preview: ${reason}`)
 }
 
 function main() {
+  const buildOptions = resolveNativeBuildOptions(process.argv.slice(2))
   const root = path.resolve(__dirname, '..')
   const nativeDirectory = path.join(root, 'native')
   const resourceDirectory = path.join(root, 'resources', 'bin', 'win32')
@@ -76,10 +85,24 @@ function main() {
 
   const output = path.join(nativeDirectory, 'build', 'Release', 'edrawings_preview.node')
   const electronVersion = require(path.join(root, 'node_modules', 'electron', 'package.json')).version
-  execFileSync(process.execPath, [gypEntrypoint, 'rebuild', `--target=${electronVersion}`, '--arch=x64', '--dist-url=https://electronjs.org/headers'], {
-    cwd: nativeDirectory,
-    stdio: 'inherit',
-  })
+  execFileSync(
+    process.execPath,
+    [
+      gypEntrypoint,
+      'rebuild',
+      `--target=${electronVersion}`,
+      '--arch=x64',
+      '--dist-url=https://electronjs.org/headers',
+    ],
+    {
+      cwd: nativeDirectory,
+      env: {
+        ...process.env,
+        GYP_DEFINES: `${process.env.GYP_DEFINES ?? ''} ${buildOptions.gypDefine}`.trim(),
+      },
+      stdio: 'inherit',
+    },
+  )
 
   if (!existsSync(output)) {
     throw new Error(`node-gyp completed without producing ${output}`)
@@ -87,9 +110,18 @@ function main() {
 
   mkdirSync(resourceDirectory, { recursive: true })
   copyFileSync(output, resourceFile)
-  console.log(`[eDrawings] Built native preview module for Electron ${electronVersion} (${formatBytes(statSync(resourceFile).size)}).`)
+  const buildKind = buildOptions.verify ? 'verify-only diagnostic' : 'production'
+  console.log(
+    `[eDrawings] Built ${buildKind} native preview module for Electron ${electronVersion} (${formatBytes(statSync(resourceFile).size)}).`,
+  )
 }
 
 if (require.main === module) main()
 
-module.exports = { commandExists, formatBytes, hasVisualCppToolchain, removeStaleResourceOutput }
+module.exports = {
+  commandExists,
+  formatBytes,
+  hasVisualCppToolchain,
+  removeStaleResourceOutput,
+  resolveNativeBuildOptions,
+}

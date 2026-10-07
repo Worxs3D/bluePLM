@@ -112,6 +112,9 @@ internal sealed class PreviewHostForm : Form
             _control.CreateControl();
             var activeX = _control.ActiveXInstance ?? throw new COMException("The eDrawings ActiveX instance was not created.");
             SubscribeToLoadEvents(activeX);
+            // IEModelViewControl.OpenDoc(file, isTemp, promptToSave, readOnly,
+            // commandString): keep the source, suppress save prompts, request a
+            // read-only view, and pass the documented empty command string.
             var openDocumentResult = activeX.GetType().InvokeMember("OpenDoc", BindingFlags.InvokeMethod, null, activeX,
                 [_options.DocumentPath, false, false, true, string.Empty]);
             _openDocumentResult = DescribeOpenDocumentResult(openDocumentResult);
