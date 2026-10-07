@@ -188,7 +188,7 @@ declare global {
     | 'preview-bounds-invalid'
     | 'preview-operation-failed'
 
-  type EDrawingsPreviewFailure = {
+  interface EDrawingsPreviewFailure {
     success: false
     errorCode: EDrawingsPreviewErrorCode
   }
@@ -197,9 +197,7 @@ declare global {
   type EDrawingsExternalOpenResult =
     | { success: true; fallback?: true }
     | { success: false; errorCode: 'external-open-failed' }
-  type EDrawingsPreviewCreateResult =
-    | { success: true; sessionId: string }
-    | EDrawingsPreviewFailure
+  type EDrawingsPreviewCreateResult = { success: true; sessionId: string } | EDrawingsPreviewFailure
   type EDrawingsPreviewLoadResult =
     | { success: true; accepted: true; ready: true }
     | EDrawingsPreviewFailure

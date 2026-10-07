@@ -321,8 +321,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listWorkingFilesDelta: (changedPaths: string[]) =>
     ipcRenderer.invoke('fs:list-working-files-delta', changedPaths),
   // Forces the next delta call to re-walk the vault instead of patching the cached scan.
-  invalidateScanCache: (reason: string) =>
-    ipcRenderer.invoke('fs:invalidate-scan-cache', reason),
+  invalidateScanCache: (reason: string) => ipcRenderer.invoke('fs:invalidate-scan-cache', reason),
   listDirFiles: (dirPath: string) => ipcRenderer.invoke('fs:list-dir-files', dirPath),
   // Fast folder listing - no hash computation (for folder-scoped refresh)
   listFolderFast: (folderRelativePath: string) =>
@@ -713,21 +712,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('edrawings:attach-preview', sessionId),
   loadEDrawingsFile: (sessionId: string, filePath: string) =>
     ipcRenderer.invoke('edrawings:load-file', sessionId, filePath),
-  setEDrawingsBounds: (
-    sessionId: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) =>
-    ipcRenderer.invoke(
-      'edrawings:set-bounds',
-      sessionId,
-      x,
-      y,
-      width,
-      height,
-    ),
+  setEDrawingsBounds: (sessionId: string, x: number, y: number, width: number, height: number) =>
+    ipcRenderer.invoke('edrawings:set-bounds', sessionId, x, y, width, height),
   showEDrawingsPreview: (sessionId: string) =>
     ipcRenderer.invoke('edrawings:show-preview', sessionId),
   hideEDrawingsPreview: (sessionId: string) =>
@@ -1128,7 +1114,7 @@ declare global {
     | 'preview-bounds-invalid'
     | 'preview-operation-failed'
 
-  type EDrawingsPreviewFailure = {
+  interface EDrawingsPreviewFailure {
     success: false
     errorCode: EDrawingsPreviewErrorCode
   }
@@ -1137,9 +1123,7 @@ declare global {
   type EDrawingsExternalOpenResult =
     | { success: true; fallback?: true }
     | { success: false; errorCode: 'external-open-failed' }
-  type EDrawingsPreviewCreateResult =
-    | { success: true; sessionId: string }
-    | EDrawingsPreviewFailure
+  type EDrawingsPreviewCreateResult = { success: true; sessionId: string } | EDrawingsPreviewFailure
   type EDrawingsPreviewLoadResult =
     | { success: true; accepted: true; ready: true }
     | EDrawingsPreviewFailure
