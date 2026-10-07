@@ -10,6 +10,7 @@ import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
 import { resolveCadPreviewVariant } from './cadPreviewVariant'
 import { EmbeddedCadPreview } from './EmbeddedCadPreview'
+import { openCadFileInEDrawings } from './openCadFileInEDrawings'
 
 interface CadFilePreviewProps {
   file: LocalFile
@@ -47,12 +48,13 @@ export function CadFilePreview({ file, solidWorks = false }: CadFilePreviewProps
   const { src: cadThumbnail, onError: onCadPreviewError } = useRetryableImage(cadPreviewUrl)
 
   const openInEDrawings = async () => {
-    try {
-      await window.electronAPI?.openInEDrawings(file.path)
-    } catch (error) {
-      log.error('[CadFilePreview]', 'Failed to open in eDrawings', { error })
-      addToast('error', 'Failed to open in eDrawings')
-    }
+    await openCadFileInEDrawings(file.path, {
+      openFile: window.electronAPI?.openInEDrawings,
+      onFailure: (error) => {
+        log.error('[CadFilePreview]', 'Failed to open in eDrawings', { error })
+        addToast('error', t('solidworksSettings.openInEDrawingsFailed'))
+      },
+    })
   }
 
   const variant = resolveCadPreviewVariant({
