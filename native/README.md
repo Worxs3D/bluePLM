@@ -30,6 +30,7 @@ main-process IPC channels:
 - `edrawings:native-available`
 - `edrawings:create-preview`, `edrawings:attach-preview`, and
   `edrawings:load-file`
+- `edrawings:preview-status`
 - `edrawings:set-bounds`, `edrawings:show-preview`,
   `edrawings:hide-preview`, and `edrawings:destroy-preview`
 
@@ -49,6 +50,24 @@ The production contract used by the main process is:
 successful `loadFile` promise reports an accepted, ready preview; it does not
 take an `eDrawings.exe` path. The historical `native/index.js` wrapper is not
 the Electron IPC contract and must not be used to infer addon exports.
+
+After a successful load, the renderer polls the session-bound `preview-status`
+channel. If the registered host process or its owned window exits, native
+`isLoaded()` becomes false and bounds/show/hide stop reporting success. The
+renderer then leaves its ready state and tears down only that session.
+
+## Overlay visibility
+
+The native preview is hidden whenever any tracked application overlay is open,
+even when that overlay does not spatially intersect the preview. Portal and
+source-browser modals, dropdowns, toasts, DOM tooltips, drag overlays, and
+context menus opt in with `data-native-preview-overlay` (standard dialog/menu/
+listbox/tooltip roles are also recognized). The observer batches DOM mutations
+once per animation frame.
+
+Browser-native tooltips created from an HTML `title` attribute are owned by the
+operating system rather than the DOM. They cannot be observed by this mechanism;
+use a marked DOM tooltip where hiding the native preview is required.
 
 The host calls `IEModelViewControl.OpenDoc(file, false, false, true, "")`:
 the file is not treated as a disposable temporary download, save prompts are
@@ -80,6 +99,11 @@ destroy the preview and fail if any new `BluePLM.EDrawingsPreviewHost.exe`
 process remains. Re-run the normal build afterwards so the resource path does
 not retain verify-only exports. `npm run test:edrawings-native-exports` checks
 both export surfaces and restores the production build automatically.
+
+`npm run test:edrawings-windows` is the Windows-only automated gate for the C++
+status parser, registered process wait, C# atomic status writer, and production/
+verify export surfaces. The normal Linux `npm test` job cannot execute these
+Win32 contracts.
 
 The package contains:
 
