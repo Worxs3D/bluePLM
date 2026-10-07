@@ -645,6 +645,9 @@ export const es: TranslationDict = {
     confirmationPending:
       'Esperando confirmación — pulse Intro para confirmar, Esc o Ctrl+C para cancelar.',
     confirmationCancelled: 'Confirmación cancelada.',
+    cadPreviewModeHelp: 'Valores de cadPreviewMode: thumbnail, edrawings, edrawings-embedded',
+    cadPreviewModeInvalid:
+      'cadPreviewMode debe ser uno de estos valores: "thumbnail", "edrawings" o "edrawings-embedded".',
   },
 
   resolveMoves: {

@@ -56,4 +56,25 @@ describe('CAD preview variant', () => {
       }),
     ).toBe('unavailable')
   })
+
+  it('never selects the native host where embedded preview placement is unavailable', () => {
+    expect(
+      resolveCadPreviewVariant({
+        mode: 'edrawings-embedded',
+        solidWorks: false,
+        hasThumbnail: true,
+        eDrawingsInstalled: true,
+        embeddedAvailable: false,
+      }),
+    ).toBe('external-fallback')
+    expect(
+      resolveCadPreviewVariant({
+        mode: 'edrawings-embedded',
+        solidWorks: true,
+        hasThumbnail: true,
+        eDrawingsInstalled: true,
+        embeddedAvailable: false,
+      }),
+    ).toBe('datacard')
+  })
 })

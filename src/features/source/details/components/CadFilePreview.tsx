@@ -15,9 +15,14 @@ import { openCadFileInEDrawings } from './openCadFileInEDrawings'
 interface CadFilePreviewProps {
   file: LocalFile
   solidWorks?: boolean
+  embeddedAvailable?: boolean
 }
 
-export function CadFilePreview({ file, solidWorks = false }: CadFilePreviewProps) {
+export function CadFilePreview({
+  file,
+  solidWorks = false,
+  embeddedAvailable = true,
+}: CadFilePreviewProps) {
   const cadPreviewMode = usePDMStore((state) => state.cadPreviewMode)
   const addToast = usePDMStore((state) => state.addToast)
   const [cadZoom, setCadZoom] = useState(100)
@@ -62,6 +67,7 @@ export function CadFilePreview({ file, solidWorks = false }: CadFilePreviewProps
     solidWorks,
     hasThumbnail: Boolean(cadThumbnail),
     eDrawingsInstalled,
+    embeddedAvailable,
   })
 
   if (variant === 'datacard') return <SWDatacardPanel file={file} />

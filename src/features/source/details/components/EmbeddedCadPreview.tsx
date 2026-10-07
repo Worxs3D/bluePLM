@@ -1,6 +1,7 @@
 import type { LocalFile } from '@/stores/pdmStore'
 import { SWDatacardPanel } from '@/features/integrations/solidworks'
 
+import { hasLocalCadPreviewContent, supportsSolidWorksDatacard } from './cadPreviewCapabilities'
 import { EDrawingsEmbeddedPreview } from './EDrawingsEmbeddedPreview'
 
 interface EmbeddedCadPreviewProps {
@@ -8,13 +9,10 @@ interface EmbeddedCadPreviewProps {
   onOpenExternal: () => void
 }
 
-export function hasLocalCadPreviewContent(diffStatus: LocalFile['diffStatus']): boolean {
-  return diffStatus !== 'cloud' && diffStatus !== 'moved_away'
-}
-
 /** Keeps the SolidWorks configuration controls available beside the native preview. */
 export function EmbeddedCadPreview({ file, onOpenExternal }: EmbeddedCadPreviewProps) {
   const hasLocalContent = hasLocalCadPreviewContent(file.diffStatus)
+  const showSolidWorksDatacard = supportsSolidWorksDatacard(file.extension)
 
   return (
     <div className="h-full min-h-0 flex gap-3">
@@ -24,9 +22,11 @@ export function EmbeddedCadPreview({ file, onOpenExternal }: EmbeddedCadPreviewP
         hasLocalContent={hasLocalContent}
         onOpenExternal={onOpenExternal}
       />
-      <aside className="w-72 flex-shrink-0 min-h-0">
-        <SWDatacardPanel file={file} />
-      </aside>
+      {showSolidWorksDatacard && (
+        <aside className="w-72 flex-shrink-0 min-h-0">
+          <SWDatacardPanel file={file} />
+        </aside>
+      )}
     </div>
   )
 }

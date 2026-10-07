@@ -23,7 +23,7 @@ import {
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
 import { getDefaultModuleConfig, MODULES, getChildModules } from '../types/modules'
 import type { KeybindingsConfig, SettingsTab } from '../types/settings'
-import type { CadPreviewMode } from '../types/CadPreviewMode'
+import { isCadPreviewMode } from '../types/CadPreviewMode'
 import type {
   PDMStoreState,
   Tab,
@@ -84,10 +84,6 @@ interface PersistedKeySize {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function isCadPreviewMode(value: unknown): value is CadPreviewMode {
-  return value === 'thumbnail' || value === 'edrawings' || value === 'edrawings-embedded'
 }
 
 function getLocalStorage(): Storage | null {

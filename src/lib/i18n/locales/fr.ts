@@ -650,6 +650,9 @@ export const fr: TranslationDict = {
     confirmationPending:
       'En attente de confirmation — appuyez sur Entrée pour confirmer, Échap ou Ctrl+C pour annuler.',
     confirmationCancelled: 'Confirmation annulée.',
+    cadPreviewModeHelp: 'Valeurs de cadPreviewMode : thumbnail, edrawings, edrawings-embedded',
+    cadPreviewModeInvalid:
+      'cadPreviewMode doit être l’une des valeurs suivantes : « thumbnail », « edrawings » ou « edrawings-embedded ».',
   },
 
   resolveMoves: {

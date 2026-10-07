@@ -1838,6 +1838,9 @@ export const en: TranslationDict = {
   terminal: {
     confirmationPending: 'Waiting for confirmation — press Enter to confirm, Esc or Ctrl+C to cancel.',
     confirmationCancelled: 'Confirmation cancelled.',
+    cadPreviewModeHelp: 'cadPreviewMode values: thumbnail, edrawings, edrawings-embedded',
+    cadPreviewModeInvalid:
+      'cadPreviewMode must be one of: "thumbnail", "edrawings", or "edrawings-embedded".',
   },
 
   // The resolve-moves dialog — the discoverable, two-directional entry point to
