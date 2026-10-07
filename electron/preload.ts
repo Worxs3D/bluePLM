@@ -321,7 +321,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listWorkingFilesDelta: (changedPaths: string[]) =>
     ipcRenderer.invoke('fs:list-working-files-delta', changedPaths),
   // Forces the next delta call to re-walk the vault instead of patching the cached scan.
-  invalidateScanCache: (reason: string) => ipcRenderer.invoke('fs:invalidate-scan-cache', reason),
+  invalidateScanCache: (reason: string) =>
+    ipcRenderer.invoke('fs:invalidate-scan-cache', reason),
   listDirFiles: (dirPath: string) => ipcRenderer.invoke('fs:list-dir-files', dirPath),
   // Fast folder listing - no hash computation (for folder-scoped refresh)
   listFolderFast: (folderRelativePath: string) =>

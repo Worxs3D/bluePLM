@@ -16,7 +16,7 @@
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:electron": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:api": "tsc --noEmit -p api/tsconfig.json",
-    "test": "node scripts/run-tests.js",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:edrawings-native-lifecycle": "cmd /c native\\test\\run-process-exit-wait-test.cmd",
     "test:edrawings-native-exports": "node scripts/test-edrawings-preview-native-exports.js",
