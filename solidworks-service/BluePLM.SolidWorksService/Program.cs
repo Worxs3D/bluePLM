@@ -375,8 +375,10 @@ namespace BluePLM.SolidWorksService
                     "getConfigurations" => GetConfigurationsFast(filePath),
                     "getReferences" => GetReferencesFast(filePath, ReadReferenceOrigin(command)),
                     "getPreview" => GetPreviewFast(filePath, command["configuration"]?.ToString(),
-                        Math.Clamp(command["size"]?.Value<int>() ?? DEFAULT_SHELL_THUMBNAIL_SIZE,
-                            MIN_SHELL_THUMBNAIL_SIZE, MAX_SHELL_THUMBNAIL_SIZE)),
+                        // Math.Clamp does not exist on net48
+                        Math.Max(MIN_SHELL_THUMBNAIL_SIZE,
+                            Math.Min(MAX_SHELL_THUMBNAIL_SIZE,
+                                command["size"]?.Value<int>() ?? DEFAULT_SHELL_THUMBNAIL_SIZE))),
                     "getShellThumbnail" => WindowsShellThumbnail.GetThumbnail(filePath!, 
                         command["size"]?.Value<int>() ?? 256),
                     
