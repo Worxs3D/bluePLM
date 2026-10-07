@@ -89,20 +89,17 @@ export function createNativePreviewVisibilityController(api: {
 }
 
 const OVERLAY_SELECTOR = [
+  '[data-native-preview-overlay]',
   '[role="dialog"]',
   '[role="menu"]',
+  '[role="listbox"]',
   '[role="tooltip"]',
-  '[aria-live]',
-  '.context-menu',
   '[data-radix-popper-content-wrapper]',
-  '[class*="tooltip"]',
-  '[class*="dropdown"]',
-  '[class*="z-50"]',
-  '[class*="z-["]',
 ].join(', ')
 
 function isVisibleOverlay(element: Element, host: HTMLElement): boolean {
   if (!(element instanceof HTMLElement) || element === host || host.contains(element)) return false
+  if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false
   const style = window.getComputedStyle(element)
   if (style.display === 'none' || style.visibility === 'hidden') {
     return false
@@ -122,14 +119,28 @@ export function observeNativePreviewOverlays(
   onOverlayCountChange: (count: number) => void,
 ): () => void {
   const report = () => onOverlayCountChange(countVisibleNativePreviewOverlays(host))
+  let scheduledFrame: number | undefined
+  const scheduleReport = () => {
+    if (scheduledFrame !== undefined) return
+    scheduledFrame = window.requestAnimationFrame(() => {
+      scheduledFrame = undefined
+      report()
+    })
+  }
 
-  const observer = new MutationObserver(report)
+  const observer = new MutationObserver(scheduleReport)
   observer.observe(document.body, {
     attributes: true,
-    attributeFilter: ['aria-hidden', 'class', 'role', 'style'],
+    attributeFilter: ['aria-hidden', 'data-native-preview-overlay', 'hidden', 'role'],
     childList: true,
     subtree: true,
   })
   report()
-  return () => observer.disconnect()
+  return () => {
+    observer.disconnect()
+    if (scheduledFrame !== undefined) {
+      window.cancelAnimationFrame(scheduledFrame)
+      scheduledFrame = undefined
+    }
+  }
 }

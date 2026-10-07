@@ -13,20 +13,51 @@ interface FakeRectangle {
   height: number
 }
 
+interface FakeElementOptions {
+  rectangles?: FakeRectangle[]
+  marker?: string
+  role?: string
+  className?: string
+  ariaLive?: string
+  hidden?: boolean
+  ariaHidden?: string
+}
+
 class FakeElement {
-  constructor(private readonly rectangles: FakeRectangle[] = []) {}
+  readonly hidden: boolean
+
+  constructor(private readonly options: FakeElementOptions = {}) {
+    this.hidden = options.hidden ?? false
+  }
   contains() {
     return false
   }
   getClientRects() {
-    return this.rectangles
+    return this.options.rectangles ?? []
+  }
+  getAttribute(name: string) {
+    if (name === 'aria-hidden') return this.options.ariaHidden ?? null
+    return null
+  }
+  matches(selector: string) {
+    if (this.options.marker && selector.includes('[data-native-preview-overlay]')) return true
+    if (this.options.role && selector.includes(`[role="${this.options.role}"]`)) return true
+    if (
+      this.options.marker === 'radix' &&
+      selector.includes('[data-radix-popper-content-wrapper]')
+    ) {
+      return true
+    }
+    return false
   }
 }
 
-function stubOverlayDom(initialRectangles: FakeRectangle[]) {
+function stubOverlayDom(initialOverlays: FakeElementOptions[]) {
   const host = new FakeElement()
-  let overlays = [new FakeElement(initialRectangles)]
+  let overlays = initialOverlays.map((options) => new FakeElement(options))
   let reportMutation: () => void = () => undefined
+  let nextFrame = 1
+  const animationFrames = new Map<number, () => void>()
 
   class FakeMutationObserver {
     constructor(callback: () => void) {
@@ -40,20 +71,34 @@ function stubOverlayDom(initialRectangles: FakeRectangle[]) {
   vi.stubGlobal('MutationObserver', FakeMutationObserver)
   vi.stubGlobal('document', {
     body: {},
-    querySelectorAll: () => overlays,
+    querySelectorAll: (selector: string) => overlays.filter((element) => element.matches(selector)),
   })
   vi.stubGlobal('window', {
     getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
+    requestAnimationFrame: (callback: () => void) => {
+      const frame = nextFrame++
+      animationFrames.set(frame, callback)
+      return frame
+    },
+    cancelAnimationFrame: (frame: number) => animationFrames.delete(frame),
   })
 
   return {
     host: host as unknown as HTMLElement,
-    replaceOverlays(rectangles: FakeRectangle[]) {
-      overlays = rectangles.length > 0 ? [new FakeElement(rectangles)] : []
+    replaceOverlays(options: FakeElementOptions[]) {
+      overlays = options.map((overlayOptions) => new FakeElement(overlayOptions))
       reportMutation()
+    },
+    reportMutation,
+    flushAnimationFrame() {
+      const pending = [...animationFrames.values()]
+      animationFrames.clear()
+      pending.forEach((callback) => callback())
     },
   }
 }
+
+const VISIBLE_RECTANGLE = [{ width: 640, height: 480 }]
 
 describe('native preview context-menu seam', () => {
   afterEach(() => {
@@ -62,7 +107,9 @@ describe('native preview context-menu seam', () => {
   })
 
   it('keeps a loaded preview visible beside a persistent zero-area portal root', () => {
-    const { host } = stubOverlayDom([{ width: 0, height: 0 }])
+    const { host } = stubOverlayDom([
+      { marker: 'modal', rectangles: [{ width: 0, height: 0 }] },
+    ])
     let nativeVisible = true
     const hide = vi.fn(() => {
       nativeVisible = false
@@ -82,7 +129,7 @@ describe('native preview context-menu seam', () => {
   })
 
   it('hides for a positive-area portal overlay and restores after it is removed', () => {
-    const overlayDom = stubOverlayDom([{ width: 640, height: 480 }])
+    const overlayDom = stubOverlayDom([{ marker: 'modal', rectangles: VISIBLE_RECTANGLE }])
     let nativeVisible = true
     const hide = vi.fn(() => {
       nativeVisible = false
@@ -100,10 +147,97 @@ describe('native preview context-menu seam', () => {
     expect(show).not.toHaveBeenCalled()
 
     overlayDom.replaceOverlays([])
+    overlayDom.flushAnimationFrame()
 
     expect(nativeVisible).toBe(true)
     expect(show).toHaveBeenCalledTimes(1)
     stopObserving()
+  })
+
+  it.each([
+    ['modal', { role: 'dialog', rectangles: VISIBLE_RECTANGLE }],
+    ['dropdown', { role: 'listbox', rectangles: VISIBLE_RECTANGLE }],
+    ['toast', { marker: 'toast', rectangles: VISIBLE_RECTANGLE }],
+    ['DOM tooltip', { role: 'tooltip', rectangles: VISIBLE_RECTANGLE }],
+    ['drag overlay', { marker: 'drag', rectangles: VISIBLE_RECTANGLE }],
+  ] satisfies [string, FakeElementOptions][])('detects a visible %s', (_name, overlay) => {
+    const overlayDom = stubOverlayDom([overlay])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      onOverlayCountChange,
+    )
+
+    expect(onOverlayCountChange).toHaveBeenCalledWith(1)
+    stopObserving()
+  })
+
+  it('ignores a permanent non-overlay with z-50 and aria-live', () => {
+    const overlayDom = stubOverlayDom([
+      {
+        className: 'fixed z-50',
+        ariaLive: 'polite',
+        rectangles: VISIBLE_RECTANGLE,
+      },
+    ])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      onOverlayCountChange,
+    )
+
+    expect(onOverlayCountChange).toHaveBeenCalledWith(0)
+    stopObserving()
+  })
+
+  it('keeps the preview hidden until overlapping observed overlays are both removed', () => {
+    const overlayDom = stubOverlayDom([
+      { role: 'dialog', rectangles: VISIBLE_RECTANGLE },
+      { marker: 'toast', rectangles: VISIBLE_RECTANGLE },
+    ])
+    const hide = vi.fn()
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      controller.setOverlayCount,
+    )
+
+    controller.setReady(true)
+    overlayDom.replaceOverlays([{ marker: 'toast', rectangles: VISIBLE_RECTANGLE }])
+    overlayDom.flushAnimationFrame()
+
+    expect(show).not.toHaveBeenCalled()
+
+    overlayDom.replaceOverlays([])
+    overlayDom.flushAnimationFrame()
+
+    expect(hide).toHaveBeenCalled()
+    expect(show).toHaveBeenCalledTimes(1)
+    stopObserving()
+  })
+
+  it('coalesces mutation bursts into one report and cancels a pending report on cleanup', () => {
+    const overlayDom = stubOverlayDom([])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(
+      overlayDom.host,
+      onOverlayCountChange,
+    )
+
+    overlayDom.replaceOverlays([{ marker: 'toast', rectangles: VISIBLE_RECTANGLE }])
+    overlayDom.reportMutation()
+    overlayDom.reportMutation()
+
+    expect(onOverlayCountChange).toHaveBeenCalledTimes(1)
+    overlayDom.flushAnimationFrame()
+    expect(onOverlayCountChange).toHaveBeenCalledTimes(2)
+    expect(onOverlayCountChange).toHaveBeenLastCalledWith(1)
+
+    overlayDom.replaceOverlays([])
+    stopObserving()
+    overlayDom.flushAnimationFrame()
+    expect(onOverlayCountChange).toHaveBeenCalledTimes(2)
   })
 
   it('emits a hide event before the menu and a restore event after it closes', () => {
@@ -165,7 +299,8 @@ describe('native preview context-menu seam', () => {
     const stopObserving = observeNativePreviewOverlays(overlayDom.host, controller.setOverlayCount)
     const completeStartup = loading.then(() => controller.setReady(true))
 
-    overlayDom.replaceOverlays([{ width: 640, height: 480 }])
+    overlayDom.replaceOverlays([{ marker: 'modal', rectangles: VISIBLE_RECTANGLE }])
+    overlayDom.flushAnimationFrame()
     finishLoad()
     await completeStartup
 
