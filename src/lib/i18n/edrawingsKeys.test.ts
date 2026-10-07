@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { de } from './locales/de'
 import { en } from './locales/en'
 import { es } from './locales/es'
@@ -30,6 +31,7 @@ const requiredKeys = [
   'previewNotLocal',
   'previewBoundsUnavailable',
   'openInEDrawings',
+  'openInEDrawingsFailed',
 ] as const
 
 function solidworksSettings(locale: TranslationDict): Record<string, string> {
@@ -67,6 +69,7 @@ describe('eDrawings translations', () => {
         'previewNotLocal',
         'previewBoundsUnavailable',
         'openInEDrawings',
+        'openInEDrawingsFailed',
       ]) {
         expect(settings[key], key).not.toBe(english[key])
       }

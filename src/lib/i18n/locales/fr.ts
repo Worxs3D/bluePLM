@@ -27,6 +27,7 @@ export const fr: TranslationDict = {
     previewNotLocal: 'Téléchargez ce fichier avant d’ouvrir l’aperçu eDrawings intégré.',
     previewBoundsUnavailable: 'L’aperçu eDrawings intégré n’a pas pu être positionné.',
     openInEDrawings: 'Ouvrir dans eDrawings',
+    openInEDrawingsFailed: 'Le fichier n’a pas pu être ouvert dans eDrawings.',
   },
   checkoutDisplay: {
     you: 'Vous',

@@ -27,6 +27,7 @@ export const en: TranslationDict = {
     previewNotLocal: 'Download this file before opening the embedded eDrawings preview.',
     previewBoundsUnavailable: 'The embedded eDrawings preview could not be positioned.',
     openInEDrawings: 'Open in eDrawings',
+    openInEDrawingsFailed: 'The file could not be opened in eDrawings.',
   },
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',

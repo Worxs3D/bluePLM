@@ -24,6 +24,7 @@ export const zhTW: TranslationDict = {
     previewNotLocal: '請先下載此檔案，再開啟內嵌 eDrawings 預覽。',
     previewBoundsUnavailable: '無法定位內嵌 eDrawings 預覽。',
     openInEDrawings: '在 eDrawings 中開啟',
+    openInEDrawingsFailed: '無法在 eDrawings 中開啟此檔案。',
   },
   checkoutDisplay: {
     you: '你',
