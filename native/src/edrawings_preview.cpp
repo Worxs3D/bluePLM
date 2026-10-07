@@ -145,6 +145,7 @@ struct PreviewState {
     HANDLE job = nullptr;
     uint64_t generation = 0;
     bool ready = false;
+    bool terminalFailure = false;
     std::string asyncLastError;
     std::string openDocumentResult;
     std::shared_ptr<std::atomic_bool> cancellation;
@@ -162,6 +163,7 @@ struct PreviewState {
             job = nullptr;
             viewer = nullptr;
             ready = false;
+            terminalFailure = false;
             asyncLastError.clear();
             cancellation = std::make_shared<std::atomic_bool>(false);
             nextGeneration = ++generation;
@@ -184,6 +186,7 @@ struct PreviewState {
             job = nullptr;
             viewer = nullptr;
             ready = false;
+            terminalFailure = false;
             ++generation;
         }
         previousExitWait.reset();
@@ -224,10 +227,28 @@ struct PreviewState {
             if (generation != candidate || !cancellation || cancellation->load()) return;
             ready = false;
             viewer = nullptr;
+            terminalFailure = true;
             asyncLastError = "The eDrawings preview host exited.";
             completedJob = job;
             job = nullptr;
         }
+        closeJobHandle(completedJob);
+    }
+
+    void handleViewerUnavailable(uint64_t candidate, HWND candidateViewer) {
+        HANDLE completedJob = nullptr;
+        {
+            std::lock_guard lock(mutex);
+            if (generation != candidate || viewer != candidateViewer) return;
+            ready = false;
+            viewer = nullptr;
+            terminalFailure = true;
+            asyncLastError = "The eDrawings preview host exited.";
+            completedJob = job;
+            job = nullptr;
+        }
+        // Closing the kill-on-close job also terminates a host whose top-level
+        // window disappeared before the registered process callback ran.
         closeJobHandle(completedJob);
     }
 
@@ -236,6 +257,7 @@ struct PreviewState {
         if (generation != candidate) return;
         viewer = candidateViewer;
         ready = succeeded;
+        terminalFailure = !succeeded;
         asyncLastError = succeeded ? "" : message;
         this->openDocumentResult = openDocumentResult;
         // A successful host must remain in its kill-on-close job until destroy.
@@ -539,6 +561,8 @@ private:
         }
         HWND viewer = nullptr;
         HWND host = nullptr;
+        uint64_t generation = 0;
+        bool terminalFailure = false;
         int x = info[0].As<Napi::Number>().Int32Value();
         int y = info[1].As<Napi::Number>().Int32Value();
         const int width = info[2].As<Napi::Number>().Int32Value();
@@ -551,8 +575,17 @@ private:
             m_state->height = height > 0 ? height : 1;
             viewer = m_state->viewer;
             host = m_state->host;
+            generation = m_state->generation;
+            terminalFailure = m_state->terminalFailure;
         }
-        if (!viewer || !host || !IsWindow(viewer)) return Napi::Boolean::New(info.Env(), true);
+        if (terminalFailure) return Napi::Boolean::New(info.Env(), false);
+        // Before loadFile starts there is intentionally no viewer yet; retain
+        // the requested bounds for the worker that creates it.
+        if (!viewer || !host) return Napi::Boolean::New(info.Env(), true);
+        if (!IsWindow(viewer)) {
+            m_state->handleViewerUnavailable(generation, viewer);
+            return Napi::Boolean::New(info.Env(), false);
+        }
         POINT origin{x, y};
         if (!ClientToScreen(host, &origin)) return Napi::Boolean::New(info.Env(), false);
         // Bounds synchronization is allowed while the renderer overlay is hidden.
@@ -591,8 +624,19 @@ private:
     }
 
     Napi::Value IsLoaded(const Napi::CallbackInfo& info) {
-        std::lock_guard lock(m_state->mutex);
-        return Napi::Boolean::New(info.Env(), m_state->ready);
+        HWND viewer = nullptr;
+        uint64_t generation = 0;
+        bool ready = false;
+        {
+            std::lock_guard lock(m_state->mutex);
+            viewer = m_state->viewer;
+            generation = m_state->generation;
+            ready = m_state->ready;
+        }
+        if (!ready) return Napi::Boolean::New(info.Env(), false);
+        if (viewer && IsWindow(viewer)) return Napi::Boolean::New(info.Env(), true);
+        m_state->handleViewerUnavailable(generation, viewer);
+        return Napi::Boolean::New(info.Env(), false);
     }
 
 #ifdef BLUEPLM_EDRAWINGS_VERIFY
@@ -785,12 +829,23 @@ private:
     }
     Napi::Value SetVisibility(const Napi::CallbackInfo& info, int command) {
         HWND viewer = nullptr;
+        uint64_t generation = 0;
+        bool ready = false;
+        bool terminalFailure = false;
         {
             std::lock_guard lock(m_state->mutex);
             viewer = m_state->viewer;
+            generation = m_state->generation;
+            ready = m_state->ready;
+            terminalFailure = m_state->terminalFailure;
         }
-        if (viewer && IsWindow(viewer)) ShowWindowAsync(viewer, command);
-        return Napi::Boolean::New(info.Env(), true);
+        if (terminalFailure) return Napi::Boolean::New(info.Env(), false);
+        if (!viewer) return Napi::Boolean::New(info.Env(), !ready);
+        if (!IsWindow(viewer)) {
+            m_state->handleViewerUnavailable(generation, viewer);
+            return Napi::Boolean::New(info.Env(), false);
+        }
+        return Napi::Boolean::New(info.Env(), ShowWindowAsync(viewer, command) != FALSE);
     }
 
     std::shared_ptr<PreviewState> m_state;

@@ -19,6 +19,24 @@ app.whenReady()
       'edrawings_preview.node',
     ))
     const preview = new addon.EDrawingsPreview()
+    const productionMethods = [
+      'attachToWindow',
+      'loadFile',
+      'setBounds',
+      'show',
+      'hide',
+      'destroy',
+      'isLoaded',
+      'lastError',
+    ]
+    const missingProductionMethods = productionMethods.filter(
+      method => typeof preview[method] !== 'function',
+    )
+    if (missingProductionMethods.length > 0) {
+      throw new Error(
+        `${expectedMode} addon is missing production exports: ${missingProductionMethods.join(', ')}`,
+      )
+    }
     const hasVisualState = typeof preview.getVisualState === 'function'
     const hasWindowState = typeof preview.getWindowState === 'function'
     const diagnosticsExpected = expectedMode === 'verify'

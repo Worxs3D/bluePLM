@@ -41,6 +41,7 @@ class FakePreview implements NativeEDrawingsPreview {
   loadCalls = 0
   setBoundsCalls = 0
   showCalls = 0
+  loaded = false
   loadResult: Promise<NativeEDrawingsLoadResult> = Promise.resolve({ accepted: true, ready: true })
 
   attachToWindow(): boolean {
@@ -48,9 +49,11 @@ class FakePreview implements NativeEDrawingsPreview {
     return true
   }
 
-  loadFile(): Promise<NativeEDrawingsLoadResult> {
+  async loadFile(): Promise<NativeEDrawingsLoadResult> {
     this.loadCalls += 1
-    return this.loadResult
+    const result = await this.loadResult
+    this.loaded = result.accepted && result.ready
+    return result
   }
 
   setBounds(): boolean {
@@ -70,7 +73,12 @@ class FakePreview implements NativeEDrawingsPreview {
 
   destroy(): boolean {
     this.destroyCalls += 1
+    this.loaded = false
     return true
+  }
+
+  isLoaded(): boolean {
+    return this.loaded
   }
 
   lastError(): string {
@@ -265,6 +273,35 @@ describe('embedded eDrawings preview controller', () => {
       accepted: true,
       ready: true,
     })
+  })
+
+  it('reports a host exit after ready through the session-bound status API', async () => {
+    const preview = new FakePreview()
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    await expect(controller.load(created.sessionId, 17, 'C:\\vault\\part.sldprt')).resolves.toEqual(
+      {
+        success: true,
+        accepted: true,
+        ready: true,
+      },
+    )
+    await expect(controller.status(created.sessionId, 17)).resolves.toEqual({ success: true })
+
+    preview.loaded = false
+
+    await expect(controller.status(created.sessionId, 17)).resolves.toEqual({
+      success: false,
+      errorCode: 'preview-host-exited',
+    })
+    await expect(controller.show(created.sessionId, 17)).resolves.toEqual({
+      success: false,
+      errorCode: 'preview-host-exited',
+    })
+    expect(preview.showCalls).toBe(0)
   })
 
   it('passes through a native host completion failure code', async () => {

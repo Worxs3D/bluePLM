@@ -12,6 +12,7 @@ import {
 } from './nativePreviewOverlay'
 import {
   createPreviewSessionController,
+  observePreviewHealth,
   schedulePreviewStart,
 } from './previewSessionLifecycle'
 
@@ -69,6 +70,7 @@ export function EDrawingsEmbeddedPreview({
   useEffect(() => {
     let observer: ResizeObserver | undefined
     let stopObservingOverlays: (() => void) | undefined
+    let stopHealthChecks: (() => void) | undefined
     const api = window.electronAPI
     const session = api ? createPreviewSessionController(api) : undefined
 
@@ -218,6 +220,18 @@ export function EDrawingsEmbeddedPreview({
       // Scroll does not bubble, but the capture phase reaches the DetailsPanel's
       // scroll container without coupling this preview to its implementation.
       window.addEventListener('scroll', syncActiveBounds, true)
+      stopHealthChecks = observePreviewHealth(
+        () => session.status(),
+        (statusErrorCode) => {
+          if (!isActiveSession(created.sessionId)) return
+          visibility.setReady(false)
+          fail(statusErrorCode)
+        },
+        (error) => {
+          if (!isActiveSession(created.sessionId)) return
+          log.warn('[EDrawingsPreview]', 'Failed to read embedded preview status', { error })
+        },
+      )
       setState('ready')
     }
 
@@ -251,6 +265,7 @@ export function EDrawingsEmbeddedPreview({
       visibility.setReady(false)
       observer?.disconnect()
       stopObservingOverlays?.()
+      stopHealthChecks?.()
       window.removeEventListener('resize', syncActiveBounds)
       window.removeEventListener('scroll', syncActiveBounds, true)
       window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)

@@ -7,6 +7,7 @@ export interface PreviewSessionLifecycle {
 }
 
 export const PREVIEW_SELECTION_DEBOUNCE_MS = 120
+export const PREVIEW_HEALTH_CHECK_INTERVAL_MS = 500
 
 /**
  * Defers native host creation just long enough to collapse arrow-key selection
@@ -22,14 +23,17 @@ export type EDrawingsPreviewApi = Pick<
   | 'createEDrawingsPreview'
   | 'attachEDrawingsPreview'
   | 'loadEDrawingsFile'
+  | 'getEDrawingsPreviewStatus'
   | 'setEDrawingsBounds'
   | 'showEDrawingsPreview'
   | 'hideEDrawingsPreview'
   | 'destroyEDrawingsPreview'
 >
 
-type EDrawingsPreviewCreateResult = Awaited<ReturnType<EDrawingsPreviewApi['createEDrawingsPreview']>>
-type EDrawingsPreviewOperationResult = Awaited<
+type EDrawingsPreviewCreateResult = Awaited<
+  ReturnType<EDrawingsPreviewApi['createEDrawingsPreview']>
+>
+export type EDrawingsPreviewOperationResult = Awaited<
   ReturnType<EDrawingsPreviewApi['attachEDrawingsPreview']>
 >
 type EDrawingsPreviewLoadResult = Awaited<ReturnType<EDrawingsPreviewApi['loadEDrawingsFile']>>
@@ -40,12 +44,50 @@ export interface PreviewSessionController {
   create(): Promise<EDrawingsPreviewCreateResult | undefined>
   attach(): Promise<EDrawingsPreviewOperationResult | undefined>
   load(filePath: string): Promise<EDrawingsPreviewLoadResult | undefined>
-  setBounds(x: number, y: number, width: number, height: number): Promise<EDrawingsPreviewOperationResult | undefined>
+  status(): Promise<EDrawingsPreviewOperationResult | undefined>
+  setBounds(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<EDrawingsPreviewOperationResult | undefined>
   show(): Promise<EDrawingsPreviewOperationResult | undefined>
   hide(): Promise<EDrawingsPreviewOperationResult | undefined>
   destroy(): Promise<void>
   isActive(sessionId: string): boolean
   dispose(): void
+}
+
+/** Polls the session-bound native status without overlapping slow IPC calls. */
+export function observePreviewHealth(
+  check: () => Promise<EDrawingsPreviewOperationResult | undefined>,
+  onFailure: (errorCode: EDrawingsPreviewErrorCode) => void,
+  onError: (error: unknown) => void,
+): () => void {
+  let checking = false
+  let stopped = false
+  const timer = globalThis.setInterval(() => {
+    if (checking) return
+    checking = true
+    void check()
+      .then((result) => {
+        if (stopped || !result || result.success) return
+        stopped = true
+        globalThis.clearInterval(timer)
+        onFailure(result.errorCode)
+      })
+      .catch((error: unknown) => {
+        if (!stopped) onError(error)
+      })
+      .finally(() => {
+        checking = false
+      })
+  }, PREVIEW_HEALTH_CHECK_INTERVAL_MS)
+
+  return () => {
+    stopped = true
+    globalThis.clearInterval(timer)
+  }
 }
 
 /** Keeps a native-preview session tied to one React effect lifetime. */
@@ -102,6 +144,9 @@ export function createPreviewSessionController(api: EDrawingsPreviewApi): Previe
     },
     load(filePath) {
       return run((sessionId) => api.loadEDrawingsFile(sessionId, filePath))
+    },
+    status() {
+      return run((sessionId) => api.getEDrawingsPreviewStatus(sessionId))
     },
     setBounds(x, y, width, height) {
       return run((sessionId) => api.setEDrawingsBounds(sessionId, x, y, width, height))
