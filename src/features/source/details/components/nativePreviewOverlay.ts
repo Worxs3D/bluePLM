@@ -107,7 +107,7 @@ function isVisibleOverlay(element: Element, host: HTMLElement): boolean {
   if (style.display === 'none' || style.visibility === 'hidden') {
     return false
   }
-  return element.getClientRects().length > 0
+  return Array.from(element.getClientRects()).some((rect) => rect.width > 0 && rect.height > 0)
 }
 
 export function countVisibleNativePreviewOverlays(host: HTMLElement): number {
