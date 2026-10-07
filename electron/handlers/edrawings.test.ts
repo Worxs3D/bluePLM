@@ -477,27 +477,37 @@ describe('external eDrawings opening', () => {
 
 describe('embedded eDrawings resource and file validation', () => {
   it('resolves packaged native resources only from process.resourcesPath', () => {
+    const root = path.parse(process.cwd()).root
     const packaged = {
       isPackaged: true,
-      resourcesPath: 'C:\\app\\resources',
-      cwd: 'C:\\workspace',
+      resourcesPath: path.join(root, 'app', 'resources'),
+      cwd: path.join(root, 'workspace'),
     }
 
     expect(getEDrawingsNativeModuleCandidates(packaged)).toEqual([
-      'C:\\app\\resources\\bin\\edrawings_preview.node',
+      path.join(packaged.resourcesPath, 'bin', 'edrawings_preview.node'),
     ])
     expect(getEDrawingsPreviewHostCandidates(packaged)).toEqual([
-      'C:\\app\\resources\\bin\\edrawings-preview-host\\BluePLM.EDrawingsPreviewHost.exe',
+      path.join(
+        packaged.resourcesPath,
+        'bin',
+        'edrawings-preview-host',
+        'BluePLM.EDrawingsPreviewHost.exe',
+      ),
     ])
   })
 
   it('keeps development-only cwd fallbacks outside packaged resolution', () => {
+    const root = path.parse(process.cwd()).root
+    const cwd = path.join(root, 'workspace')
     const candidates = getEDrawingsNativeModuleCandidates({
       isPackaged: false,
-      resourcesPath: 'C:\\app\\resources',
-      cwd: 'C:\\workspace',
+      resourcesPath: path.join(root, 'app', 'resources'),
+      cwd,
     })
-    expect(candidates).toContain('C:\\workspace\\native\\build\\Release\\edrawings_preview.node')
+    expect(candidates).toContain(
+      path.join(cwd, 'native', 'build', 'Release', 'edrawings_preview.node'),
+    )
   })
 
   it('rejects manipulated renderer paths before the native host can read them', () => {
