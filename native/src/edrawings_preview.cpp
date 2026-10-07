@@ -236,6 +236,8 @@ public:
             std::to_wstring(x) + L" " + std::to_wstring(y) + L" " + std::to_wstring(width) + L" " + std::to_wstring(height);
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESHOWWINDOW;
+        startup.wShowWindow = SW_HIDE;
         PROCESS_INFORMATION process{};
         if (!CreateProcessW(m_hostExecutablePath.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
                 CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED, nullptr, nullptr, &startup, &process)) {
