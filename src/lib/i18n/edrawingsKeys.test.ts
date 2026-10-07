@@ -51,6 +51,16 @@ describe('eDrawings translations', () => {
     }
   })
 
+  it.each(Object.entries(locales))(
+    '%s names the .NET 8 Desktop Runtime requirement in both unavailable states',
+    (_, locale) => {
+      const settings = solidworksSettings(locale)
+      for (const key of ['embeddedEDrawingsUnavailable', 'previewHostUnavailable']) {
+        expect(settings[key], key).toContain('Microsoft .NET 8 Desktop Runtime (x64)')
+      }
+    },
+  )
+
   it.each(Object.entries(locales).filter(([language]) => language !== 'en'))(
     '%s does not fall back to English for the new preview states',
     (_, locale) => {

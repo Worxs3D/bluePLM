@@ -67,6 +67,11 @@ interface PreviewWebContents {
   removeListener(event: string, listener: () => void): unknown
 }
 
+interface PreviewNavigationDetails {
+  isMainFrame: boolean
+  isSameDocument: boolean
+}
+
 export interface PreviewOwner {
   webContents: PreviewWebContents
   getNativeWindowHandle(): Buffer
@@ -492,6 +497,9 @@ export function createEDrawingsPreviewController(
       const cleanup = () => {
         if (session?.id === sessionId) destroyCurrentSession()
       }
+      const cleanupForNavigation = (details?: PreviewNavigationDetails) => {
+        if (details?.isMainFrame && !details.isSameDocument) cleanup()
+      }
       const hideForOwner = () => syncOwnerPreview(owner)
       const restoreForOwner = () => syncOwnerPreview(owner, true)
       const syncBoundsForOwner = () => syncOwnerPreview(owner)
@@ -499,7 +507,7 @@ export function createEDrawingsPreviewController(
         if (owner.isDestroyed()) return
         if (!owner.webContents.isDestroyed()) {
           owner.webContents.removeListener('render-process-gone', cleanup)
-          owner.webContents.removeListener('did-start-navigation', cleanup)
+          owner.webContents.removeListener('did-start-navigation', cleanupForNavigation)
         }
         owner.removeListener('closed', cleanup)
         owner.removeListener('minimize', hideForOwner)
@@ -520,7 +528,7 @@ export function createEDrawingsPreviewController(
         disposeLifecycle,
       }
       owner.webContents.on('render-process-gone', cleanup)
-      owner.webContents.on('did-start-navigation', cleanup)
+      owner.webContents.on('did-start-navigation', cleanupForNavigation)
       owner.on('closed', cleanup)
       owner.on('minimize', hideForOwner)
       owner.on('hide', hideForOwner)
