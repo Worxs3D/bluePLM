@@ -1,7 +1,9 @@
 import { ExternalLink, FileBox, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+
 import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+
 import {
   CONTEXT_MENU_CLOSE_EVENT,
   CONTEXT_MENU_OPEN_EVENT,
@@ -268,7 +270,11 @@ export function EDrawingsEmbeddedPreview({
           <p className="text-xs text-plm-fg-muted mt-2 max-w-sm">
             {state === 'unavailable'
               ? t('solidworksSettings.previewUnavailable')
-              : t(errorCode ? PREVIEW_ERROR_KEYS[errorCode] : 'solidworksSettings.previewStartFailed')}
+              : t(
+                  errorCode
+                    ? PREVIEW_ERROR_KEYS[errorCode]
+                    : 'solidworksSettings.previewStartFailed',
+                )}
           </p>
           <button onClick={onOpenExternal} className="btn btn-secondary gap-2 mt-4">
             <ExternalLink size={16} />

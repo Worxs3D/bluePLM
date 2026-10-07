@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
 import {
   CONTEXT_MENU_CLOSE_EVENT,
   CONTEXT_MENU_OPEN_EVENT,
@@ -7,12 +8,19 @@ import {
   observeNativePreviewOverlays,
 } from './nativePreviewOverlay'
 
-type FakeRectangle = { width: number; height: number }
+interface FakeRectangle {
+  width: number
+  height: number
+}
 
 class FakeElement {
   constructor(private readonly rectangles: FakeRectangle[] = []) {}
-  contains() { return false }
-  getClientRects() { return this.rectangles }
+  contains() {
+    return false
+  }
+  getClientRects() {
+    return this.rectangles
+  }
 }
 
 function stubOverlayDom(initialRectangles: FakeRectangle[]) {
@@ -56,8 +64,12 @@ describe('native preview context-menu seam', () => {
   it('keeps a loaded preview visible beside a persistent zero-area portal root', () => {
     const { host } = stubOverlayDom([{ width: 0, height: 0 }])
     let nativeVisible = true
-    const hide = vi.fn(() => { nativeVisible = false })
-    const show = vi.fn(() => { nativeVisible = true })
+    const hide = vi.fn(() => {
+      nativeVisible = false
+    })
+    const show = vi.fn(() => {
+      nativeVisible = true
+    })
     const visibility = createNativePreviewVisibilityController({ hide, show })
     const stopObserving = observeNativePreviewOverlays(host, visibility.setOverlayCount)
 
@@ -72,13 +84,14 @@ describe('native preview context-menu seam', () => {
   it('hides for a positive-area portal overlay and restores after it is removed', () => {
     const overlayDom = stubOverlayDom([{ width: 640, height: 480 }])
     let nativeVisible = true
-    const hide = vi.fn(() => { nativeVisible = false })
-    const show = vi.fn(() => { nativeVisible = true })
+    const hide = vi.fn(() => {
+      nativeVisible = false
+    })
+    const show = vi.fn(() => {
+      nativeVisible = true
+    })
     const visibility = createNativePreviewVisibilityController({ hide, show })
-    const stopObserving = observeNativePreviewOverlays(
-      overlayDom.host,
-      visibility.setOverlayCount,
-    )
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, visibility.setOverlayCount)
 
     visibility.setReady(true)
 
@@ -143,14 +156,13 @@ describe('native preview context-menu seam', () => {
   it('never shows when a portal overlay opens during a slow native load', async () => {
     const overlayDom = stubOverlayDom([])
     let finishLoad!: () => void
-    const loading = new Promise<void>((resolve) => { finishLoad = resolve })
+    const loading = new Promise<void>((resolve) => {
+      finishLoad = resolve
+    })
     const hide = vi.fn()
     const show = vi.fn()
     const controller = createNativePreviewVisibilityController({ hide, show })
-    const stopObserving = observeNativePreviewOverlays(
-      overlayDom.host,
-      controller.setOverlayCount,
-    )
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, controller.setOverlayCount)
     const completeStartup = loading.then(() => controller.setReady(true))
 
     overlayDom.replaceOverlays([{ width: 640, height: 480 }])
@@ -196,7 +208,9 @@ describe('native preview context-menu seam', () => {
 
   it('does not show when the menu reopens during asynchronous preparation', async () => {
     let resolvePreparation!: () => void
-    const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })
+    const preparation = new Promise<void>((resolve) => {
+      resolvePreparation = resolve
+    })
     const show = vi.fn()
     const hide = vi.fn()
     const controller = createNativePreviewVisibilityController({
@@ -216,7 +230,9 @@ describe('native preview context-menu seam', () => {
 
   it('invalidates preparation when the preview is disposed', async () => {
     let resolvePreparation!: () => void
-    const preparation = new Promise<void>((resolve) => { resolvePreparation = resolve })
+    const preparation = new Promise<void>((resolve) => {
+      resolvePreparation = resolve
+    })
     const show = vi.fn()
     const controller = createNativePreviewVisibilityController({
       prepareShow: () => preparation,
@@ -234,7 +250,9 @@ describe('native preview context-menu seam', () => {
 
   it('hides after a stale show promise resolves', async () => {
     let resolveShow!: () => void
-    const showPromise = new Promise<void>((resolve) => { resolveShow = resolve })
+    const showPromise = new Promise<void>((resolve) => {
+      resolveShow = resolve
+    })
     const show = vi.fn(() => showPromise)
     const hide = vi.fn()
     const controller = createNativePreviewVisibilityController({ hide, show })
@@ -249,7 +267,9 @@ describe('native preview context-menu seam', () => {
 
   it('waits for a delayed hide before restoring after a persistent menu and independent overlays close', async () => {
     let resolveHide!: () => void
-    const hidden = new Promise<void>((resolve) => { resolveHide = resolve })
+    const hidden = new Promise<void>((resolve) => {
+      resolveHide = resolve
+    })
     const hide = vi.fn(() => hidden)
     const show = vi.fn()
     const controller = createNativePreviewVisibilityController({ hide, show })
@@ -287,9 +307,7 @@ describe('native preview context-menu seam', () => {
 
   it('does not start another hide after a resolved hide while the menu remains open', async () => {
     const nextHide = new Promise<void>(() => undefined)
-    const hide = vi.fn()
-      .mockResolvedValueOnce(undefined)
-      .mockReturnValueOnce(nextHide)
+    const hide = vi.fn().mockResolvedValueOnce(undefined).mockReturnValueOnce(nextHide)
     const controller = createNativePreviewVisibilityController({ hide, show: vi.fn() })
 
     controller.setContextMenuOpen(true)
@@ -301,7 +319,9 @@ describe('native preview context-menu seam', () => {
 
   it('does not resynchronize visibility after setReady(false) during a delayed hide', async () => {
     let resolveHide!: () => void
-    const hidden = new Promise<void>((resolve) => { resolveHide = resolve })
+    const hidden = new Promise<void>((resolve) => {
+      resolveHide = resolve
+    })
     const hide = vi.fn(() => hidden)
     const show = vi.fn()
     const controller = createNativePreviewVisibilityController({ hide, show })
@@ -319,10 +339,15 @@ describe('native preview context-menu seam', () => {
   it('keeps the newer preview visible when an older show resolves after the menu closes', async () => {
     let resolveShowA!: () => void
     let resolveShowB!: () => void
-    const showA = new Promise<void>((resolve) => { resolveShowA = resolve })
-    const showB = new Promise<void>((resolve) => { resolveShowB = resolve })
+    const showA = new Promise<void>((resolve) => {
+      resolveShowA = resolve
+    })
+    const showB = new Promise<void>((resolve) => {
+      resolveShowB = resolve
+    })
     let nativeVisible = false
-    const show = vi.fn()
+    const show = vi
+      .fn()
       .mockImplementationOnce(() => {
         nativeVisible = true
         return showA
@@ -331,7 +356,9 @@ describe('native preview context-menu seam', () => {
         nativeVisible = true
         return showB
       })
-    const hide = vi.fn(() => { nativeVisible = false })
+    const hide = vi.fn(() => {
+      nativeVisible = false
+    })
     const controller = createNativePreviewVisibilityController({ hide, show })
 
     controller.setReady(true)
@@ -350,15 +377,22 @@ describe('native preview context-menu seam', () => {
 
   it('keeps the newer preview visible when an older show rejects after the menu closes', async () => {
     let rejectShowA!: (reason: Error) => void
-    const showA = new Promise<void>((_, reject) => { rejectShowA = reject })
+    const showA = new Promise<void>((_, reject) => {
+      rejectShowA = reject
+    })
     let nativeVisible = false
-    const show = vi.fn()
+    const show = vi
+      .fn()
       .mockImplementationOnce(() => {
         nativeVisible = true
         return showA
       })
-      .mockImplementationOnce(() => { nativeVisible = true })
-    const hide = vi.fn(() => { nativeVisible = false })
+      .mockImplementationOnce(() => {
+        nativeVisible = true
+      })
+    const hide = vi.fn(() => {
+      nativeVisible = false
+    })
     const controller = createNativePreviewVisibilityController({ hide, show })
 
     controller.setReady(true)

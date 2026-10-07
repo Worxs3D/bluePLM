@@ -1,17 +1,43 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { format } from 'date-fns'
+import {
+  Clock,
+  Cloud,
+  Cpu,
+  ExternalLink,
+  Eye,
+  File,
+  FileArchive,
+  FileBox,
+  FileCode,
+  FileImage,
+  FilePen,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  FolderOpen,
+  Hash,
+  Info,
+  Layers,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Sparkles,
+  Tag,
+  User,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+
+import { DraggableTab, TabDropZone, type PanelLocation } from '@/components/shared/DraggableTab'
+import { InspectionTab, SWPropertiesTab, WhereUsedTab } from '@/features/integrations/solidworks'
+import { useRetryableImage } from '@/hooks/useRetryableImage'
 import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
-import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
-import { useShallow } from 'zustand/react/shallow'
-import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
-import { useRetryableImage } from '@/hooks/useRetryableImage'
-import { getFileIconType } from '@/lib/utils'
-import { formatFileSize } from '@/lib/utils'
-import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/DraggableTab'
-import { format } from 'date-fns'
-import { getNextSerialNumber } from '@/lib/serialization'
-import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
+import { propertiesToMirror } from '@/lib/metadata/configurationMirror'
+import { configurationScopeProperties } from '@/lib/metadata/divergence'
+import { lockedDrawingFields, type LockableDrawingField } from '@/lib/metadata/drawingLockouts'
 import {
   resolveDescription,
   resolveFileMetadata,
@@ -19,56 +45,21 @@ import {
   resolveRevision,
   resolvedText,
 } from '@/lib/metadata/overlay'
-import { propertiesToMirror } from '@/lib/metadata/configurationMirror'
-import { configurationScopeProperties } from '@/lib/metadata/divergence'
-import {
-  lockedDrawingFields,
-  type LockableDrawingField,
-} from '@/lib/metadata/drawingLockouts'
 import { reportMetadataWrite } from '@/lib/metadata/reportMetadataWrite'
 import { writeMetadataWithVerification } from '@/lib/metadata/writeMetadataToFile'
 import { currentUnwritableFieldGroups } from '@/lib/metadata/writeOwnership'
 import { buildMetadataWritePlan } from '@/lib/metadata/writePlan'
 import { listWriteAddresses, pendingWithoutGroups } from '@/lib/metadata/writeState'
+import { getNextSerialNumber } from '@/lib/serialization'
+import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
+import { formatFileSize, getFileIconType } from '@/lib/utils'
+import { usePDMStore, type DetailsPanelTab, type LocalFile } from '@/stores/pdmStore'
 import type { PendingMetadataEdit } from '@/stores/types'
-import { WhereUsedTab, SWPropertiesTab } from '@/features/integrations/solidworks'
-import { SWDatacardPanel } from '@/features/integrations/solidworks'
-import { InspectionTab } from '@/features/integrations/solidworks'
+
 import { VendorsTab } from './VendorsTab'
-import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
-import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
+import { CadFilePreview } from './components/CadFilePreview'
 import { CommentSidebar } from './components/CommentSidebar'
-import { EmbeddedCadPreview } from './components/EmbeddedCadPreview'
-import {
-  FileBox,
-  Layers,
-  FileText,
-  File,
-  Clock,
-  User,
-  Tag,
-  Hash,
-  Info,
-  Cloud,
-  Loader2,
-  FileImage,
-  FileSpreadsheet,
-  FileArchive,
-  FileCode,
-  Cpu,
-  FileType,
-  FilePen,
-  ExternalLink,
-  Download,
-  Eye,
-  FolderOpen,
-  Pencil,
-  RefreshCw,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Sparkles,
-} from 'lucide-react'
+import { PdfAnnotationViewer, type AnnotationOverlay } from './components/PdfAnnotationViewer'
 
 // Which lockable drawing field each editable row stands for. `state` has none: it is a workflow
 // transition rather than a property the referenced model owns.
@@ -148,7 +139,6 @@ export function DetailsPanel() {
     bottomPanelTabOrder,
     user,
     addToast,
-    cadPreviewMode,
     lowercaseExtensions,
     files,
     checkoutHydration,
@@ -171,7 +161,6 @@ export function DetailsPanel() {
       bottomPanelTabOrder: s.bottomPanelTabOrder,
       user: s.user,
       addToast: s.addToast,
-      cadPreviewMode: s.cadPreviewMode,
       lowercaseExtensions: s.lowercaseExtensions,
       files: s.files,
       checkoutHydration: s.checkoutHydration,
@@ -207,15 +196,6 @@ export function DetailsPanel() {
     folderCount: number
   } | null>(null)
 
-  // eDrawings state
-  const [eDrawingsStatus, setEDrawingsStatus] = useState<{
-    checked: boolean
-    installed: boolean
-    path: string | null
-  }>({ checked: false, installed: false, path: null })
-
-  const [cadZoom, setCadZoom] = useState(100) // Zoom percentage (100 = fit to pane)
-
   // Handle tab drop from either panel
   const handleTabDrop = useCallback(
     (tabId: string, fromLocation: PanelLocation, toLocation: PanelLocation) => {
@@ -232,47 +212,8 @@ export function DetailsPanel() {
     [moveTabToBottom, moveTabToRight],
   )
 
-  // Reset zoom when file changes
-  useEffect(() => {
-    setCadZoom(100)
-  }, [file?.path])
-
-  // Check if eDrawings is installed (once on mount)
-  useEffect(() => {
-    const checkEDrawings = async () => {
-      if (!window.electronAPI?.checkEDrawingsInstalled) {
-        setEDrawingsStatus({ checked: true, installed: false, path: null })
-        return
-      }
-
-      try {
-        const result = await window.electronAPI.checkEDrawingsInstalled()
-        setEDrawingsStatus({
-          checked: true,
-          installed: result.installed,
-          path: result.path,
-        })
-      } catch (error) {
-        log.error('[DetailsPanel]', 'Failed to check eDrawings', { error: error })
-        setEDrawingsStatus({ checked: true, installed: false, path: null })
-      }
-    }
-
-    checkEDrawings()
-  }, [])
-
   // NOTE: PDF loading is now handled internally by PdfAnnotationViewer.
   // The old useEffect that created a data URL for the iframe has been removed.
-
-  // CAD preview URL. The main process resolves it against the thumbnail cache,
-  // preferring the full-resolution OLE stream and falling back to the Document
-  // Manager image, so this component no longer sequences those itself.
-  const cadPreviewUrl = useMemo(() => {
-    if (cadPreviewMode === 'edrawings' || detailsPanelTab !== 'preview' || !file) return null
-    return buildThumbnailUrl(file, 'preview')
-  }, [file, detailsPanelTab, cadPreviewMode])
-
-  const { src: cadThumbnail, onError: onCadPreviewError } = useRetryableImage(cadPreviewUrl)
 
   // Calculate folder stats when a folder is selected
   useEffect(() => {
@@ -778,18 +719,6 @@ export function DetailsPanel() {
   const isImageFile = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg'].includes(ext)
   const isPDFFile = ext === '.pdf'
 
-  // Open file in eDrawings
-  const handleOpenInEDrawings = async () => {
-    if (!file?.path) return
-
-    try {
-      await window.electronAPI?.openInEDrawings(file.path)
-    } catch (error) {
-      log.error('[DetailsPanel]', 'Failed to open in eDrawings', { error: error })
-      addToast('error', 'Failed to open in eDrawings')
-    }
-  }
-
   return (
     <div
       className="details-panel bg-plm-panel border-t border-plm-border flex flex-col"
@@ -835,11 +764,7 @@ export function DetailsPanel() {
             <>
               {/* Preview tab for SolidWorks files */}
               {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
-                cadPreviewMode === 'edrawings-embedded' ? (
-                  <EmbeddedCadPreview file={file} onOpenExternal={handleOpenInEDrawings} />
-                ) : (
-                  <SWDatacardPanel file={file} />
-                )
+                <CadFilePreview file={file} solidWorks />
               )}
 
               {detailsPanelTab === 'properties' &&
@@ -1051,8 +976,8 @@ export function DetailsPanel() {
                             value={
                               checkoutDisplay.state === 'none'
                                 ? t('source.details.notCheckedOut')
-                                : checkoutDisplay.displayName ??
-                                  t('checkoutDisplay.ownerUnavailable')
+                                : (checkoutDisplay.displayName ??
+                                  t('checkoutDisplay.ownerUnavailable'))
                             }
                           />
                           <PropertyItem
@@ -1094,165 +1019,7 @@ export function DetailsPanel() {
                       />
                     </div>
                   ) : isCADFile ? (
-                    // CAD file - show thumbnail or eDrawings based on setting
-                    <div className="w-full h-full flex flex-col">
-                      {cadPreviewMode === 'edrawings-embedded' ? (
-                        <EmbeddedCadPreview file={file} onOpenExternal={handleOpenInEDrawings} />
-                      ) : cadPreviewMode === 'edrawings' ? (
-                        // eDrawings mode - just show button to open externally
-                        eDrawingsStatus.installed ? (
-                          <div className="flex-1 flex flex-col items-center justify-center">
-                            <FileBox size={48} className="mb-4 text-plm-accent" />
-                            <div className="text-sm font-medium mb-2">{file.name}</div>
-                            <button
-                              onClick={handleOpenInEDrawings}
-                              className="btn btn-primary gap-2"
-                            >
-                              <ExternalLink size={16} />
-                              {t('source.details.openInEDrawings')}
-                            </button>
-                            <div className="text-xs text-plm-fg-muted mt-4">
-                              {t('source.details.externalViewerNote')}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex flex-col items-center justify-center text-center">
-                            <Eye size={48} className="mb-4 text-plm-fg-muted opacity-50" />
-                            <div className="text-lg font-medium mb-2">
-                              {t('source.details.eDrawingsNotFound')}
-                            </div>
-                            <div className="text-sm text-plm-fg-muted mb-4 max-w-xs">
-                              {t('source.details.installEDrawings')}
-                            </div>
-                            <a
-                              href="https://www.solidworks.com/support/free-downloads"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn btn-primary gap-2"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                window.electronAPI?.openFile(
-                                  'https://www.solidworks.com/support/free-downloads',
-                                )
-                              }}
-                            >
-                              <Download size={16} />
-                              {t('source.details.downloadEDrawings')}
-                            </a>
-                          </div>
-                        )
-                      ) : cadThumbnail ? (
-                        // Show extracted thumbnail with zoom controls
-                        <div className="flex-1 flex flex-col min-h-0">
-                          <div
-                            className="flex-1 flex items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900 rounded overflow-auto relative"
-                            style={{ minHeight: 0 }}
-                            onWheel={(e) => {
-                              if (e.ctrlKey || e.metaKey) {
-                                e.preventDefault()
-                                const delta = e.deltaY > 0 ? -10 : 10
-                                setCadZoom((prev) => Math.max(25, Math.min(400, prev + delta)))
-                              }
-                            }}
-                          >
-                            <img
-                              src={cadThumbnail}
-                              alt={file.name}
-                              className="object-contain transition-transform duration-150"
-                              decoding="async"
-                              onError={onCadPreviewError}
-                              style={{
-                                width: cadZoom === 100 ? '100%' : 'auto',
-                                height: cadZoom === 100 ? '100%' : 'auto',
-                                maxWidth: cadZoom === 100 ? '100%' : 'none',
-                                maxHeight: cadZoom === 100 ? '100%' : 'none',
-                                transform: cadZoom !== 100 ? `scale(${cadZoom / 100})` : undefined,
-                                transformOrigin: 'center center',
-                              }}
-                            />
-                          </div>
-                          {/* Zoom controls */}
-                          <div className="flex items-center justify-center gap-2 py-2 border-t border-plm-border">
-                            <button
-                              onClick={() => setCadZoom((prev) => Math.max(25, prev - 25))}
-                              className="btn btn-sm btn-ghost p-1"
-                              title={t('source.details.zoomOut')}
-                              disabled={cadZoom <= 25}
-                            >
-                              <ZoomOut size={16} />
-                            </button>
-                            <span className="text-xs text-plm-fg-muted w-12 text-center">
-                              {cadZoom}%
-                            </span>
-                            <button
-                              onClick={() => setCadZoom((prev) => Math.min(400, prev + 25))}
-                              className="btn btn-sm btn-ghost p-1"
-                              title={t('source.details.zoomIn')}
-                              disabled={cadZoom >= 400}
-                            >
-                              <ZoomIn size={16} />
-                            </button>
-                            <button
-                              onClick={() => setCadZoom(100)}
-                              className="btn btn-sm btn-ghost p-1 ml-2"
-                              title={t('source.details.resetToFit')}
-                              disabled={cadZoom === 100}
-                            >
-                              <RotateCw size={14} />
-                            </button>
-                            {eDrawingsStatus.installed && (
-                              <button
-                                onClick={handleOpenInEDrawings}
-                                className="btn btn-sm btn-secondary gap-1 ml-2"
-                                title={t('source.details.openInFullEDrawings')}
-                              >
-                                <ExternalLink size={12} />
-                                {t('source.details.eDrawingsLabel')}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : eDrawingsStatus.installed ? (
-                        // No thumbnail but eDrawings available
-                        <div className="flex-1 flex flex-col items-center justify-center">
-                          <FileBox size={48} className="mb-4 text-plm-accent" />
-                          <div className="text-sm font-medium mb-2">{file.name}</div>
-                          <div className="text-xs text-plm-fg-muted mb-4">
-                            {t('source.details.noEmbeddedPreview')}
-                          </div>
-                          <button onClick={handleOpenInEDrawings} className="btn btn-primary gap-2">
-                            <ExternalLink size={16} />
-                            {t('source.details.openInEDrawings')}
-                          </button>
-                        </div>
-                      ) : (
-                        // No thumbnail, no eDrawings
-                        <div className="flex-1 flex flex-col items-center justify-center text-center">
-                          <Eye size={48} className="mb-4 text-plm-fg-muted opacity-50" />
-                          <div className="text-lg font-medium mb-2">
-                            {t('source.details.noPreviewAvailable')}
-                          </div>
-                          <div className="text-sm text-plm-fg-muted mb-4 max-w-xs">
-                            {t('source.details.installEDrawings')}
-                          </div>
-                          <a
-                            href="https://www.solidworks.com/support/free-downloads"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-primary gap-2"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              window.electronAPI?.openFile(
-                                'https://www.solidworks.com/support/free-downloads',
-                              )
-                            }}
-                          >
-                            <Download size={16} />
-                            {t('source.details.downloadEDrawings')}
-                          </a>
-                        </div>
-                      )}
-                    </div>
+                    <CadFilePreview file={file} />
                   ) : (
                     // Other files - no preview
                     <div className="text-sm text-plm-fg-muted text-center">

@@ -1,7 +1,10 @@
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
-type NpmInvocation = { command: string; args: string[] }
+interface NpmInvocation {
+  command: string
+  args: string[]
+}
 
 const require = createRequire(import.meta.url)
 const { resolveNpmInvocation } = require('./resolve-npm-invocation.js') as {

@@ -113,24 +113,18 @@ export type EDrawingsPreviewErrorCode =
   | 'preview-bounds-invalid'
   | 'preview-operation-failed'
 
-export type PreviewFailure = {
+export interface PreviewFailure {
   success: false
   errorCode: EDrawingsPreviewErrorCode
 }
 
 export type PreviewResult = { success: true } | PreviewFailure
 
-export type PreviewCreateResult =
-  | { success: true; sessionId: string }
-  | PreviewFailure
+export type PreviewCreateResult = { success: true; sessionId: string } | PreviewFailure
 
-export type PreviewLoadResult =
-  | { success: true; accepted: true; ready: true }
-  | PreviewFailure
+export type PreviewLoadResult = { success: true; accepted: true; ready: true } | PreviewFailure
 
-type PreviewFileValidationResult =
-  | { success: true; filePath: string }
-  | PreviewFailure
+type PreviewFileValidationResult = { success: true; filePath: string } | PreviewFailure
 
 interface EDrawingsPreviewControllerDependencies {
   createPreview: () => NativeEDrawingsPreview | null
@@ -144,11 +138,7 @@ export interface EDrawingsPreviewController {
   create(owner: PreviewOwner, senderId: number): PreviewCreateResult
   attach(sessionId: unknown, senderId: number): Promise<PreviewResult>
   load(sessionId: unknown, senderId: number, filePath: unknown): Promise<PreviewLoadResult>
-  setBounds(
-    sessionId: unknown,
-    senderId: number,
-    bounds: PreviewBounds,
-  ): Promise<PreviewResult>
+  setBounds(sessionId: unknown, senderId: number, bounds: PreviewBounds): Promise<PreviewResult>
   show(sessionId: unknown, senderId: number): Promise<PreviewResult>
   hide(sessionId: unknown, senderId: number): Promise<PreviewResult>
   destroy(sessionId: unknown, senderId: number): Promise<PreviewResult>
@@ -190,7 +180,8 @@ export function findEDrawingsExecutable(
     exists: fs.existsSync,
     listDirectories: (parent) => {
       try {
-        return fs.readdirSync(parent, { withFileTypes: true })
+        return fs
+          .readdirSync(parent, { withFileTypes: true })
           .filter((entry) => entry.isDirectory())
           .map((entry) => entry.name)
       } catch {
@@ -224,16 +215,9 @@ export function findEDrawingsExecutable(
 }
 
 export function getEDrawingsNativeModuleCandidates(
-  dependencies: Pick<
-    EDrawingsPreviewPathDependencies,
-    'isPackaged' | 'resourcesPath' | 'cwd'
-  >,
+  dependencies: Pick<EDrawingsPreviewPathDependencies, 'isPackaged' | 'resourcesPath' | 'cwd'>,
 ): string[] {
-  const packagedCandidate = path.join(
-    dependencies.resourcesPath,
-    'bin',
-    'edrawings_preview.node',
-  )
+  const packagedCandidate = path.join(dependencies.resourcesPath, 'bin', 'edrawings_preview.node')
   if (dependencies.isPackaged) return [packagedCandidate]
 
   return [
@@ -244,10 +228,7 @@ export function getEDrawingsNativeModuleCandidates(
 }
 
 export function getEDrawingsPreviewHostCandidates(
-  dependencies: Pick<
-    EDrawingsPreviewPathDependencies,
-    'isPackaged' | 'resourcesPath' | 'cwd'
-  >,
+  dependencies: Pick<EDrawingsPreviewPathDependencies, 'isPackaged' | 'resourcesPath' | 'cwd'>,
 ): string[] {
   const executableName = 'BluePLM.EDrawingsPreviewHost.exe'
   const packagedCandidate = path.join(
@@ -438,7 +419,9 @@ export function createEDrawingsPreviewController(
       try {
         void current.preview.hide()
       } catch (error) {
-        dependencies.logWarn('[eDrawings] Failed to hide embedded preview', { error: String(error) })
+        dependencies.logWarn('[eDrawings] Failed to hide embedded preview', {
+          error: String(error),
+        })
       }
       return
     }
@@ -475,9 +458,7 @@ export function createEDrawingsPreviewController(
     try {
       const succeeded = await action(current)
       if (!isCurrentSession(current)) return stale()
-      return succeeded
-        ? { success: true }
-        : failedOperation(current, 'operation')
+      return succeeded ? { success: true } : failedOperation(current, 'operation')
     } catch (error: unknown) {
       if (!isCurrentSession(current)) return stale()
       dependencies.logWarn('[eDrawings] Embedded preview operation threw', { error: String(error) })
@@ -577,9 +558,12 @@ export function createEDrawingsPreviewController(
           }
         }
         if (nativeResult.ready !== true) {
-          dependencies.logWarn('[eDrawings] Native preview accepted a load without a ready confirmation', {
-            nativeResult,
-          })
+          dependencies.logWarn(
+            '[eDrawings] Native preview accepted a load without a ready confirmation',
+            {
+              nativeResult,
+            },
+          )
           return { success: false, errorCode: 'preview-document-load-failed' }
         }
         return { success: true, accepted: true, ready: true }
@@ -720,10 +704,7 @@ export function registerEDrawingsHandlers(
     if (!isApplicationWindowSender(event.sender)) {
       return { success: false, errorCode: 'external-open-failed' }
     }
-    const checkedFile = validateEDrawingsPreviewFile(
-      filePath,
-      dependencies.getWorkingDirectory(),
-    )
+    const checkedFile = validateEDrawingsPreviewFile(filePath, dependencies.getWorkingDirectory())
     if (!checkedFile.success) {
       return { success: false, errorCode: 'external-open-failed' }
     }
@@ -742,23 +723,29 @@ export function registerEDrawingsHandlers(
     return Array.from(window.getNativeWindowHandle())
   })
 
-  ipcMain.handle('edrawings:create-preview', (event) =>
-    previewController?.create(window, event.sender.id) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
+  ipcMain.handle(
+    'edrawings:create-preview',
+    (event) =>
+      previewController?.create(window, event.sender.id) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
   )
-  ipcMain.handle('edrawings:attach-preview', (event, sessionId: unknown) =>
-    previewController?.attach(sessionId, event.sender.id) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
+  ipcMain.handle(
+    'edrawings:attach-preview',
+    (event, sessionId: unknown) =>
+      previewController?.attach(sessionId, event.sender.id) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
   )
-  ipcMain.handle('edrawings:load-file', (event, sessionId: unknown, filePath: unknown) =>
-    previewController?.load(sessionId, event.sender.id, filePath) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
+  ipcMain.handle(
+    'edrawings:load-file',
+    (event, sessionId: unknown, filePath: unknown) =>
+      previewController?.load(sessionId, event.sender.id, filePath) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
   )
   ipcMain.handle(
     'edrawings:set-bounds',
@@ -766,34 +753,42 @@ export function registerEDrawingsHandlers(
       if (![x, y, width, height].every((value) => typeof value === 'number')) {
         return { success: false, errorCode: 'preview-bounds-invalid' }
       }
-      return previewController?.setBounds(sessionId, event.sender.id, {
-        x: x as number,
-        y: y as number,
-        width: width as number,
-        height: height as number,
-      }) ?? {
+      return (
+        previewController?.setBounds(sessionId, event.sender.id, {
+          x: x as number,
+          y: y as number,
+          width: width as number,
+          height: height as number,
+        }) ?? {
+          success: false,
+          errorCode: 'preview-service-unavailable',
+        }
+      )
+    },
+  )
+  ipcMain.handle(
+    'edrawings:show-preview',
+    (event, sessionId: unknown) =>
+      previewController?.show(sessionId, event.sender.id) ?? {
         success: false,
         errorCode: 'preview-service-unavailable',
-      }
-    },
+      },
   )
-  ipcMain.handle('edrawings:show-preview', (event, sessionId: unknown) =>
-    previewController?.show(sessionId, event.sender.id) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
+  ipcMain.handle(
+    'edrawings:hide-preview',
+    (event, sessionId: unknown) =>
+      previewController?.hide(sessionId, event.sender.id) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
   )
-  ipcMain.handle('edrawings:hide-preview', (event, sessionId: unknown) =>
-    previewController?.hide(sessionId, event.sender.id) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
-  )
-  ipcMain.handle('edrawings:destroy-preview', (event, sessionId: unknown) =>
-    previewController?.destroy(sessionId, event.sender.id) ?? {
-      success: false,
-      errorCode: 'preview-service-unavailable',
-    },
+  ipcMain.handle(
+    'edrawings:destroy-preview',
+    (event, sessionId: unknown) =>
+      previewController?.destroy(sessionId, event.sender.id) ?? {
+        success: false,
+        errorCode: 'preview-service-unavailable',
+      },
   )
 }
 
