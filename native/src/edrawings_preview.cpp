@@ -9,9 +9,10 @@
 #include <napi.h>
 #include <windows.h>
 
+#include "host_status_parser.h"
+
 #include <atomic>
 #include <chrono>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -25,6 +26,7 @@ namespace {
 constexpr DWORD HANDSHAKE_TIMEOUT_MS = 10'000;
 constexpr DWORD DOCUMENT_TIMEOUT_MS = 60'000;
 constexpr DWORD STATUS_POLL_INTERVAL_MS = 25;
+constexpr LONGLONG MAX_STATUS_FILE_BYTES = 4'096;
 
 std::wstring utf8ToWide(const std::string& value) {
     if (value.empty()) return L"";
@@ -61,13 +63,6 @@ std::wstring createStatusFile() {
     return statusFile;
 }
 
-struct HostStatus {
-    enum class Kind { None, Handshake, Ready, Failed };
-    Kind kind = Kind::None;
-    HWND window = nullptr;
-    std::wstring detail;
-};
-
 struct ChildWindowProbe {
     int visibleCount = 0;
     HWND firstVisible = nullptr;
@@ -87,19 +82,45 @@ BOOL CALLBACK captureVisibleChild(HWND child, LPARAM parameter) {
     return TRUE;
 }
 
-HostStatus readStatusFile(const std::wstring& statusPath) {
-    std::wifstream input(statusPath);
-    std::wstring state;
-    unsigned long long windowValue = 0;
-    input >> state >> windowValue;
-    if (!input) return {};
-    HostStatus status;
-    if (state == L"handshake") status.kind = HostStatus::Kind::Handshake;
-    else if (state == L"ready") status.kind = HostStatus::Kind::Ready;
-    else if (state == L"failed") status.kind = HostStatus::Kind::Failed;
-    else return {};
-    status.window = reinterpret_cast<HWND>(static_cast<uintptr_t>(windowValue));
-    input >> status.detail;
+HostStatus readStatusFile(const std::wstring& statusPath, DWORD expectedProcessId) {
+    HANDLE file = CreateFileW(
+        statusPath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) return {};
+
+    LARGE_INTEGER fileSize{};
+    if (!GetFileSizeEx(file, &fileSize) || fileSize.QuadPart <= 0 ||
+        fileSize.QuadPart > MAX_STATUS_FILE_BYTES) {
+        CloseHandle(file);
+        return {};
+    }
+
+    std::string encodedContent(static_cast<size_t>(fileSize.QuadPart), '\0');
+    DWORD bytesRead = 0;
+    const bool readSucceeded = ReadFile(
+        file,
+        encodedContent.data(),
+        static_cast<DWORD>(encodedContent.size()),
+        &bytesRead,
+        nullptr) != FALSE;
+    CloseHandle(file);
+    if (!readSucceeded || bytesRead != encodedContent.size()) return {};
+
+    HostStatus status = parseHostStatusText(utf8ToWide(encodedContent));
+    if (status.kind == HostStatus::Kind::None || !status.window) return status;
+
+    DWORD ownerProcessId = 0;
+    if (!IsWindow(status.window) ||
+        GetWindowThreadProcessId(status.window, &ownerProcessId) == 0 ||
+        ownerProcessId != expectedProcessId) {
+        if (status.kind != HostStatus::Kind::Failed) return {};
+        status.window = nullptr;
+    }
     return status;
 }
 
@@ -275,7 +296,7 @@ public:
         HWND viewer = nullptr;
         std::string openDocumentResult;
         while (m_state->isCurrent(m_generation)) {
-            const HostStatus status = readStatusFile(m_statusPath);
+            const HostStatus status = readStatusFile(m_statusPath, process.dwProcessId);
             if (!status.detail.empty()) openDocumentResult = wideToUtf8(status.detail);
             if (status.kind == HostStatus::Kind::Handshake) {
                 handshakeReceived = true;
@@ -294,7 +315,7 @@ public:
                 break;
             }
             if (WaitForSingleObject(process.hProcess, 0) != WAIT_TIMEOUT) {
-                const HostStatus finalStatus = readStatusFile(m_statusPath);
+                const HostStatus finalStatus = readStatusFile(m_statusPath, process.dwProcessId);
                 if (finalStatus.kind == HostStatus::Kind::Failed) {
                     viewer = finalStatus.window;
                     const bool hostReachedDocumentLoad = handshakeReceived || finalStatus.window != nullptr;

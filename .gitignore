@@ -38,6 +38,8 @@ native/build/
 edrawings-preview-host/bin/
 edrawings-preview-host/obj/
 edrawings-preview-host/publish/
+edrawings-preview-host-tests/bin/
+edrawings-preview-host-tests/obj/
 resources/bin/win32/edrawings_preview.node
 resources/bin/win32/edrawings-preview-host/
 
