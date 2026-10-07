@@ -1,32 +1,38 @@
-const assert = require('node:assert/strict')
-const { mkdtempSync, writeFileSync, existsSync } = require('node:fs')
-const { tmpdir } = require('node:os')
-const path = require('node:path')
-const test = require('node:test')
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { expect, test } from 'vitest'
 
+const require = createRequire(import.meta.url)
 const {
   commandExists,
   formatBytes,
   removeStaleResourceOutput,
   resolveNativeBuildOptions,
-} = require('./build-edrawings-preview')
+} = require('./build-edrawings-preview.js') as {
+  commandExists: (command: string, args: string[]) => boolean
+  formatBytes: (bytes: number) => string
+  removeStaleResourceOutput: (resourceFile: string) => void
+  resolveNativeBuildOptions: (args: string[]) => { verify: boolean; gypDefine: string }
+}
 
 test('keeps desktop pixel diagnostics out of production builds', () => {
-  assert.deepEqual(resolveNativeBuildOptions([]), {
+  expect(resolveNativeBuildOptions([])).toEqual({
     verify: false,
     gypDefine: 'edrawings_verify=0',
   })
 })
 
 test('enables desktop pixel diagnostics only for an explicit verify build', () => {
-  assert.deepEqual(resolveNativeBuildOptions(['--verify']), {
+  expect(resolveNativeBuildOptions(['--verify'])).toEqual({
     verify: true,
     gypDefine: 'edrawings_verify=1',
   })
 })
 
 test('treats a command with a nonzero exit status as unavailable', () => {
-  assert.equal(commandExists(process.execPath, ['-e', 'process.exit(3)']), false)
+  expect(commandExists(process.execPath, ['-e', 'process.exit(3)'])).toBe(false)
 })
 
 test('removes only the stale native resource artifact before a skip', () => {
@@ -38,10 +44,10 @@ test('removes only the stale native resource artifact before a skip', () => {
 
   removeStaleResourceOutput(artifact)
 
-  assert.equal(existsSync(artifact), false)
-  assert.equal(existsSync(unrelated), true)
+  expect(existsSync(artifact)).toBe(false)
+  expect(existsSync(unrelated)).toBe(true)
 })
 
 test('formats native payload sizes for build logs', () => {
-  assert.equal(formatBytes(1024), '1.0 KiB')
+  expect(formatBytes(1024)).toBe('1.0 KiB')
 })

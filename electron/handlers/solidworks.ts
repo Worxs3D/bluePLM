@@ -3810,6 +3810,7 @@ export async function cleanupSolidWorksService(): Promise<void> {
   log('[SolidWorks] [CLEANUP] APP QUIT - CLEANUP STARTED')
   log('[SolidWorks] =======================================')
   logServiceState('App quit cleanup')
+
   // Stop the watchdog
   stopOrphanWatchdog()
 

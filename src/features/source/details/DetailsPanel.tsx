@@ -1,43 +1,17 @@
-import { format } from 'date-fns'
-import {
-  Clock,
-  Cloud,
-  Cpu,
-  ExternalLink,
-  Eye,
-  File,
-  FileArchive,
-  FileBox,
-  FileCode,
-  FileImage,
-  FilePen,
-  FileSpreadsheet,
-  FileText,
-  FileType,
-  FolderOpen,
-  Hash,
-  Info,
-  Layers,
-  Loader2,
-  Pencil,
-  RefreshCw,
-  Sparkles,
-  Tag,
-  User,
-} from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useShallow } from 'zustand/react/shallow'
-
-import { DraggableTab, TabDropZone, type PanelLocation } from '@/components/shared/DraggableTab'
-import { InspectionTab, SWPropertiesTab, WhereUsedTab } from '@/features/integrations/solidworks'
-import { useRetryableImage } from '@/hooks/useRetryableImage'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
-import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
-import { propertiesToMirror } from '@/lib/metadata/configurationMirror'
-import { configurationScopeProperties } from '@/lib/metadata/divergence'
-import { lockedDrawingFields, type LockableDrawingField } from '@/lib/metadata/drawingLockouts'
+import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
+import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
+import { useRetryableImage } from '@/hooks/useRetryableImage'
+import { getFileIconType } from '@/lib/utils'
+import { formatFileSize } from '@/lib/utils'
+import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/DraggableTab'
+import { format } from 'date-fns'
+import { getNextSerialNumber } from '@/lib/serialization'
+import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
 import {
   resolveDescription,
   resolveFileMetadata,
@@ -45,21 +19,51 @@ import {
   resolveRevision,
   resolvedText,
 } from '@/lib/metadata/overlay'
+import { propertiesToMirror } from '@/lib/metadata/configurationMirror'
+import { configurationScopeProperties } from '@/lib/metadata/divergence'
+import {
+  lockedDrawingFields,
+  type LockableDrawingField,
+} from '@/lib/metadata/drawingLockouts'
 import { reportMetadataWrite } from '@/lib/metadata/reportMetadataWrite'
 import { writeMetadataWithVerification } from '@/lib/metadata/writeMetadataToFile'
 import { currentUnwritableFieldGroups } from '@/lib/metadata/writeOwnership'
 import { buildMetadataWritePlan } from '@/lib/metadata/writePlan'
 import { listWriteAddresses, pendingWithoutGroups } from '@/lib/metadata/writeState'
-import { getNextSerialNumber } from '@/lib/serialization'
-import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
-import { formatFileSize, getFileIconType } from '@/lib/utils'
-import { usePDMStore, type DetailsPanelTab, type LocalFile } from '@/stores/pdmStore'
 import type { PendingMetadataEdit } from '@/stores/types'
-
+import { WhereUsedTab, SWPropertiesTab } from '@/features/integrations/solidworks'
+import { InspectionTab } from '@/features/integrations/solidworks'
 import { VendorsTab } from './VendorsTab'
 import { CadFilePreview } from './components/CadFilePreview'
+import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
+import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
 import { CommentSidebar } from './components/CommentSidebar'
-import { PdfAnnotationViewer, type AnnotationOverlay } from './components/PdfAnnotationViewer'
+import {
+  FileBox,
+  Layers,
+  FileText,
+  File,
+  Clock,
+  User,
+  Tag,
+  Hash,
+  Info,
+  Cloud,
+  Loader2,
+  FileImage,
+  FileSpreadsheet,
+  FileArchive,
+  FileCode,
+  Cpu,
+  FileType,
+  FilePen,
+  ExternalLink,
+  Eye,
+  FolderOpen,
+  Pencil,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react'
 
 // Which lockable drawing field each editable row stands for. `state` has none: it is a workflow
 // transition rather than a property the referenced model owns.
@@ -976,8 +980,8 @@ export function DetailsPanel() {
                             value={
                               checkoutDisplay.state === 'none'
                                 ? t('source.details.notCheckedOut')
-                                : (checkoutDisplay.displayName ??
-                                  t('checkoutDisplay.ownerUnavailable'))
+                                : checkoutDisplay.displayName ??
+                                  t('checkoutDisplay.ownerUnavailable')
                             }
                           />
                           <PropertyItem

@@ -1,18 +1,24 @@
-const assert = require('node:assert/strict')
-const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs')
-const { tmpdir } = require('node:os')
-const path = require('node:path')
-const test = require('node:test')
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { expect, test } from 'vitest'
 
+const require = createRequire(import.meta.url)
 const {
   commandExists,
   directorySize,
   formatBytes,
   removeStaleResourceOutput,
-} = require('./build-edrawings-preview-host')
+} = require('./build-edrawings-preview-host.js') as {
+  commandExists: (command: string, args: string[]) => boolean
+  directorySize: (directory: string) => number
+  formatBytes: (bytes: number) => string
+  removeStaleResourceOutput: (resourceDirectory: string) => void
+}
 
 test('treats a command with a nonzero exit status as unavailable', () => {
-  assert.equal(commandExists(process.execPath, ['-e', 'process.exit(3)']), false)
+  expect(commandExists(process.execPath, ['-e', 'process.exit(3)'])).toBe(false)
 })
 
 test('removes a stale host payload before a toolchain skip', () => {
@@ -21,7 +27,7 @@ test('removes a stale host payload before a toolchain skip', () => {
 
   removeStaleResourceOutput(directory)
 
-  assert.equal(existsSync(directory), false)
+  expect(existsSync(directory)).toBe(false)
 })
 
 test('measures the complete host payload recursively', () => {
@@ -30,9 +36,9 @@ test('measures the complete host payload recursively', () => {
   writeFileSync(path.join(directory, 'host.exe'), '1234')
   writeFileSync(path.join(directory, 'nested', 'runtimeconfig.json'), '123')
 
-  assert.equal(directorySize(directory), 7)
+  expect(directorySize(directory)).toBe(7)
 })
 
 test('formats host payload sizes for build logs', () => {
-  assert.equal(formatBytes(1024 * 1024), '1.0 MiB')
+  expect(formatBytes(1024 * 1024)).toBe('1.0 MiB')
 })

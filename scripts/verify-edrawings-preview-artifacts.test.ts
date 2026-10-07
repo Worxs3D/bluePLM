@@ -1,18 +1,25 @@
-const assert = require('node:assert/strict')
-const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs')
-const { tmpdir } = require('node:os')
-const path = require('node:path')
-const test = require('node:test')
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { expect, test } from 'vitest'
 
+const require = createRequire(import.meta.url)
 const {
   HOST_FILES,
   PACKAGED_PAYLOAD_DIRECTORY,
   SOURCE_PAYLOAD_DIRECTORY,
   verifyPackagedPayload,
   verifyPayload,
-} = require('./verify-edrawings-preview-artifacts')
+} = require('./verify-edrawings-preview-artifacts.js') as {
+  HOST_FILES: string[]
+  PACKAGED_PAYLOAD_DIRECTORY: string[]
+  SOURCE_PAYLOAD_DIRECTORY: string[]
+  verifyPackagedPayload: (sourceDirectory: string, packagedDirectory: string) => void
+  verifyPayload: (directory: string) => { addonBytes: number; hostBytes: number }
+}
 
-function writePayload(directory) {
+function writePayload(directory: string) {
   mkdirSync(path.join(directory, 'edrawings-preview-host'))
   writeFileSync(path.join(directory, 'edrawings_preview.node'), 'addon')
   HOST_FILES.forEach(file => writeFileSync(path.join(directory, 'edrawings-preview-host', file), file))
@@ -24,8 +31,8 @@ test('verifies a complete framework-dependent preview payload', () => {
 
   const payload = verifyPayload(directory)
 
-  assert.equal(payload.addonBytes, 5)
-  assert.ok(payload.hostBytes > 0)
+  expect(payload.addonBytes).toBe(5)
+  expect(payload.hostBytes).toBeGreaterThan(0)
 })
 
 test('rejects a stale partial payload', () => {
@@ -35,7 +42,7 @@ test('rejects a stale partial payload', () => {
   const missing = path.join(directory, 'edrawings-preview-host', 'BluePLM.EDrawingsPreviewHost.runtimeconfig.json')
   rmSync(missing)
 
-  assert.throws(() => verifyPayload(directory), /Missing required eDrawings artifact/)
+  expect(() => verifyPayload(directory)).toThrow(/Missing required eDrawings artifact/)
 })
 
 test('rejects a missing fresh native addon', () => {
@@ -43,7 +50,7 @@ test('rejects a missing fresh native addon', () => {
   writePayload(directory)
   rmSync(path.join(directory, 'edrawings_preview.node'))
 
-  assert.throws(() => verifyPayload(directory), /Missing required eDrawings artifact/)
+  expect(() => verifyPayload(directory)).toThrow(/Missing required eDrawings artifact/)
 })
 
 test('rejects a packaged payload left over from another build', () => {
@@ -53,10 +60,12 @@ test('rejects a packaged payload left over from another build', () => {
   writePayload(packaged)
   writeFileSync(path.join(packaged, 'edrawings-preview-host', 'BluePLM.EDrawingsPreviewHost.dll'), 'stale')
 
-  assert.throws(() => verifyPackagedPayload(source, packaged), /does not match the fresh build/)
+  expect(() => verifyPackagedPayload(source, packaged)).toThrow(
+    /does not match the fresh build/,
+  )
 })
 
 test('uses Electron Builder\'s unpacked Windows resource layout', () => {
-  assert.deepEqual(SOURCE_PAYLOAD_DIRECTORY, ['resources', 'bin', 'win32'])
-  assert.deepEqual(PACKAGED_PAYLOAD_DIRECTORY, ['release', 'win-unpacked', 'resources', 'bin'])
+  expect(SOURCE_PAYLOAD_DIRECTORY).toEqual(['resources', 'bin', 'win32'])
+  expect(PACKAGED_PAYLOAD_DIRECTORY).toEqual(['release', 'win-unpacked', 'resources', 'bin'])
 })
