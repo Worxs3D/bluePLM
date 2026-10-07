@@ -11,13 +11,14 @@ export const zhTW: TranslationDict = {
     embeddedEDrawings: 'eDrawings 3D 預覽（Windows，可選）',
     embeddedEDrawingsAvailable: 'BluePLM 內的互動式 3D 檢視器。Windows 實驗性功能。',
     embeddedEDrawingsUnavailable:
-      '需要 Windows、已安裝的 eDrawings 和可選的預覽模組。',
+      '需要 Windows、具備 ActiveX 控制項的 eDrawings、Microsoft .NET 8 Desktop Runtime (x64) 和可選的預覽模組。',
     previewStarting: '正在啟動內嵌 eDrawings 預覽…',
     previewStartFailed: '無法啟動內嵌 eDrawings 預覽。',
     previewUnavailable: '此電腦無法使用選用的 Windows eDrawings 預覽。',
     previewServiceUnavailable: 'eDrawings 預覽服務無法使用。',
     previewSessionUnavailable: 'eDrawings 預覽工作階段已不再啟用。',
-    previewHostUnavailable: '內嵌 eDrawings 預覽主機無法使用。',
+    previewHostUnavailable:
+      '內嵌 eDrawings 預覽主機無法使用。需要 Microsoft .NET 8 Desktop Runtime (x64)。',
     previewHostTimeout: '內嵌 eDrawings 預覽啟動逾時。',
     previewDocumentLoadFailed: '無法在 eDrawings 中載入所選文件。',
     previewFileUnavailable: '此檔案無法用於內嵌 eDrawings 預覽。',

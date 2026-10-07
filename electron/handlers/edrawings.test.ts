@@ -113,8 +113,11 @@ class FakeOwner extends EventEmitter implements PreviewOwner {
     return true
   }
 
-  emitRendererLifecycle(event: 'render-process-gone' | 'did-start-navigation'): void {
-    this.rendererEvents.emit(event)
+  emitRendererLifecycle(
+    event: 'render-process-gone' | 'did-start-navigation',
+    navigationDetails = { isMainFrame: true, isSameDocument: false },
+  ): void {
+    this.rendererEvents.emit(event, navigationDetails)
   }
 
   destroyWindow(): void {
@@ -335,19 +338,50 @@ describe('embedded eDrawings preview controller', () => {
     expect(preview.showCalls).toBe(0)
   })
 
-  it.each(['render-process-gone', 'did-start-navigation'] as const)(
-    'destroys the preview when the renderer emits %s',
-    async (event) => {
+  it('destroys the preview when the renderer process is gone', async () => {
+    const preview = new FakePreview()
+    const controller = createController([preview])
+    const owner = new FakeOwner(17)
+    const created = controller.create(owner, 17)
+    if (!created.success) throw new Error('expected preview session')
+
+    owner.emitRendererLifecycle('render-process-gone')
+
+    expect(preview.destroyCalls).toBe(1)
+    await expect(controller.show(created.sessionId, 17)).resolves.toMatchObject({ success: false })
+  })
+
+  it.each([
+    {
+      navigation: 'a subframe cross-document navigation',
+      details: { isMainFrame: false, isSameDocument: false },
+      destroys: false,
+    },
+    {
+      navigation: 'a same-document main-frame navigation',
+      details: { isMainFrame: true, isSameDocument: true },
+      destroys: false,
+    },
+    {
+      navigation: 'a cross-document main-frame navigation',
+      details: { isMainFrame: true, isSameDocument: false },
+      destroys: true,
+    },
+  ])(
+    'destroys the preview only for $navigation',
+    async ({ details, destroys }) => {
       const preview = new FakePreview()
       const controller = createController([preview])
       const owner = new FakeOwner(17)
       const created = controller.create(owner, 17)
       if (!created.success) throw new Error('expected preview session')
 
-      owner.emitRendererLifecycle(event)
+      owner.emitRendererLifecycle('did-start-navigation', details)
 
-      expect(preview.destroyCalls).toBe(1)
-      await expect(controller.show(created.sessionId, 17)).resolves.toMatchObject({ success: false })
+      expect(preview.destroyCalls).toBe(destroys ? 1 : 0)
+      await expect(controller.show(created.sessionId, 17)).resolves.toMatchObject({
+        success: !destroys,
+      })
     },
   )
 

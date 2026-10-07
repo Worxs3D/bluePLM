@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- AxHost and ComEventsHelper both compile against the supported .NET 8
          Windows Desktop reference assemblies; publishing stays framework-dependent. -->
     <Platforms>x64</Platforms>

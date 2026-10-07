@@ -13,14 +13,15 @@ export const pt: TranslationDict = {
     embeddedEDrawingsAvailable:
       'Visualizador 3D interativo dentro do BluePLM. Funcionalidade experimental do Windows.',
     embeddedEDrawingsUnavailable:
-      'Requer Windows, eDrawings instalado e o módulo de pré-visualização opcional.',
+      'Requer Windows, eDrawings com o controlo ActiveX, Microsoft .NET 8 Desktop Runtime (x64) e o módulo de pré-visualização opcional.',
     previewStarting: 'A iniciar a pré-visualização incorporada do eDrawings…',
     previewStartFailed: 'Não foi possível iniciar a pré-visualização incorporada do eDrawings.',
     previewUnavailable:
       'A pré-visualização opcional do eDrawings para Windows não está disponível neste computador.',
     previewServiceUnavailable: 'O serviço de pré-visualização do eDrawings não está disponível.',
     previewSessionUnavailable: 'A sessão de pré-visualização do eDrawings já não está ativa.',
-    previewHostUnavailable: 'O anfitrião da pré-visualização incorporada do eDrawings não está disponível.',
+    previewHostUnavailable:
+      'O anfitrião da pré-visualização incorporada do eDrawings não está disponível. É necessário o Microsoft .NET 8 Desktop Runtime (x64).',
     previewHostTimeout: 'A pré-visualização incorporada do eDrawings demorou demasiado a iniciar.',
     previewDocumentLoadFailed: 'Não foi possível carregar o documento selecionado no eDrawings.',
     previewFileUnavailable: 'Este ficheiro não está disponível para a pré-visualização incorporada do eDrawings.',
