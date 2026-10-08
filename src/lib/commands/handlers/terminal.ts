@@ -4,9 +4,10 @@
  * Commands: echo, clear, cls, help, history, cancel, settings, set, get
  */
 
+import { isCadPreviewMode } from '@/types/cadPreviewMode'
+
 import { usePDMStore } from '../../../stores/pdmStore'
 import { t } from '../../i18n'
-import { isCadPreviewMode } from '../../../types/CadPreviewMode'
 import {
   getCommandHistory,
   cancelAllOperations,

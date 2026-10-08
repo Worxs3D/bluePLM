@@ -1,4 +1,6 @@
 // Store types - extracted from pdmStore.ts for use across slices
+import type { CadPreviewMode } from '@/types/cadPreviewMode'
+
 import type { CheckoutUserProfile, PDMFile, Organization, User, SearchScope } from '../types/pdm'
 import type { ModuleId, ModuleConfig } from '../types/modules'
 import type {
@@ -23,7 +25,6 @@ import type { VaultAuditSlice } from './slices/vaultAuditSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
-import type { CadPreviewMode } from '../types/CadPreviewMode'
 import type {
   MetadataWriteAddress,
   MetadataWriteState,

@@ -1,4 +1,4 @@
-import type { CadPreviewMode } from '@/types/CadPreviewMode'
+import type { CadPreviewMode } from '@/types/cadPreviewMode'
 
 interface CadPreviewAvailability {
   mode: CadPreviewMode
