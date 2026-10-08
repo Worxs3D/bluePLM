@@ -1,0 +1,73 @@
+name: Windows Client Build
+
+on:
+  push:
+    branches:
+      - 'codex/winserver-*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-client-build:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'codex/winserver-')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download restic binary
+        run: npm run download-restic -- --current
+
+      - name: Build Electron app without publishing
+        run: npm run build -- --publish never
+
+      - name: Verify Windows build artifacts
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path 'release' -Filter '*.exe' -File -ErrorAction SilentlyContinue)
+          if ($installers.Count -eq 0) {
+            throw 'No Windows installer was produced in release/.'
+          }
+
+          $service = 'resources/bin/win32/BluePLM.SolidWorksService.exe'
+          if (-not (Test-Path -LiteralPath $service -PathType Leaf)) {
+            throw "Missing $service - the Windows package would lack SOLIDWORKS integration."
+          }
+
+          $installers | ForEach-Object {
+            Write-Host "Found installer $($_.FullName) ($($_.Length) bytes)"
+          }
+          Write-Host "Found service binary $service ($((Get-Item -LiteralPath $service).Length) bytes)"
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-client-build
+          path: |
+            release/*.exe
+            release/latest*.yml
+            release/beta*.yml
+            release/alpha*.yml
+          if-no-files-found: error
