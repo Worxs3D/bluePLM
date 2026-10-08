@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+import { NativePreviewContextMenuBackdrop } from '../../browser/components/ContextMenu/NativePreviewContextMenuBackdrop'
 
 import {
   CONTEXT_MENU_CLOSE_EVENT,
@@ -18,6 +22,7 @@ interface FakeRectangle {
 interface FakeElementOptions {
   rectangles?: FakeRectangle[]
   marker?: string
+  renderedMarkup?: string
   role?: string
   className?: string
   ariaLive?: string
@@ -42,6 +47,12 @@ class FakeElement {
     return null
   }
   matches(selector: string) {
+    if (
+      this.options.renderedMarkup?.includes('data-native-preview-overlay=') &&
+      selector.includes('[data-native-preview-overlay]')
+    ) {
+      return true
+    }
     if (this.options.marker && selector.includes('[data-native-preview-overlay]')) return true
     if (this.options.role && selector.includes(`[role="${this.options.role}"]`)) return true
     if (
@@ -190,6 +201,31 @@ describe('native preview context-menu seam', () => {
     expect(fileTree.match(/data-native-preview-overlay="modal"/g)).toHaveLength(3)
     expect(cardFields).toContain('data-native-preview-overlay="dropdown"')
     expect(cardTooltip).toContain('data-native-preview-overlay="tooltip"')
+  })
+
+  it('keeps a replacement preview hidden under an already-open file context menu', () => {
+    const renderedBackdrop = renderToStaticMarkup(
+      createElement(NativePreviewContextMenuBackdrop, { onClose: vi.fn() }),
+    )
+
+    const overlayDom = stubOverlayDom([
+      { renderedMarkup: renderedBackdrop, rectangles: VISIBLE_RECTANGLE },
+    ])
+    const hide = vi.fn()
+    const show = vi.fn()
+    const controller = createNativePreviewVisibilityController({ hide, show })
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, controller.setOverlayCount)
+
+    controller.setReady(true)
+
+    expect(hide).toHaveBeenCalledTimes(1)
+    expect(show).not.toHaveBeenCalled()
+
+    overlayDom.replaceOverlays([])
+    overlayDom.flushAnimationFrame()
+
+    expect(show).toHaveBeenCalledTimes(1)
+    stopObserving()
   })
 
   it('ignores a permanent non-overlay with z-50 and aria-live', () => {
