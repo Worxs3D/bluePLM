@@ -134,9 +134,16 @@ export type {
   UseNavigationHistoryReturn,
 } from './useNavigationHistory'
 
+// Mouse back/forward (X1/X2) button navigation
+export { useMouseNavButtons } from './useMouseNavButtons'
+export type { UseMouseNavButtonsOptions } from './useMouseNavButtons'
+
 // Column handlers (resize, drag-drop reorder, context menu)
 export { useColumnHandlers } from './useColumnHandlers'
 export type { ColumnHandlersDeps, UseColumnHandlersReturn } from './useColumnHandlers'
+
+// Go to folder (leave search, reveal a result in its parent folder)
+export { useGoToFolder } from './useGoToFolder'
 
 // Context menu handlers (file and empty area)
 export { useContextMenuHandlers } from './useContextMenuHandlers'

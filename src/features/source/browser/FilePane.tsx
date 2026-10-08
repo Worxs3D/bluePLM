@@ -87,7 +87,9 @@ import {
   useShareModal,
   useECOModal,
   useNavigationHistory,
+  useMouseNavButtons,
   useColumnHandlers,
+  useGoToFolder,
   useContextMenuHandlers,
   useFileEditHandlers,
   useConfigHandlers,
@@ -145,6 +147,8 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   const activeVaultId = usePDMStore((s) => s.activeVaultId)
   const searchQuery = usePDMStore((s) => s.searchQuery)
   const searchType = usePDMStore((s) => s.searchType)
+  const searchScope = usePDMStore((s) => s.searchScope)
+  const setSearchQuery = usePDMStore((s) => s.setSearchQuery)
   const lowercaseExtensions = usePDMStore((s) => s.lowercaseExtensions)
   const detailsPanelVisible = usePDMStore((s) => s.detailsPanelVisible)
   const viewMode = usePDMStore((s) => s.viewMode)
@@ -171,14 +175,17 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     )
 
   // Column actions
-  const { setColumnWidth, reorderColumns, toggleColumnVisibility, toggleSort } = usePDMStore(
-    useShallow((s) => ({
-      setColumnWidth: s.setColumnWidth,
-      reorderColumns: s.reorderColumns,
-      toggleColumnVisibility: s.toggleColumnVisibility,
-      toggleSort: s.toggleSort,
-    })),
-  )
+  const { setColumnWidth, reorderColumns, toggleColumnVisibility, toggleSort, setSortColumn, setSortDirection } =
+    usePDMStore(
+      useShallow((s) => ({
+        setColumnWidth: s.setColumnWidth,
+        reorderColumns: s.reorderColumns,
+        toggleColumnVisibility: s.toggleColumnVisibility,
+        toggleSort: s.toggleSort,
+        setSortColumn: s.setSortColumn,
+        setSortDirection: s.setSortDirection,
+      })),
+    )
 
   // Folder navigation actions
   const { setCurrentFolder, toggleFolder, updateTabFolder } = usePDMStore(
@@ -342,6 +349,9 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     activeTabId,
     updateTabFolder,
   })
+
+  // Mouse side buttons (X1/X2) drive the same folder history as the toolbar arrows.
+  useMouseNavButtons({ navigateBack, navigateForward, canGoBack, canGoForward })
 
   // Context menu handlers (file and empty area)
   const { handleContextMenu, handleEmptyContextMenu } = useContextMenuHandlers({
@@ -964,16 +974,19 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   })
 
   // Use the sorting hook for memoized sorted/filtered files
-  const { sortedFiles, isSearching } = useSorting({
+  const { sortedFiles, isSearching, toggleSortColumn } = useSorting({
     files,
     currentPath,
     sortColumn: sortColumn as import('./types').SortColumn,
     sortDirection: sortDirection as import('./types').SortDirection,
     searchQuery,
     searchType,
+    searchScope,
     hideSolidworksTempFiles,
     hiddenFolderPaths: enforcedHiddenPaths,
     toggleSort,
+    setSortColumn,
+    setSortDirection,
   })
 
   // The list view reports its visual row order, including resolved config drawings.
@@ -1433,6 +1446,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     setSelectedFiles,
     lastClickedIndex,
     setLastClickedIndex,
+    setPendingScrollToFile,
     currentPath,
     vaultPath,
     clipboard,
@@ -1479,6 +1493,14 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       window.electronAPI.openFile(file.path)
     }
   }
+
+  const handleGoToFolder = useGoToFolder({
+    vaultPath,
+    navigateToFolder,
+    setSearchQuery,
+    setSelectedFiles,
+    setPendingScrollToFile,
+  })
 
   // TODO(decompose): Extract to browser/hooks/useRefRowHandlers.ts — handleConfigBomRowClick,
   // handleDrawingRefRowClick, onConfigSectionsToggle, onConfigGroupToggle,
@@ -1772,7 +1794,12 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     >
       <FilePaneHandlersProvider handlers={handlersContextValue}>
         <div
-          className="flex-1 flex flex-col overflow-hidden relative min-w-0"
+          data-file-pane
+          // Focusable (but not in the tab order) like FileTree, so clicking anywhere in the pane
+          // lands focus here. Type-ahead requires focus inside this container, which keeps letters
+          // from reaching the pane while a modal overlay or the details panel has focus.
+          tabIndex={-1}
+          className="flex-1 flex flex-col overflow-hidden relative min-w-0 outline-none"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -1877,7 +1904,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
                   draggingColumn={draggingColumn}
                   dragOverColumn={dragOverColumn}
                   getColumnLabel={getColumnLabel}
-                  onSort={toggleSort}
+                  onSort={toggleSortColumn}
                   onResize={handleColumnResize}
                   onContextMenu={handleColumnHeaderContextMenu}
                   onDragStart={handleColumnDragStart}
@@ -1920,6 +1947,13 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
               </table>
             )}
 
+            {/* Background right-click strip - guarantees empty space to open the folder-level
+                context menu (New Folder, Paste, Add Files...) even when files fill the pane.
+                Right-clicks here fall through to handleEmptyContextMenu on the scroll container. */}
+            {vaultPath && connectedVaults.length > 0 && sortedFiles.length > 0 && (
+              <div className="min-h-24 w-full" aria-hidden="true" />
+            )}
+
             {/* Empty state - no vault connected */}
             {(!vaultPath || connectedVaults.length === 0) && <NoVaultEmptyState />}
 
@@ -1943,6 +1977,8 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
               contextMenu={contextMenu}
               contextMenuAdjustedPos={contextMenuAdjustedPos}
               onClose={() => setContextMenu(null)}
+              isSearching={isSearching}
+              onGoToFolder={handleGoToFolder}
               contextMenuRef={contextMenuRef}
               getContextMenuFiles={getContextMenuFiles}
               platform={platform}

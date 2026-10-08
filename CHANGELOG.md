@@ -6,10 +6,28 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Renderer only - no schema change, no API change.
+## [4.7.0] - 2026-10-08
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **A configuration no longer says "No drawings reference this configuration" until you restart.**
+  The cached list of drawings per configuration was never cleared when a drawing was saved,
+  because the clean-up compared absolute paths against relative ones and matched nothing. Saving a
+  drawing now clears the cached rows of the part it references, and Sync Metadata clears them for
+  every part it writes and for the model each synced drawing resolves to. Reported by Sam Devey.
+- **Type-ahead in the file pane scrolls a hidden match to the top and leaves visible rows alone**,
+  instead of parking the match at the bottom edge (#81).
+- **Selecting a drawing no longer logs a `getConfigurations` ERROR.** Drawings have no
+  configurations, so the datacard and the SolidWorks panel no longer ask for them.
 
 ### Changed
 
+- **Sync Metadata says what went wrong.** Every field that was not confirmed in the file is logged
+  with its reason, and the warning at the end of a run names the first file and field that missed
+  instead of only counting failures. A SolidWorks that is running but unreachable over COM gets
+  its own message.
 - **Vault Audit is now Vault Metadata Audit, under Settings → SolidWorks → Metadata Audit** (admins
   only). It no longer appears in the Organization list.
 - **The findings list no longer stops at 200 rows.** Every value in a category is listed in a
@@ -19,6 +37,47 @@ Renderer only - no schema change, no API change.
   hidden by the filter, sortable columns and an "Actionable only" toggle. Shift-click selects the
   whole range between two rows however long the list is, and the Apply bar stays in view while you
   scroll.
+
+## [4.6.0] - 2026-10-07
+
+Renderer, Electron main process and SolidWorks service 1.22.0 - no schema change, no API change.
+Contributed by @wilsonbhayblue (#80).
+
+### Added
+
+- **Type-ahead in the file pane.** Typing letters while the file pane has focus jumps to the next
+  file whose name starts with them, like Windows Explorer. It only runs with focus inside the file
+  pane, so it never takes letters from inputs, drop-downs, the tree, the details panel or an open
+  modal.
+- **Go to Folder on search results.** Right-click a result to leave the search and reveal the file
+  in its folder, including a moved file at its real location.
+- **Mouse back and forward buttons** navigate the explorer history.
+- **Zoom in the previews.** PDF previews zoom with Ctrl/Cmd + wheel and the +/- buttons, and
+  SolidWorks drawing previews zoom and pan.
+- **Right-click the empty strip at the bottom of a full file pane** to create a folder.
+
+### Changed
+
+- **Search is scoped per tab.** Each tab keeps its own search, so a search no longer carries over
+  to another tab, and clearing the box no longer leaves a tab stuck on its old results. "Current
+  folder" search now searches the current folder instead of the whole vault. Tab searches are not
+  restored after a restart.
+- **Searching for a number ranks item-number matches above file names.**
+- **Column headers sort search results.** The first click on a header leaves relevance order and
+  sorts that column ascending.
+- **Sharper SolidWorks drawing previews.** The details panel asks Windows for a 1024px thumbnail
+  when a file has no Document Manager preview; grid thumbnails stay at 256px. The service takes
+  the size from the caller (clamped to 16-1024). Cached previews are re-extracted once because the
+  thumbnail cache format changed.
+- **Narrow folder tree rows keep the folder name readable.** The action badges collapse before the
+  name does, and the priority ones (check-in, check-out, first check-in) are never shrunk.
+
+### Fixed
+
+- **Double-clicking inside a cell being edited** selects the word instead of opening the file.
+- **A PDF zoomed in no longer cuts off its left edge**, and Ctrl/Cmd + wheel zoom now works as
+  soon as the preview has loaded.
+- **Closing other tabs** restores the folder and search of the tab that stays active.
 
 ## [4.5.0] - 2026-10-06
 

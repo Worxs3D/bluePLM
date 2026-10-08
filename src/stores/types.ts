@@ -1,5 +1,5 @@
 // Store types - extracted from pdmStore.ts for use across slices
-import type { CheckoutUserProfile, PDMFile, Organization, User } from '../types/pdm'
+import type { CheckoutUserProfile, PDMFile, Organization, User, SearchScope } from '../types/pdm'
 import type { ModuleId, ModuleConfig } from '../types/modules'
 import type {
   KeybindingsConfig,
@@ -147,6 +147,8 @@ export interface Tab {
   title: string // Tab display title (folder name or custom)
   folderPath: string // Current folder path in file browser
   panelState: TabPanelState // Which panels are visible
+  searchQuery?: string // Explorer search text, scoped to this tab (empty/undefined = none)
+  searchType?: 'files' | 'folders' | 'all' // Search scope, scoped to this tab
   groupId?: string // Optional tab group ID
   isPinned?: boolean // Pinned tabs can't be closed easily
 }
@@ -1015,6 +1017,8 @@ export interface FilesSlice {
   // State - Search
   searchQuery: string
   searchType: 'files' | 'folders' | 'all'
+  /** Whether a search looks only inside the current folder (recursive) or across the whole vault */
+  searchScope: SearchScope
   searchResults: LocalFile[]
   isSearching: boolean
   recentSearches: string[]
@@ -1148,6 +1152,7 @@ export interface FilesSlice {
   // Actions - Search
   setSearchQuery: (query: string) => void
   setSearchType: (type: 'files' | 'folders' | 'all') => void
+  setSearchScope: (scope: SearchScope) => void
   setSearchResults: (results: LocalFile[]) => void
   setIsSearching: (searching: boolean) => void
   addRecentSearch: (query: string) => void

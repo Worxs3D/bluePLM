@@ -31,6 +31,9 @@ export const createTabsSlice: StateCreator<
       rightPanelVisible,
       connectedVaults,
       activeVaultId,
+      activeTabId,
+      searchQuery,
+      searchType,
     } = get()
     const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
     const folder = folderPath ?? currentFolder
@@ -44,10 +47,19 @@ export const createTabsSlice: StateCreator<
       title: title || folderName,
       folderPath: folder,
       panelState: { sidebarVisible, detailsPanelVisible, rightPanelVisible },
+      searchQuery: '',
+      searchType: 'all',
     }
+    // A new tab opens without a search; persist the leaving tab's working search back onto it and
+    // clear the global working copy so the new tab shows its directory, not the old results.
     set((s) => ({
-      tabs: [...s.tabs, newTab],
+      tabs: [
+        ...s.tabs.map((t) => (t.id === activeTabId ? { ...t, searchQuery, searchType } : t)),
+        newTab,
+      ],
       activeTabId: id,
+      searchQuery: '',
+      searchType: 'all',
     }))
     return id
   },
@@ -82,6 +94,8 @@ export const createTabsSlice: StateCreator<
         tabs: newTabs,
         activeTabId: newActiveId,
         currentFolder: newActiveTab.folderPath,
+        searchQuery: newActiveTab.searchQuery ?? '',
+        searchType: newActiveTab.searchType ?? 'all',
         sidebarVisible: newActiveTab.panelState.sidebarVisible,
         detailsPanelVisible: newActiveTab.panelState.detailsPanelVisible,
         rightPanelVisible: newActiveTab.panelState.rightPanelVisible,
@@ -92,28 +106,51 @@ export const createTabsSlice: StateCreator<
   },
 
   closeOtherTabs: (tabId) => {
-    const { tabs } = get()
+    const { tabs, activeTabId, searchQuery, searchType } = get()
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
 
     // Keep the current tab and pinned tabs
     const newTabs = tabs.filter((t) => t.id === tabId || t.isPinned)
-    set({
-      tabs: newTabs,
-      activeTabId: tabId,
-    })
+
+    // When this makes a different tab active, restore its folder, panel and search the way
+    // setActiveTab does - first saving the leaving tab's working search back onto it. Without
+    // this the view kept the previous tab's folder and search even though another tab was now
+    // active.
+    if (tabId !== activeTabId) {
+      set({
+        tabs: newTabs.map((t) => (t.id === activeTabId ? { ...t, searchQuery, searchType } : t)),
+        activeTabId: tabId,
+        currentFolder: tab.folderPath,
+        searchQuery: tab.searchQuery ?? '',
+        searchType: tab.searchType ?? 'all',
+        sidebarVisible: tab.panelState.sidebarVisible,
+        detailsPanelVisible: tab.panelState.detailsPanelVisible,
+        rightPanelVisible: tab.panelState.rightPanelVisible,
+      })
+    } else {
+      set({
+        tabs: newTabs,
+        activeTabId: tabId,
+      })
+    }
   },
 
   setActiveTab: (tabId) => {
-    const { tabs, activeTabId } = get()
+    const { tabs, activeTabId, searchQuery, searchType } = get()
     if (tabId === activeTabId) return
 
     const tab = tabs.find((t) => t.id === tabId)
     if (tab) {
-      // Restore the tab's folder and panel state
+      // Restore the tab's folder, panel, and search state. Search is scoped per tab, so first
+      // save the leaving tab's working search back onto it, then load the incoming tab's search
+      // (empty = show its directory rather than the previous tab's results).
       set({
+        tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, searchQuery, searchType } : t)),
         activeTabId: tabId,
         currentFolder: tab.folderPath,
+        searchQuery: tab.searchQuery ?? '',
+        searchType: tab.searchType ?? 'all',
         sidebarVisible: tab.panelState.sidebarVisible,
         detailsPanelVisible: tab.panelState.detailsPanelVisible,
         rightPanelVisible: tab.panelState.rightPanelVisible,
@@ -213,6 +250,8 @@ export const createTabsSlice: StateCreator<
       rightPanelVisible,
       connectedVaults,
       activeVaultId,
+      searchQuery,
+      searchType,
     } = get()
     if (!activeTabId) return
 
@@ -227,6 +266,8 @@ export const createTabsSlice: StateCreator<
               ...t,
               folderPath: currentFolder,
               title: folderName,
+              searchQuery,
+              searchType,
               panelState: { sidebarVisible, detailsPanelVisible, rightPanelVisible },
             }
           : t,

@@ -34,6 +34,8 @@ export function useFilePaneView() {
     sortColumn,
     sortDirection,
     toggleSort,
+    setSortColumn,
+    setSortDirection,
     user,
     organization,
     currentFolder,
@@ -42,6 +44,7 @@ export function useFilePaneView() {
     toggleFolder,
     searchQuery,
     searchType,
+    searchScope,
     hideSolidworksTempFiles,
     processingOperations,
     tabsEnabled,
@@ -94,9 +97,12 @@ export function useFilePaneView() {
     sortDirection: sortDirection as SortDirection,
     searchQuery,
     searchType,
+    searchScope,
     hideSolidworksTempFiles,
     hiddenFolderPaths: enforcedHiddenPaths,
     toggleSort,
+    setSortColumn,
+    setSortDirection,
   })
 
   // File selection
