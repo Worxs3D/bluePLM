@@ -546,7 +546,11 @@ export const usePDMStore = create<PDMStoreState>()(
               ? (persisted.hideCloudOnlyFolders as boolean)
               : false,
           // Ensure settingsTab has a default
-          settingsTab: (persisted.settingsTab as SettingsTab) || 'profile',
+          // The Vault Audit page moved into the SolidWorks tab as its Metadata Audit sub-tab.
+          settingsTab:
+            (persisted.settingsTab as string) === 'vault-audit'
+              ? 'solidworks'
+              : (persisted.settingsTab as SettingsTab) || 'profile',
           // Ensure keybindings has defaults (merge with defaults for new keybindings)
           keybindings: Object.assign(
             {

@@ -24,7 +24,7 @@
  * rendering, and that is all it decides.
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AlertTriangle, Lock, Trash2 } from 'lucide-react'
 
 import { SwServiceVersionNotice } from '@/components/shared'
@@ -55,11 +55,22 @@ function AdminOnlyNotice() {
 export function VaultAuditSettings() {
   const audit = useVaultAudit()
   const [selectedCategory, setSelectedCategory] = useState<VaultAuditCategoryKind | null>(null)
+  const findingsRef = useRef<HTMLDivElement>(null)
+
+  // The list is below the cards, and on a short window choosing a card appeared to do nothing.
+  const handleSelectCategory = (kind: VaultAuditCategoryKind | null) => {
+    setSelectedCategory(kind)
+    if (kind) {
+      requestAnimationFrame(() =>
+        findingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      )
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-plm-fg mb-1">{t('vaultAudit.title')}</h2>
+        <h3 className="text-base font-semibold text-plm-fg mb-1">{t('vaultAudit.title')}</h3>
         <p className="text-sm text-plm-fg-muted">{t('vaultAudit.description')}</p>
       </div>
 
@@ -128,10 +139,12 @@ export function VaultAuditSettings() {
                   <VaultAuditCategories
                     categories={audit.view.categories}
                     selected={selectedCategory}
-                    onSelect={setSelectedCategory}
+                    onSelect={handleSelectCategory}
                   />
 
-                  <VaultAuditFindings findings={audit.view.findings} kind={selectedCategory} />
+                  <div ref={findingsRef} className="scroll-mt-4">
+                    <VaultAuditFindings findings={audit.view.findings} kind={selectedCategory} />
+                  </div>
 
                   <VaultAuditFieldTable tallies={audit.view.fieldTallies} />
                 </>

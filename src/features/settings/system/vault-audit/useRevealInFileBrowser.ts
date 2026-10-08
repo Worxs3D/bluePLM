@@ -7,7 +7,7 @@
  * looks like every other jump in the app.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -30,12 +30,20 @@ export function useRevealInFileBrowser(): RevealInFileBrowser {
   const setPendingScrollToFile = usePDMStore((state) => state.setPendingScrollToFile)
   const setActiveView = usePDMStore((state) => state.setActiveView)
 
+  // Indexed once per loaded list. The findings table asks per visible row, and a linear search of
+  // every loaded file for each of them is what made scrolling a long list stutter.
+  const pathIndex = useMemo(() => {
+    const index = new Map<string, string>()
+    for (const file of files) {
+      const key = normalize(file.relativePath)
+      if (!index.has(key)) index.set(key, file.path)
+    }
+    return index
+  }, [files])
+
   const resolve = useCallback(
-    (relativePath: string) => {
-      const wanted = normalize(relativePath)
-      return files.find((file) => normalize(file.relativePath) === wanted)?.path ?? null
-    },
-    [files],
+    (relativePath: string) => pathIndex.get(normalize(relativePath)) ?? null,
+    [pathIndex],
   )
 
   const reveal = useCallback(

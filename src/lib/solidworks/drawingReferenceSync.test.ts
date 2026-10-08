@@ -14,6 +14,7 @@ import type { LocalFile } from '@/stores/types'
 import type { PDMFile } from '@/types/pdm'
 
 import { cancelDrawingReferenceSync, syncDrawingReferencesInBackground } from './drawingReferenceSync'
+import { clearSwReferencesCache } from './referencesCache'
 
 const upsertFileReferences = vi.fn().mockResolvedValue({
   success: true,
@@ -143,5 +144,111 @@ describe('syncOneDrawing / moved_away stubs', () => {
       'background',
     )
     expect(upsertFileReferences).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('syncOneDrawing / cached config drawing rows', () => {
+  const DRAWING_PATH = 'Parts/ENCAPSULATOR/CARTRIDGE 3_8INCH.SLDDRW'
+  const PART_PATH = 'Parts/ENCAPSULATOR/CARTRIDGE.SLDPRT'
+  const OTHER_PART_PATH = 'Parts/ELSEWHERE/CARTRIDGE.SLDPRT'
+
+  beforeEach(() => {
+    // The reference cache is keyed by path and outlives a test; both cases read the same drawing.
+    clearSwReferencesCache()
+  })
+
+  function partFile(relativePath: string): LocalFile {
+    return localFile(relativePath, { extension: '.sldprt' })
+  }
+
+  function configKey(file: LocalFile, configName: string): string {
+    return `${file.path}::${configName}`
+  }
+
+  it('evicts the cached rows of the part a saved drawing references, keyed by absolute path', async () => {
+    const part = partFile(PART_PATH)
+    const otherPart = partFile(OTHER_PART_PATH)
+    const drawing = localFile(DRAWING_PATH, {
+      pdmData: {
+        id: 'drawing-1',
+        org_id: 'org-1',
+        vault_id: 'vault-1',
+        file_path: DRAWING_PATH,
+        checked_out_by: null,
+      } as PDMFile,
+    })
+
+    getReferences.mockResolvedValue({
+      success: true,
+      data: {
+        filePath: drawing.path,
+        // Absolute path in a different casing, as Document Manager reports it.
+        references: [
+          {
+            path: part.path.toLowerCase(),
+            fileName: 'CARTRIDGE.SLDPRT',
+            exists: true,
+            fileType: 'Part',
+            configuration: '0375',
+          },
+        ],
+        count: 1,
+      },
+    })
+
+    const stale = new Map([
+      [configKey(part, '0375'), []],
+      [configKey(part, '01875'), []],
+      [configKey(otherPart, '0375'), []],
+    ])
+    usePDMStore.setState({ files: [drawing, part, otherPart], configDrawingData: stale })
+
+    syncDrawingReferencesInBackground([DRAWING_PATH])
+    await runQueuedBatch()
+
+    const remaining = Array.from(usePDMStore.getState().configDrawingData.keys())
+    expect(remaining).toEqual([configKey(otherPart, '0375')])
+  })
+
+  it('leaves cached rows alone when the drawing references a different part', async () => {
+    const part = partFile(PART_PATH)
+    const otherPart = partFile(OTHER_PART_PATH)
+    const drawing = localFile(DRAWING_PATH, {
+      pdmData: {
+        id: 'drawing-1',
+        org_id: 'org-1',
+        vault_id: 'vault-1',
+        file_path: DRAWING_PATH,
+        checked_out_by: null,
+      } as PDMFile,
+    })
+
+    getReferences.mockResolvedValue({
+      success: true,
+      data: {
+        filePath: drawing.path,
+        references: [
+          {
+            path: otherPart.path,
+            fileName: 'CARTRIDGE.SLDPRT',
+            exists: true,
+            fileType: 'Part',
+          },
+        ],
+        count: 1,
+      },
+    })
+
+    usePDMStore.setState({
+      files: [drawing, part, otherPart],
+      configDrawingData: new Map([[configKey(part, '0375'), []]]),
+    })
+
+    syncDrawingReferencesInBackground([DRAWING_PATH])
+    await runQueuedBatch()
+
+    expect(Array.from(usePDMStore.getState().configDrawingData.keys())).toEqual([
+      configKey(part, '0375'),
+    ])
   })
 })

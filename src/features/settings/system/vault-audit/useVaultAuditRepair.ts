@@ -119,14 +119,15 @@ export function useVaultAuditRepair(): UseVaultAuditRepairResult {
 
   const setMany = useCallback(
     (ids: readonly string[], shouldSelect: boolean) => {
-      const next = new Set(repair.selectedIds)
+      // Read at call time so two calls in one handler build on each other (Invert makes two).
+      const next = new Set(usePDMStore.getState().vaultAuditRepair.selectedIds)
       for (const id of ids) {
         if (shouldSelect) next.add(id)
         else next.delete(id)
       }
       setSelection([...next])
     },
-    [repair.selectedIds, setSelection],
+    [setSelection],
   )
 
   const apply = useCallback(async () => {

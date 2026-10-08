@@ -42,7 +42,7 @@ export function VaultAuditCategories({
               aria-pressed={isSelected}
               className={`text-left p-3 rounded-md border transition-colors ${
                 isSelected
-                  ? 'border-plm-accent bg-plm-highlight'
+                  ? 'border-plm-accent bg-plm-highlight ring-1 ring-plm-accent'
                   : 'border-plm-border hover:bg-plm-bg-lighter'
               } ${empty ? 'opacity-60 cursor-default hover:bg-transparent' : ''}`}
             >

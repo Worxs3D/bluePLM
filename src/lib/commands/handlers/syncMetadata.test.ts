@@ -41,6 +41,10 @@ vi.mock('./syncMetadataProperties', () => ({ isParentAuthoritative: vi.fn(() => 
 const storeState = {
   updatePendingMetadata: vi.fn(),
   solidworksServiceStatus: { dmApiAvailable: true },
+  configDrawingData: new Map<string, unknown[]>(),
+  clearConfigDrawingData: vi.fn((key: string) => {
+    storeState.configDrawingData.delete(key)
+  }),
 }
 vi.mock('../../../stores/pdmStore', () => ({
   usePDMStore: { getState: () => storeState },
@@ -91,6 +95,7 @@ function makeContext(files: LocalFile[]): CommandContext {
 beforeEach(() => {
   vi.clearAllMocks()
   storeState.updatePendingMetadata.mockClear()
+  storeState.configDrawingData.clear()
   pushPartAssemblyMetadata.mockResolvedValue({ success: true })
   pushDrawingMetadata.mockResolvedValue({ success: true })
   pullDrawingMetadata.mockResolvedValue(null)
@@ -253,5 +258,59 @@ describe('a checked-out file that is still read-only on disk', () => {
     expect(file.name).toBe('B.sldprt')
     expect(result.succeeded).toBe(1)
     expect(result.failed).toBe(1)
+  })
+})
+
+describe('what a sync leaves behind for the config rows and the user', () => {
+  it('drops the cached config rows of a part it pushed, and keeps the rest', async () => {
+    const part = localFile('Part.sldprt', {
+      pdmData: { id: PART_ID, checked_out_by: USER_ID } as PDMFile,
+    })
+    const other = `${VAULT}\\Other.sldprt`
+    storeState.configDrawingData.set(`${part.path}::0375`, [])
+    storeState.configDrawingData.set(`${part.path}::01875`, [])
+    storeState.configDrawingData.set(`${other}::Default`, [])
+
+    await syncMetadataCommand.execute({ files: [part] }, makeContext([part]))
+
+    expect(Array.from(storeState.configDrawingData.keys())).toEqual([`${other}::Default`])
+  })
+
+  it('drops the cached rows of the model a synced drawing resolved to', async () => {
+    const drawing = localFile('Part.slddrw', {
+      pdmData: { id: 'drw-1', checked_out_by: USER_ID } as PDMFile,
+    })
+    const parentPath = `${VAULT}\\Parts\\Part.sldprt`
+    pullDrawingMetadata.mockResolvedValue({
+      partNumber: null,
+      tabNumber: null,
+      description: null,
+      revision: null,
+      parentModelPath: parentPath,
+    })
+    storeState.configDrawingData.set(`${parentPath}::0375`, [])
+
+    await syncMetadataCommand.execute({ files: [drawing] }, makeContext([drawing]))
+
+    expect(storeState.configDrawingData.size).toBe(0)
+  })
+
+  it('names the file and the reason in the warning when a push fails', async () => {
+    const part = localFile('Part.sldprt', {
+      pdmData: { id: PART_ID, checked_out_by: USER_ID } as PDMFile,
+    })
+    pushPartAssemblyMetadata.mockResolvedValue({
+      success: false,
+      error: 'First miss: part_number — the file is open in another process',
+    })
+    const ctx = makeContext([part])
+
+    const result = await syncMetadataCommand.execute({ files: [part] }, ctx)
+
+    expect(result.success).toBe(false)
+    expect(ctx.addToast).toHaveBeenCalledWith(
+      'warning',
+      expect.stringContaining('Part.sldprt: First miss: part_number'),
+    )
   })
 })

@@ -169,14 +169,15 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
 
   const setManyFiles = useCallback(
     (fileIds: readonly string[], shouldSelect: boolean) => {
-      const next = new Set(push.selectedFileIds)
+      // Read at call time so two calls in one handler build on each other (Invert makes two).
+      const next = new Set(usePDMStore.getState().vaultAuditPush.selectedFileIds)
       for (const id of fileIds) {
         if (shouldSelect) next.add(id)
         else next.delete(id)
       }
       setSelection([...next])
     },
-    [push.selectedFileIds, setSelection],
+    [setSelection],
   )
 
   const run = useCallback(async () => {

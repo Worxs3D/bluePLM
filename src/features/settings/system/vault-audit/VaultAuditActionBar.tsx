@@ -39,6 +39,7 @@ import type { VaultAuditRepairOutcome } from '@/types/vaultAudit'
 
 import { describeShortfall } from './repairReceipt'
 import type { UseVaultAuditPushResult } from './useVaultAuditPush'
+import { VaultAuditNote } from './VaultAuditNote'
 import type { UseVaultAuditRepairResult } from './useVaultAuditRepair'
 import type { VaultAuditActionKind } from './vaultAuditActions'
 
@@ -105,10 +106,13 @@ function WriteToVaultBar({ repair }: { repair: UseVaultAuditRepairResult }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-2 p-3 rounded-md border border-plm-border bg-plm-bg-lighter">
-        <ShieldCheck size={14} className="text-plm-success mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-plm-fg-muted">{t('vaultAudit.repair.guarantee')}</p>
-      </div>
+      <VaultAuditNote
+        icon={ShieldCheck}
+        iconClassName="text-plm-success"
+        label={t('vaultAudit.actions.guaranteeLabel')}
+      >
+        <p>{t('vaultAudit.repair.guarantee')}</p>
+      </VaultAuditNote>
 
       <label className="flex items-start gap-2 text-xs text-plm-fg-muted cursor-pointer">
         <input
@@ -166,10 +170,13 @@ function WriteToFileBar({ push }: { push: UseVaultAuditPushResult }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-2 p-3 rounded-md border border-plm-border bg-plm-bg-lighter">
-        <FileUp size={14} className="text-plm-accent mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-plm-fg-muted">{t('vaultAudit.push.wholeFileNote')}</p>
-      </div>
+      <VaultAuditNote
+        icon={FileUp}
+        iconClassName="text-plm-accent"
+        label={t('vaultAudit.actions.fileWriteLabel')}
+      >
+        <p>{t('vaultAudit.push.wholeFileNote')}</p>
+      </VaultAuditNote>
 
       {push.heldByOthers.size > 0 && (
         <p className="text-xs text-plm-fg-muted flex items-start gap-1.5">

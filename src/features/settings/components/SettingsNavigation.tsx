@@ -1,7 +1,6 @@
 import { usePDMStore } from '@/stores/pdmStore'
 import type { IntegrationStatusValue, IntegrationId, BackupStatusValue } from '@/stores/types'
 import type { SettingsTab } from '@/types/settings'
-import { t } from '@/lib/i18n'
 import { logSettings } from '@/lib/userActionLogger'
 
 interface SettingsNavigationProps {
@@ -40,7 +39,6 @@ const settingsSections = (): SettingsSection[] => [
       { id: 'supabase', label: 'Supabase' },
       { id: 'backup', label: 'Backups' },
       { id: 'vaults', label: 'Vaults' },
-      { id: 'vault-audit', label: t('vaultAudit.title'), adminOnly: true },
       { id: 'team-members', label: 'Members & Teams' },
       { id: 'module-access', label: 'Module Access' },
       { id: 'company-profile', label: 'Company Profile' },

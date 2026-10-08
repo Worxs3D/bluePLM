@@ -46,6 +46,7 @@ import {
   SW_EXTENSIONS,
   logSync,
 } from './syncMetadataCommon'
+import { collectStaleConfigPaths, evictConfigDrawingRows } from './syncMetadataCache'
 import { isParentAuthoritative } from './syncMetadataProperties'
 import { pullDrawingMetadata } from './syncMetadataPull'
 import { pushDrawingMetadata, pushPartAssemblyMetadata } from './syncMetadataPush'
@@ -282,6 +283,10 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
     let drawingsNeedingSwComFix = 0 // Drawings where SW COM is inaccessible
     const errors: string[] = []
     const readOnlyNames: string[] = []
+    // Why files failed, minus read-only refusals, which have a toast of their own.
+    const failureDetails: string[] = []
+    const syncedPartPaths: string[] = []
+    const drawingParentPaths: (string | null | undefined)[] = []
 
     // Get vault path for full path construction
     const vaultPath = ctx.vaultPath || ''
@@ -302,6 +307,8 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
           const metadata = await pullDrawingMetadata(fullPath, file)
 
           if (metadata) {
+            drawingParentPaths.push(metadata.parentModelPath)
+
             // Track if this drawing needed SW but it wasn't running or COM was inaccessible
             if (metadata.drawingNeedsSwButNotRunning) {
               drawingsNeedingSw++
@@ -372,6 +379,9 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
                   failed++
                   const errorMsg = `Failed to correct ${file.name}: ${writeResult.error}`
                   errors.push(errorMsg)
+                  if (!refusal && writeResult.error) {
+                    failureDetails.push(`${file.name}: ${writeResult.error}`)
+                  }
                   logSync('error', 'PUSH to drawing failed', {
                     filePath: file.path,
                     error: writeResult.error,
@@ -385,6 +395,8 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
         } else if (isPartOrAssembly) {
           // PUSH: Write metadata from BluePLM -> into SW file
           logSync('debug', 'Processing part/assembly (PUSH)', { fullPath })
+
+          syncedPartPaths.push(file.path)
 
           const refusal = await readOnlyPushRefusal(file, fullPath)
           const result = refusal
@@ -405,6 +417,7 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
             failed++
             const errorMsg = `Failed to write ${file.name}: ${result.error}`
             errors.push(errorMsg)
+            if (result.error) failureDetails.push(`${file.name}: ${result.error}`)
             logSync('error', 'PUSH failed', { filePath: file.path, error: result.error })
           }
         } else {
@@ -427,6 +440,16 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
     // Clear processing state
     ctx.removeProcessingFolders(filesBeingProcessed)
 
+    // The config rows cache which drawings reference each configuration and never re-ask, so
+    // whatever this run changed would stay hidden until restart. Drop the answers for the parts
+    // it touched and the parents its drawings resolved to; the next expand reads them again.
+    const evictedConfigRows = evictConfigDrawingRows(
+      collectStaleConfigPaths(syncedPartPaths, drawingParentPaths),
+    )
+    if (evictedConfigRows > 0) {
+      logSync('debug', 'Cleared cached config drawing rows', { operationId, evictedConfigRows })
+    }
+
     // Finish progress toast
     progress.finish()
 
@@ -447,7 +470,13 @@ export const syncMetadataCommand: Command<SyncMetadataParams> = {
     }
 
     if (failed > 0) {
-      ctx.addToast('warning', `Sync complete: ${parts.join(', ')}`)
+      const summary = `Sync complete: ${parts.join(', ')}`
+      ctx.addToast(
+        'warning',
+        failureDetails.length > 0
+          ? t('metadataWrite.syncFailedDetail', { summary, detail: failureDetails[0] })
+          : summary,
+      )
     } else if (drawingsNeedingSw > 0) {
       ctx.addToast('warning', `Open SolidWorks to sync drawing metadata from parent parts`)
     } else if (drawingsNeedingSwComFix > 0) {

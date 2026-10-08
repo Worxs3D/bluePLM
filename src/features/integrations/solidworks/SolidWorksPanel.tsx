@@ -9,6 +9,7 @@ import { refreshLocalFileFacts } from '@/lib/refreshLocalFileFacts'
 import { resolvedPropertyView } from '@/lib/metadata/divergence'
 import { lockedDrawingFields } from '@/lib/metadata/drawingLockouts'
 import { resolveFileMetadata } from '@/lib/metadata/overlay'
+import { canHaveConfigurations } from '@/lib/solidworks/configurationSupport'
 import { currentUnwritableFieldGroups } from '@/lib/metadata/writeOwnership'
 import { buildMetadataWritePlan } from '@/lib/metadata/writePlan'
 import { pendingWithoutGroups } from '@/lib/metadata/writeState'
@@ -700,8 +701,10 @@ export function SWPropertiesPanel({ file }: { file: LocalFile }) {
         if (result?.success && result.data) {
           setFileProperties(result.data.fileProperties)
 
-          // Get configuration data
-          const configResult = await window.electronAPI?.solidworks?.getConfigurations(file.path)
+          // Get configuration data (drawings have none; asking only opens them for nothing)
+          const configResult = canHaveConfigurations(ext)
+            ? await window.electronAPI?.solidworks?.getConfigurations(file.path)
+            : undefined
           if (configResult?.success && configResult.data) {
             const configData = configResult.data
             setConfigurations(configData.configurations)
@@ -877,7 +880,9 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
             setFileProperties(props as Record<string, string>)
           }
 
-          const configResult = await window.electronAPI?.solidworks?.getConfigurations(file.path)
+          const configResult = canHaveConfigurations(ext)
+            ? await window.electronAPI?.solidworks?.getConfigurations(file.path)
+            : undefined
 
           if (configResult?.success && configResult.data) {
             const configs = configResult.data.configurations || configResult.data

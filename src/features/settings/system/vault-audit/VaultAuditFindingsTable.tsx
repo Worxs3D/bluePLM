@@ -6,29 +6,42 @@
  * they depend on which of the two writers covers the row and this component should not have an
  * opinion about that.
  *
- * ## Two things this table does differently from an ordinary list
+ * ## It lists every row, and draws only the ones in view
+ *
+ * The list used to stop at two hundred rows so that the page stayed cheap. A category can hold
+ * thousands of values and an administrator has to be able to see and select all of them, so the
+ * cap is gone and the cost is paid differently: the rows live in a bounded scroll area and only
+ * the ones inside it (plus a little overscan) are in the DOM. Row heights differ - a conflict row
+ * carries two buttons and a blocked row carries a note - so each drawn row is measured.
+ *
+ * ## Three things this table does differently from an ordinary list
  *
  * **The value columns are built around the difference, not around the start of the string.** Two
  * descriptions that share their first thirty characters used to render as two identical truncated
  * cells, which made the conflict category unreadable and therefore unanswerable. The shared ends
  * are trimmed to a little context, the differing span is highlighted, and the full value is on the
- * title attribute.
+ * title attribute. That comparison is computed per drawn row, never for the whole list.
  *
  * **A row with no checkbox says why.** An empty cell where other rows have a control reads as an
  * oversight; the reason is in the resolution column, which is where the row already explains
  * itself.
+ *
+ * **The header checkbox is a real tri-state control.** It ticks or clears every selectable row the
+ * filter lets through - the whole list, not the viewport.
  */
 
-import { ArrowLeft, ArrowRight, Check, ExternalLink } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ExternalLink } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import type { VaultAuditFinding } from '@/types/vaultAudit'
 
-import type { VaultAuditActionKind, VaultAuditRowAction } from './vaultAuditActions'
+import type { VaultAuditActionKind } from './vaultAuditActions'
 import type { VaultAuditFileAvailability } from './vaultAuditFileState'
 import {
+  compareForDisplay,
   isTrivialDifference,
-  type ValueComparisonDisplay,
   type ValueSegments,
 } from './valueDifference'
 import {
@@ -40,40 +53,32 @@ import {
   resolutionLabel,
   unattributedReasonLabel,
 } from './vaultAuditLabels'
+import type { VaultAuditFindingRow } from './vaultAuditRows'
+import type { FindingSort, FindingSortKey } from './vaultAuditSort'
 import { useRevealInFileBrowser } from './useRevealInFileBrowser'
 
-/** One finding, with everything the table needs to draw it already decided. */
-export interface VaultAuditFindingRow {
-  finding: VaultAuditFinding
-  action: VaultAuditRowAction
-  /** What ticking this row adds to: a value for a database write, a file for a document write. */
-  selectionId: string
-  selected: boolean
-  /** Already written by an apply in this session. Shown, but not offered again. */
-  settled: boolean
-  /** Null when one side holds nothing, so there is no difference to point at. */
-  comparison: ValueComparisonDisplay | null
-  /** Who can write this file today. Null for a finding whose file is not in the loaded list. */
-  availability: VaultAuditFileAvailability | null
-  /** The two explicit choices shown for a conflict row. */
-  conflict: {
-    useBluePlm: ConflictOption
-    useFile: ConflictOption
-  } | null
-}
+export type { ConflictOption, VaultAuditFindingRow } from './vaultAuditRows'
 
-export interface ConflictOption {
-  available: boolean
-  selected: boolean
-  settled: boolean
-  reason: string | null
-}
+/** Same template for the header and every row, so the columns line up without a `<table>`. */
+const GRID_COLUMNS =
+  'grid grid-cols-[2rem_minmax(0,1.4fr)_6.5rem_6.5rem_minmax(0,1fr)_1.5rem_minmax(0,1fr)_10.5rem_2rem]'
+
+const HEADER_HEIGHT_PX = 30
+const ESTIMATED_ROW_HEIGHT_PX = 44
+const OVERSCAN_ROWS = 10
 
 interface VaultAuditFindingsTableProps {
   rows: VaultAuditFindingRow[]
-  /** Rows beyond the render cap, so the footer can say what is not shown. */
-  totalMatching: number
+  sort: FindingSort
+  /** Changes whenever the list underneath is a different list, so the view returns to the top. */
+  scrollResetKey: string
   disabled: boolean
+  /** Header checkbox state, over the rows the filter lets through. */
+  allSelected: boolean
+  someSelected: boolean
+  canSelectAny: boolean
+  onSort: (key: FindingSortKey) => void
+  onToggleAll: () => void
   onToggle: (row: VaultAuditFindingRow, shiftKey: boolean) => void
   onChooseConflict: (
     row: VaultAuditFindingRow,
@@ -139,194 +144,360 @@ function DirectionCell({ finding }: { finding: VaultAuditFinding }) {
   )
 }
 
+/** The folder dimmed and the file name leading, with the whole path on hover. */
+function PathCell({ relativePath }: { relativePath: string }) {
+  const split = Math.max(relativePath.lastIndexOf('\\'), relativePath.lastIndexOf('/'))
+  const folder = split === -1 ? '' : relativePath.slice(0, split + 1)
+  const name = relativePath.slice(split + 1)
+
+  return (
+    <span className="block truncate font-mono" title={relativePath}>
+      <span className="text-plm-fg">{name}</span>
+      {folder && <span className="block truncate text-plm-fg-muted/70 text-[11px]">{folder}</span>}
+    </span>
+  )
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string
+  sortKey: FindingSortKey
+  sort: FindingSort
+  onSort: (key: FindingSortKey) => void
+}) {
+  const active = sort.key === sortKey
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      title={t('vaultAudit.findings.sortBy', { column: label })}
+      className={`flex items-center gap-1 text-left hover:text-plm-fg transition-colors ${
+        active ? 'text-plm-fg' : ''
+      }`}
+    >
+      {label}
+      {active && (sort.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+    </button>
+  )
+}
+
+function ConflictButton({
+  label,
+  hint,
+  selected,
+  disabled,
+  onClick,
+}: {
+  label: string
+  hint: string
+  selected: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={selected}
+      title={hint}
+      className={`px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+        selected
+          ? 'border-plm-accent bg-plm-accent/20 text-plm-accent'
+          : 'border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+interface FindingRowViewProps {
+  row: VaultAuditFindingRow
+  index: number
+  disabled: boolean
+  localPath: string | null
+  onReveal: (relativePath: string) => void
+  onToggle: VaultAuditFindingsTableProps['onToggle']
+  onChooseConflict: VaultAuditFindingsTableProps['onChooseConflict']
+}
+
+function FindingRowView({
+  row,
+  index,
+  disabled,
+  localPath,
+  onReveal,
+  onToggle,
+  onChooseConflict,
+}: FindingRowViewProps) {
+  const { finding } = row
+  const isConflict = finding.resolution === 'choose-a-side'
+
+  // The string diff is the one per-row cost worth deferring, and it is why this runs here.
+  const comparison = useMemo(
+    () => compareForDisplay(finding.databaseValue, finding.fileValue),
+    [finding.databaseValue, finding.fileValue],
+  )
+  const trivialNote =
+    comparison && isTrivialDifference(comparison.kind) ? differenceLabel(comparison.kind) : null
+
+  return (
+    <div
+      role="row"
+      aria-rowindex={index + 2}
+      className={`${GRID_COLUMNS} border-t border-plm-border/60 items-start text-xs ${
+        row.selected && !row.settled ? 'bg-plm-highlight/40' : ''
+      }`}
+    >
+      <div role="cell" className="px-2 py-1.5">
+        {row.settled ? (
+          <Check
+            size={12}
+            className="text-plm-success"
+            aria-label={t('vaultAudit.findings.settled')}
+          />
+        ) : row.selectable ? (
+          <input
+            type="checkbox"
+            checked={row.selected}
+            disabled={disabled}
+            onChange={() => undefined}
+            onClick={(event) => onToggle(row, event.shiftKey)}
+            className="accent-plm-accent"
+            aria-label={resolutionLabel(finding.resolution)}
+          />
+        ) : null}
+      </div>
+      <div role="cell" className="px-2 py-1.5 min-w-0">
+        <PathCell relativePath={finding.relativePath} />
+      </div>
+      <div role="cell" className="px-2 py-1.5 text-plm-fg-muted truncate min-w-0">
+        {finding.configuration ?? t('vaultAudit.findings.fileScope')}
+      </div>
+      <div role="cell" className="px-2 py-1.5 text-plm-fg-muted min-w-0">
+        {fieldLabel(finding.field)}
+        {finding.unattributedReason && (
+          <span className="block text-plm-fg-muted/70">
+            {unattributedReasonLabel(finding.unattributedReason)}
+          </span>
+        )}
+      </div>
+      <div role="cell" className="px-2 py-1.5 min-w-0">
+        <ValueCell value={finding.databaseValue} segments={comparison?.database ?? null} />
+      </div>
+      <div role="cell" className="py-1.5">
+        <DirectionCell finding={finding} />
+      </div>
+      <div role="cell" className="px-2 py-1.5 min-w-0">
+        <ValueCell value={finding.fileValue} segments={comparison?.file ?? null} />
+      </div>
+      <div role="cell" className="px-2 py-1.5 text-plm-fg min-w-0">
+        <span title={resolutionHint(finding.resolution)}>{resolutionLabel(finding.resolution)}</span>
+        {isConflict && row.conflict && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {finding.field !== 'revision' && (
+              <ConflictButton
+                label={t('vaultAudit.conflict.useBluePlm')}
+                hint={
+                  row.conflict.useBluePlm.reason ?? t('vaultAudit.resolution.pushVaultValueHint')
+                }
+                selected={row.conflict.useBluePlm.selected}
+                disabled={
+                  disabled ||
+                  row.conflict.useBluePlm.settled ||
+                  !row.conflict.useBluePlm.available
+                }
+                onClick={() => onChooseConflict(row, 'write-to-file')}
+              />
+            )}
+            <ConflictButton
+              label={t('vaultAudit.conflict.useFile')}
+              hint={row.conflict.useFile.reason ?? t('vaultAudit.resolution.adoptFileValueHint')}
+              selected={row.conflict.useFile.selected}
+              disabled={
+                disabled || row.conflict.useFile.settled || !row.conflict.useFile.available
+              }
+              onClick={() => onChooseConflict(row, 'write-to-vault')}
+            />
+          </div>
+        )}
+        {!row.action.available && (
+          <span className="block text-plm-fg-muted/70">
+            {row.action.reason === 'held-by-another-user'
+              ? heldByLabel(row.availability)
+              : blockedReasonLabel(row.action.reason)}
+          </span>
+        )}
+        {trivialNote && <span className="block text-plm-warning/80">{trivialNote}</span>}
+      </div>
+      <div role="cell" className="px-2 py-1.5">
+        <div className="flex items-center gap-1 justify-end">
+          <button
+            onClick={() => onReveal(finding.relativePath)}
+            disabled={!localPath}
+            title={
+              localPath
+                ? t('vaultAudit.findings.reveal')
+                : t('vaultAudit.findings.revealUnavailable')
+            }
+            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <ExternalLink size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function VaultAuditFindingsTable({
   rows,
-  totalMatching,
+  sort,
+  scrollResetKey,
   disabled,
+  allSelected,
+  someSelected,
+  canSelectAny,
+  onSort,
+  onToggleAll,
   onToggle,
   onChooseConflict,
 }: VaultAuditFindingsTableProps) {
   const { resolve, reveal } = useRevealInFileBrowser()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const headerCheckboxRef = useRef<HTMLInputElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT_PX,
+    overscan: OVERSCAN_ROWS,
+    scrollMargin: HEADER_HEIGHT_PX,
+    // Keyed by finding, so a sort or a filter does not hand one row's measured height to another.
+    getItemKey: (index) => rows[index]?.id ?? index,
+  })
+
+  // `indeterminate` has no attribute; it can only be set on the element.
+  useLayoutEffect(() => {
+    if (headerCheckboxRef.current) headerCheckboxRef.current.indeterminate = someSelected
+  }, [someSelected])
+
+  // A different list starts at its top. Staying at row nine hundred of a list that now has twelve
+  // rows reads as an empty table.
+  useEffect(() => {
+    virtualizer.scrollToOffset(0)
+    // The virtualizer instance is stable; the key is the only thing that should trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollResetKey])
 
   return (
-    <>
-      <div className="border border-plm-border rounded-md overflow-hidden">
-        <table className="w-full text-xs table-fixed">
-          <thead className="bg-plm-bg-lighter text-plm-fg-muted">
-            <tr>
-              <th className="w-8" />
-              <th className="text-left font-normal px-2 py-1.5 w-1/5">
-                {t('vaultAudit.findings.columnFile')}
-              </th>
-              <th className="text-left font-normal px-2 py-1.5 w-24">
-                {t('vaultAudit.findings.columnConfiguration')}
-              </th>
-              <th className="text-left font-normal px-2 py-1.5 w-24">
-                {t('vaultAudit.findings.columnField')}
-              </th>
-              <th className="text-left font-normal px-2 py-1.5">
-                {t('vaultAudit.findings.columnDatabase')}
-              </th>
-              <th className="w-6" />
-              <th className="text-left font-normal px-2 py-1.5">
-                {t('vaultAudit.findings.columnFile2')}
-              </th>
-              <th className="text-left font-normal px-2 py-1.5 w-40">
-                {t('vaultAudit.findings.columnResolution')}
-              </th>
-              <th className="w-10" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const { finding } = row
-              const isConflict = finding.resolution === 'choose-a-side'
-              const localPath = resolve(finding.relativePath)
-              const trivialNote =
-                row.comparison && isTrivialDifference(row.comparison.kind)
-                  ? differenceLabel(row.comparison.kind)
-                  : null
+    <div
+      ref={scrollRef}
+      role="table"
+      aria-rowcount={rows.length + 1}
+      className="border border-plm-border rounded-md overflow-auto max-h-[60vh] min-h-[12rem] bg-plm-bg"
+    >
+      <div className="min-w-[52rem]">
+        <div
+          role="row"
+          aria-rowindex={1}
+          style={{ height: HEADER_HEIGHT_PX }}
+          className={`${GRID_COLUMNS} sticky top-0 z-10 items-center text-xs bg-plm-bg-lighter text-plm-fg-muted border-b border-plm-border`}
+        >
+          <div role="columnheader" className="px-2">
+            <input
+              ref={headerCheckboxRef}
+              type="checkbox"
+              checked={allSelected}
+              disabled={disabled || !canSelectAny}
+              onChange={() => undefined}
+              onClick={onToggleAll}
+              className="accent-plm-accent"
+              aria-label={t('vaultAudit.findings.selectAllRows')}
+              title={t('vaultAudit.findings.selectAllRows')}
+            />
+          </div>
+          <div
+            role="columnheader"
+            className="px-2"
+            aria-sort={sort.key === 'file' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+          >
+            <SortHeader
+              label={t('vaultAudit.findings.columnFile')}
+              sortKey="file"
+              sort={sort}
+              onSort={onSort}
+            />
+          </div>
+          <div role="columnheader" className="px-2">
+            <SortHeader
+              label={t('vaultAudit.findings.columnConfiguration')}
+              sortKey="configuration"
+              sort={sort}
+              onSort={onSort}
+            />
+          </div>
+          <div role="columnheader" className="px-2">
+            <SortHeader
+              label={t('vaultAudit.findings.columnField')}
+              sortKey="field"
+              sort={sort}
+              onSort={onSort}
+            />
+          </div>
+          <div role="columnheader" className="px-2">
+            {t('vaultAudit.findings.columnDatabase')}
+          </div>
+          <div role="columnheader" />
+          <div role="columnheader" className="px-2">
+            {t('vaultAudit.findings.columnFile2')}
+          </div>
+          <div role="columnheader" className="px-2">
+            <SortHeader
+              label={t('vaultAudit.findings.columnResolution')}
+              sortKey="resolution"
+              sort={sort}
+              onSort={onSort}
+            />
+          </div>
+          <div role="columnheader" />
+        </div>
 
-              return (
-                <tr key={finding.id} className="border-t border-plm-border/60 align-top">
-                  <td className="px-2 py-1.5">
-                    {row.settled ? (
-                      <Check
-                        size={12}
-                        className="text-plm-success"
-                        aria-label={t('vaultAudit.findings.settled')}
-                      />
-                    ) : !isConflict && row.action.available ? (
-                      <input
-                        type="checkbox"
-                        checked={row.selected}
-                        disabled={disabled}
-                        onChange={() => undefined}
-                        onClick={(event) => onToggle(row, event.shiftKey)}
-                        className="accent-plm-accent"
-                        aria-label={resolutionLabel(finding.resolution)}
-                      />
-                    ) : null}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono text-plm-fg truncate">
-                    <span title={finding.relativePath}>{finding.relativePath}</span>
-                  </td>
-                  <td className="px-2 py-1.5 text-plm-fg-muted truncate">
-                    {finding.configuration ?? t('vaultAudit.findings.fileScope')}
-                  </td>
-                  <td className="px-2 py-1.5 text-plm-fg-muted">
-                    {fieldLabel(finding.field)}
-                    {finding.unattributedReason && (
-                      <span className="block text-plm-fg-muted/70">
-                        {unattributedReasonLabel(finding.unattributedReason)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <ValueCell
-                      value={finding.databaseValue}
-                      segments={row.comparison?.database ?? null}
-                    />
-                  </td>
-                  <td className="py-1.5">
-                    <DirectionCell finding={finding} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <ValueCell value={finding.fileValue} segments={row.comparison?.file ?? null} />
-                  </td>
-                  <td className="px-2 py-1.5 text-plm-fg">
-                    <span title={resolutionHint(finding.resolution)}>
-                      {resolutionLabel(finding.resolution)}
-                    </span>
-                    {isConflict && row.conflict && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {finding.field !== 'revision' && (
-                          <button
-                            type="button"
-                            onClick={() => onChooseConflict(row, 'write-to-file')}
-                            disabled={
-                              disabled ||
-                              row.conflict.useBluePlm.settled ||
-                              !row.conflict.useBluePlm.available
-                            }
-                            aria-pressed={row.conflict.useBluePlm.selected}
-                            title={
-                              row.conflict.useBluePlm.reason ??
-                              t('vaultAudit.resolution.pushVaultValueHint')
-                            }
-                            className={`px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                              row.conflict.useBluePlm.selected
-                                ? 'border-plm-accent bg-plm-accent/20 text-plm-accent'
-                                : 'border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
-                            }`}
-                          >
-                            {t('vaultAudit.conflict.useBluePlm')}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onChooseConflict(row, 'write-to-vault')}
-                          disabled={
-                            disabled ||
-                            row.conflict.useFile.settled ||
-                            !row.conflict.useFile.available
-                          }
-                          aria-pressed={row.conflict.useFile.selected}
-                          title={
-                            row.conflict.useFile.reason ??
-                            t('vaultAudit.resolution.adoptFileValueHint')
-                          }
-                          className={`px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                            row.conflict.useFile.selected
-                              ? 'border-plm-accent bg-plm-accent/20 text-plm-accent'
-                              : 'border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
-                          }`}
-                        >
-                          {t('vaultAudit.conflict.useFile')}
-                        </button>
-                      </div>
-                    )}
-                    {!row.action.available && (
-                      <span className="block text-plm-fg-muted/70">
-                        {row.action.reason === 'held-by-another-user'
-                          ? heldByLabel(row.availability)
-                          : blockedReasonLabel(row.action.reason)}
-                      </span>
-                    )}
-                    {trivialNote && (
-                      <span className="block text-plm-warning/80">{trivialNote}</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => reveal(finding.relativePath)}
-                        disabled={!localPath}
-                        title={
-                          localPath
-                            ? t('vaultAudit.findings.reveal')
-                            : t('vaultAudit.findings.revealUnavailable')
-                        }
-                        className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                      >
-                        <ExternalLink size={12} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {/* The virtualizer's total already excludes the header offset it was given. */}
+        <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const row = rows[virtualRow.index]
+            if (!row) return null
+
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className="absolute left-0 top-0 w-full"
+                style={{
+                  transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                <FindingRowView
+                  row={row}
+                  index={virtualRow.index}
+                  disabled={disabled}
+                  localPath={resolve(row.finding.relativePath)}
+                  onReveal={reveal}
+                  onToggle={onToggle}
+                  onChooseConflict={onChooseConflict}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
-
-      <p className="text-xs text-plm-fg-muted">
-        {t('vaultAudit.findings.showing', { shown: rows.length, total: totalMatching })}
-        {rows.length > 1 &&
-          rows.some(
-            (row) => row.finding.resolution !== 'choose-a-side' && row.action.available,
-          ) && <> {t('vaultAudit.findings.rangeHint')}</>}
-      </p>
-    </>
+    </div>
   )
 }

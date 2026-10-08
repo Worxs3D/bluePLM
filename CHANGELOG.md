@@ -6,6 +6,20 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Renderer only - no schema change, no API change.
+
+### Changed
+
+- **Vault Audit is now Vault Metadata Audit, under Settings → SolidWorks → Metadata Audit** (admins
+  only). It no longer appears in the Organization list.
+- **The findings list no longer stops at 200 rows.** Every value in a category is listed in a
+  scrollable, virtualized table, so a category with a thousand or more values is fully visible.
+- **Select all now selects every value in the category that matches the filter**, not just the
+  rows that were on screen. Added Clear and Invert, a header checkbox, a count of selected values
+  hidden by the filter, sortable columns and an "Actionable only" toggle. Shift-click selects the
+  whole range between two rows however long the list is, and the Apply bar stays in view while you
+  scroll.
+
 ## [4.5.0] - 2026-10-06
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.

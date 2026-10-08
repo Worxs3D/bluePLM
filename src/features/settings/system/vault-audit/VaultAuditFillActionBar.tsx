@@ -17,6 +17,7 @@ import type { VaultAuditFillOutcome } from '@/types/vaultAudit'
 
 import type { UseVaultAuditFillResult } from './useVaultAuditFill'
 import { fieldLabel } from './vaultAuditLabels'
+import { VaultAuditNote } from './VaultAuditNote'
 
 /** Rows listed in the preview; the count above it always covers the whole plan. */
 const MAX_PREVIEW_ROWS = 50
@@ -117,10 +118,13 @@ export function VaultAuditFillActionBar({ fill }: VaultAuditFillActionBarProps) 
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-2 p-3 rounded-md border border-plm-border bg-plm-bg-lighter">
-        <ShieldCheck size={14} className="text-plm-success mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-plm-fg-muted">{t('vaultAudit.fill.guarantee')}</p>
-      </div>
+      <VaultAuditNote
+        icon={ShieldCheck}
+        iconClassName="text-plm-success"
+        label={t('vaultAudit.actions.guaranteeLabel')}
+      >
+        <p>{t('vaultAudit.fill.guarantee')}</p>
+      </VaultAuditNote>
 
       {!fill.isAdmin && (
         <p className="text-xs text-plm-fg-muted flex items-start gap-1.5">

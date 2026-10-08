@@ -18,8 +18,10 @@
 
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import type { LocalFile } from '@/stores/types'
 import { upsertFileReferences } from '@/lib/supabase'
 
+import { normalizePath } from './pathMatching'
 import { getSwReferencesCached, isReferencesUnresolved } from './referencesCache'
 import { swRefsToFileReferences } from './referenceRows'
 import type { SWServiceReference } from './types'
@@ -233,6 +235,38 @@ async function syncOneDrawing(
 }
 
 /**
+ * Whether a drawing's references include `file`.
+ *
+ * A path is the identity: the reference list holds absolute paths, which can differ from the
+ * store's in vault-root casing or in the root itself, so the vault-relative path is accepted as a
+ * suffix too. The bare file name is only consulted when none of the references resolves to a file
+ * the store knows, because that is the one case where a path cannot say anything and an extra
+ * eviction (one re-query) is cheaper than a stale row. Otherwise two parts that share a name in
+ * different folders would evict each other.
+ */
+function referencedFileIsPart(
+  file: LocalFile,
+  referencedPaths: readonly string[],
+  referencedFileNames: ReadonlySet<string>,
+  files: readonly LocalFile[],
+): boolean {
+  const absolute = normalizePath(file.path)
+  const relative = normalizePath(file.relativePath)
+
+  if (referencedPaths.some((path) => path === absolute)) return true
+  if (relative && referencedPaths.some((path) => path.endsWith(`/${relative}`))) return true
+
+  const anyResolved = referencedPaths.some((path) =>
+    files.some(
+      (candidate) =>
+        normalizePath(candidate.path) === path ||
+        (candidate.relativePath && path.endsWith(`/${normalizePath(candidate.relativePath)}`)),
+    ),
+  )
+  return !anyResolved && referencedFileNames.has(file.name.toLowerCase())
+}
+
+/**
  * Invalidates cached configDrawingData entries for files referenced by a drawing.
  *
  * The `configDrawingData` cache (keyed as "filePath::configName") stores which drawings reference a
@@ -245,6 +279,7 @@ function invalidateCachedDrawingDataForReferences(swRefs: SWServiceReference[]):
 
   if (configDrawingData.size === 0) return
 
+  const referencedPaths = swRefs.map((ref) => normalizePath(ref.path))
   const referencedFileNames = new Set(swRefs.map((ref) => ref.fileName.toLowerCase()))
   const keysToInvalidate: string[] = []
 
@@ -252,12 +287,16 @@ function invalidateCachedDrawingDataForReferences(swRefs: SWServiceReference[]):
     const separatorIndex = configKey.indexOf('::')
     if (separatorIndex === -1) continue
 
-    const filePath = configKey.substring(0, separatorIndex)
-    const matchingFile = files.find(
-      (f) => f.relativePath === filePath || f.relativePath.replace(/\\/g, '/') === filePath,
-    )
+    const keyPath = normalizePath(configKey.substring(0, separatorIndex))
 
-    if (matchingFile && referencedFileNames.has(matchingFile.name.toLowerCase())) {
+    // The key is `${file.path}::${configName}`, and `file.path` is absolute. The relative path is
+    // kept as a fallback for keys written before that was true.
+    const matchingFile = files.find(
+      (f) => normalizePath(f.path) === keyPath || normalizePath(f.relativePath) === keyPath,
+    )
+    if (!matchingFile) continue
+
+    if (referencedFileIsPart(matchingFile, referencedPaths, referencedFileNames, files)) {
       keysToInvalidate.push(configKey)
     }
   }

@@ -123,14 +123,15 @@ export function useVaultAuditFill(
 
   const setMany = useCallback(
     (findingIds: readonly string[], shouldSelect: boolean) => {
-      const next = new Set(fill.selectedFindingIds)
+      // Read at call time so two calls in one handler build on each other (Invert makes two).
+      const next = new Set(usePDMStore.getState().vaultAuditFill.selectedFindingIds)
       for (const id of findingIds) {
         if (shouldSelect) next.add(id)
         else next.delete(id)
       }
       setSelection([...next])
     },
-    [fill.selectedFindingIds, setSelection],
+    [setSelection],
   )
 
   const apply = useCallback(async () => {

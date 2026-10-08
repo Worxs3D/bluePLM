@@ -54,15 +54,32 @@ function copyCustomProperties(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? { ...value } : null
 }
 
-function findLocalFile(
-  finding: VaultAuditFinding,
-  loadedFiles: readonly LocalFile[],
-): LocalFile | undefined {
-  const byId = loadedFiles.find((file) => file.pdmData?.id === finding.fileId)
-  if (byId) return byId
+/**
+ * The loaded files keyed both ways a finding can name one.
+ *
+ * Built once per loaded list rather than scanned per finding: a category of a thousand values
+ * against a vault of ten thousand files made the old per-row `find` the slowest thing on the page.
+ * The first file wins on a duplicate, which is what `Array.find` returned.
+ */
+interface LocalFileIndex {
+  byId: Map<string, LocalFile>
+  byPath: Map<string, LocalFile>
+}
 
-  const path = normalizePath(finding.relativePath)
-  return loadedFiles.find((file) => normalizePath(file.relativePath) === path)
+function indexLocalFiles(loadedFiles: readonly LocalFile[]): LocalFileIndex {
+  const byId = new Map<string, LocalFile>()
+  const byPath = new Map<string, LocalFile>()
+  for (const file of loadedFiles) {
+    const id = file.pdmData?.id
+    if (id && !byId.has(id)) byId.set(id, file)
+    const path = normalizePath(file.relativePath)
+    if (!byPath.has(path)) byPath.set(path, file)
+  }
+  return { byId, byPath }
+}
+
+function findLocalFile(finding: VaultAuditFinding, index: LocalFileIndex): LocalFile | undefined {
+  return index.byId.get(finding.fileId) ?? index.byPath.get(normalizePath(finding.relativePath))
 }
 
 function configurationMapKey(field: OwnedField): string | null {
@@ -120,13 +137,13 @@ function addFindingToGroup(
 function buildWriteGroups(
   findings: readonly VaultAuditFinding[],
   selectedIds: ReadonlySet<string>,
-  loadedFiles: readonly LocalFile[],
+  index: LocalFileIndex,
 ): ConflictWriteGroup[] {
   const groups = new Map<string, ConflictWriteGroup>()
 
   for (const finding of findings) {
     if (finding.resolution !== 'choose-a-side' || !selectedIds.has(finding.id)) continue
-    addFindingToGroup(groups, finding, findLocalFile(finding, loadedFiles))
+    addFindingToGroup(groups, finding, findLocalFile(finding, index))
   }
 
   return [...groups.values()].filter((group) => group.findingIds.length > 0)
@@ -165,17 +182,19 @@ export function useVaultAuditConflict(
     [conflict.settledFindingIds],
   )
 
+  const localFileIndex = useMemo(() => indexLocalFiles(loadedFiles), [loadedFiles])
+
   const blockedReasonFor = useCallback(
     (finding: VaultAuditFinding): VaultAuditConflictBlockReason | null => {
       if (finding.resolution !== 'choose-a-side') return null
       if (FILE_SCOPE_FIELDS.has(finding.field)) return null
 
-      const localFile = findLocalFile(finding, loadedFiles)
+      const localFile = findLocalFile(finding, localFileIndex)
       return localFile?.pdmData && isRecord(localFile.pdmData.custom_properties)
         ? null
         : 'file-not-loaded'
     },
-    [loadedFiles],
+    [localFileIndex],
   )
 
   const canAdoptFileValue = useCallback(
@@ -196,14 +215,16 @@ export function useVaultAuditConflict(
 
   const setMany = useCallback(
     (findingIds: readonly string[], shouldSelect: boolean) => {
-      const next = new Set(conflict.selectedFindingIds)
+      // Read at call time so two calls in one handler build on each other instead of the second
+      // starting again from the render's snapshot.
+      const next = new Set(usePDMStore.getState().vaultAuditConflict.selectedFindingIds)
       for (const id of findingIds) {
         if (shouldSelect) next.add(id)
         else next.delete(id)
       }
       setSelection([...next])
     },
-    [conflict.selectedFindingIds, setSelection],
+    [setSelection],
   )
 
   const apply = useCallback(async () => {
@@ -213,7 +234,7 @@ export function useVaultAuditConflict(
       return
     }
 
-    const groups = buildWriteGroups(findings, selectedFindingIds, loadedFiles)
+    const groups = buildWriteGroups(findings, selectedFindingIds, localFileIndex)
     if (groups.length === 0) return
 
     startConflict()
@@ -255,7 +276,15 @@ export function useVaultAuditConflict(
         failed: errors.length,
       })
     }
-  }, [addToast, finishConflict, findings, loadedFiles, selectedFindingIds, startConflict, user?.id])
+  }, [
+    addToast,
+    finishConflict,
+    findings,
+    localFileIndex,
+    selectedFindingIds,
+    startConflict,
+    user?.id,
+  ])
 
   return {
     selectedFindingIds,

@@ -126,9 +126,9 @@ Define custom metadata columns for files:
 - Description
 - Custom fields
 
-### Vault Audit
+### Vault Metadata Audit
 
-**Vault Audit** (admin only) reads the SolidWorks files in a vault read-only and compares the
+**Vault Metadata Audit** (admin only) lives under **Settings → SolidWorks → Metadata Audit**. It reads the SolidWorks files in a vault read-only and compares the
 metadata they carry with what BluePLM has recorded. It is the in-app view of the
 `scan-divergence` terminal command — the same scan and the same report file — and it groups what
 it finds by what can be done about it: values to copy from the file, values to write into the

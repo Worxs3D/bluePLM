@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
+import { canHaveConfigurations } from '@/lib/solidworks/configurationSupport'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
 import {
   FileBox,
@@ -78,6 +79,12 @@ export function SWDatacardPanel({ file }: { file: LocalFile }) {
     const loadActiveConfig = async () => {
       if (!file?.path || !status.running) return
 
+      // A drawing has no configurations; asking opens it for nothing and logs an ERROR on failure.
+      if (!canHaveConfigurations(ext)) {
+        setActiveConfigName(undefined)
+        return
+      }
+
       try {
         const result = await window.electronAPI?.solidworks?.getConfigurations(file.path)
         if (result?.success && result.data?.configurations) {
@@ -91,7 +98,7 @@ export function SWDatacardPanel({ file }: { file: LocalFile }) {
     }
 
     loadActiveConfig()
-  }, [file?.path, status.running])
+  }, [file?.path, status.running, ext])
 
   // Preview URL. The main process resolves it against the thumbnail cache,
   // preferring the full-resolution OLE stream and falling back to the Document

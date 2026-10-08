@@ -1,9 +1,10 @@
-import { AlertTriangle, Check, FileUp, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileUp, Info, Loader2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 
 import type { UseVaultAuditConflictResult } from './useVaultAuditConflict'
 import type { UseVaultAuditPushResult } from './useVaultAuditPush'
+import { VaultAuditNote } from './VaultAuditNote'
 
 interface VaultAuditConflictActionBarProps {
   conflict: UseVaultAuditConflictResult
@@ -23,9 +24,10 @@ export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConfli
 
   return (
     <div className="space-y-3">
-      <div className="p-3 rounded-md border border-plm-border bg-plm-bg-lighter">
-        <p className="text-xs text-plm-fg-muted">{t('vaultAudit.conflict.instruction')}</p>
-      </div>
+      <VaultAuditNote icon={Info} label={t('vaultAudit.actions.conflictLabel')}>
+        <p>{t('vaultAudit.conflict.instruction')}</p>
+        <p>{t('vaultAudit.conflict.bluePlmNote')}</p>
+      </VaultAuditNote>
 
       {conflict.error && (
         <p className="text-sm text-plm-error flex items-start gap-1.5">
@@ -79,8 +81,6 @@ export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConfli
           </button>
         </div>
       </div>
-
-      <p className="text-xs text-plm-fg-muted">{t('vaultAudit.conflict.bluePlmNote')}</p>
     </div>
   )
 }

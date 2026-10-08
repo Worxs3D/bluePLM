@@ -36,6 +36,7 @@ import type { LocalFile } from '../types'
 
 import { WATCHER_SUPPRESSION_MS, logSync, type ExtractedMetadata } from './syncMetadataCommon'
 import { buildPartAssemblyPushPlan, type PushConfiguration } from './syncMetadataPlan'
+import { describeFirstShortfall, logUnsettledAddresses } from './syncMetadataFailures'
 import { deriveBaseNumber, readConfigurationTab } from './syncMetadataProperties'
 
 export interface PushResult {
@@ -112,6 +113,12 @@ function describeUnwritten(
     failed: failed.length,
     total: addresses.length,
   })
+}
+
+/** `summary`, followed by the first field that missed and why, when a verdict can say. */
+function withShortfall(summary: string, addresses: readonly VerifiedAddress[]): string {
+  const shortfall = describeFirstShortfall(addresses)
+  return shortfall ? `${summary}. ${shortfall}` : summary
 }
 
 /**
@@ -259,6 +266,8 @@ export async function pushPartAssemblyMetadata(
 
     diskMutated = result.addresses.some((entry) => entry.state !== 'unattempted')
 
+    logUnsettledAddresses(fullPath, result.addresses)
+
     if (result.outcome === 'unverified') {
       // The write was issued and the document could not be read back. That is not a failure - the
       // value may well be there - but it is not the proof this path exists to produce either.
@@ -275,10 +284,13 @@ export async function pushPartAssemblyMetadata(
       })
       return {
         success: false,
-        error: describeUnwritten(
+        error: withShortfall(
+          describeUnwritten(
+            result.addresses,
+            configurations.length,
+            result.unaddressedConfigurations,
+          ),
           result.addresses,
-          configurations.length,
-          result.unaddressedConfigurations,
         ),
       }
     }
@@ -393,8 +405,13 @@ export async function pushDrawingMetadata(
 
     diskMutated = result.addresses.some((entry) => entry.state !== 'unattempted')
 
+    logUnsettledAddresses(fullPath, result.addresses)
+
     if (result.outcome === 'failed' || result.outcome === 'partial') {
-      return { success: false, error: describeUnwritten(result.addresses, 0) }
+      return {
+        success: false,
+        error: withShortfall(describeUnwritten(result.addresses, 0), result.addresses),
+      }
     }
 
     return { success: true }

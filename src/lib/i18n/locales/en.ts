@@ -1223,6 +1223,13 @@ export const en: TranslationDict = {
       'File-level properties were written, but the configurations were not: {{reason}}',
     fieldsUnwritten:
       'Only part of the file was written: {{failed}} of {{total}} fields did not reach the file',
+    // Appended to the summary above, so the user sees which field and why rather than a count.
+    addressInConfiguration: '{{field}} in configuration “{{configuration}}”',
+    firstFieldFailed: 'First miss: {{field}} — {{reason}}',
+    firstFieldFailedNoReason: 'First miss: {{field}}',
+    solidworksUnreachable:
+      'SolidWorks is running but BluePLM cannot reach it over COM. Run BluePLM and SolidWorks with the same permissions, then sync again.',
+    syncFailedDetail: '{{summary}}. {{detail}}',
     stillWriting:
       'A metadata write is still running against this file, so it was not checked in. Try again once it finishes',
     promotedUnconfirmed:
@@ -1390,7 +1397,8 @@ export const en: TranslationDict = {
 
   // Admin-only Vault Audit page - presents the read-only divergence scan
   vaultAudit: {
-    title: 'Vault Audit',
+    title: 'Vault Metadata Audit',
+    tabLabel: 'Metadata Audit',
     description:
       'Compare what BluePLM records against what your SOLIDWORKS files actually contain, then put back the per-configuration entries a check-in erased. Your files are only ever read; nothing is written anywhere until you choose what to write.',
     adminOnly: 'Only administrators can run the vault audit.',
@@ -1592,6 +1600,11 @@ export const en: TranslationDict = {
     actions: {
       noneAvailable:
         'Nothing in this category can be written from here. The rows above say why for each one.',
+      showDetails: 'Details',
+      hideDetails: 'Hide',
+      guaranteeLabel: 'What this can and cannot change',
+      fileWriteLabel: 'How writing into documents works',
+      conflictLabel: 'How conflicts are resolved',
     },
 
     push: {
@@ -1649,6 +1662,17 @@ export const en: TranslationDict = {
       unitFiles: 'files',
       unitValues: 'values',
       rangeHint: 'Shift-click a second box to select the rows between.',
+      total: '{{count}} values',
+      selectAllRows: 'Select or clear every row that matches the filter',
+      clearSelection: 'Clear',
+      invert: 'Invert',
+      selectedOf: '{{selected}} of {{total}} selected',
+      hiddenSelected: '{{count}} selected but hidden by the filter',
+      clearHidden: 'Clear hidden',
+      actionableOnly: 'Actionable only',
+      actionableOnlyHint: 'Hide rows that are already written or have nothing that can be written.',
+      clearFilter: 'Clear filter',
+      sortBy: 'Sort by {{column}}',
       settled: 'Already written in this session',
       fileScope: 'file',
       empty: '—',

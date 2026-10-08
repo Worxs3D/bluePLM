@@ -20,9 +20,18 @@
  * column rather than in a reserved map has nowhere to go until something writes columns. Those
  * stay in the table with no checkbox and a line saying why, rather than being filtered out, so the
  * count on the category card and the count in the table agree.
+ *
+ * ## Every row is here, and "all" means all of them
+ *
+ * The list used to be cut at two hundred rows, and select-all, shift-click and the footer count
+ * were all computed from the cut. A category of twelve hundred values could neither be read nor
+ * selected in full. Rows are now built for the whole category and drawn lazily by the table;
+ * "select all" covers every selectable row the filter lets through, so what the button writes is
+ * still what the administrator could see by scrolling, and the selection summary says so.
  */
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import type { VaultAuditCategoryKind, VaultAuditFinding } from '@/types/vaultAudit'
@@ -35,27 +44,34 @@ import { useVaultAuditRepair } from './useVaultAuditRepair'
 import { useVaultAuditFill } from './useVaultAuditFill'
 import { VaultAuditActionBar } from './VaultAuditActionBar'
 import { VaultAuditFillActionBar } from './VaultAuditFillActionBar'
-import { VaultAuditFindingsTable, type VaultAuditFindingRow } from './VaultAuditFindingsTable'
-import { actionForFinding, categoryDirectionOf, repairCandidateIdOf } from './vaultAuditActions'
-import { compareForDisplay } from './valueDifference'
+import { VaultAuditFindingsTable } from './VaultAuditFindingsTable'
+import { VaultAuditSelectionBar } from './VaultAuditSelectionBar'
+import { categoryDirectionOf } from './vaultAuditActions'
+import { buildFindingRows, type VaultAuditFindingRow } from './vaultAuditRows'
+import {
+  hiddenSelectedRows,
+  selectionChangeFor,
+  summarizeSelection,
+  type SelectionMode,
+} from './vaultAuditSelection'
+import {
+  DEFAULT_FINDING_SORT,
+  nextSort,
+  sortFindings,
+  type FindingSort,
+  type FindingSortKey,
+} from './vaultAuditSort'
 
 interface VaultAuditFindingsProps {
   findings: VaultAuditFinding[]
   kind: VaultAuditCategoryKind | null
 }
 
-/**
- * Rows rendered before the list is truncated.
- *
- * A vault-wide scan can produce thousands of values, and a table that long is neither readable nor
- * cheap. The filter box narrows it; the full set is in the JSON artifact. Selection is applied to
- * the rows on screen only, so what the button writes is always what the admin could see.
- */
-const MAX_ROWS = 200
+/** How long typing pauses before the filter is applied, so a long list is not re-filtered per key. */
+const FILTER_DEBOUNCE_MS = 150
 
-function matches(finding: VaultAuditFinding, needle: string): boolean {
-  if (!needle) return true
-  const haystack = [
+function haystackOf(finding: VaultAuditFinding): string {
+  return [
     finding.relativePath,
     finding.configuration ?? '',
     finding.databaseValue ?? '',
@@ -63,23 +79,30 @@ function matches(finding: VaultAuditFinding, needle: string): boolean {
   ]
     .join(' ')
     .toLowerCase()
-  return haystack.includes(needle)
 }
 
 export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) {
+  const [filterInput, setFilterInput] = useState('')
   const [filter, setFilter] = useState('')
+  const [actionableOnly, setActionableOnly] = useState(false)
+  const [sort, setSort] = useState<FindingSort>(DEFAULT_FINDING_SORT)
   const anchorId = useRef<string | null>(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setFilter(filterInput), FILTER_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [filterInput])
+
+  // A different category is a different list: an anchor from the last one points at nothing.
+  useEffect(() => {
+    anchorId.current = null
+  }, [kind])
 
   const repair = useVaultAuditRepair()
   const push = useVaultAuditPush(findings)
   const conflict = useVaultAuditConflict(findings)
   const fill = useVaultAuditFill(findings, push.heldByOthers)
-  const {
-    blockedReasonFor,
-    canAdoptFileValue,
-    selectedFindingIds: selectedConflictIds,
-    settledFindingIds: settledConflictIds,
-  } = conflict
+  const { blockedReasonFor, canAdoptFileValue } = conflict
 
   // The proposal decides what may be written into a reserved map, and it knows two things a
   // finding does not: whether the row already carries a key for that configuration, and whether
@@ -98,103 +121,64 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
   // still writes into files, and the action bar has to say so rather than going blank.
   const action = useMemo(() => categoryDirectionOf(inCategory), [inCategory])
 
-  const filtered = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    return inCategory.filter((finding) => matches(finding, needle))
-  }, [inCategory, filter])
+  const sorted = useMemo(() => sortFindings(inCategory, sort), [inCategory, sort])
 
-  const rows = useMemo<VaultAuditFindingRow[]>(() => {
-    return filtered.slice(0, MAX_ROWS).map((finding) => {
-      const rowAction = actionForFinding(
-        finding,
-        repairable,
-        push.heldByOthers,
-        fill.unsavedEdits,
-      )
-      const candidateId = repairCandidateIdOf(finding)
-      const isConflict = finding.resolution === 'choose-a-side'
-      const isFill = finding.resolution === 'fill-empty-from-file'
-      const toVault = !isConflict && rowAction.available && rowAction.kind === 'write-to-vault'
-      const selectionId = isFill
-        ? finding.id
-        : toVault && candidateId
-          ? candidateId
-          : finding.fileId
-      const fileChoiceBlockedReason = blockedReasonFor(finding)
+  // Lower-cased once per category, not once per keystroke per finding.
+  const haystacks = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const finding of inCategory) map.set(finding.id, haystackOf(finding))
+    return map
+  }, [inCategory])
 
-      return {
-        finding,
-        action: rowAction,
-        selectionId,
-        selected: isFill
-          ? fill.selectedIds.has(finding.id)
-          : isConflict
-            ? push.selectedFileIds.has(finding.fileId) || selectedConflictIds.has(finding.id)
-            : toVault
-              ? repair.selectedIds.has(selectionId)
-              : push.selectedFileIds.has(selectionId),
-        settled: isFill
-          ? fill.settledIds.has(finding.id)
-          : isConflict
-            ? push.writtenFileIds.has(finding.fileId) || settledConflictIds.has(finding.id)
-            : toVault
-              ? repair.settledIds.has(selectionId)
-              : push.writtenFileIds.has(selectionId),
-        comparison: compareForDisplay(finding.databaseValue, finding.fileValue),
-        availability: push.availability.get(finding.fileId) ?? null,
-        conflict: isConflict
-          ? {
-              useBluePlm: {
-                available: finding.field !== 'revision' && !push.heldByOthers.has(finding.fileId),
-                selected: push.selectedFileIds.has(finding.fileId),
-                settled: push.writtenFileIds.has(finding.fileId),
-                reason: push.heldByOthers.has(finding.fileId)
-                  ? t('vaultAudit.blocked.heldByAnotherUser')
-                  : null,
-              },
-              useFile: {
-                available: canAdoptFileValue(finding),
-                selected: selectedConflictIds.has(finding.id),
-                settled: settledConflictIds.has(finding.id),
-                reason: fileChoiceBlockedReason ? t('vaultAudit.blocked.fileNotLoaded') : null,
-              },
-            }
-          : null,
-      }
-    })
-  }, [
-    blockedReasonFor,
-    canAdoptFileValue,
-    selectedConflictIds,
-    settledConflictIds,
-    filtered,
-    repairable,
-    repair.selectedIds,
-    repair.settledIds,
-    fill.selectedIds,
-    fill.settledIds,
-    fill.unsavedEdits,
-    push.selectedFileIds,
-    push.writtenFileIds,
-    push.heldByOthers,
-    push.availability,
-  ])
-
-  const selectable = useMemo(
+  // Every row of the category, whether or not the filter lets it through. The hidden-selection
+  // count needs the rows the filter removed.
+  const allRows = useMemo<VaultAuditFindingRow[]>(
     () =>
-      rows.filter(
-        (row) => row.finding.resolution !== 'choose-a-side' && row.action.available && !row.settled,
-      ),
-    [rows],
+      buildFindingRows(sorted, {
+        repairable,
+        heldByOthers: push.heldByOthers,
+        unsavedEdits: fill.unsavedEdits,
+        repairSelected: repair.selectedIds,
+        repairSettled: repair.settledIds,
+        pushSelected: push.selectedFileIds,
+        pushWritten: push.writtenFileIds,
+        fillSelected: fill.selectedIds,
+        fillSettled: fill.settledIds,
+        conflictSelected: conflict.selectedFindingIds,
+        conflictSettled: conflict.settledFindingIds,
+        availability: push.availability,
+        canAdoptFileValue,
+        blockedReasonFor,
+      }),
+    [
+      sorted,
+      repairable,
+      push.heldByOthers,
+      push.selectedFileIds,
+      push.writtenFileIds,
+      push.availability,
+      fill.unsavedEdits,
+      fill.selectedIds,
+      fill.settledIds,
+      repair.selectedIds,
+      repair.settledIds,
+      conflict.selectedFindingIds,
+      conflict.settledFindingIds,
+      canAdoptFileValue,
+      blockedReasonFor,
+    ],
   )
 
-  // Counted in the unit the button writes in. A document write ticks whole files, and several rows
-  // of one file are one thing being selected - offering to "select all 42" and then writing twelve
-  // files would be describing the click by what was clicked rather than by what happens.
-  const selectableUnits = useMemo(
-    () => new Set(selectable.map((row) => row.selectionId)).size,
-    [selectable],
-  )
+  const visibleRows = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    if (!needle && !actionableOnly) return allRows
+    return allRows.filter((row) => {
+      if (actionableOnly && !row.selectable) return false
+      return !needle || (haystacks.get(row.id) ?? '').includes(needle)
+    })
+  }, [allRows, haystacks, filter, actionableOnly])
+
+  const summary = useMemo(() => summarizeSelection(allRows, visibleRows), [allRows, visibleRows])
 
   const busy = repair.applying || push.running || conflict.applying || fill.applying
 
@@ -229,35 +213,41 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     }
   }
 
+  const applyBulk = (mode: SelectionMode) => {
+    const change = selectionChangeFor(visibleRows, mode)
+    if (change.deselect.length > 0) applySelection(change.deselect, false)
+    if (change.select.length > 0) applySelection(change.select, true)
+  }
+
+  const clearHidden = () => applySelection(hiddenSelectedRows(allRows, visibleRows), false)
+
   const handleToggle = (row: VaultAuditFindingRow, shiftKey: boolean) => {
     const selected = !row.selected
 
     if (shiftKey) {
+      // Over every row the filter lets through, in the order they are displayed - not over what
+      // happens to be drawn, which is why a range can span hundreds of rows.
       const span = rangeBetween(
-        rows.map((candidate) => candidate.finding.id),
+        visibleRows.map((candidate) => candidate.id),
         anchorId.current,
-        row.finding.id,
+        row.id,
       )
       if (span) {
         const spanIds = new Set(span)
         applySelection(
-          rows.filter(
-            (candidate) =>
-              spanIds.has(candidate.finding.id) &&
-              candidate.finding.resolution !== 'choose-a-side' &&
-              candidate.action.available &&
-              !candidate.settled,
-          ),
+          visibleRows.filter((candidate) => spanIds.has(candidate.id) && candidate.selectable),
           selected,
         )
-        anchorId.current = row.finding.id
+        anchorId.current = row.id
         return
       }
     }
 
     applySelection([row], selected)
-    anchorId.current = row.finding.id
+    anchorId.current = row.id
   }
+
+  const handleSort = (key: FindingSortKey) => setSort((current) => nextSort(current, key))
 
   const handleConflictChoice = (
     row: VaultAuditFindingRow,
@@ -288,19 +278,56 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     return <p className="text-xs text-plm-fg-muted">{t('vaultAudit.findings.selectPrompt')}</p>
   }
 
-  const allSelected = selectable.length > 0 && selectable.every((row) => row.selected)
+  const unit =
+    action === 'write-to-file'
+      ? t('vaultAudit.findings.unitFiles')
+      : t('vaultAudit.findings.unitValues')
+  const filtering = filter.trim() !== '' || actionableOnly
+  const actionableTotal = allRows.filter((row) => row.selectable).length
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-plm-fg">{t('vaultAudit.findings.heading')}</h3>
-        <input
-          type="text"
-          value={filter}
-          placeholder={t('vaultAudit.findings.filterPlaceholder')}
-          onChange={(event) => setFilter(event.target.value)}
-          className="w-64 px-2 py-1 text-xs bg-plm-bg border border-plm-border rounded text-plm-fg outline-none focus:border-plm-accent"
-        />
+        <div className="flex items-center gap-3">
+          {actionableTotal > 0 && actionableTotal < allRows.length && (
+            <label
+              className="flex items-center gap-1.5 text-xs text-plm-fg-muted cursor-pointer"
+              title={t('vaultAudit.findings.actionableOnlyHint')}
+            >
+              <input
+                type="checkbox"
+                checked={actionableOnly}
+                onChange={(event) => setActionableOnly(event.target.checked)}
+                className="accent-plm-accent"
+              />
+              {t('vaultAudit.findings.actionableOnly')}
+            </label>
+          )}
+          <div className="relative">
+            <input
+              type="text"
+              value={filterInput}
+              placeholder={t('vaultAudit.findings.filterPlaceholder')}
+              onChange={(event) => setFilterInput(event.target.value)}
+              className="w-64 pl-2 pr-7 py-1 text-xs bg-plm-bg border border-plm-border rounded text-plm-fg outline-none focus:border-plm-accent"
+            />
+            {filterInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterInput('')
+                  setFilter('')
+                }}
+                title={t('vaultAudit.findings.clearFilter')}
+                aria-label={t('vaultAudit.findings.clearFilter')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-plm-fg-muted hover:text-plm-fg"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <p className="text-xs text-plm-fg-muted">{t('vaultAudit.findings.directionNote')}</p>
@@ -309,39 +336,51 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
         <p className="text-xs text-plm-fg-muted">{t('vaultAudit.findings.none')}</p>
       )}
 
-      {inCategory.length > 0 && filtered.length === 0 && (
+      {inCategory.length > 0 && visibleRows.length === 0 && (
         <p className="text-xs text-plm-fg-muted">{t('vaultAudit.findings.noMatches')}</p>
       )}
 
-      {rows.length > 0 && (
-        <>
-          {selectable.length > 0 && (
-            <button
-              onClick={() => applySelection(selectable, !allSelected)}
-              disabled={busy}
-              className="text-xs text-plm-accent hover:underline disabled:opacity-40"
-            >
-              {allSelected
-                ? t('vaultAudit.findings.selectNone', { count: selectableUnits })
-                : t('vaultAudit.findings.selectAll', {
-                    count: selectableUnits,
-                    unit:
-                      action === 'write-to-file'
-                        ? t('vaultAudit.findings.unitFiles')
-                        : t('vaultAudit.findings.unitValues'),
-                  })}
-            </button>
-          )}
+      {inCategory.length > 0 && (
+        <VaultAuditSelectionBar
+          summary={summary}
+          unit={unit}
+          disabled={busy}
+          onSelectAll={() => applyBulk('select-all')}
+          onClear={() => applyBulk('clear')}
+          onInvert={() => applyBulk('invert')}
+          onClearHidden={clearHidden}
+        />
+      )}
 
+      {visibleRows.length > 0 && (
+        <>
           <VaultAuditFindingsTable
-            rows={rows}
-            totalMatching={filtered.length}
+            rows={visibleRows}
+            sort={sort}
+            scrollResetKey={`${kind}|${filter}|${actionableOnly}|${sort.key}|${sort.direction}`}
             disabled={busy}
+            allSelected={summary.allSelected}
+            someSelected={summary.someSelected}
+            canSelectAny={summary.selectableUnits > 0}
+            onSort={handleSort}
+            onToggleAll={() => applyBulk(summary.allSelected ? 'clear' : 'select-all')}
             onToggle={handleToggle}
             onChooseConflict={handleConflictChoice}
           />
 
-          <div className="pt-2">
+          <p className="text-xs text-plm-fg-muted">
+            {filtering
+              ? t('vaultAudit.findings.showing', {
+                  shown: visibleRows.length,
+                  total: allRows.length,
+                })
+              : t('vaultAudit.findings.total', { count: allRows.length })}
+            {summary.selectableUnits > 1 && <> {t('vaultAudit.findings.rangeHint')}</>}
+          </p>
+
+          {/* Stays at the bottom of the scrolling settings area, so the button and the count of
+              what it will write are in reach however far down the list the reader has gone. */}
+          <div className="sticky bottom-0 z-20 -mx-1 px-1 pt-2 pb-1 bg-plm-bg border-t border-plm-border max-h-[45vh] overflow-y-auto">
             {kind === 'conflicting' ? (
               <VaultAuditConflictActionBar conflict={conflict} push={push} />
             ) : kind === 'empty-in-database' ? (
