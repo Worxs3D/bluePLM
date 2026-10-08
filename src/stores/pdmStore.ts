@@ -14,7 +14,10 @@
 import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
+
 import { log } from '@/lib/logger'
+import { isCadPreviewMode } from '@/types/cadPreviewMode'
+
 import {
   PERSIST_WRITE_THRESHOLD_MS,
   STORE_MUTATION_THRESHOLD_MS,
@@ -23,7 +26,6 @@ import {
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
 import { getDefaultModuleConfig, MODULES, getChildModules } from '../types/modules'
 import type { KeybindingsConfig, SettingsTab } from '../types/settings'
-import { isCadPreviewMode } from '../types/CadPreviewMode'
 import type {
   PDMStoreState,
   Tab,

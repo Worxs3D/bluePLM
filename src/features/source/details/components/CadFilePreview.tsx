@@ -94,8 +94,7 @@ export function CadFilePreview({
       ) : variant === 'thumbnail' && cadThumbnail ? (
         <div className="flex-1 flex flex-col min-h-0">
           <div
-            className="flex-1 flex items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900 rounded overflow-auto relative"
-            style={{ minHeight: 0 }}
+            className="flex-1 min-h-0 flex items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900 rounded overflow-auto relative"
             onWheel={(event) => {
               if (event.ctrlKey || event.metaKey) {
                 event.preventDefault()
