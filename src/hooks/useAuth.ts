@@ -4,11 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { setAnalyticsUser, clearAnalyticsUser } from '@/lib/analytics'
 import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
-import {
-  setCurrentAccessToken,
-  syncUserSessionsOrgId,
-  updateLastOnline,
-} from '@/lib/supabase'
+import { setCurrentAccessToken, syncUserSessionsOrgId, updateLastOnline } from '@/lib/supabase'
 import { getBackend, resolveBackend } from '@/lib/backend'
 import type { AuthStateListener } from '@/types/backend'
 import { logUserAction } from '@/lib/userActionLogger'

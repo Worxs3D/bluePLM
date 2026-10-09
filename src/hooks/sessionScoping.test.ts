@@ -133,9 +133,7 @@ describe('auth session boundaries', () => {
     expect(committedUser).toBeNull()
     expect(userA.sessionGeneration).toBe(1)
     expect(userB.sessionGeneration).toBe(3)
-    expect(
-      advanceAuthSessionBoundary(userB, 'TOKEN_REFRESHED', 'user-b'),
-    ).toEqual(userB)
+    expect(advanceAuthSessionBoundary(userB, 'TOKEN_REFRESHED', 'user-b')).toEqual(userB)
   })
 
   it('rejects late cache and realtime responses from the old session', async () => {

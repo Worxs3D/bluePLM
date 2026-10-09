@@ -287,10 +287,11 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
         // Load stats for each vault (with pagination to handle >1000 files)
         const vaultsWithStats = await Promise.all(
-          (vaultsData as any[]).map(async (vault: any) => { // TODO: type this
+          (vaultsData as any[]).map(async (vault: any) => {
+            // TODO: type this
             // Fetch file count and total size using pagination (Supabase default limit is 1000)
             const PAGE_SIZE = 1000
-            let allFileSizes: number[] = []
+            const allFileSizes: number[] = []
             let offset = 0
             let hasMore = true
 
@@ -372,7 +373,8 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
               .map((cv) => cv.localPath.toLowerCase().replace(/\\/g, '/')),
           )
 
-          for (const serverVault of vaultsData as any[]) { // TODO: type this
+          for (const serverVault of vaultsData as any[]) {
+            // TODO: type this
             // Check if this server vault is already connected (with correct ID)
             const isConnected = connectedVaults.some((cv) => cv.id === serverVault.id)
             if (isConnected) {
@@ -715,7 +717,9 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
               setSetupVaultSyncStats(stats)
             })
             .catch((error) => {
-              log.warn('[WelcomeScreen]', 'Failed to calculate sync stats', { error: String(error) })
+              log.warn('[WelcomeScreen]', 'Failed to calculate sync stats', {
+                error: String(error),
+              })
               setSetupVaultSyncStats(null) // Fall back to basic stats
             })
         }
@@ -782,7 +786,9 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
               setSetupVaultSyncStats(stats)
             })
             .catch((error) => {
-              log.warn('[WelcomeScreen]', 'Failed to calculate sync stats', { error: String(error) })
+              log.warn('[WelcomeScreen]', 'Failed to calculate sync stats', {
+                error: String(error),
+              })
               setSetupVaultSyncStats(null) // Fall back to basic stats
             })
         }

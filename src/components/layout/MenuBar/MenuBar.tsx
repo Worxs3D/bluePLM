@@ -28,12 +28,7 @@ import {
 import { usePDMStore } from '@/stores/pdmStore'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
-import {
-  getActiveSessions,
-  endRemoteSession,
-  UserSession,
-  supabase,
-} from '@/lib/supabase'
+import { getActiveSessions, endRemoteSession, UserSession, supabase } from '@/lib/supabase'
 import { getBackend, resolveBackend } from '@/lib/backend'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { logAuth } from '@/lib/userActionLogger'
