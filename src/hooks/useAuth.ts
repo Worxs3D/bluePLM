@@ -6,12 +6,11 @@ import { setAnalyticsUser, clearAnalyticsUser } from '@/lib/analytics'
 import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
 import {
   setCurrentAccessToken,
-  signOut as signOutWithSupabase,
   syncUserSessionsOrgId,
   updateLastOnline,
 } from '@/lib/supabase'
 import { getBackend, resolveBackend } from '@/lib/backend'
-import type { AuthStateListener } from '@/lib/backend'
+import type { AuthStateListener } from '@/types/backend'
 import { logUserAction } from '@/lib/userActionLogger'
 import { clearConfig } from '@/lib/supabaseConfig'
 import { log } from '@/lib/logger'
@@ -183,12 +182,7 @@ export function useAuth() {
   const handleChangeOrg = useCallback(async () => {
     advanceSession('SIGNED_OUT', null)
     // Sign out first if user is signed in
-    const resolution = resolveBackend()
-    if (resolution.status === 'ready') {
-      await resolution.backend.auth.signOut()
-    } else {
-      await signOutWithSupabase()
-    }
+    await getBackend().auth.signOut()
     // Clear the stored Supabase config
     clearConfig()
     // Reset state to show setup screen

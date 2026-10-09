@@ -21,10 +21,11 @@ import {
   LogOut,
   Trash2,
 } from 'lucide-react'
+
 import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
-import { supabase, getAccessibleVaults, signOut as supabaseSignOut } from '@/lib/supabase'
+import { supabase, getAccessibleVaults } from '@/lib/supabase'
 import { getBackend, resolveBackend } from '@/lib/backend'
-import type { AuthProviders } from '@/lib/backend/contracts/identity'
+import type { AuthProviders } from '@/types/backend'
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
@@ -36,6 +37,7 @@ import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import type { AccountType } from '@/types/database'
+
 import { createWelcomeCredentialAuthHandlers } from './welcomeCredentialAuth'
 
 // Build vault path based on platform
@@ -626,7 +628,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
     // Sign out if there's any session
     try {
-      await supabaseSignOut()
+      await getBackend().auth.signOut()
     } catch (error) {
       log.warn('[WelcomeScreen]', 'Error signing out during fresh start', { error: String(error) })
     }
@@ -891,8 +893,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   if (isAuthConnecting) {
     const handleCancelConnecting = async () => {
       log.info('[WelcomeScreen]', 'User cancelled connecting - signing out')
-      const { signOut: supabaseSignOut } = await import('@/lib/supabase')
-      await supabaseSignOut()
+      await getBackend().auth.signOut()
     }
 
     return (
@@ -1737,8 +1738,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
   if (user && !organization && !isOfflineMode) {
     const handleSignOutAndRetry = async () => {
       log.info('[WelcomeScreen]', 'User signing out to retry with different account')
-      const { signOut: supabaseSignOut } = await import('@/lib/supabase')
-      await supabaseSignOut()
+      await getBackend().auth.signOut()
     }
 
     return (

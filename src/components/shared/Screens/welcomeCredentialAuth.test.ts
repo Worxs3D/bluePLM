@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { createWelcomeCredentialAuthHandlers } from './welcomeCredentialAuth'
 
 const fixture = vi.hoisted(() => ({

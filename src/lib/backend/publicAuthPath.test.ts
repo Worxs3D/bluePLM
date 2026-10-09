@@ -31,6 +31,8 @@ const fixture = vi.hoisted(() => {
     clearConfig: vi.fn(),
     sdkAuthSubscription: { unsubscribe: vi.fn() },
     sdkOnAuthStateChange: vi.fn(),
+    sdkGetUser: vi.fn(),
+    sdkSignOut: vi.fn(),
     stateSetters: [] as Array<ReturnType<typeof vi.fn>>,
     store,
     syncUserSessionsOrgId: vi.fn(),
@@ -105,11 +107,19 @@ beforeEach(() => {
   fixture.clearConfig.mockReset()
   fixture.sdkAuthSubscription.unsubscribe.mockReset()
   fixture.sdkOnAuthStateChange.mockReset()
+  fixture.sdkGetUser.mockReset()
+  fixture.sdkGetUser.mockResolvedValue({ data: { user: null }, error: null })
+  fixture.sdkSignOut.mockReset()
+  fixture.sdkSignOut.mockResolvedValue({ error: null })
   fixture.sdkOnAuthStateChange.mockReturnValue({
     data: { subscription: fixture.sdkAuthSubscription },
   })
   fixture.createClient.mockReturnValue({
-    auth: { onAuthStateChange: fixture.sdkOnAuthStateChange },
+    auth: {
+      onAuthStateChange: fixture.sdkOnAuthStateChange,
+      getUser: fixture.sdkGetUser,
+      signOut: fixture.sdkSignOut,
+    },
   })
   fixture.stateSetters = []
   fixture.syncUserSessionsOrgId.mockReset()
@@ -121,6 +131,7 @@ beforeEach(() => {
   })
   vi.unstubAllEnvs()
   vi.stubGlobal('fetch', vi.fn())
+  vi.stubGlobal('window', { electronAPI: undefined })
 })
 
 afterEach(() => {
@@ -221,14 +232,26 @@ describe('public authentication backend path', () => {
     expect(fixture.store.setOrganization).toHaveBeenCalledWith(organization)
   })
 
-  it('keeps the established direct Supabase logout fallback when the real resolver is unconfigured', async () => {
-    const auth = await mountAuthHarness()
+  it.each([false, true])(
+    'uses the real adapter for logout with configured=%s',
+    async (configured) => {
+      if (configured) {
+        fixture.loadConfig = {
+          version: 1,
+          url: 'https://saved.example.test',
+          anonKey: 'saved-key',
+        }
+      }
+      const auth = await mountAuthHarness()
 
-    await auth.handleChangeOrg()
+      await auth.handleChangeOrg()
 
-    expect(fixture.sdkOnAuthStateChange).not.toHaveBeenCalled()
-    expect(fixture.fallbackSignOut).toHaveBeenCalledOnce()
-    expect(fixture.clearConfig).toHaveBeenCalledOnce()
-    expect(fixture.stateSetters[0]).toHaveBeenCalledWith(false)
-  })
+      expect(fixture.sdkOnAuthStateChange).toHaveBeenCalledTimes(configured ? 1 : 0)
+      expect(fixture.sdkGetUser).toHaveBeenCalledOnce()
+      expect(fixture.sdkSignOut).toHaveBeenCalledOnce()
+      expect(fixture.fallbackSignOut).not.toHaveBeenCalled()
+      expect(fixture.clearConfig).toHaveBeenCalledOnce()
+      expect(fixture.stateSetters[0]).toHaveBeenCalledWith(false)
+    },
+  )
 })

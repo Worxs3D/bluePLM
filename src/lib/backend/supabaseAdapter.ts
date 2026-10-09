@@ -12,8 +12,9 @@ import {
   getUserProfile,
   linkUserToOrganization,
 } from '@/lib/supabase/organizations'
-import type { BackendAdapter } from './contracts/backend'
-import type { AuthStateListener, AuthStateSubscription } from './contracts/auth'
+import type { AuthStateListener, AuthStateSubscription } from '@/types/backend'
+
+import type { BackendAdapter } from './contracts'
 
 function subscribeToAuthStateChange(listener: AuthStateListener): AuthStateSubscription {
   const {

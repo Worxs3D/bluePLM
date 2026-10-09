@@ -1,9 +1,14 @@
-import type { BackendAdapter, BackendResolution } from './contracts/backend'
+import type { BackendAdapter, BackendResolution } from './contracts'
 import { supabaseBackendAdapter } from './supabaseAdapter'
 
-export type { BackendAdapter, BackendKind, BackendResolution } from './contracts/backend'
-export type { AuthPort, AuthStateListener, AuthStateSubscription } from './contracts/auth'
-export type { IdentityPort } from './contracts/identity'
+export type {
+  BackendAdapter,
+  BackendKind,
+  BackendResolution,
+  AuthPort,
+  IdentityPort,
+} from './contracts'
+export type { AuthStateListener, AuthStateSubscription } from '@/types/backend'
 
 /** Select the production adapter without changing an operation's error handling. */
 export function getBackend(): BackendAdapter {

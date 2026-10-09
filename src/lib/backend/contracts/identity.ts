@@ -1,23 +1,8 @@
 import type { Organization } from '@/types/pdm'
-
-/** Server profile fields used to hydrate the signed-in renderer user. */
-export interface UserProfile {
-  id: string
-  email: string
-  role: string
-  org_id: string | null
-  full_name: string | null
-  avatar_url: string | null
-  custom_avatar_url: string | null
-}
-
-export interface AuthProviders {
-  users: { google: boolean; email: boolean; phone: boolean }
-  suppliers: { google: boolean; email: boolean; phone: boolean }
-}
+import type { AuthProviders, IdentityProfile } from '@/types/backend'
 
 export interface UserProfileResult {
-  profile: UserProfile | null
+  profile: IdentityProfile | null
   error: Error | null
 }
 
