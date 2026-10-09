@@ -7,20 +7,10 @@
 const { app, BrowserWindow } = require('electron')
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 const { classifyRenderedVisual } = require('./edrawings-render-classifier.cjs')
 
 const artifactDirectory = process.env.BLUEPLM_PREVIEW_TEST_ARTIFACT_DIR
-const legacyArtifactPaths = [
-  path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-result.json'),
-  path.join(os.tmpdir(), 'BluePLM-eDrawings-preview-test-checkpoint.json'),
-]
-
-for (const legacyArtifactPath of legacyArtifactPaths) {
-  fs.rmSync(legacyArtifactPath, { force: true })
-}
-
 function writeArtifact(name, value) {
   if (!artifactDirectory) return
   fs.mkdirSync(artifactDirectory, { recursive: true })
