@@ -60,12 +60,17 @@ describe('authentication call-site import boundaries', () => {
       'linkUserToOrganization',
     ])
     expectNoImports(welcomeImports, [
+      'getOrgAuthProviders',
+      'signInWithGoogle',
       'isSupabaseConfigured',
       'signInWithEmail',
       'signInWithPhone',
       'signUpWithEmail',
       'verifyPhoneOTP',
     ])
+    const credentialFile = 'src/components/shared/Screens/welcomeCredentialAuth.ts'
+    expect(imports(credentialFile, '@/lib/backend')).toContain('getBackend')
+    expect(imports(credentialFile, '@/lib/supabase')).toEqual([])
     expectNoImports(menuBarImports, [
       'isSupabaseConfigured',
       'signInWithEmail',

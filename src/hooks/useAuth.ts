@@ -10,7 +10,8 @@ import {
   syncUserSessionsOrgId,
   updateLastOnline,
 } from '@/lib/supabase'
-import { resolveBackend } from '@/lib/backend'
+import { getBackend, resolveBackend } from '@/lib/backend'
+import type { AuthStateListener } from '@/lib/backend'
 import { logUserAction } from '@/lib/userActionLogger'
 import { clearConfig } from '@/lib/supabaseConfig'
 import { log } from '@/lib/logger'
@@ -204,13 +205,9 @@ export function useAuth() {
 
     // Listen for auth state changes (also handles session restoration on startup)
     const listenerEpoch = ++authListenerEpochRef.current
-    const resolution = resolveBackend()
-    if (resolution.status !== 'ready') {
-      return
-    }
+    const backend = getBackend()
 
-    const subscription = resolution.backend.auth.subscribeToAuthStateChange(
-      async (event, session) => {
+    const onAuthStateChange: AuthStateListener = async (event, session) => {
       if (authListenerEpochRef.current !== listenerEpoch) return
 
       const eventSequence = ++authEventSequenceRef.current
@@ -275,8 +272,9 @@ export function useAuth() {
 
           // Fetch user profile from database to get role
           const profileStart = performance.now()
-          const { profile, error: profileError } =
-            await resolution.backend.identity.getUserProfile(session.user.id)
+          const { profile, error: profileError } = await backend.identity.getUserProfile(
+            session.user.id,
+          )
           const profileDuration = performance.now() - profileStart
           recordMetric('Startup', 'getUserProfile complete', {
             durationMs: Math.round(profileDuration),
@@ -367,12 +365,11 @@ export function useAuth() {
           // Load organization (setOrganization will clear isConnecting)
           // Pass cached org_id to avoid duplicate profile fetch in linkUserToOrganization
           const orgStart = performance.now()
-          const { org, error: orgError } =
-            await resolution.backend.identity.linkUserToOrganization(
-              session.user.id,
-              session.user.email || '',
-              userProfile?.org_id,
-            )
+          const { org, error: orgError } = await backend.identity.linkUserToOrganization(
+            session.user.id,
+            session.user.email || '',
+            userProfile?.org_id,
+          )
           const orgDuration = performance.now() - orgStart
           recordMetric('Startup', 'linkUserToOrganization complete', {
             durationMs: Math.round(orgDuration),
@@ -463,8 +460,8 @@ export function useAuth() {
         // the vault load and nothing else will come along to restore it.
         setAuthInitialized(true)
       }
-      },
-    )
+    }
+    const subscription = backend.auth.subscribeToAuthStateChange(onAuthStateChange)
 
     return () => {
       authListenerEpochRef.current += 1

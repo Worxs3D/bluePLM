@@ -1,20 +1,26 @@
-import type { BackendResolution } from './contracts/backend'
+import type { BackendAdapter, BackendResolution } from './contracts/backend'
 import { supabaseBackendAdapter } from './supabaseAdapter'
 
 export type { BackendAdapter, BackendKind, BackendResolution } from './contracts/backend'
 export type { AuthPort, AuthStateListener, AuthStateSubscription } from './contracts/auth'
 export type { IdentityPort } from './contracts/identity'
 
+/** Select the production adapter without changing an operation's error handling. */
+export function getBackend(): BackendAdapter {
+  return supabaseBackendAdapter
+}
+
 /**
- * The sole runtime selection point for the first adapter seam.  The Supabase
+ * Configuration readiness for the selected production adapter. The Supabase
  * client already resolves a valid saved configuration before a valid Vite
  * environment configuration.  It returns an explicit unconfigured result
  * rather than substituting another backend or retaining a credentials snapshot.
  */
 export function resolveBackend(): BackendResolution {
-  if (!supabaseBackendAdapter.isConfigured()) {
+  const backend = getBackend()
+  if (!backend.isConfigured()) {
     return { status: 'unconfigured' }
   }
 
-  return { status: 'ready', backend: supabaseBackendAdapter }
+  return { status: 'ready', backend }
 }

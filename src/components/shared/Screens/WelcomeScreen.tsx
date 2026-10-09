@@ -22,12 +22,8 @@ import {
   Trash2,
 } from 'lucide-react'
 import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
-import {
-  supabase,
-  getAccessibleVaults,
-  signOut as supabaseSignOut,
-} from '@/lib/supabase'
-import { resolveBackend } from '@/lib/backend'
+import { supabase, getAccessibleVaults, signOut as supabaseSignOut } from '@/lib/supabase'
+import { getBackend, resolveBackend } from '@/lib/backend'
 import type { AuthProviders } from '@/lib/backend/contracts/identity'
 import { clearConfig, loadConfig } from '@/lib/supabaseConfig'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
@@ -40,6 +36,7 @@ import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
 import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import type { AccountType } from '@/types/database'
+import { createWelcomeCredentialAuthHandlers } from './welcomeCredentialAuth'
 
 // Build vault path based on platform
 function buildVaultPath(platform: string, vaultSlug: string): string {
@@ -160,13 +157,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
       log.info('[WelcomeScreen]', 'Fetching auth providers for org', {
         orgSlug: config?.orgSlug || '(fallback)',
       })
-      const resolution = resolveBackend()
-      if (resolution.status !== 'ready') {
-        log.warn('[WelcomeScreen]', 'Backend is not configured; auth provider settings unavailable')
-        return
-      }
-
-      const providers = await resolution.backend.identity.getOrgAuthProviders(config?.orgSlug)
+      const providers = await getBackend().identity.getOrgAuthProviders(config?.orgSlug)
       if (providers) {
         log.info('[WelcomeScreen]', 'Auth providers loaded', { providers })
         setOrgAuthProviders(providers)
@@ -591,132 +582,22 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     }
   }
 
-  // Email/password sign-in (for both suppliers and team members)
-  const handleEmailAuth = async () => {
-    if (!authEmail || !authPassword) {
-      setAuthError('Please enter email and password')
-      return
-    }
-
-    // Validate password confirmation for new accounts
-    if (isNewAccount && authPassword !== authPasswordConfirm) {
-      setAuthError(t('welcome.passwordMismatch'))
-      return
-    }
-
-    setIsSigningIn(true)
-    setAuthError(null)
-
-    try {
-      const resolution = resolveBackend()
-      if (resolution.status !== 'ready') {
-        throw new Error()
-      }
-
-      if (isNewAccount) {
-        // Sign up
-        log.info('[WelcomeScreen]', 'Starting email sign-up', { accountType })
-        const { data, error } = await resolution.backend.auth.signUpWithEmail(
-          authEmail,
-          authPassword,
-          authName || undefined,
-        )
-
-        if (error) {
-          setAuthError(error.message)
-          return
-        }
-
-        if (!data?.session) {
-          // Email confirmation needed
-          setAuthError('Please check your email to confirm your account')
-          setIsNewAccount(false) // Switch back to login view
-          return
-        }
-
-        log.info('[WelcomeScreen]', 'Email sign-up successful')
-      } else {
-        // Sign in
-        log.info('[WelcomeScreen]', 'Starting email sign-in', { accountType })
-        const { error } = await resolution.backend.auth.signInWithEmail(authEmail, authPassword)
-
-        if (error) {
-          setAuthError(error.message)
-          return
-        }
-
-        log.info('[WelcomeScreen]', 'Email sign-in successful')
-      }
-    } catch (error) {
-      setAuthError('Authentication failed. Please try again.')
-    } finally {
-      setIsSigningIn(false)
-    }
-  }
-
-  // Phone OTP sign-in (for both suppliers and team members)
-  const handleSendPhoneOTP = async () => {
-    if (!authPhone) {
-      setAuthError('Please enter your phone number')
-      return
-    }
-
-    setIsSigningIn(true)
-    setAuthError(null)
-
-    try {
-      const resolution = resolveBackend()
-      if (resolution.status !== 'ready') {
-        throw new Error()
-      }
-
-      log.info('[WelcomeScreen]', 'Sending phone OTP', { accountType })
-      const { error } = await resolution.backend.auth.signInWithPhone(authPhone)
-
-      if (error) {
-        setAuthError(error.message)
-        return
-      }
-
-      setIsOtpSent(true)
-      log.info('[WelcomeScreen]', 'Phone OTP sent successfully')
-    } catch (error) {
-      setAuthError('Failed to send verification code. Please try again.')
-    } finally {
-      setIsSigningIn(false)
-    }
-  }
-
-  const handleVerifyPhoneOTP = async () => {
-    if (!phoneOtp) {
-      setAuthError('Please enter the verification code')
-      return
-    }
-
-    setIsSigningIn(true)
-    setAuthError(null)
-
-    try {
-      const resolution = resolveBackend()
-      if (resolution.status !== 'ready') {
-        throw new Error()
-      }
-
-      log.info('[WelcomeScreen]', 'Verifying phone OTP', { accountType })
-      const { error } = await resolution.backend.auth.verifyPhoneOTP(authPhone, phoneOtp)
-
-      if (error) {
-        setAuthError(error.message)
-        return
-      }
-
-      log.info('[WelcomeScreen]', 'Phone verification successful')
-    } catch (error) {
-      setAuthError('Verification failed. Please try again.')
-    } finally {
-      setIsSigningIn(false)
-    }
-  }
+  const { handleEmailAuth, handleSendPhoneOTP, handleVerifyPhoneOTP } =
+    createWelcomeCredentialAuthHandlers({
+      accountType,
+      authEmail,
+      authPassword,
+      authPasswordConfirm,
+      authName,
+      authPhone,
+      phoneOtp,
+      isNewAccount,
+      t,
+      setAuthError,
+      setIsSigningIn,
+      setIsNewAccount,
+      setIsOtpSent,
+    })
 
   // Reset auth state
   const resetAuth = () => {
