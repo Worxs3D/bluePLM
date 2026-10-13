@@ -18,14 +18,19 @@ try
     var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var readerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var writerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var firstReadHandleOpened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var firstWriteCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var firstReadAttemptCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var firstSuccessfulRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     long statusWriteEpoch = 0;
     long successfulReads = 0;
     long successfulOverlappingReads = 0;
+    Exception? harnessFailure = null;
     var reader = Task.Run(() =>
     {
         readerStarted.TrySetResult();
         start.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        var coordinateFirstRead = true;
         while (!stopReading.IsCancellationRequested)
         {
             var readEpoch = Volatile.Read(ref statusWriteEpoch);
@@ -36,6 +41,12 @@ try
                     FileMode.Open,
                     FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete);
+                if (coordinateFirstRead)
+                {
+                    // Hold an actual file handle open while the writer replaces its path.
+                    firstReadHandleOpened.TrySetResult();
+                    firstWriteCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                }
                 using var reader = new StreamReader(stream);
                 var content = reader.ReadToEnd();
                 if (content != firstStatus && content != secondStatus)
@@ -62,6 +73,14 @@ try
                 // Atomic replacement can briefly remove or deny access to the destination.
                 // Match only known transient Win32 errors whose read attempt overlapped a write.
             }
+            finally
+            {
+                if (coordinateFirstRead)
+                {
+                    coordinateFirstRead = false;
+                    firstReadAttemptCompleted.TrySetResult();
+                }
+            }
         }
     });
 
@@ -72,6 +91,10 @@ try
         await start.Task.WaitAsync(TimeSpan.FromSeconds(10));
         for (var index = 0; index < 500; index++)
         {
+            if (index == 0)
+            {
+                await firstReadHandleOpened.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
             Interlocked.Increment(ref statusWriteEpoch);
             try
             {
@@ -84,50 +107,82 @@ try
             finally
             {
                 Interlocked.Increment(ref statusWriteEpoch);
+                if (index == 0)
+                {
+                    firstWriteCompleted.TrySetResult();
+                }
+            }
+            if (index == 0)
+            {
+                await firstReadAttemptCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             }
         }
     });
     await writerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
     start.TrySetResult();
-    await firstSuccessfulRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
-    await writer.WaitAsync(TimeSpan.FromSeconds(10));
-    stopReading.Cancel();
-    await reader.WaitAsync(TimeSpan.FromSeconds(10));
-    if (Interlocked.Read(ref successfulReads) == 0)
-    {
-        throw new InvalidOperationException("The concurrent status reader never completed a successful read.");
-    }
-    if (Interlocked.Read(ref successfulOverlappingReads) == 0)
-    {
-        throw new InvalidOperationException("No successful read overlapped the atomic-write lifecycle.");
-    }
-    if (!unexpectedReads.IsEmpty)
-    {
-        throw new InvalidOperationException(
-            $"A reader observed a partial status value: {unexpectedReads.FirstOrDefault()}");
-    }
-    if (File.ReadAllText(statusPath) != firstStatus)
-    {
-        throw new InvalidOperationException("The final status value was not readable after replacement stopped.");
-    }
-
-    var temporaryFiles = Directory.GetFiles(testDirectory, ".preview.status.*.tmp");
-    if (temporaryFiles.Length != 0)
-    {
-        throw new InvalidOperationException("Atomic status publication left a sibling temporary file behind.");
-    }
-    reportedSuccessfulReads = Interlocked.Read(ref successfulReads);
-    reportedSuccessfulOverlappingReads = Interlocked.Read(ref successfulOverlappingReads);
-
-    var missingDirectoryPath = Path.Combine(testDirectory, "missing", "preview.status");
     try
     {
-        HostStatusFile.Write(missingDirectoryPath, "ready", 12345);
-        throw new InvalidOperationException("Status publication unexpectedly swallowed its write failure.");
+        await firstSuccessfulRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await writer.WaitAsync(TimeSpan.FromSeconds(10));
+        stopReading.Cancel();
+        await reader.WaitAsync(TimeSpan.FromSeconds(10));
+        if (Interlocked.Read(ref successfulReads) == 0)
+        {
+            throw new InvalidOperationException("The concurrent status reader never completed a successful read.");
+        }
+        if (Interlocked.Read(ref successfulOverlappingReads) == 0)
+        {
+            throw new InvalidOperationException("No successful read overlapped the atomic-write lifecycle.");
+        }
+        if (!unexpectedReads.IsEmpty)
+        {
+            throw new InvalidOperationException(
+                $"A reader observed a partial status value: {unexpectedReads.FirstOrDefault()}");
+        }
+        if (File.ReadAllText(statusPath) != firstStatus)
+        {
+            throw new InvalidOperationException("The final status value was not readable after replacement stopped.");
+        }
+
+        var temporaryFiles = Directory.GetFiles(testDirectory, ".preview.status.*.tmp");
+        if (temporaryFiles.Length != 0)
+        {
+            throw new InvalidOperationException("Atomic status publication left a sibling temporary file behind.");
+        }
+        reportedSuccessfulReads = Interlocked.Read(ref successfulReads);
+        reportedSuccessfulOverlappingReads = Interlocked.Read(ref successfulOverlappingReads);
+
+        var missingDirectoryPath = Path.Combine(testDirectory, "missing", "preview.status");
+        try
+        {
+            HostStatusFile.Write(missingDirectoryPath, "ready", 12345);
+            throw new InvalidOperationException("Status publication unexpectedly swallowed its write failure.");
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Expected: publication errors remain observable by the host.
+        }
     }
-    catch (DirectoryNotFoundException)
+    catch (Exception error)
     {
-        // Expected: publication errors remain observable by the host.
+        harnessFailure = error;
+        throw;
+    }
+    finally
+    {
+        stopReading.Cancel();
+        start.TrySetResult();
+        firstReadHandleOpened.TrySetResult();
+        firstWriteCompleted.TrySetResult();
+        firstReadAttemptCompleted.TrySetResult();
+        try
+        {
+            await Task.WhenAll(reader, writer).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception cleanupError) when (harnessFailure is not null)
+        {
+            Console.Error.WriteLine($"Harness task cleanup also failed: {cleanupError.Message}");
+        }
     }
 }
 finally
