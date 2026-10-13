@@ -47,7 +47,7 @@ app.whenReady()
       )
     }
     console.log(`[eDrawings] ${expectedMode} addon exports are correctly gated.`)
-    app.exit(0)
+    setImmediate(() => app.quit())
   })
   .catch(error => {
     console.error(error.stack || String(error))
