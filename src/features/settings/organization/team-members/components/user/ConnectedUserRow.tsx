@@ -20,6 +20,7 @@
  * ```
  */
 import { useCallback, useState } from 'react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
   useTeams,
@@ -51,6 +52,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   // Get current user info from store
   const {
     user: currentUser,
+    userTeams,
     organization,
     getEffectiveRole,
     startUserImpersonation,
@@ -59,7 +61,7 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
 
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
-  const isRealAdmin = currentUser?.role === 'admin'
+  const isRealAdmin = isAdminUser(currentUser?.role, userTeams)
 
   // Data hooks (these are cached, so calling them in each row is efficient)
   const { teams } = useTeams(orgId)

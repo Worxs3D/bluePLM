@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
 import {
   Mail,
@@ -41,7 +42,7 @@ interface RFQRecord {
 }
 
 export function ProfileSettings() {
-  const { user, organization, setUser, addToast } = usePDMStore()
+  const { user, userTeams, organization, setUser, addToast } = usePDMStore()
 
   const [isLoadingECOs, setIsLoadingECOs] = useState(true)
   const [isLoadingRFQs, setIsLoadingRFQs] = useState(true)
@@ -526,7 +527,7 @@ export function ProfileSettings() {
       </section>
 
       {/* Emergency Admin Recovery - Only show if not already admin */}
-      {user.role !== 'admin' && (
+      {!isAdminUser(user.role, userTeams) && (
         <section className="mt-12 pt-8 border-t border-plm-border">
           <div className="flex items-center gap-2 mb-3">
             <Key size={16} className="text-plm-fg-muted" />

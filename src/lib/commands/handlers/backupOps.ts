@@ -4,6 +4,8 @@
  * Commands: backup, backup-status, backup-history, snapshots, trash, empty-trash, versions, rollback, activity
  */
 
+import { isAdminUser } from '@/lib/isAdminUser'
+
 import { usePDMStore, LocalFile } from '../../../stores/pdmStore'
 import { getBackupConfig, getBackupStatus, requestBackup, listSnapshots } from '../../backup'
 import {
@@ -204,13 +206,13 @@ export async function handleEmptyTrash(
   addOutput: OutputFn,
   onRefresh?: (silent?: boolean) => void,
 ): Promise<void> {
-  const { organization, user, activeVaultId } = usePDMStore.getState()
+  const { organization, user, activeVaultId, userTeams } = usePDMStore.getState()
   if (!organization || !user) {
     addOutput('error', 'Not signed in')
     return
   }
 
-  if (user.role !== 'admin') {
+  if (!isAdminUser(user.role, userTeams)) {
     addOutput('error', 'Admin access required')
     return
   }

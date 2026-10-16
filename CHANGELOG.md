@@ -6,6 +6,25 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-10-15
+
+Renderer, API 2.8.2 and schema 102.
+
+### Fixed
+
+- **Members of the Administrators team now get every admin feature.** The app only treated someone
+  as an administrator when their `role` column said `admin`, and ignored the Administrators team
+  that the database already counted. A team member whose role was `engineer` or `viewer` lost the
+  Metadata Audit tab under Settings → SolidWorks and about fifty other admin-only screens and
+  actions (integrations, backups, serialization, workflows, impersonation, force release), and was
+  refused by the admin-only API routes. There is now one definition of admin - the role column OR
+  Administrators team membership - applied by the renderer (`src/lib/isAdminUser.ts`), by the API
+  (`request.user.isAdmin`, resolved through `is_org_admin()`), and by the two database functions
+  that still tested the role alone (`update_extension_config`, `update_google_drive_settings`).
+  Removing someone from the team removes the access, since nothing writes their role column.
+  **Apply `supabase/core.sql` and the two modules, and redeploy the API, for the server-side gates
+  to open for team members.** Reported by Wilson.
+
 ## [4.7.0] - 2026-10-08
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.

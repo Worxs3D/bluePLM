@@ -34,7 +34,7 @@ import { usePDMStore } from '../stores/pdmStore'
 
 // The API version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_API_VERSION = '2.8.1'
+export const EXPECTED_API_VERSION = '2.8.2'
 
 // Minimum API version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -84,6 +84,8 @@ export const API_VERSION_DESCRIPTIONS: Record<string, string> = {
     'POST /files/:id/undo-checkout was leaving checked_out_by_machine_id and checked_out_by_machine_name set after releasing a lock, and never restored file_path/file_name from the new checkout path snapshot the way the client-side undoCheckout() now does. It clears both machine columns and the snapshot columns, restores the path/name from the snapshot first when one was recorded, and now bumps updated_at on release so delta sync actually sees the change - previously a release through this route was invisible to a client on the delta path and the file could keep showing as checked out. The file response schema gained checked_out_file_path/checked_out_file_name, which were being computed by the checkout_file RPC but silently stripped from the checkout response by Fastify because the schema never declared them',
   '2.8.1':
     'POST /trash/:id/restore was clearing deleted_at/deleted_by without bumping updated_at, so a restore was invisible to the watermark-based delta sync (get_vault_files_delta) for any client whose cache had already advanced past the delete - the row stayed a permanent ghost. The restore route now bumps updated_at, matching the desktop restoreFile() implementation. DELETE /files/:id (REST soft delete) had the same omission and now bumps updated_at too, matching the desktop softDeleteFile() implementation',
+  '2.8.2':
+    'Members of the Administrators team are administrators. Every admin-only route (extensions, webhooks, Odoo integration configuration and sync, supplier deletion, the recovery-code route and forced undo-checkout) tested only users.role, so a team member whose role column said engineer or viewer was refused. The auth middleware now resolves admin once per request through the is_org_admin() SQL function - role = admin OR Administrators team membership, the same answer the row-level security policies give - and exposes it as request.user.isAdmin, and the routes gate on that. A failure to answer is treated as not admin',
 }
 
 export interface ApiVersionCheckResult {

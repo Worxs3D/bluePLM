@@ -385,7 +385,7 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
       if (fetchError) throw fetchError
       if (!file) return sendError(reply, 404, ErrorCode.NOT_FOUND, 'File not found')
 
-      if (file.checked_out_by !== request.user!.id && request.user!.role !== 'admin') {
+      if (file.checked_out_by !== request.user!.id && !request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'File is not checked out to you')
       }
 

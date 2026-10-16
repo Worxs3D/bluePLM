@@ -104,7 +104,14 @@ async function buildApp(role: 'admin' | 'engineer' = 'engineer'): Promise<Fastif
   app.decorateRequest('supabase', null)
   app.decorateRequest('accessToken', null)
   app.addHook('onRequest', async (request) => {
-    request.user = { id: USER_ID, email: 'someone@example.com', full_name: null, role, org_id: ORG_ID }
+    request.user = {
+      id: USER_ID,
+      email: 'someone@example.com',
+      full_name: null,
+      role,
+      org_id: ORG_ID,
+      isAdmin: role === 'admin',
+    }
     request.supabase = fakeSupabase as unknown as NonNullable<typeof request.supabase>
   })
 

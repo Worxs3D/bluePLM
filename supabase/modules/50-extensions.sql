@@ -332,9 +332,10 @@ BEGIN
   -- c_gate_binding in core.sql.
   PERFORM require_org_member(p_org_id);
 
-  IF NOT EXISTS (
-    SELECT 1 FROM users WHERE id = current_actor_id() AND role = 'admin'
-  ) THEN
+  -- is_org_admin() is the one definition of admin: users.role = 'admin' OR
+  -- membership of the Administrators team. A bare role test here refused
+  -- Administrators-team members whose role column said engineer or viewer.
+  IF NOT is_org_admin() THEN
     RAISE EXCEPTION 'Only admins can update extension config';
   END IF;
   

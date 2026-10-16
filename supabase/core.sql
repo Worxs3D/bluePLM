@@ -113,31 +113,20 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 101 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 102 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Closes the realtime gap 4.3.1 left in place: deleting a folder that holds no files '
-  'reached no other client at all. folders has carried deleted_at since v49 and '
-  'deleteFolderByPath soft-deletes through it the same way file deletion does, but the '
-  'table was never added to supabase_realtime and never given REPLICA IDENTITY FULL, so a '
-  'folder-only delete produced zero events on the wire - the files fix in 4.3.1 propagates '
-  'because it is the files table''s own UPDATE that carries the deleted_at transition, and '
-  'an empty folder''s deletion never touches that table at all. REPLICA IDENTITY FULL is the '
-  'load-bearing half of the two: without it, an UPDATE''s old record on the wire carries '
-  'only the primary key, so a client cannot tell a deleted_at null-to-set transition from '
-  'any other change to the row, which is the same fact that made the files fix work in the '
-  'first place. folders now joins the publication and gets REPLICA IDENTITY FULL alongside '
-  'the thirteen tables that already carry both. check_release_residue() gained a matching '
-  'clause reporting when folders is absent from supabase_realtime or its relreplident is '
-  'not ''f'', guarded so a database without module 10 is never asked about a table it does '
-  'not have; publication membership and replica identity are neither a table nor a '
-  'function, so schema_release_manifest() - which only understands those two kinds - still '
-  'cannot see this directly, the same as the other thirteen publication lines beside it. '
-  'subscribeToFolders in src/lib/realtime.ts and the folder handling it drives in '
-  'useRealtimeSubscriptions.ts turn the new event into a scheduled refresh through the '
-  'existing debounced orphan-discard scheduler, the same one a burst of file deletions '
-  'already used.'
+  'Members of the Administrators team are administrators in the two module functions that '
+  'still asked only whether users.role was admin. update_extension_config (50-extensions) '
+  'and update_google_drive_settings (40-integrations) now call is_org_admin(), the one '
+  'definition of admin in the database - users.role = admin OR membership of the '
+  'Administrators team - instead of a bare role lookup, so a team member whose role column '
+  'says engineer or viewer is no longer refused. The organization binding is unchanged: '
+  'require_org_member() still runs first. The manifest rows for both functions now require '
+  'is_org_admin as well as require_org_member, so a revert to the bare role test is '
+  'reported by verification instead of passing as ok. The renderer and the API apply the '
+  'same definition, so the three layers can no longer disagree about who is an admin.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -475,12 +464,12 @@ LANGUAGE sql IMMUTABLE AS $$
     -- reason check_org_gates() had to treat auth.uid() as evidence of a gate -
     -- which is what let a function with no authorization at all be certified.
     ('40-integrations', 'webhooks', 'function', 'get_google_drive_settings(uuid)', 'require_org_member'),
-    ('40-integrations', 'webhooks', 'function', 'update_google_drive_settings(uuid,text,text,boolean,text)', 'require_org_member'),
+    ('40-integrations', 'webhooks', 'function', 'update_google_drive_settings(uuid,text,text,boolean,text)', 'require_org_member && is_org_admin'),
 
     -- 50-extensions.sql
     ('50-extensions', 'org_installed_extensions', 'function', 'get_extension_config(uuid,text)', 'require_org_member'),
     ('50-extensions', 'org_installed_extensions', 'function', 'get_extension_stats(uuid,text)', 'require_org_member'),
-    ('50-extensions', 'org_installed_extensions', 'function', 'update_extension_config(uuid,text,jsonb)', 'require_org_member'),
+    ('50-extensions', 'org_installed_extensions', 'function', 'update_extension_config(uuid,text,jsonb)', 'require_org_member && is_org_admin'),
 
     -- 60-customers.sql
     ('60-customers', 'customers', 'function', 'seed_customer_categories(uuid)', NULL)

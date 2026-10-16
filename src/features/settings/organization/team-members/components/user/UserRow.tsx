@@ -18,6 +18,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { getInitials, getEffectiveAvatarUrl, getAvatarColor } from '@/lib/utils'
 import { formatLastOnline, getTitleIcon, getTeamIcon, getRoleIcon } from '../../utils'
 import type { UserRowProps } from '../../types'
@@ -105,7 +106,7 @@ export function UserRow({
             </div>
           )}
           {/* Vault access badge */}
-          {user.role !== 'admin' && vaultAccessCount > 0 && (
+          {!isAdminUser(user.role, user.teams) && vaultAccessCount > 0 && (
             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-plm-fg-muted/10 rounded text-plm-fg-dim text-[11px] mt-0.5 w-fit">
               <Lock size={10} />
               {vaultAccessCount} vault{vaultAccessCount !== 1 ? 's' : ''}

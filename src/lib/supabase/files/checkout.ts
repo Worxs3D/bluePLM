@@ -1,3 +1,4 @@
+import { isAdminUser, isInAdministratorsTeam } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
 import { buildConfigurationMapPayload } from '@/lib/metadata/configurationMaps'
 
@@ -551,7 +552,27 @@ export async function adminForceDiscardCheckout(
     .eq('id', adminUserId)
     .single()
 
-  if (adminError || adminUser?.role !== 'admin') {
+  if (adminError || !adminUser) {
+    return { success: false, error: 'Only admins can force discard checkouts' }
+  }
+
+  // Admin is the role column OR membership of the Administrators team
+  let isAdmin = isAdminUser(adminUser.role, null)
+  if (!isAdmin) {
+    const { data: memberships, error: teamError } = await client
+      .from('team_members')
+      .select('team:teams!inner(name)')
+      .eq('user_id', adminUserId)
+    if (!teamError) {
+      isAdmin = isInAdministratorsTeam(
+        (memberships || []).map((membership) => ({
+          name: (membership.team as { name?: string } | null)?.name ?? '',
+        })),
+      )
+    }
+  }
+
+  if (!isAdmin) {
     return { success: false, error: 'Only admins can force discard checkouts' }
   }
 

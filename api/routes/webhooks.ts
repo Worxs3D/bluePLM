@@ -93,7 +93,7 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
       const { url, events } = request.body as { url: string; events: WebhookEvent[] }
 
       // Only admins can create webhooks
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         throw { statusCode: 403, message: 'Only admins can create webhooks' }
       }
 
@@ -144,7 +144,7 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, 'FORBIDDEN', 'Only admins can delete webhooks')
       }
 
@@ -192,7 +192,7 @@ const webhookRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string }
       const updates = request.body as Partial<Webhook>
 
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, 'FORBIDDEN', 'Only admins can update webhooks')
       }
 

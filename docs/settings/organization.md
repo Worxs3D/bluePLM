@@ -61,6 +61,12 @@ Teams group users for permission management.
 - Engineers - Standard access
 - Administrators - Full access
 
+Being an administrator means **either** having the admin role **or** being a member of the
+Administrators team. Both give the same full access everywhere: the desktop app, the API and the
+database. Adding someone to the Administrators team is enough; you do not need to change their
+role as well. Removing them from the team removes the access, unless their role is still set to
+admin.
+
 **Create a team:**
 1. Click **Create Team**
 2. Enter name

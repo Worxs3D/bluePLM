@@ -7,6 +7,7 @@
  */
 
 import { getCheckoutProfileForOwner } from '@/lib/checkout/checkoutDisplay'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore, LocalFile } from '../../../stores/pdmStore'
 import { updateFileMetadata, getFileVersions } from '../../supabase'
 import { formatBytes } from '../../utils'
@@ -152,17 +153,19 @@ export function handleInfo(parsed: ParsedCommand, files: LocalFile[], addOutput:
  * Handle whoami command - show current user
  */
 export function handleWhoami(addOutput: OutputFn): void {
-  const { user, organization } = usePDMStore.getState()
+  const { user, organization, userTeams } = usePDMStore.getState()
   if (!user) {
     addOutput('info', 'Not signed in')
   } else {
+    // Administrators-team members are admins whatever the role column says
+    const role = isAdminUser(user.role, userTeams) ? 'admin' : user.role
     addOutput(
       'info',
       [
         `${user.full_name || user.email}`,
         `   Email: ${user.email}`,
         organization ? `   Organization: ${organization.name}` : '',
-        `   Role: ${user.role === 'admin' ? 'Admin' : user.role === 'engineer' ? 'Engineer' : 'Viewer'}`,
+        `   Role: ${role === 'admin' ? 'Admin' : role === 'engineer' ? 'Engineer' : 'Viewer'}`,
       ]
         .filter(Boolean)
         .join('\n'),

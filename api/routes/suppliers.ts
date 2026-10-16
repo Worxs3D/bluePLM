@@ -260,7 +260,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can delete suppliers')
       }
 

@@ -608,15 +608,13 @@ CREATE OR REPLACE FUNCTION update_google_drive_settings(
   p_inspection_template_folder_id TEXT DEFAULT NULL
 ) RETURNS BOOLEAN SECURITY DEFINER AS $$
 BEGIN
-  -- Membership first, then the narrower admin question. Splitting the old
-  -- single lookup in two keeps the admission set identical - member of
-  -- p_org_id AND users.role = 'admin' - while the organization binding becomes
-  -- a call something can recognise.
+  -- Membership first, then the narrower admin question. The organization
+  -- binding is a call something can recognise. "Admin" is is_org_admin(): the
+  -- role column OR membership of the Administrators team, the same answer the
+  -- renderer and the API now give.
   PERFORM require_org_member(p_org_id);
 
-  IF NOT EXISTS (
-    SELECT 1 FROM users WHERE id = current_actor_id() AND role = 'admin'
-  ) THEN
+  IF NOT is_org_admin() THEN
     RAISE EXCEPTION 'Only admins can update Google Drive settings';
   END IF;
   

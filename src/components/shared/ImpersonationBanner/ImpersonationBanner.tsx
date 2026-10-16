@@ -1,4 +1,5 @@
 import { X, Shield, User, Database, Users } from 'lucide-react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore } from '@/stores/pdmStore'
 
 export function ImpersonationBanner() {
@@ -6,7 +7,7 @@ export function ImpersonationBanner() {
 
   if (!impersonatedUser) return null
 
-  const isAdmin = impersonatedUser.role === 'admin'
+  const isAdmin = isAdminUser(impersonatedUser.role, impersonatedUser.teams)
   const teamCount = impersonatedUser.teams.length
   const vaultCount = impersonatedUser.vaultIds.length
   const permCount = Object.keys(impersonatedUser.permissions).filter(
