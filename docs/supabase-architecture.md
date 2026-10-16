@@ -1621,7 +1621,7 @@ Database and app versions must match to prevent compatibility issues.
 SELECT version FROM schema_version;  -- e.g., 100
 
 -- App expected version
-EXPECTED_SCHEMA_VERSION = 101  -- src/lib/schemaVersion.ts
+EXPECTED_SCHEMA_VERSION = 103  -- src/lib/schemaVersion.ts
 ```
 
 ### Version Mismatch Handling

@@ -113,20 +113,19 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 102 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 103 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Members of the Administrators team are administrators in the two module functions that '
-  'still asked only whether users.role was admin. update_extension_config (50-extensions) '
-  'and update_google_drive_settings (40-integrations) now call is_org_admin(), the one '
-  'definition of admin in the database - users.role = admin OR membership of the '
-  'Administrators team - instead of a bare role lookup, so a team member whose role column '
-  'says engineer or viewer is no longer refused. The organization binding is unchanged: '
-  'require_org_member() still runs first. The manifest rows for both functions now require '
-  'is_org_admin as well as require_org_member, so a revert to the bare role test is '
-  'reported by verification instead of passing as ok. The renderer and the API apply the '
-  'same definition, so the three layers can no longer disagree about who is an admin.'
+  'Organization color swatches are now stored safely alongside personal swatches. The '
+  'schema adds an organization scope and creator audit field, makes the personal owner '
+  'optional only for organization-owned rows, and enforces that each row belongs to exactly '
+  'one scope. Row-level policies let every organization member read shared colors while '
+  'only an administrator may create, change, or remove them; personal swatches remain '
+  'private to their owner. Existing personal swatches are retained and attributed to their '
+  'existing owner during the idempotent upgrade. check_release_residue() refuses to stamp a '
+  'database that is missing the scope columns or still requires user_id, so the desktop '
+  'client cannot silently call organization color features against an older schema.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
