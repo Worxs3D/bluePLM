@@ -6,6 +6,31 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.2] - 2026-10-17
+
+Renderer and Electron main only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Fewer pauses from saving app state.** Every change to the app's state re-serialized and
+  rewrote the whole saved-state blob in local storage, even when nothing that gets saved had
+  changed. Wilson's blob was 700 KB (about 13x larger than ours), so each write was a large
+  allocation, and a burst of writes during load and refocus could stall the window for seconds. The
+  adapter (`src/stores/persistStorage.ts`) now skips writes when the saved slices are unchanged,
+  batches the rest (500 ms) and flushes on window hide and close. Saved slices that were rebuilt
+  on every write are now referentially stable. A hard crash can lose up to 500 ms of changes.
+  The cause of Wilson's lag is not yet proven; the diagnostics below are there to confirm it.
+
+### Added
+
+- **Diagnostics for slow refocus.** The log now records `Window focus regained` (time away, first
+  frame, long tasks, slow events and input delay in the 5 s after refocus), `Persist writes` (a
+  30 s rollup of writes requested, skipped and performed), `Persisted blob is large` (with the
+  largest keys), and a memory sample on every focus that also carries peak working set, private
+  bytes, GPU and total app memory and system free memory. Long-animation-frame logging now starts
+  at 150 ms instead of 500 ms, capped at 20 lines per minute with the rest counted in the
+  `Main thread blocked` rollup.
+
 ## [4.7.1] - 2026-10-15
 
 Renderer, API 2.8.2 and schema 102.

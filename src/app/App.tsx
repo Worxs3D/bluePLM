@@ -4,6 +4,7 @@ import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
 import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
 import { shouldDeferAutoConnectLoad } from '@/hooks/useAuth'
+import { startFocusResponsivenessMonitor } from '@/lib/focusResponsivenessMonitor'
 import { startLongTaskMonitor } from '@/lib/longTaskMonitor'
 import { SetupScreen } from '@/components/shared/Screens'
 import { OnboardingScreen } from '@/components/shared/Screens'
@@ -118,6 +119,22 @@ export function App() {
           selectedCount: selectedFiles.length,
           expandedFoldersCount: expandedFolders.size,
           vaultId: hashCheckoutIdentifier(activeVaultId),
+        }
+      }),
+    [],
+  )
+
+  // Reports how the window behaves in the seconds after it regains focus. Hover and cursor
+  // lag "right after switching back from another app" is the one slow moment the long task
+  // monitor above cannot single out on its own.
+  useEffect(
+    () =>
+      startFocusResponsivenessMonitor(() => {
+        const { activeView, files, selectedFiles } = usePDMStore.getState()
+        return {
+          view: activeView,
+          filesCount: files.length,
+          selectedCount: selectedFiles.length,
         }
       }),
     [],

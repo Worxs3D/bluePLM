@@ -13,7 +13,11 @@
 
 import { log } from '@/lib/logger'
 import { recordMetric } from '@/lib/performanceMetrics'
-import { LOAF_FRAME_THRESHOLD_MS, WATCHDOG_DRIFT_THRESHOLD_MS } from '@/lib/performanceThresholds'
+import {
+  LOAF_FRAME_THRESHOLD_MS,
+  LOAF_LOG_CAP_PER_MINUTE,
+  WATCHDOG_DRIFT_THRESHOLD_MS,
+} from '@/lib/performanceThresholds'
 
 /**
  * Tasks at or above this get a line of their own. The Long Tasks API only
@@ -30,6 +34,7 @@ const LONG_TASK_FLOOR_MS = 50
 
 const LONG_ANIMATION_FRAME_ENTRY_TYPE = 'long-animation-frame'
 const WATCHDOG_INTERVAL_MS = 1000
+const LOAF_WINDOW_MS = 60_000
 const MAX_SCRIPT_DETAILS = 5
 
 interface Bucket {
@@ -181,11 +186,19 @@ export function startLongTaskMonitor(getContext: ContextProvider = () => ({})): 
 
   let bucket = emptyBucket()
 
+  // The frame threshold is low enough to catch hover lag, which also means a busy stretch can
+  // produce a frame entry per frame. Log the first few per minute and count the rest.
+  let loafWindowStartedAt = performance.now()
+  let loafLoggedInWindow = 0
+  let loafSuppressed = 0
+
   const flush = () => {
-    if (bucket.count === 0) return
+    if (bucket.count === 0 && loafSuppressed === 0) return
 
     const { count, totalMs, blockingMs, longestMs } = bucket
     bucket = emptyBucket()
+    const suppressedFrames = loafSuppressed
+    loafSuppressed = 0
 
     log.warn('[Perf]', 'Main thread blocked', {
       tasks: count,
@@ -193,6 +206,7 @@ export function startLongTaskMonitor(getContext: ContextProvider = () => ({})): 
       blockingMs: Math.round(blockingMs),
       longestMs: Math.round(longestMs),
       overMs: ROLLUP_INTERVAL_MS,
+      ...(suppressedFrames > 0 ? { suppressedFrames } : {}),
       ...getContext(),
     })
   }
@@ -231,6 +245,17 @@ export function startLongTaskMonitor(getContext: ContextProvider = () => ({})): 
           for (const rawEntry of list.getEntries()) {
             const frame = toLongAnimationFrameEntry(rawEntry)
             if (!frame || frame.duration < LOAF_FRAME_THRESHOLD_MS) continue
+
+            const nowMs = performance.now()
+            if (nowMs - loafWindowStartedAt >= LOAF_WINDOW_MS) {
+              loafWindowStartedAt = nowMs
+              loafLoggedInWindow = 0
+            }
+            if (loafLoggedInWindow >= LOAF_LOG_CAP_PER_MINUTE) {
+              loafSuppressed += 1
+              continue
+            }
+            loafLoggedInWindow += 1
 
             const phases = getFramePhases(frame)
             const scripts = getTopScripts(frame)

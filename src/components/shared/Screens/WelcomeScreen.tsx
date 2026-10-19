@@ -21,7 +21,7 @@ import {
   LogOut,
   Trash2,
 } from 'lucide-react'
-import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
+import { usePDMStore, ConnectedVault, discardPersistedStore } from '@/stores/pdmStore'
 import {
   signInWithGoogle,
   signInWithEmail,
@@ -739,7 +739,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
     // Also clear the zustand persisted state directly to ensure clean slate
     try {
-      localStorage.removeItem('blue-plm-storage')
+      discardPersistedStore()
       log.info('[WelcomeScreen]', 'Cleared zustand persisted storage')
     } catch (error) {
       log.warn('[WelcomeScreen]', 'Error clearing zustand storage', { error: String(error) })
