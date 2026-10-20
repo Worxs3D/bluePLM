@@ -29,6 +29,13 @@ import {
   disposeThumbnailStore,
 } from './handlers'
 import { createAppMenu } from './menu'
+import {
+  RENDERER_STALL_CHANNEL,
+  handleRendererStall,
+  parseRendererStallPayload,
+  startStallProfiler,
+  stopStallProfiler,
+} from './diagnostics/stallProfiler'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -666,6 +673,12 @@ function initializeApp() {
         })
       }
 
+      // The renderer reports a long main-thread block here; the profiler turns it into a CPU profile.
+      ipcMain.on(RENDERER_STALL_CHANNEL, (_event, payload: unknown) => {
+        const info = parseRendererStallPayload(payload)
+        if (info) void handleRendererStall(info)
+      })
+
       log('App ready, creating window...')
       createWindow()
 
@@ -720,6 +733,7 @@ function initializeApp() {
     isQuitting = true
     isAppQuitting = true
     stopRendererMemorySampling()
+    stopStallProfiler()
 
     log('App quitting, cleaning up all resources...')
 
@@ -954,6 +968,11 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     log('Page finished loading')
     startRendererMemorySampling()
+    startStallProfiler({
+      getWindow: () => mainWindow,
+      getLogsDir: () => path.join(app.getPath('userData'), 'logs'),
+      log: writeLog,
+    })
     scheduleCrashCreditReset()
     if (mainWindow) {
       // getTitleBarOverlayRect may not exist on all Electron versions

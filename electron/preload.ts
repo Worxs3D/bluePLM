@@ -256,6 +256,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportLogs: () => ipcRenderer.invoke('logs:export'),
   log: (level: string, message: string, data?: unknown) =>
     ipcRenderer.send('logs:write', level, message, data),
+  reportRendererStall: (payload: { durationMs: number; source: string }) =>
+    ipcRenderer.send('diagnostics:renderer-stall', payload),
+  clearIndexedDbStorage: () => ipcRenderer.invoke('diagnostics:clear-indexeddb'),
   getLogsDir: () => ipcRenderer.invoke('logs:get-dir'),
   writeDivergenceReport: (fileName: string, content: string) =>
     ipcRenderer.invoke('logs:write-divergence-report', fileName, content),
@@ -1122,6 +1125,8 @@ declare global {
         canceled?: boolean
       }>
       log: (level: string, message: string, data?: unknown) => void
+      reportRendererStall: (payload: { durationMs: number; source: string }) => void
+      clearIndexedDbStorage: () => Promise<{ success: boolean; error?: string }>
       getLogsDir: () => Promise<string>
       writeDivergenceReport: (
         fileName: string,

@@ -20,8 +20,53 @@ Renderer and Electron main only - no schema change, no API change, SolidWorks se
   batches the rest (500 ms) and flushes on window hide and close. Saved slices that were rebuilt
   on every write are now referentially stable. A hard crash can lose up to 500 ms of changes.
   The cause of Wilson's lag is not yet proven; the diagnostics below are there to confirm it.
+- **A broken IndexedDB repairs itself.** Blake's vault cache stopped working at 20:07 with
+  `Internal error opening backing store for indexedDB.open`, and every load after that was a full
+  fetch: the failed open was remembered for the life of the window and never retried. A failed open
+  is now forgotten so the next call tries again, and on a corrupt-store error the app deletes the
+  cache database once per session, and if that also fails asks the main process to clear the
+  session's IndexedDB storage (the vault cache and the local sync index are rebuilt from the server
+  and disk). The load that hits the error still falls back to a full fetch without waiting.
+- **Every load no longer re-reads the whole vault cache.** After each load the checkout-profile
+  update read the entire ~27,000-row cache entry back out of IndexedDB even when it had no profiles
+  to write (`profileCount: 0`, 7-20 s in Blake's log). It now returns before touching the database.
+  A delta of 25 rows or fewer no longer rewrites the full entry either (350-500 ms and a large
+  allocation for one changed row); it is written once the entry is ten minutes old or the delta
+  grows. A skipped write only means the next load fetches the same few rows again.
+- **A burst of deletes is one update.** Realtime soft deletes arrive about 1.2 s apart in a bulk
+  delete and each rebuilt the explorer tree and re-sorted the folder (about half a second of
+  main-thread work per event). They are now collected (250 ms quiet period, 1 s at most) and applied
+  in one store update. An event for a file that is still waiting applies the batch first, so the
+  order for any one file is unchanged.
+- **Navigating between folders no longer rescans the vault.** `getFilesInFolder` split and
+  lowercased the path of all ~29,000 rows on every call (~240 ms in Blake's log). The explorer now
+  builds a parent-folder index the second time it is asked about the same file list, so moving
+  between folders is a map lookup (about 0.05 ms in the harness against 55-185 ms), with the same
+  rows in the same order. The first lookup after the file list changes is still the plain scan, so
+  a store that changes every few hundred milliseconds is not made slower.
+- **Fewer store updates per load.** A load with 753 checked-out files made 753 store updates to mark
+  their profiles pending and 753 to clear them, and one update per externally deleted file for the
+  auto-download exclusions (about 8,000 in one vault). Each is now a single update. Exclusions for
+  files that are on disk again are dropped, so the saved list stops growing without bound.
+- **The causes of failures are logged.** The vault cache open failure was logged as `{}`, and the
+  `Checkout profile lookup failed` warning (133 in Blake's log) as `"[object Object]"`. Both now
+  carry name, message, code, details, hint and status.
 
 ### Added
+
+- **Stall profiler.** The long-animation-frame attribution is empty on every machine we have logs
+  from, so the cause of the multi-second stalls is still unproven. The main process now keeps a
+  rolling 25 s V8 CPU profile of the window and, when the renderer reports a stall over 2 s (at most
+  once a minute), logs `Stall CPU profile` with the top 15 functions by self time and the share
+  spent in garbage collection, idle and native code, and saves the full `.cpuprofile` next to the
+  logs (newest 3 kept, none over 20 MB). It fails soft if DevTools is open, and
+  `BLUEPLM_DISABLE_STALL_PROFILER=1` turns it off.
+- **More precise timings in the log.** `Load stage timings` (one line per load: cache read, fetch,
+  delta merge, merge, folder status, exclusion pass, `setFiles`, total, with row counts),
+  `Cached server files` now says how long sanitising and the IndexedDB write each took, `Skipping
+  cache rewrite for a small delta`, `Applied batched file removals`, `Pruned auto-download
+  exclusions`, and `Slow store mutation` names the store action while `Persist write` lists the
+  saved keys that changed.
 
 - **Diagnostics for slow refocus.** The log now records `Window focus regained` (time away, first
   frame, long tasks, slow events and input delay in the 5 s after refocus), `Persist writes` (a

@@ -277,6 +277,25 @@ export function registerSystemHandlers(
     return { success: true }
   })
 
+  // Last-resort repair for a corrupt Chromium IndexedDB backing store ("Internal error opening
+  // backing store for indexedDB.open"). The renderer asks only after its own deleteDatabase
+  // attempt failed. This drops every IndexedDB database of the app's session - the vault file
+  // cache and the local sync index both live there and are rebuilt from the server and disk.
+  ipcMain.handle('diagnostics:clear-indexeddb', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { success: false, error: 'No window' }
+    }
+    try {
+      await mainWindow.webContents.session.clearStorageData({ storages: ['indexdb'] })
+      log('[Main] Cleared IndexedDB storage on renderer request')
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log('[Main] Failed to clear IndexedDB storage', { error: message })
+      return { success: false, error: message }
+    }
+  })
+
   // Tab window creation
   ipcMain.handle(
     'app:create-tab-window',
@@ -378,6 +397,7 @@ export function unregisterSystemHandlers(): void {
     'app:reload',
     'app:request-focus',
     'app:open-performance-window',
+    'diagnostics:clear-indexeddb',
     'app:create-tab-window',
     'app:get-zoom-factor',
     'app:set-zoom-factor',

@@ -844,6 +844,10 @@ export interface SettingsSlice {
   setAutoDownloadUpdates: (enabled: boolean) => void
   setAutoDownloadSizeLimit: (sizeMB: number) => void
   addAutoDownloadExclusion: (vaultId: string, relativePath: string) => void
+  /** Add many exclusions in a single store update; paths already excluded are skipped. */
+  addAutoDownloadExclusions: (vaultId: string, relativePaths: readonly string[]) => void
+  /** Drop many exclusions in a single store update. */
+  removeAutoDownloadExclusions: (vaultId: string, relativePaths: ReadonlySet<string>) => void
 
   // Actions - Auto-discard orphaned files
   setAutoDiscardOrphanedFiles: (enabled: boolean) => void
@@ -1073,6 +1077,10 @@ export interface FilesSlice {
   applyCheckoutUserProfiles: (profiles: Record<string, CheckoutUserProfile>) => void
   setCheckoutHydrationStatus: (fileId: string, status: CheckoutHydrationStatus) => void
   clearCheckoutHydrationStatus: (fileId: string) => void
+  /** Record many hydration statuses in a single store update. */
+  setCheckoutHydrationStatuses: (entries: ReadonlyArray<readonly [string, CheckoutHydrationStatus]>) => void
+  /** Drop many hydration statuses in a single store update. */
+  clearCheckoutHydrationStatuses: (fileIds: readonly string[]) => void
   clearCheckoutHydration: () => void
   setServerFiles: (files: ServerFile[]) => void
   setServerFolderPaths: (paths: Set<string>) => void
@@ -1148,6 +1156,8 @@ export interface FilesSlice {
   /** Batch update multiple file locations from realtime events (prevents render cascade) */
   batchUpdateFileLocationsFromServer: (updates: FileLocationUpdate[]) => void
   removeCloudFile: (fileId: string) => void
+  /** removeCloudFile for many ids in a single store update. */
+  removeCloudFiles: (fileIds: readonly string[]) => void
 
   // Actions - Search
   setSearchQuery: (query: string) => void

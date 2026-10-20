@@ -145,6 +145,26 @@ export function isPersistedStateUnchanged(
   return nextKeys.every((key) => key in previousState && Object.is(previousState[key], nextState[key]))
 }
 
+/** How many changed keys a slow-write log line names; more than this is "everything changed". */
+const MAX_CHANGED_KEYS_LOGGED = 10
+
+/**
+ * Top-level keys whose reference differs between two blobs: what the store action that caused
+ * the write actually touched. `null` previous means everything is new.
+ */
+export function getChangedPersistedKeys(
+  previous: StorageValue<unknown> | null,
+  next: StorageValue<unknown>,
+): string[] {
+  if (!isRecord(next.state)) return []
+  const nextState = next.state
+  const previousState = previous && isRecord(previous.state) ? previous.state : null
+
+  return Object.keys(nextState).filter(
+    (key) => !previousState || !(key in previousState) || !Object.is(previousState[key], nextState[key]),
+  )
+}
+
 /**
  * Wrap a pure function so that calling it again with the same input reference returns the same
  * output reference. `partialize` rebuilds derived values (a Set as an array, a sliced list) on
@@ -183,6 +203,9 @@ export function createPersistStorage(options: PersistStorageOptions): PersistSto
   let pending: { name: string; value: StorageValue<unknown> } | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   let discarded = false
+  // Keys that changed since the last write landed. A debounced write is no longer tied to the
+  // store action that asked for it, so the keys are the only attribution a slow write can carry.
+  const changedSinceWrite = new Set<string>()
 
   const logRollupIfDue = () => {
     const current = now()
@@ -213,6 +236,8 @@ export function createPersistStorage(options: PersistStorageOptions): PersistSto
 
     const { name, value } = pending
     pending = null
+    const changedKeys = Array.from(changedSinceWrite)
+    changedSinceWrite.clear()
 
     const serializeStart = now()
     const serialized = JSON.stringify(value)
@@ -238,6 +263,8 @@ export function createPersistStorage(options: PersistStorageOptions): PersistSto
       writeMs: Math.round(writeMs),
       totalMs: Math.round(totalMs),
       totalBytes,
+      changedKeys: changedKeys.slice(0, MAX_CHANGED_KEYS_LOGGED),
+      changedKeyCount: changedKeys.length,
       topLevelKeys: getTopPersistedKeySizes(value),
     })
   }
@@ -281,6 +308,7 @@ export function createPersistStorage(options: PersistStorageOptions): PersistSto
         return
       }
 
+      for (const key of getChangedPersistedKeys(lastSeen, value)) changedSinceWrite.add(key)
       lastSeen = value
       pending = { name, value }
       if (timer !== null) clearTimeout(timer)

@@ -479,6 +479,32 @@ export const createFilesSlice: StateCreator<
     })
   },
 
+  // Batch forms of the two actions above. A load with 753 checked-out files made 753 `set`
+  // calls to mark them pending and another 753 to clear them, each copying the whole map and
+  // waking every subscriber (useVaultTree depends on `checkoutHydration`, so each wake could
+  // mean a folder-metrics pass); `Slow store mutation` showed 250-400 ms for single ones.
+  setCheckoutHydrationStatuses: (entries) => {
+    if (entries.length === 0) return
+    set((state) => {
+      const checkoutHydration = { ...state.checkoutHydration }
+      for (const [fileId, status] of entries) checkoutHydration[fileId] = status
+      return { checkoutHydration }
+    })
+  },
+
+  clearCheckoutHydrationStatuses: (fileIds) => {
+    if (fileIds.length === 0) return
+    set((state) => {
+      let checkoutHydration: typeof state.checkoutHydration | null = null
+      for (const fileId of fileIds) {
+        if (!(fileId in state.checkoutHydration)) continue
+        checkoutHydration ??= { ...state.checkoutHydration }
+        delete checkoutHydration[fileId]
+      }
+      return checkoutHydration ? { checkoutHydration } : state
+    })
+  },
+
   clearCheckoutHydration: () => set({ checkoutHydration: {} }),
 
   setServerFiles: (serverFiles) => set({ serverFiles }),
@@ -1958,31 +1984,44 @@ export const createFilesSlice: StateCreator<
   },
 
   removeCloudFile: (fileId) => {
-    set((state) => ({
-      files: state.files
-        .filter((f) => {
-          // Only remove cloud-only files
-          if (f.pdmData?.id === fileId && f.diffStatus === 'cloud') {
-            return false
-          }
-          return true
+    get().removeCloudFiles([fileId])
+  },
+
+  // The realtime handler collects a burst of soft deletes and applies them here in one pass:
+  // one `set`, so one tree rebuild and one folder re-sort for the burst instead of one each
+  // per event (about half a second of main-thread work per event on a 29k-row vault).
+  removeCloudFiles: (fileIds) => {
+    if (fileIds.length === 0) return
+    const ids = new Set(fileIds)
+
+    set((state) => {
+      let changed = false
+      const files: typeof state.files = []
+      for (const f of state.files) {
+        const id = f.pdmData?.id
+        if (id === undefined || !ids.has(id)) {
+          files.push(f)
+          continue
+        }
+        changed = true
+        // Only remove cloud-only files
+        if (f.diffStatus === 'cloud') continue
+        // Mark locally existing files as 'deleted_remote'
+        files.push({
+          ...f,
+          pdmData: undefined,
+          isSynced: false,
+          diffStatus: 'deleted_remote' as const,
         })
-        .map((f) => {
-          // Mark locally existing files as 'deleted_remote'
-          if (f.pdmData?.id === fileId && f.diffStatus !== 'cloud') {
-            return {
-              ...f,
-              pdmData: undefined,
-              isSynced: false,
-              diffStatus: 'deleted_remote' as const,
-            }
-          }
-          return f
-        }),
-      // Drop the matching serverFiles entry so refreshCurrentFolder does not
+      }
+
+      // Drop the matching serverFiles entries so refreshCurrentFolder does not
       // resurrect a ghost cloud-only entry from a stale server list.
-      serverFiles: state.serverFiles.filter((sf) => sf.id !== fileId),
-    }))
+      const serverFiles = state.serverFiles.filter((sf) => !ids.has(sf.id))
+      if (!changed && serverFiles.length === state.serverFiles.length) return state
+
+      return { files: changed ? files : state.files, serverFiles }
+    })
   },
 
   // Actions - Search

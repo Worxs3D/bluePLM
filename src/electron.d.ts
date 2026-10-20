@@ -250,6 +250,8 @@ declare global {
         canceled?: boolean
       }>
       log: (level: string, message: string, data?: unknown) => void
+      reportRendererStall: (payload: { durationMs: number; source: string }) => void
+      clearIndexedDbStorage: () => Promise<{ success: boolean; error?: string }>
       getLogsDir: () => Promise<string>
       writeDivergenceReport: (
         fileName: string,

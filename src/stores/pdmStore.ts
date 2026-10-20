@@ -36,6 +36,7 @@ import {
   flushPersistStorageOnPageHide,
   memoizeByReference,
 } from './persistStorage'
+import { getStoreActionName } from './storeActionName'
 import { CURRENT_STORE_VERSION, runMigrations, getPersistedVersion } from './migrations'
 
 /**
@@ -150,6 +151,7 @@ function withMutationTiming(initializer: PDMStoreInitializer): PDMStoreInitializ
       if (durationMs >= STORE_MUTATION_THRESHOLD_MS) {
         const stack = new Error().stack
         log.warn('[Perf]', 'Slow store mutation', {
+          action: getStoreActionName(stack),
           durationMs: Math.round(durationMs),
           stack,
         })

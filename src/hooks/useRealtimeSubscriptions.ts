@@ -14,6 +14,7 @@ import {
 import { buildFullPath } from '@/lib/commands/types'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { createTrailingBatcher } from '@/lib/trailingBatcher'
 import { checkoutLostWithEdits } from '@/lib/metadata/strandedEdits'
 import {
   hashCheckoutIdentifier,
@@ -171,7 +172,7 @@ export function useRealtimeSubscriptions(
   useEffect(() => {
     if (!organization || isOfflineMode) return
 
-    const { addCloudFile, updateFilePdmData, removeCloudFile, addToast } = usePDMStore.getState()
+    const { addCloudFile, updateFilePdmData, addToast } = usePDMStore.getState()
 
     // Batch notifications to avoid toast spam when someone does bulk operations
     // Collects notifications over 500ms then shows a single summary toast
@@ -252,6 +253,34 @@ export function useRealtimeSubscriptions(
         clearTimeout(locationFlushTimeout)
       }
       locationFlushTimeout = setTimeout(flushLocationUpdates, LOCATION_FLUSH_DEBOUNCE_MS)
+    }
+
+    // Batch file removals (soft deletes, hard deletes). Each removal used to be its own store
+    // update, and each store update rebuilt the explorer tree and re-sorted the folder - about
+    // half a second of main-thread work per event, with events arriving ~1.2 s apart during a
+    // bulk delete. A burst is now one update. An event for an id that is still waiting flushes
+    // the batch first (see the files handler), so per-file ordering is unchanged.
+    let orphanRefreshAfterRemoval = false
+    let removalEventsBatched = 0
+    const removalBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        const startedAt = performance.now()
+        usePDMStore.getState().removeCloudFiles(ids)
+        log.info('[Realtime]', 'Applied batched file removals', {
+          files: ids.length,
+          events: removalEventsBatched,
+          durationMs: Math.round(performance.now() - startedAt),
+        })
+        removalEventsBatched = 0
+        if (orphanRefreshAfterRemoval) {
+          orphanRefreshAfterRemoval = false
+          scheduleOrphanDiscardRefresh()
+        }
+      },
+    })
+    const queueFileRemoval = (fileId: string) => {
+      removalEventsBatched += 1
+      removalBatcher.add(fileId)
     }
 
     const flushNotifications = () => {
@@ -383,6 +412,12 @@ export function useRealtimeSubscriptions(
         return
       }
 
+      // A removal for this file is still waiting in the batch. Apply it before looking at this
+      // event, so the event sees (and acts on) the same store a one-at-a-time removal would
+      // have left - e.g. a restore from trash arriving right after the delete.
+      const eventFileId = newFile?.id ?? oldFile?.id
+      if (eventFileId && removalBatcher.has(eventFileId)) removalBatcher.flush()
+
       switch (eventType) {
         case 'INSERT':
           // New file added by someone else
@@ -469,7 +504,7 @@ export function useRealtimeSubscriptions(
             })
 
             if (deletion.type !== 'not-a-deletion') {
-              removeCloudFile(newFile.id)
+              queueFileRemoval(newFile.id)
               log.info('[Realtime]', 'File deleted from vault (soft delete)', {
                 fileId: hashCheckoutIdentifier(newFile.id),
                 hadLocalCopy: deletion.type === 'became-orphaned-locally',
@@ -479,8 +514,9 @@ export function useRealtimeSubscriptions(
                 // watcher to have an opinion about here - the refresh this schedules
                 // is what actually removes the file, and it does that under the merge's
                 // own tombstone-mtime and pending-metadata guards, plus the discard
-                // path's own watcher suppression, not a debounce.
-                scheduleOrphanDiscardRefresh()
+                // path's own watcher suppression, not a debounce. It is scheduled when the
+                // batched removal is applied, so it still runs after the store update.
+                orphanRefreshAfterRemoval = true
               }
               break
             }
@@ -716,7 +752,7 @@ export function useRealtimeSubscriptions(
           // Note: Supabase realtime DELETE events only include primary key by default,
           // so oldFile may not have all fields (file_name, deleted_by, etc.)
           if (oldFile?.id) {
-            removeCloudFile(oldFile.id)
+            queueFileRemoval(oldFile.id)
             // Only show toast if we have a valid file name AND it wasn't deleted by current user
             // Skip toast entirely for DELETE events - they spam when bulk deleting and often lack file_name
             // Users can see deleted files in the file browser (red diff status)
@@ -1095,6 +1131,8 @@ export function useRealtimeSubscriptions(
         clearTimeout(locationFlushTimeout)
         flushLocationUpdates() // Flush any pending updates before cleanup
       }
+      // Apply batched removals before the refresh scheduler is cancelled below.
+      removalBatcher.flush()
       // Clear any pending orphan-discard refresh - this effect's subscriptions are
       // unmounting, so firing it after teardown would call into a torn-down state.
       orphanDiscardRefreshScheduler.cancel()

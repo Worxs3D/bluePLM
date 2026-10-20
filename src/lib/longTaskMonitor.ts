@@ -16,6 +16,8 @@ import { recordMetric } from '@/lib/performanceMetrics'
 import {
   LOAF_FRAME_THRESHOLD_MS,
   LOAF_LOG_CAP_PER_MINUTE,
+  STALL_PROFILE_REPORT_COOLDOWN_MS,
+  STALL_PROFILE_REPORT_MIN_MS,
   WATCHDOG_DRIFT_THRESHOLD_MS,
 } from '@/lib/performanceThresholds'
 
@@ -75,6 +77,27 @@ interface FramePhases {
 type ContextProvider = () => Record<string, unknown>
 
 let stop: (() => void) | null = null
+let lastStallReportedAt = Number.NEGATIVE_INFINITY
+
+/**
+ * Tell the main process the renderer was just blocked for `durationMs`, so it can log the CPU
+ * profile that covers the stall (electron/diagnostics/stallProfiler.ts). The long-animation-frame
+ * `scripts` list is empty in the field, so this is the attribution that does not depend on it.
+ * Never throws and never talks more often than the cooldown.
+ */
+export function reportStallToMain(durationMs: number, source: string): void {
+  if (durationMs < STALL_PROFILE_REPORT_MIN_MS) return
+
+  const nowMs = performance.now()
+  if (nowMs - lastStallReportedAt < STALL_PROFILE_REPORT_COOLDOWN_MS) return
+  lastStallReportedAt = nowMs
+
+  try {
+    window.electronAPI?.reportRendererStall?.({ durationMs: Math.round(durationMs), source })
+  } catch {
+    // Diagnostics only: a failed notice must never reach the app.
+  }
+}
 
 function emptyBucket(): Bucket {
   return { count: 0, totalMs: 0, blockingMs: 0, longestMs: 0 }
@@ -246,6 +269,8 @@ export function startLongTaskMonitor(getContext: ContextProvider = () => ({})): 
             const frame = toLongAnimationFrameEntry(rawEntry)
             if (!frame || frame.duration < LOAF_FRAME_THRESHOLD_MS) continue
 
+            reportStallToMain(frame.duration, 'long-animation-frame')
+
             const nowMs = performance.now()
             if (nowMs - loafWindowStartedAt >= LOAF_WINDOW_MS) {
               loafWindowStartedAt = nowMs
@@ -308,6 +333,7 @@ export function startLongTaskMonitor(getContext: ContextProvider = () => ({})): 
     if (wasHidden) return
 
     if (driftMs >= WATCHDOG_DRIFT_THRESHOLD_MS) {
+      reportStallToMain(driftMs, 'watchdog')
       log.warn('[Perf]', 'Renderer stalled', {
         driftMs: Math.round(driftMs),
         ...getContext(),

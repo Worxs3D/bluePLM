@@ -33,8 +33,9 @@ import {
   type SyncIndexPathInfo,
 } from '@/lib/cache/localSyncIndex'
 import { t } from '@/lib/i18n'
+import { describeError } from '@/lib/errorDetails'
 import { logExplorer } from '@/lib/userActionLogger'
-import type { LocalFile } from '@/stores/types'
+import type { CheckoutHydrationStatus, LocalFile } from '@/stores/types'
 import type { CheckoutProfileScope } from '@/lib/supabase/files/queries'
 import {
   hashCheckoutIdentifier,
@@ -60,6 +61,7 @@ import {
 import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
 import { cloudRowsForFolderRefresh } from './useLoadFiles/refreshFolderCloudRows'
+import { findExclusionsForFilesPresentLocally } from './useLoadFiles/autoDownloadExclusionPruning'
 
 const CHECKOUT_PROFILE_MAX_ATTEMPTS = 3
 const CHECKOUT_PROFILE_RETRY_BASE_MS = 200
@@ -102,7 +104,8 @@ function createLoadRequestId(): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  // PostgREST errors are plain objects: String() on one is "[object Object]".
+  return describeError(error).message ?? String(error)
 }
 
 /** Items processed between clock checks. Reading the clock per item is itself measurable. */
@@ -356,7 +359,8 @@ async function fetchCheckoutProfilesWithRetry(
       fileCount: fileIds.length,
       attempt,
       latencyMs,
-      error: getErrorMessage(result.error),
+      // name, message, code, details, hint, status: the cause was logged as "[object Object]".
+      error: describeError(result.error),
       retrying: attempt < CHECKOUT_PROFILE_MAX_ATTEMPTS,
     })
 
@@ -1790,8 +1794,9 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           }
         }
 
+        const postMergeFolderMs = Math.round(performance.now() - postMergeFolderStart)
         window.electronAPI?.log('info', '[LoadFiles] Post-merge folder status', {
-          durationMs: Math.round(performance.now() - postMergeFolderStart),
+          durationMs: postMergeFolderMs,
           folderCount: folders.length,
           childrenByParentSize: childrenByParent.size,
         })
@@ -1831,8 +1836,6 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
           // Only run detection if we have previous state (skip on first load)
           if (previousFiles.length > 0) {
-            const { addAutoDownloadExclusion } = usePDMStore.getState()
-
             // Build set of paths that previously had local copies (synced files with local presence)
             const previousLocalSyncedPaths = new Set(
               previousFiles
@@ -1888,9 +1891,10 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
             // Add exclusions for all externally deleted files
             if (filesToExclude.size > 0) {
-              for (const relativePath of filesToExclude) {
-                addAutoDownloadExclusion(currentVaultId, relativePath)
-              }
+              // One store update for the whole batch (see addAutoDownloadExclusions).
+              usePDMStore
+                .getState()
+                .addAutoDownloadExclusions(currentVaultId, Array.from(filesToExclude))
 
               window.electronAPI?.log(
                 'info',
@@ -1905,9 +1909,26 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               )
             }
           }
+
+          // Drop exclusions for files that are on disk again. Runs after the additions above,
+          // whose files are cloud-only in `localFiles` and so are never dropped here.
+          const currentExclusions =
+            usePDMStore.getState().autoDownloadExcludedFiles[currentVaultId] ?? []
+          const staleExclusions = findExclusionsForFilesPresentLocally(
+            currentExclusions,
+            localFiles,
+          )
+          if (staleExclusions.size > 0) {
+            usePDMStore.getState().removeAutoDownloadExclusions(currentVaultId, staleExclusions)
+            window.electronAPI?.log('info', '[LoadFiles] Pruned auto-download exclusions', {
+              pruned: staleExclusions.size,
+              remaining: currentExclusions.length - staleExclusions.size,
+            })
+          }
         }
+        const postMergeExclusionMs = Math.round(performance.now() - postMergeExclusionStart)
         window.electronAPI?.log('info', '[LoadFiles] Post-merge exclusion pass', {
-          durationMs: Math.round(performance.now() - postMergeExclusionStart),
+          durationMs: postMergeExclusionMs,
           previousFileCount: usePDMStore.getState().files.length,
           incomingCount: localFiles.length,
         })
@@ -1943,6 +1964,26 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           incomingCount: localFiles.length,
           previousStoreCount,
           storeCount: usePDMStore.getState().files.length,
+        })
+        // One line per load that adds up where the time went, so a stalled session can be
+        // read without reassembling a dozen separate lines.
+        window.electronAPI?.log('info', '[LoadFiles] Load stage timings', {
+          requestId: loadContext.requestId,
+          silent,
+          cacheHit: serverResultWithCache.cacheHit,
+          deltaCount: serverResultWithCache.deltaCount,
+          serverRows: serverResult.files?.length ?? 0,
+          localRows: localResult.files.length,
+          mergedRows: localFiles.length,
+          localScanMs: Math.round(localScanDuration),
+          cacheReadMs: serverResultWithCache.timing.cacheReadMs,
+          serverFetchMs: serverResultWithCache.timing.fetchMs,
+          deltaMergeMs: serverResultWithCache.timing.mergeMs,
+          mergeMs: Math.round(mergeDuration),
+          postMergeFolderMs,
+          postMergeExclusionMs,
+          setFilesMs: Math.round(performance.now() - setFilesStart),
+          totalMs: Math.round(performance.now() - vaultLoadStart),
         })
         setFilesLoaded(true) // Mark that initial load is complete
         committedMerge = true
@@ -2003,18 +2044,24 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             if (checkedOutFileIds.length > 0 && organization && loadingForVaultId) {
               const uniqueFileIds = [...new Set(checkedOutFileIds)]
               const hydrationAction = usePDMStore.getState()
+              const pendingStatuses: Array<[string, CheckoutHydrationStatus]> = []
               for (const fileId of uniqueFileIds) {
                 const ownerId = hydrationOwners.get(fileId)
                 if (!ownerId) continue
-                hydrationAction.setCheckoutHydrationStatus(fileId, {
-                  ownerId,
-                  state: 'pending',
-                  attempt: 0,
-                  lastError: null,
-                  requestId: loadContext.requestId,
-                  updatedAt: Date.now(),
-                })
+                pendingStatuses.push([
+                  fileId,
+                  {
+                    ownerId,
+                    state: 'pending',
+                    attempt: 0,
+                    lastError: null,
+                    requestId: loadContext.requestId,
+                    updatedAt: Date.now(),
+                  },
+                ])
               }
+              // One store update, not one per checked-out file.
+              hydrationAction.setCheckoutHydrationStatuses(pendingStatuses)
 
               const scope: CheckoutProfileScope = {
                 orgId: organization.id,
@@ -2042,25 +2089,32 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               const updateStart = performance.now()
               hydrationAction.applyCheckoutUserProfiles(profileResult.users)
 
+              const resolvedFileIds: string[] = []
+              const failedStatuses: Array<[string, CheckoutHydrationStatus]> = []
               for (const fileId of uniqueFileIds) {
                 const ownerId = hydrationOwners.get(fileId)
                 if (!ownerId) continue
                 const profile = profileResult.users[fileId]
                 if (profile && isCheckoutProfileForOwner(profile, ownerId)) {
-                  hydrationAction.clearCheckoutHydrationStatus(fileId)
+                  resolvedFileIds.push(fileId)
                 } else {
-                  hydrationAction.setCheckoutHydrationStatus(fileId, {
-                    ownerId,
-                    state: 'error',
-                    attempt: profileResult.attempts,
-                    lastError: profileResult.error
-                      ? getErrorMessage(profileResult.error)
-                      : 'profile_not_found',
-                    requestId: loadContext.requestId,
-                    updatedAt: Date.now(),
-                  })
+                  failedStatuses.push([
+                    fileId,
+                    {
+                      ownerId,
+                      state: 'error',
+                      attempt: profileResult.attempts,
+                      lastError: profileResult.error
+                        ? getErrorMessage(profileResult.error)
+                        : 'profile_not_found',
+                      requestId: loadContext.requestId,
+                      updatedAt: Date.now(),
+                    },
+                  ])
                 }
               }
+              hydrationAction.clearCheckoutHydrationStatuses(resolvedFileIds)
+              hydrationAction.setCheckoutHydrationStatuses(failedStatuses)
 
               // This call is queued after the base cache write, and the context is
               // checked again inside the IndexedDB transaction.
