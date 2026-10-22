@@ -8,6 +8,7 @@
 import { useEffect } from 'react'
 import { ChevronDown, ChevronRight, HardDrive, Loader2 } from 'lucide-react'
 import { getCheckoutDisplayUser } from '@/lib/checkout/checkoutDisplay'
+import { getInitials } from '@/lib/utils'
 import {
   InlineCheckoutButton,
   InlineDownloadButton,
@@ -529,14 +530,22 @@ export function NameCell({
           const showCheckin =
             file.pdmData?.checked_out_by === user?.id && file.diffStatus !== 'deleted'
           const otherCheckoutUsers = checkoutUsers.filter((u) => !u.isMe)
+          const isCheckedOutByOther = Boolean(
+            file.pdmData?.checked_out_by && file.pdmData.checked_out_by !== user?.id,
+          )
           const hasOtherCheckoutUsers =
-            file.pdmData?.checked_out_by &&
-            file.pdmData.checked_out_by !== user?.id &&
-            file.pdmData.id &&
-            otherCheckoutUsers.length > 0
+            isCheckedOutByOther && Boolean(file.pdmData?.id) && otherCheckoutUsers.length > 0
+          // Someone else holds the file but their profile has not loaded: without a marker
+          // the row would look checked in while refusing every checkout.
+          const unresolvedOwner =
+            isCheckedOutByOther && !hasOtherCheckoutUsers
+              ? getCheckoutDisplayUser(file, user, checkoutHydrationState)
+              : null
 
           // Return null if nothing to show - prevents empty span from affecting flex gap
-          if (!showCheckout && !showCheckin && !hasOtherCheckoutUsers) return null
+          if (!showCheckout && !showCheckin && !hasOtherCheckoutUsers && !unresolvedOwner) {
+            return null
+          }
 
           return (
             <span className="flex items-center gap-0.5 flex-shrink-0">
@@ -614,6 +623,14 @@ export function NameCell({
                       +{otherCheckoutUsers.length - maxShow}
                     </div>
                   )}
+                </span>
+              )}
+              {unresolvedOwner && (
+                <span
+                  className="w-5 h-5 ml-0.5 rounded-full bg-plm-bg-light flex items-center justify-center text-[9px] font-medium text-plm-fg-muted flex-shrink-0"
+                  title={unresolvedOwner.name}
+                >
+                  {getInitials(unresolvedOwner.name, { placeholder: true })}
                 </span>
               )}
             </span>

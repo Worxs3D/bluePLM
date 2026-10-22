@@ -18,6 +18,16 @@ export interface CheckedOutUsersResult {
   error: unknown
 }
 
+/** A checked-out file and the `checked_out_by` the caller already loaded for it. */
+export interface CheckoutOwnerRef {
+  fileId: string
+  ownerId: string
+}
+
+// Keeps each `.in('id', ...)` GET far below the gateway's URL limit. Owners number a
+// few dozen even when checked-out files number in the thousands.
+const CHECKOUT_PROFILE_OWNER_BATCH_SIZE = 100
+
 const checkedOutUsersInFlight = new Map<string, Promise<CheckedOutUsersResult>>()
 
 /**
@@ -258,83 +268,69 @@ export async function getVaultFilesCount(
 }
 
 /**
- * Get checked out user info for a batch of file IDs
- * Used to lazily load user info after initial sync
+ * Resolve the profiles of the users holding checkouts, keyed by file ID.
+ *
+ * Takes the owners the caller already loaded and queries `users` by owner, never `files`
+ * by file: an `.in('id', ...)` over every checked-out file grows with the vault and
+ * overflows the gateway's URL limit, which answers with a bare 400.
  */
 async function fetchCheckedOutUsers(
-  fileIds: string[],
-  scope?: CheckoutProfileScope,
+  owners: CheckoutOwnerRef[],
+  scope: CheckoutProfileScope,
 ): Promise<CheckedOutUsersResult> {
-  if (fileIds.length === 0) return { users: {}, error: null }
+  if (owners.length === 0) return { users: {}, error: null }
 
   const client = getSupabaseClient()
+  const ownerIds = [...new Set(owners.map((owner) => owner.ownerId))].sort()
+  const profilesById = new Map<string, CheckoutUserProfile>()
+  let firstError: unknown = null
 
-  // First get files with their checked_out_by user IDs
-  let filesQuery = client
-    .from('files')
-    .select('id, checked_out_by, org_id, vault_id')
-    .in('id', fileIds)
-    .not('checked_out_by', 'is', null)
+  for (let start = 0; start < ownerIds.length; start += CHECKOUT_PROFILE_OWNER_BATCH_SIZE) {
+    const batch = ownerIds.slice(start, start + CHECKOUT_PROFILE_OWNER_BATCH_SIZE)
+    const { data, error } = await client
+      .from('users')
+      .select('id, email, full_name, avatar_url')
+      .in('id', batch)
+      .eq('org_id', scope.orgId)
 
-  if (scope) {
-    filesQuery = filesQuery.eq('org_id', scope.orgId)
-    if (scope.vaultId) {
-      filesQuery = filesQuery.eq('vault_id', scope.vaultId)
+    if (error) {
+      firstError ??= error
+      continue
     }
-  }
 
-  const { data: files, error: filesError } = await filesQuery
-  if (filesError) return { users: {}, error: filesError }
-  if (!files || files.length === 0) return { users: {}, error: null }
-
-  // Get unique user IDs - filter out nulls with proper type narrowing
-  const userIds = [
-    ...new Set(files.map((f) => f.checked_out_by).filter((id): id is string => id !== null)),
-  ]
-
-  if (userIds.length === 0) return { users: {}, error: null }
-
-  // Fetch user info separately
-  const { data: usersData, error: usersError } = await client
-    .from('users')
-    .select('id, email, full_name, avatar_url')
-    .in('id', userIds)
-    .eq('org_id', scope?.orgId ?? files[0].org_id)
-
-  if (usersError) return { users: {}, error: usersError }
-
-  // Create a user lookup map
-  const userLookup = new Map(usersData?.map((u) => [u.id, u]) || [])
-
-  // Convert to a map for easy lookup by file ID
-  const users: Record<string, CheckoutUserProfile> = {}
-  for (const file of files) {
-    if (!file.checked_out_by) continue
-    const user = userLookup.get(file.checked_out_by)
-    if (user) {
-      users[file.id] = {
+    for (const user of data ?? []) {
+      profilesById.set(user.id, {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-      }
+      })
     }
   }
 
-  return { users, error: null }
+  const users: Record<string, CheckoutUserProfile> = {}
+  for (const { fileId, ownerId } of owners) {
+    const profile = profilesById.get(ownerId)
+    if (profile) users[fileId] = profile
+  }
+
+  return { users, error: firstError }
 }
 
 export function getCheckedOutUsers(
-  fileIds: string[],
-  scope?: CheckoutProfileScope,
+  owners: CheckoutOwnerRef[],
+  scope: CheckoutProfileScope,
 ): Promise<CheckedOutUsersResult> {
-  const normalizedFileIds = [...new Set(fileIds)].sort()
-  const scopeKey = scope ? `${scope.orgId}:${scope.vaultId ?? ''}:${scope.fileId ?? ''}` : ''
-  const key = `${scopeKey}:${normalizedFileIds.join(',')}`
+  const ownerByFileId = new Map(owners.map((owner) => [owner.fileId, owner.ownerId]))
+  const normalizedOwners = [...ownerByFileId]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([fileId, ownerId]) => ({ fileId, ownerId }))
+  const scopeKey = `${scope.orgId}:${scope.vaultId ?? ''}:${scope.fileId ?? ''}`
+  const key = `${scopeKey}:${normalizedOwners.map((o) => `${o.fileId}=${o.ownerId}`).join(',')}`
   const existing = checkedOutUsersInFlight.get(key)
   if (existing) return existing
 
-  const request = fetchCheckedOutUsers(normalizedFileIds, scope).finally(() => {
+  const request = fetchCheckedOutUsers(normalizedOwners, scope).finally(() => {
     if (checkedOutUsersInFlight.get(key) === request) {
       checkedOutUsersInFlight.delete(key)
     }

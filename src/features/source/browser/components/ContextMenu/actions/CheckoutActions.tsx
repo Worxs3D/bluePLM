@@ -8,6 +8,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
 import { checkOperationPermission, getPermissionRequirement } from '@/lib/permissions'
 import { getCountLabel } from '@/lib/utils'
+import { getCheckoutOwnerLabel } from '@/lib/checkout/checkoutDisplay'
 import type { RefreshableActionProps, SelectionCounts, SelectionState } from './types'
 import { ContextSubmenu } from '../components'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
@@ -50,6 +51,10 @@ export function CheckoutActions({
     usePDMStore()
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
   const [isSyncing, setIsSyncing] = useState(false)
+  const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null
+  const heldFileHydration = usePDMStore((s) =>
+    heldFile?.pdmData?.id ? s.checkoutHydration[heldFile.pdmData.id]?.state : undefined,
+  )
 
   // Check if any files are currently saving metadata, at any scope: a configuration edit mutates
   // the same bytes a check-in is about to upload.
@@ -70,6 +75,11 @@ export function CheckoutActions({
   const folderCount = counts.folderCount
   const countLabel = getCountLabel(fileCount, folderCount)
 
+  const heldByOthers = !state.allFolders && state.allCheckedOutByOthers
+  const heldByOthersReason =
+    (heldFile && getCheckoutOwnerLabel(heldFile, user, heldFileHydration)) ||
+    'Checked out by someone else'
+
   // Compute disabled states
   const checkoutDisabled =
     !canCheckout.allowed ||
@@ -79,9 +89,11 @@ export function CheckoutActions({
     ? `Requires ${getPermissionRequirement('checkout')}`
     : !state.anySynced
       ? 'Download files first to enable checkout'
-      : (state.allFolders ? counts.checkoutableCount === 0 : state.allCheckedOut)
-        ? 'All files already checked out'
-        : ''
+      : heldByOthers
+        ? heldByOthersReason
+        : (state.allFolders ? counts.checkoutableCount === 0 : state.allCheckedOut)
+          ? 'All files already checked out'
+          : ''
 
   const checkinDisabled = !canCheckin.allowed || state.allCheckedIn || counts.checkinableCount === 0
   const checkinReason = !canCheckin.allowed
@@ -89,7 +101,7 @@ export function CheckoutActions({
     : state.allCheckedIn
       ? 'Already checked in'
       : state.allCheckedOutByOthers
-        ? 'Checked out by someone else'
+        ? heldByOthersReason
         : counts.checkinableCount === 0
           ? 'No files checked out by you'
           : ''
@@ -160,7 +172,9 @@ export function CheckoutActions({
             <span className="text-xs text-plm-fg-muted ml-auto">(download first)</span>
           )}
           {canCheckout.allowed && state.anySynced && state.allCheckedOut && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(already out)</span>
+            <span className="text-xs text-plm-fg-muted ml-auto">
+              {heldByOthers ? '(by others)' : '(already out)'}
+            </span>
           )}
         </div>
       )}

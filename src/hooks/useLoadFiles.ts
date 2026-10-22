@@ -36,7 +36,7 @@ import { t } from '@/lib/i18n'
 import { describeError } from '@/lib/errorDetails'
 import { logExplorer } from '@/lib/userActionLogger'
 import type { CheckoutHydrationStatus, LocalFile } from '@/stores/types'
-import type { CheckoutProfileScope } from '@/lib/supabase/files/queries'
+import type { CheckoutOwnerRef, CheckoutProfileScope } from '@/lib/supabase/files/queries'
 import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
@@ -303,12 +303,14 @@ interface CheckoutProfileFetchResult {
 }
 
 async function fetchCheckoutProfilesWithRetry(
-  fileIds: string[],
+  owners: CheckoutOwnerRef[],
   scope: CheckoutProfileScope,
   requestId: string,
   isCurrent?: () => boolean,
 ): Promise<CheckoutProfileFetchResult> {
   let lastError: unknown = null
+  let lastUsers: Record<string, CheckoutUserProfile> = {}
+  const ownerCount = new Set(owners.map((owner) => owner.ownerId)).size
 
   for (let attempt = 1; attempt <= CHECKOUT_PROFILE_MAX_ATTEMPTS; attempt++) {
     if (isCurrent && !isCurrent()) {
@@ -318,7 +320,7 @@ async function fetchCheckoutProfilesWithRetry(
     const fetchStart = performance.now()
     let result: { users: Record<string, CheckoutUserProfile>; error: unknown }
     try {
-      result = await getCheckedOutUsers(fileIds, scope)
+      result = await getCheckedOutUsers(owners, scope)
     } catch (error) {
       result = { users: {}, error }
     }
@@ -341,9 +343,10 @@ async function fetchCheckoutProfilesWithRetry(
         requestId,
         orgId: hashCheckoutIdentifier(scope.orgId),
         vaultId: hashCheckoutIdentifier(scope.vaultId),
-        fileCount: fileIds.length,
+        fileCount: owners.length,
+        ownerCount,
         hitCount: Object.keys(result.users).length,
-        missCount: fileIds.length - Object.keys(result.users).length,
+        missCount: owners.length - Object.keys(result.users).length,
         attempt,
         latencyMs,
         stale: false,
@@ -352,11 +355,14 @@ async function fetchCheckoutProfilesWithRetry(
     }
 
     lastError = result.error
+    lastUsers = result.users
     log.warn('[CheckoutHydration]', 'Checkout profile lookup failed', {
       requestId,
       orgId: hashCheckoutIdentifier(scope.orgId),
       vaultId: hashCheckoutIdentifier(scope.vaultId),
-      fileCount: fileIds.length,
+      fileCount: owners.length,
+      ownerCount,
+      hitCount: Object.keys(result.users).length,
       attempt,
       latencyMs,
       // name, message, code, details, hint, status: the cause was logged as "[object Object]".
@@ -369,7 +375,7 @@ async function fetchCheckoutProfilesWithRetry(
     }
   }
 
-  return { users: {}, error: lastError, attempts: CHECKOUT_PROFILE_MAX_ATTEMPTS }
+  return { users: lastUsers, error: lastError, attempts: CHECKOUT_PROFILE_MAX_ATTEMPTS }
 }
 
 /**
@@ -2067,8 +2073,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 orgId: organization.id,
                 vaultId: loadingForVaultId,
               }
+              const owners: CheckoutOwnerRef[] = pendingStatuses.map(([fileId, status]) => ({
+                fileId,
+                ownerId: status.ownerId,
+              }))
               const profileResult = await fetchCheckoutProfilesWithRetry(
-                uniqueFileIds,
+                owners,
                 scope,
                 loadContext.requestId,
                 isLoadContextCurrent,

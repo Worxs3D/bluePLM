@@ -6,6 +6,27 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.3] - 2026-10-22
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Checked-out files show who holds them again.** Since at least Oct 13, every vault load failed
+  to look up the people holding checkouts. The lookup sent one request listing every checked-out
+  file ID (about 750 IDs, a 29 KB URL), and the gateway rejected it with a bare `400 Bad Request`.
+  Rows held by someone else then showed no avatar and no checkout or check-in button, so they
+  looked checked in while refusing every checkout (Blake and David). The lookup now asks for the
+  few distinct owners (11 in that vault, batched at 100) using the `checked_out_by` the load
+  already has, and maps each profile back to its files. It works for every role, since any
+  signed-in user can read their organization's user list. A batch that fails no longer discards
+  the batches that succeeded.
+- **A file held by an unknown owner still looks checked out.** If an owner's profile cannot be
+  loaded, the row now shows a `?` avatar with "Checkout owner unavailable" (or "Loading checkout
+  owner") instead of nothing. In both context menus, Check Out now says "(by others)" instead of
+  "(already out)" when someone else holds every selected file, with the owner's name in the
+  tooltip. The tree-view menu also gets the "(by others)" hint on Check In.
+
 ## [4.7.2] - 2026-10-17
 
 Renderer and Electron main only - no schema change, no API change, SolidWorks service unchanged.
