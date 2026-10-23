@@ -6,6 +6,18 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.4] - 2026-10-23
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Starting the SolidWorks service shows it running again.** The SolidWorks integration flag is
+  set once at onboarding (off when SolidWorks was not detected) and has no settings toggle. While
+  it was off, Start spawned a healthy service and showed "SolidWorks service started", but the
+  status check reported it stopped and every SolidWorks feature stayed hidden (Isaac). A manual
+  Start, from Settings or the SolidWorks panel, now turns the integration back on.
+
 ## [4.7.3] - 2026-10-22
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.
