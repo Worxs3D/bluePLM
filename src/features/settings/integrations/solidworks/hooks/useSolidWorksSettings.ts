@@ -35,6 +35,14 @@ export function useSolidWorksServiceControl() {
         solidworksServiceVerboseLogging,
       )
       if (result?.success) {
+        // A manual start is an explicit opt-in. The integration flag is set once at
+        // onboarding (off when SolidWorks was not detected) and has no other UI, and
+        // while it is off the status check reports the running service as stopped.
+        const store = usePDMStore.getState()
+        if (!store.solidworksIntegrationEnabled) {
+          log.info('[SWSettings]', 'Manual start re-enabled SolidWorks integration')
+          store.setSolidworksIntegrationEnabled(true)
+        }
         addToast('success', 'SolidWorks service started')
         // Refresh status to pick up the change
         await refreshStatus()

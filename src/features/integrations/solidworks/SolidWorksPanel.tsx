@@ -73,6 +73,11 @@ export function useSolidWorksService() {
       // Pass the DM license key from org settings to enable direct file access
       const result = await window.electronAPI?.solidworks?.startService(dmLicenseKey || undefined)
       if (result?.success) {
+        // A manual start is an explicit opt-in; see useSolidWorksServiceControl.
+        const store = usePDMStore.getState()
+        if (!store.solidworksIntegrationEnabled) {
+          store.setSolidworksIntegrationEnabled(true)
+        }
         const directAccessEnabled = (result.data as any)?.fastModeEnabled // TODO: type this
         setStatus({
           running: true,
