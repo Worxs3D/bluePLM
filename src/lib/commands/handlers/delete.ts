@@ -978,6 +978,17 @@ export const deleteServerCommand: Command<DeleteServerParams> = {
           durationMs: Date.now() - localDeleteStart,
         })
       }
+
+      // A selected folder the model calls cloud-only can still be on disk, empty: a move
+      // empties it before the next load settles its status. Left there, it came back as a
+      // local folder on the next load, after the delete had removed its row. Only an empty
+      // folder goes; one holding files BluePLM does not list stays, and reappears honestly.
+      const foldersSkipped = files.filter(
+        (f) => f.isDirectory && !localItemsToDelete.some((item) => item.path === f.path),
+      )
+      if (foldersSkipped.length > 0) {
+        await window.electronAPI?.trashEmptyDirs(foldersSkipped.map((f) => f.path))
+      }
     }
 
     // STEP 2: Delete from server with concurrency limiting

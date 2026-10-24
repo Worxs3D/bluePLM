@@ -14,6 +14,7 @@ interface PendingProgressUpdate {
   percent: number
   speed?: string
   label?: string
+  status?: string
 }
 
 const pendingProgressUpdates = new Map<string, PendingProgressUpdate>()
@@ -60,6 +61,7 @@ function scheduleProgressFlush(
           percent: update.percent,
           speed: update.speed,
           label: update.label,
+          status: update.status,
         },
       }
     })
@@ -115,10 +117,11 @@ export const createToastsSlice: StateCreator<
     percent: number,
     speed?: string,
     label?: string,
+    status?: string,
   ) => {
     // Batch updates: store the latest values and schedule a flush
     // This coalesces rapid updates into a single state change per animation frame
-    pendingProgressUpdates.set(id, { current, percent, speed, label })
+    pendingProgressUpdates.set(id, { current, percent, speed, label, status })
     scheduleProgressFlush(get, set)
   },
 

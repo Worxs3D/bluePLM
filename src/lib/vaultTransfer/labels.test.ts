@@ -196,6 +196,18 @@ describe('describeReport', () => {
     expect(details).toEqual([])
   })
 
+  it('names an emptied folder that stayed on disk instead of leaving it unexplained', () => {
+    const report = buildTransferReport(
+      plan,
+      run(plan.files.map((planned) => ({ planned, status: 'transferred', localCopy: 'copied' }))),
+      { removed: plan.files, kept: [], foldersRemoved: [], foldersKept: ['T3000/development'] },
+    )
+    const { details } = describeReport(report, 'move', 'Archive')
+
+    expect(report.severity).toBe('warning')
+    expect(details).toEqual([expect.stringMatching(/^T3000\/development: /)])
+  })
+
   it('cuts a long list of problems off with a count of the rest', () => {
     const report = buildTransferReport(
       plan,

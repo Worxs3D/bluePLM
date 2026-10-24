@@ -257,6 +257,9 @@ function ProgressToastItem({ toast }: { toast: ToastMessage }) {
           </span>
         </div>
       )}
+      {progress?.status && !isQueued && (
+        <span className="text-xs text-plm-fg-muted">{progress.status}</span>
+      )}
     </div>
   )
 }

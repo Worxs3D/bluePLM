@@ -4,7 +4,7 @@ import type { LocalFile } from '@/stores/types'
 import type { PDMFile } from '@/types/pdm'
 
 import type { LocalCopyOutcome, SourceRowState, TransferItemResult } from './execute'
-import { removeMovedSources, type RemoveSourcesDeps } from './removeSources'
+import { lockFilePathFor, removeMovedSources, type RemoveSourcesDeps } from './removeSources'
 import { planVaultTransfer } from './plan'
 
 function pdm(id: string): PDMFile {
@@ -97,6 +97,7 @@ class Fake {
   rowsDeleted: string[] = []
   dirsTrashed: string[] = []
   serverFoldersDeleted: string[] = []
+  locksRecycled: string[] = []
   order: string[] = []
 
   seedRows(files: LocalFile[]) {
@@ -125,6 +126,9 @@ class Fake {
           removed.add(path)
         }
         return removed
+      },
+      recycleStaleLocks: async (paths) => {
+        this.locksRecycled.push(...paths)
       },
       softDeleteRows: async (ids) => {
         const deleted = new Set<string>()
@@ -340,6 +344,35 @@ describe('when a removal fails part-way', () => {
   })
 })
 
+describe('stale lock files', () => {
+  const dir = folder('Parts')
+  const inner = file('Parts/a.SLDASM')
+  const open = file('Parts/b.SLDPRT')
+  const all = [dir, inner, open]
+
+  // A `~$` lock left by a crash kept T3000/development on disk after its 70 files moved.
+  it('recycles the lock file of every file the move took off the disk, and only those', async () => {
+    const fake = new Fake()
+    fake.seedRows(all)
+    fake.lockedLocal.add(open.path)
+    const { files, sourceFolders } = plan([dir], all)
+
+    await removeMovedSources(
+      { results: files.map((entry) => transferred(entry)), sourceFolders, vaultFiles: all },
+      fake.deps(),
+    )
+
+    expect(fake.locksRecycled).toEqual(['C:\\a\\Parts\\~$a.SLDASM'])
+  })
+
+  it('names a lock file beside its file on either separator', () => {
+    expect(lockFilePathFor('C:\\v\\T3000\\t3000-asm.SLDASM')).toBe(
+      'C:\\v\\T3000\\~$t3000-asm.SLDASM',
+    )
+    expect(lockFilePathFor('/v/T3000/a.SLDPRT')).toBe('/v/T3000/~$a.SLDPRT')
+  })
+})
+
 describe('source folders', () => {
   const dir = folder('Parts')
   const inner = file('Parts/a.SLDPRT')
@@ -389,6 +422,7 @@ describe('source folders', () => {
     )
 
     expect(outcome.foldersRemoved).toHaveLength(0)
+    expect(outcome.foldersKept).toEqual(['Parts'])
     expect(fake.serverFoldersDeleted).toHaveLength(0)
   })
 

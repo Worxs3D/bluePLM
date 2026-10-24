@@ -1322,6 +1322,9 @@ export const en: TranslationDict = {
       resultFoldersFailed: '{{count}} folders not created',
       resultReferencesFailed: 'references not copied',
       resultFolderFailed: 'Folder could not be created',
+      resultFoldersKept: '{{count}} emptied folders left on disk',
+      resultFolderKept:
+        'Folder left on disk: it still holds files BluePLM does not list (hidden, ignored or open)',
       resultAndMore: '...and {{count}} more',
 
       // Why a file is left out of a transfer

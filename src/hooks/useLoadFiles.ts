@@ -572,6 +572,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // lands while this pass runs makes the merge stale. See fileMutationEpoch.
         const epochAtScanStart = getFileMutationEpoch()
 
+        // The server list, the server folder set and the sync index are written only once
+        // the merge is known to commit. A discarded merge used to leave them behind: a load
+        // that fetched the server mid-move kept 10 already-deleted rows in `serverFiles`,
+        // and a folder delete then counted and "deleted" them again.
+        const commitsAfterMerge: Array<() => void> = []
+
         // A delta scan is only safe when it can build on a prior full scan; the
         // main process falls back to a full walk on its own if it cannot.
         const canDeltaScan =
@@ -857,7 +863,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               extension: file.extension ?? '',
               content_hash: file.content_hash || '',
             }))
-            setServerFiles(serverFilesList)
+            commitsAfterMerge.push(() => setServerFiles(serverFilesList))
 
             // Clean up auto-download exclusions for files that no longer exist on the server
             if (currentVaultId) {
@@ -880,7 +886,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             for (const folder of serverFoldersResult.folders || []) {
               serverFolderPathsSet.add(folder.folder_path)
             }
-            setServerFolderPaths(serverFolderPathsSet)
+            commitsAfterMerge.push(() => setServerFolderPaths(serverFolderPathsSet))
 
             // Create set of local file paths for deletion detection (case-insensitive)
             const localPathSet = new Set(localFiles.map((f) => f.relativePath.toLowerCase()))
@@ -1724,19 +1730,21 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               // above are what keeps the two from fighting over the moved-file paths.
               // localPathSet is what lets the first call tell a file that is still on disk
               // from one that is gone, which decides tombstone versus delete.
-              updateSyncIndexFromServer(currentVaultId, serverPaths, localPathSet)
-                .then((): Promise<void> | void => {
-                  if (inodeEntries.length > 0) {
-                    return updateInodes(currentVaultId, inodeEntries)
-                  }
-                })
-                .catch((error) => {
-                  window.electronAPI?.log(
-                    'warn',
-                    '[LoadFiles] Failed to update sync index or inodes',
-                    { error: String(error) },
-                  )
-                })
+              commitsAfterMerge.push(() => {
+                updateSyncIndexFromServer(currentVaultId, serverPaths, localPathSet)
+                  .then((): Promise<void> | void => {
+                    if (inodeEntries.length > 0) {
+                      return updateInodes(currentVaultId, inodeEntries)
+                    }
+                  })
+                  .catch((error) => {
+                    window.electronAPI?.log(
+                      'warn',
+                      '[LoadFiles] Failed to update sync index or inodes',
+                      { error: String(error) },
+                    )
+                  })
+              })
             }
           }
         } else {
@@ -1957,6 +1965,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           markLoadSuperseded(loadingForVaultId)
           return
         }
+
+        for (const commit of commitsAfterMerge) commit()
 
         const setFilesStart = performance.now()
         const previousStoreCount = usePDMStore.getState().files.length

@@ -182,6 +182,7 @@ export interface ToastMessage {
     speed?: string
     cancelRequested?: boolean
     label?: string // Custom label (e.g., "214/398 MB") - overrides default current/total display
+    status?: string // Phase text, shown under the bar; the counter slot is too narrow for a sentence
     queued?: boolean // True if operation is waiting in queue (not yet started)
   }
 }
@@ -506,6 +507,8 @@ export interface ToastsSlice {
     percent: number,
     speed?: string,
     label?: string,
+    /** A phase in words ("Removing the moved files..."), shown on its own line under the bar. */
+    status?: string,
   ) => void
   requestCancelProgressToast: (id: string) => void
   isProgressToastCancelled: (id: string) => boolean
