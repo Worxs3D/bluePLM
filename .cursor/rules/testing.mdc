@@ -16,9 +16,12 @@ sizing, exit codes and costs. It packs the working tree as it is, uncommitted ed
 | local command | cloud command (`$run` = the runner path above) |
 |---|---|
 | focused `npx vitest run <files>` | `node $run --repo . --gate vitest --paths <a.test.ts> [more] --timeout-min 10` |
-| `npm run test` | `node $run --repo . --gate test --timeout-min 20` |
-| `npm run typecheck` | `node $run --repo . --gate check --timeout-min 15` (runs `npm run check:all`) |
+| `npm run test` | `node $run --repo . --gate test --cores 16 --timeout-min 20` |
+| `npm run typecheck` | `node $run --repo . --gate check --cores 16 --timeout-min 15` (runs `npm run check:all`) |
 
+- `--cores 16` on purpose: the runner defaults full runs to 64 cores, which pays off for br-motor-builder but not here.
+  bluePLM's suite is about 170 CPU-seconds, so 64 cores saved 4 s on the test step at about 7x the cost (measured
+  2026-10-24, runner README).
 - Exit 0 is a pass; a failing gate passes its own exit code through. A failure is a result: never rerun it locally.
 - Local is the backup only when the runner is missing, Modal is unreachable (exit 2), the run failed as
   infrastructure (exit 4) or the spend cap refused it. Then run one command at a time, never alongside another test
