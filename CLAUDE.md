@@ -162,9 +162,13 @@ Plans and agent reports live in `.cursor/plans/`. Never create a plan outside th
 
 ## Commands
 
+Test suites and typechecks run on the Modal cloud test runner, not on this machine: see
+`.cursor/rules/testing.mdc` for the commands. The npm scripts below are what those runs execute.
+
 ```bash
 npm run typecheck      # renderer + electron; must pass before any tag
 npm run typecheck:api  # api/ only
+npm run check:all      # typecheck (the cloud runner's `check` gate)
 npm run test           # vitest run
 npm run lint           # eslint
 npm run dev            # vite dev server
@@ -185,6 +189,7 @@ automatically:
 @.cursor/rules/electron.mdc
 @.cursor/rules/solidworks-service.mdc
 @.cursor/rules/plans.mdc
+@.cursor/rules/testing.mdc
 
 The points that most often get violated:
 

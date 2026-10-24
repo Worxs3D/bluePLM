@@ -13,6 +13,7 @@
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:electron": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:api": "tsc --noEmit -p api/tsconfig.json",
+    "check:all": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:sw-service": "dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release",
