@@ -7,6 +7,8 @@
  * `custom_properties` object), a few percent cloud-only, a few percent checked out.
  */
 import type { CachedServerFile } from '@/lib/cache/vaultFileCache'
+import type { LocalFile } from '@/stores/types'
+import type { PDMFile } from '@/types/pdm'
 
 export const FIXTURE_VAULT_ROOT = 'C:\\Users\\harness\\BluePLM\\vault'
 export const FIXTURE_USER_ID = 'user-harness-0001'
@@ -137,4 +139,45 @@ export function buildSyntheticVault(fileCount: number): SyntheticVault {
   }
 
   return { serverRows, localEntries, folderPaths }
+}
+
+/**
+ * The store rows a completed load of `vault` leaves behind, without running the load: folders,
+ * synced files with their server row, and cloud-only rows for the files not on disk. For tests of
+ * what runs over a loaded store (realtime, folder lookups, Re-align) at a size where running the
+ * load itself would cost more than the thing measured.
+ */
+export function buildLoadedStoreFiles(vault: SyntheticVault): LocalFile[] {
+  const localByPath = new Map(vault.localEntries.map((entry) => [entry.relativePath, entry]))
+  const files: LocalFile[] = vault.localEntries
+    .filter((entry) => entry.isDirectory)
+    .map((entry) => ({ ...entry, isSynced: true }))
+
+  for (const row of vault.serverRows) {
+    const local = localByPath.get(row.file_path)
+    const pdmData = row as unknown as PDMFile
+    if (!local) {
+      files.push({
+        name: row.file_name,
+        path: `${FIXTURE_VAULT_ROOT}\\${row.file_path.replace(/\//g, '\\')}`,
+        relativePath: row.file_path,
+        isDirectory: false,
+        extension: row.extension ?? '',
+        size: row.file_size ?? 0,
+        modifiedTime: '',
+        pdmData,
+        isSynced: false,
+        diffStatus: 'cloud',
+      })
+      continue
+    }
+    files.push({
+      ...local,
+      pdmData,
+      isSynced: true,
+      localHash: row.content_hash ?? undefined,
+      localVersion: row.version,
+    })
+  }
+  return files
 }

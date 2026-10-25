@@ -3,8 +3,12 @@
  * `useLoadFiles`, `useVaultTree` and `useSorting` hooks through react-dom/server and drives the
  * real store, the real vault file cache and the real merge/reconciliation code over ~29,000
  * synthetic rows. Only the edges are faked: the local scan (electronAPI), the Supabase queries,
- * the sync-index IndexedDB (maps of the same size) and the vault-cache IndexedDB (a fake that
- * structured-clones on put/get, like the real one).
+ * the sync-index IndexedDB (maps of the same size) and the vault-cache IndexedDB (the shared fake
+ * in loadPipelineFakes.ts, which structured-clones on put/get like the real one).
+ *
+ * The budgeted version of this pipeline, which runs in every `npm test`, is
+ * src/perf/loadPipeline.perf.test.ts: it counts round trips and rows written instead of sampling
+ * allocation, because the sampling profiler slows the run too much for CI.
  *
  * Skipped by default. Run it with:
  *
@@ -25,6 +29,7 @@ import v8 from 'node:v8'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { buildSyntheticVault, FIXTURE_USER_ID, FIXTURE_VAULT_ROOT } from './loadPipelineFixtures'
+import { installFakeIndexedDB } from './loadPipelineFakes'
 import type { CachedServerFile } from '@/lib/cache/vaultFileCache'
 
 const ENABLED = process.env.BLUEPLM_ALLOC_HARNESS === '1'
@@ -89,55 +94,6 @@ vi.mock('@/lib/cache/localSyncIndex', () => {
     updateInodes: vi.fn(async () => undefined),
   }
 })
-
-function installFakeIndexedDB(): void {
-  const data = new Map<string, unknown>()
-  class FakeRequest {
-    result: unknown
-    error: unknown = null
-    onsuccess: (() => void) | null = null
-    onerror: (() => void) | null = null
-    onupgradeneeded: ((event: unknown) => void) | null = null
-  }
-  const settle = (request: FakeRequest, result: unknown) =>
-    queueMicrotask(() => {
-      request.result = result
-      request.onsuccess?.()
-    })
-  const store = {
-    createIndex: () => undefined,
-    get(key: string) {
-      const request = new FakeRequest()
-      // The real IndexedDB hands back a deserialised copy.
-      settle(request, structuredClone(data.get(key)))
-      return request
-    },
-    put(value: Record<string, unknown>) {
-      // ... and stores a serialised one.
-      data.set(String(value.vaultId), structuredClone(value))
-      const request = new FakeRequest()
-      settle(request, undefined)
-      return request
-    },
-  }
-  const db = {
-    objectStoreNames: { contains: () => true },
-    deleteObjectStore: () => undefined,
-    createObjectStore: () => store,
-    transaction: () => ({ objectStore: () => store, abort: () => undefined }),
-    close: () => undefined,
-  }
-  ;(globalThis as { indexedDB?: unknown }).indexedDB = {
-    open() {
-      const request = new FakeRequest()
-      queueMicrotask(() => {
-        request.result = db
-        request.onsuccess?.()
-      })
-      return request
-    },
-  }
-}
 
 function mb(bytes: number): number {
   return Math.round((bytes / BYTES_PER_MB) * 10) / 10

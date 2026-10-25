@@ -6,6 +6,29 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Watcher refreshes and restarts no longer rewrite the whole local sync index.** Every
+  committed load put every entry back, changed or not (about 2 writes and 1 read per file, so
+  ~60,000 IndexedDB operations for one saved file in a 30k vault). Only entries that change are
+  written now, large inode updates read the vault once, and the three reads a load makes share
+  one pass.
+- **A load no longer rewrites the whole vault cache to store checkout profiles it already has.**
+  The profiles were fetched and written back on every load, which undid the small-delta skip.
+- **Bursts of realtime events from other users are one store update, not one per file.**
+  Check-ins, check-outs and additions of many files are batched like deletions already were, and
+  a burst of check-outs looks up each owner's profile once instead of two queries per file.
+- **Re-align no longer discards the saved hash stamps**, which made the next start re-hash the
+  whole vault.
+
+### Tests
+
+- Performance regression gate in `src/perf/` (runs in `npm test`): operation counts at 1k, 10k
+  and 30k files for loads, persist bursts, folder lookups, realtime bursts, Re-align and first
+  check-in. Report: `.cursor/plans/test-audit-C-report.md`.
+
 ## [4.7.5] - 2026-10-25
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.
