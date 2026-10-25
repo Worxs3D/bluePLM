@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getInodeMap,
   getSyncIndex,
+  getVersionMap,
   removeFromSyncIndex,
   updateInodes,
   updateSyncIndexFromServer,
@@ -388,5 +389,56 @@ describe('localSyncIndex moved-file entries', () => {
     expect(syncIndex.has('designs/new-name.sldprt')).toBe(true)
     // The old path is gone from the server and from disk, so nothing keeps it.
     expect(syncIndex.has('designs/old-name.sldprt')).toBe(false)
+  })
+})
+
+describe('localSyncIndex hash stamps', () => {
+  beforeEach(() => {
+    records.clear()
+    deletes.length = 0
+  })
+
+  const path = 'designs/bracket.sldprt'
+  const stamp = { size: 1200, mtimeMs: 1_761_386_400_000 }
+
+  it('restores a hash with the size and modified time it was computed from', async () => {
+    await updateInodes(VAULT_ID, [
+      { path, ino: 9, localVersion: 3, localHash: 'h1', hashStamp: stamp },
+    ])
+    await flush()
+
+    expect((await getVersionMap(VAULT_ID)).get(path)).toEqual({
+      localVersion: 3,
+      localHash: 'h1',
+      hashStamp: stamp,
+    })
+  })
+
+  it('keeps the stamp through the per-load reconcile against the server list', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await runLoadWrites({ serverPaths: [path], localPaths: [path] })
+
+    expect((await getVersionMap(VAULT_ID)).get(path)?.hashStamp).toEqual(stamp)
+  })
+
+  it('drops the stamp when a hash is written without one, so it never vouches for that hash', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h2' }])
+    await flush()
+
+    const saved = (await getVersionMap(VAULT_ID)).get(path)
+    expect(saved?.localHash).toBe('h2')
+    expect(saved?.hashStamp).toBeUndefined()
+  })
+
+  it('leaves hash and stamp alone when an inode-only write passes no hash', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await updateInodes(VAULT_ID, [{ path, ino: 10 }])
+    await flush()
+
+    expect((await getVersionMap(VAULT_ID)).get(path)).toMatchObject({
+      localHash: 'h1',
+      hashStamp: stamp,
+    })
   })
 })

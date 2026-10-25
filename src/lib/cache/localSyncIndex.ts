@@ -47,6 +47,12 @@ interface SyncIndexEntry {
   ino?: number // NTFS file index number (survives renames)
   localVersion?: number // last known synced version (survives app restart)
   localHash?: string // last known content hash (survives app restart)
+  // Size and modified time (ms) of the file localHash was computed from. Without them a
+  // restart cannot tell a hash still true of the disk from one the user's edits since made
+  // stale. Absent on entries written before 4.7.5, and whenever localHash was written
+  // without a known stamp.
+  hashSize?: number
+  hashMtimeMs?: number
   // Path the index knows only from local state: the old server path of a file moved
   // on disk, or its new local path before the move reaches the server. Carrying the
   // inode at both paths is what keeps rename detection working across loads, so these
@@ -57,6 +63,19 @@ interface SyncIndexEntry {
   // on disk. Set only for paths that were server-backed, so it means "the server row
   // for a file we hold went away", not "this path is unknown to the server".
   orphanedAt?: number
+}
+
+/** Size and modified time (ms) of the file a stored hash was computed from. */
+export interface HashStamp {
+  size: number
+  mtimeMs: number
+}
+
+/** Version and hash state restored from the sync index on load. */
+export interface SavedVersionData {
+  localVersion?: number
+  localHash?: string
+  hashStamp?: HashStamp
 }
 
 /** What the loader needs about a path the sync index knows. */
@@ -356,7 +375,7 @@ export async function updateSyncIndexFromServer(
         const existingEntries = existingRequest.result as SyncIndexEntry[]
         const existingDataMap = new Map<
           string,
-          { ino?: number; localVersion?: number; localHash?: string }
+          Pick<SyncIndexEntry, 'ino' | 'localVersion' | 'localHash' | 'hashSize' | 'hashMtimeMs'>
         >()
         for (const e of existingEntries) {
           if (e.ino || e.localVersion !== undefined || e.localHash) {
@@ -364,6 +383,8 @@ export async function updateSyncIndexFromServer(
               ino: e.ino,
               localVersion: e.localVersion,
               localHash: e.localHash,
+              hashSize: e.hashSize,
+              hashMtimeMs: e.hashMtimeMs,
             })
           }
         }
@@ -417,6 +438,8 @@ export async function updateSyncIndexFromServer(
             ino: existingData?.ino,
             localVersion: existingData?.localVersion,
             localHash: existingData?.localHash,
+            hashSize: existingData?.hashSize,
+            hashMtimeMs: existingData?.hashMtimeMs,
           }
 
           const request = store.put(entry)
@@ -560,6 +583,10 @@ export async function getInodeMap(vaultId: string): Promise<Map<number, string[]
  * Creates new entries if none exist (upsert) so files from any entry path
  * (SolidWorks DM API extension, manual copy, etc.) get inode tracking.
  *
+ * `hashStamp` is the size and modified time of the file `localHash` was computed from. A
+ * hash written without one also clears any stored stamp, so a stamp never vouches for a
+ * hash it was not taken with.
+ *
  * `localOnly` must be passed for every entry whose path is not on the server on this
  * load, and left absent otherwise. It is derived per load and written unconditionally
  * so a path that becomes server-backed loses the flag; a stored flag is never trusted.
@@ -571,6 +598,7 @@ export async function updateInodes(
     ino: number
     localVersion?: number
     localHash?: string
+    hashStamp?: HashStamp
     localOnly?: boolean
   }>,
 ): Promise<void> {
@@ -585,7 +613,7 @@ export async function updateInodes(
 
       let completed = 0
 
-      for (const { path, ino, localVersion, localHash, localOnly } of entries) {
+      for (const { path, ino, localVersion, localHash, hashStamp, localOnly } of entries) {
         const key = makeKey(vaultId, path)
         const getRequest = store.get(key)
 
@@ -595,7 +623,11 @@ export async function updateInodes(
           if (existing) {
             existing.ino = ino
             if (localVersion !== undefined) existing.localVersion = localVersion
-            if (localHash !== undefined) existing.localHash = localHash
+            if (localHash !== undefined) {
+              existing.localHash = localHash
+              existing.hashSize = hashStamp?.size
+              existing.hashMtimeMs = hashStamp?.mtimeMs
+            }
             if (localOnly) {
               existing.localOnly = true
             } else {
@@ -611,6 +643,8 @@ export async function updateInodes(
               ino,
               localVersion,
               localHash,
+              hashSize: localHash !== undefined ? hashStamp?.size : undefined,
+              hashMtimeMs: localHash !== undefined ? hashStamp?.mtimeMs : undefined,
               localOnly,
             }
             store.put(newEntry)
@@ -638,9 +672,7 @@ export async function updateInodes(
  * version or hash data. Used during file loading to restore version/hash state after
  * app restart, preventing false-positive "outdated" (purple) highlights.
  */
-export async function getVersionMap(
-  vaultId: string,
-): Promise<Map<string, { localVersion?: number; localHash?: string }>> {
+export async function getVersionMap(vaultId: string): Promise<Map<string, SavedVersionData>> {
   try {
     const db = await openDB()
 
@@ -652,12 +684,16 @@ export async function getVersionMap(
 
       request.onsuccess = () => {
         const entries = request.result as SyncIndexEntry[]
-        const map = new Map<string, { localVersion?: number; localHash?: string }>()
+        const map = new Map<string, SavedVersionData>()
         for (const entry of entries) {
           if (entry.localVersion !== undefined || entry.localHash) {
             map.set(entry.relativePath, {
               localVersion: entry.localVersion,
               localHash: entry.localHash,
+              hashStamp:
+                entry.localHash && entry.hashSize !== undefined && entry.hashMtimeMs !== undefined
+                  ? { size: entry.hashSize, mtimeMs: entry.hashMtimeMs }
+                  : undefined,
             })
           }
         }

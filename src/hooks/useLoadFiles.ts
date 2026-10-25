@@ -30,6 +30,8 @@ import {
   getInodeMap,
   getVersionMap,
   updateInodes,
+  type HashStamp,
+  type SavedVersionData,
   type SyncIndexPathInfo,
 } from '@/lib/cache/localSyncIndex'
 import { t } from '@/lib/i18n'
@@ -62,7 +64,7 @@ import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
 import { cloudRowsForFolderRefresh } from './useLoadFiles/refreshFolderCloudRows'
 import { findExclusionsForFilesPresentLocally } from './useLoadFiles/autoDownloadExclusionPruning'
-import { buildHashStamps, isCachedHashStale } from './useLoadFiles/cachedHashValidity'
+import { buildHashStamps, judgeCachedHash, stampOf } from './useLoadFiles/cachedHashValidity'
 
 const CHECKOUT_PROFILE_MAX_ATTEMPTS = 3
 const CHECKOUT_PROFILE_RETRY_BASE_MS = 200
@@ -628,7 +630,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // Load persisted version/hash data for accurate outdated detection on app restart
         const versionMapPromise = currentVaultId
           ? getVersionMap(currentVaultId)
-          : Promise.resolve(new Map<string, { localVersion?: number; localHash?: string }>())
+          : Promise.resolve(new Map<string, SavedVersionData>())
 
         // Fetch server folders (for empty folder sync feature)
         // These are explicit folder records, separate from implicit folders derived from file paths
@@ -803,10 +805,11 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           localHash: f.hash,
         }))
 
-        // Paths whose cached hash was dropped because the file changed on disk since it was
-        // hashed. The background hash pass re-hashes them even when it otherwise skips files
-        // with a tracked localVersion.
-        const staleHashPaths = new Set<string>()
+        // Paths whose cached hash is stale (the file changed on disk since it was hashed) or
+        // unverified (no stamp to check it against). The background hash pass re-hashes them
+        // even when it otherwise skips files with a tracked localVersion, and their cached
+        // hash is never persisted with a stamp.
+        const rehashPaths = new Set<string>()
 
         // Get ignored paths checker for later use (don't filter, just mark as ignored)
         const isIgnoredPath = currentVaultId
@@ -838,10 +841,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             // remains the established full-domain shape. The existing consumers only read the
             // lightweight fields here; keep the boundary explicit instead of leaking `any`.
             const pdmMap = new Map<string, PDMFile>(
-              pdmFiles.map((file) => [
-                file.file_path.toLowerCase(),
-                file as unknown as PDMFile,
-              ]),
+              pdmFiles.map((file) => [file.file_path.toLowerCase(), file as unknown as PDMFile]),
             )
 
             // Create a map of server folders by path (case-insensitive for Windows compatibility)
@@ -949,7 +949,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 existingLocalHashes.set(f.relativePath.toLowerCase(), f.localHash)
               }
             }
-            const existingHashStamps = buildHashStamps(currentFiles)
+            const existingHashStamps = buildHashStamps(savedVersionMap, currentFiles)
 
             // Create a map of existing files' pendingMetadata to preserve unsaved changes
             // This prevents losing user's edits (like generated part numbers) when FileWatcher triggers refresh
@@ -987,10 +987,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             const existingCheckedOutUsers = new Map<string, CheckoutUserProfile>()
             for (const f of currentFiles) {
               const profile = f.pdmData?.checked_out_user
-              if (
-                f.pdmData?.id &&
-                isCheckoutProfileForOwner(profile, f.pdmData.checked_out_by)
-              ) {
+              if (f.pdmData?.id && isCheckoutProfileForOwner(profile, f.pdmData.checked_out_by)) {
                 existingCheckedOutUsers.set(f.pdmData.id, profile)
               }
             }
@@ -1024,10 +1021,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             const checkedOutByMeByHash = new Map<string, PDMFile>()
             for (const pdmFile of pdmFiles) {
               if (pdmFile.content_hash && pdmFile.checked_out_by === user?.id) {
-                checkedOutByMeByHash.set(
-                  pdmFile.content_hash,
-                  pdmFile as unknown as PDMFile,
-                )
+                checkedOutByMeByHash.set(pdmFile.content_hash, pdmFile as unknown as PDMFile)
               }
             }
 
@@ -1266,18 +1260,22 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 // persisted hash from a previous app session is always reachable.
                 // A hash taken before the file last changed on disk is dropped, never reused:
                 // it decides synced vs modified (see cachedHashValidity.ts).
-                const cachedHashIsStale = isCachedHashStale(
-                  existingHashStamps.get(localFile.relativePath.toLowerCase()),
-                  localFile,
-                )
-                if (cachedHashIsStale && !localFile.localHash) {
-                  staleHashPaths.add(localFile.relativePath)
+                const cachedLocalHash =
+                  existingLocalHashes.get(localFile.path) ||
+                  existingLocalHashes.get(localFile.relativePath) ||
+                  existingLocalHashes.get(localFile.relativePath.toLowerCase())
+                const cachedHashVerdict = localFile.localHash
+                  ? 'none'
+                  : judgeCachedHash(
+                      cachedLocalHash,
+                      existingHashStamps.get(localFile.relativePath.toLowerCase()),
+                      localFile,
+                    )
+                if (cachedHashVerdict === 'stale' || cachedHashVerdict === 'unverified') {
+                  rehashPaths.add(localFile.relativePath)
                 }
-                const existingLocalHash = cachedHashIsStale
-                  ? undefined
-                  : existingLocalHashes.get(localFile.path) ||
-                    existingLocalHashes.get(localFile.relativePath) ||
-                    existingLocalHashes.get(localFile.relativePath.toLowerCase())
+                const existingLocalHash =
+                  cachedHashVerdict === 'stale' ? undefined : cachedLocalHash
                 const effectiveLocalHash = localFile.localHash || existingLocalHash
 
                 // PRIMARY: Inode-based rename detection
@@ -1337,9 +1335,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                         const possiblyEditedSinceOrphaned =
                           Number.isNaN(modifiedTimeMs) || modifiedTimeMs > syncedPath.orphanedAt
                         if (possiblyEditedSinceOrphaned) {
-                          orphansEditedSinceServerRowLost.add(
-                            localFile.relativePath.toLowerCase(),
-                          )
+                          orphansEditedSinceServerRowLost.add(localFile.relativePath.toLowerCase())
                         }
                       }
                     } else {
@@ -1706,6 +1702,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 ino: number
                 localVersion?: number
                 localHash?: string
+                hashStamp?: HashStamp
                 localOnly?: boolean
               }> = []
               for (const f of localFiles) {
@@ -1724,6 +1721,9 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                     ino: f.ino,
                     localVersion: f.localVersion,
                     localHash: f.localHash,
+                    // Only a hash checked against the disk this load is stamped.
+                    hashStamp:
+                      f.localHash && !rehashPaths.has(f.relativePath) ? stampOf(f) : undefined,
                     // A moved file sits at a path the server does not have yet.
                     localOnly: f.diffStatus === 'moved',
                   })
@@ -2205,7 +2205,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                     hasLocalContent(f) &&
                     f.pdmData?.content_hash &&
                     !f.localHash &&
-                    (f.localVersion === undefined || staleHashPaths.has(f.relativePath)),
+                    (f.localVersion === undefined || rehashPaths.has(f.relativePath)),
                 )
               : localFiles.filter(
                   (f) =>
@@ -2257,12 +2257,36 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
                   // Update files with computed hashes and recompute diff status
                   const updateStart = performance.now()
+                  const requestStamps = new Map(
+                    hashRequests.map((r) => [r.relativePath, { size: r.size, mtimeMs: r.mtime }]),
+                  )
+                  const freshlyHashed: Array<{
+                    path: string
+                    ino: number
+                    localVersion?: number
+                    localHash: string
+                    hashStamp: HashStamp
+                    localOnly?: boolean
+                  }> = []
                   const currentFiles = usePDMStore.getState().files
                   const updatedFiles = currentFiles.map((f) => {
                     if (f.isDirectory) return f
 
                     const computedHash = hashMap.get(f.relativePath)
                     if (!computedHash) return f
+
+                    // A reload during hashing may already hold a newer copy of the file. The
+                    // hash describes the copy that was read, so it is not applied to another.
+                    const requested = requestStamps.get(f.relativePath)
+                    const current = stampOf(f)
+                    if (
+                      !requested ||
+                      !current ||
+                      requested.size !== current.size ||
+                      requested.mtimeMs !== current.mtimeMs
+                    ) {
+                      return f
+                    }
 
                     // Recompute diff status with the new hash
                     let newDiffStatus = f.diffStatus
@@ -2292,6 +2316,17 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                       }
                     }
 
+                    if (f.ino && f.ino > 0 && f.pdmData && f.diffStatus !== 'moved_away') {
+                      freshlyHashed.push({
+                        path: f.relativePath,
+                        ino: f.ino,
+                        localVersion: newLocalVersion,
+                        localHash: computedHash,
+                        hashStamp: current,
+                        localOnly: f.diffStatus === 'moved',
+                      })
+                    }
+
                     return {
                       ...f,
                       localHash: computedHash,
@@ -2300,6 +2335,16 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                     }
                   })
                   const updateDuration = performance.now() - updateStart
+
+                  // Persist the fresh hashes with their stamps, so the next start can tell
+                  // whether the file changed while the app was closed.
+                  if (loadingForVaultId && freshlyHashed.length > 0) {
+                    updateInodes(loadingForVaultId, freshlyHashed).catch((error) => {
+                      window.electronAPI?.log('warn', '[LoadFiles] Failed to persist hashes', {
+                        error: String(error),
+                      })
+                    })
+                  }
 
                   // Use startTransition for non-blocking UI updates during background hash computation
                   // This prevents UI jank when updating many files' hash status
@@ -2655,10 +2700,14 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                   })
                 }
                 if (result.skipped) {
-                  window.electronAPI?.log('warn', '[AutoDiscard] Kept files that could not recycle', {
-                    skipped: result.skipped,
-                    paths: result.skippedPaths?.slice(0, ORPHAN_LOG_SAMPLE_LIMIT),
-                  })
+                  window.electronAPI?.log(
+                    'warn',
+                    '[AutoDiscard] Kept files that could not recycle',
+                    {
+                      skipped: result.skipped,
+                      paths: result.skippedPaths?.slice(0, ORPHAN_LOG_SAMPLE_LIMIT),
+                    },
+                  )
                 }
                 if (result.failed > 0) {
                   window.electronAPI?.log('warn', '[AutoDiscard] Some files failed to discard', {
