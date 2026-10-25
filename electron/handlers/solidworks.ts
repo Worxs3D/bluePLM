@@ -1509,7 +1509,7 @@ function handleSWServiceOutput(data: string): void {
  * @param options - Optional settings including timeout and queue bypass
  * @returns Promise resolving to command result
  */
-async function sendSWCommand(
+export async function sendSWCommand(
   command: Record<string, unknown>,
   options?: { timeoutMs?: number; bypassQueue?: boolean },
 ): Promise<SwServiceResult> {

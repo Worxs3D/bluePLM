@@ -468,7 +468,6 @@ declare global {
       renameItem: (oldPath: string, newPath: string) => Promise<FileOperationResult>
       copyFile: (sourcePath: string, destPath: string) => Promise<FileOperationResult>
       moveFile: (sourcePath: string, destPath: string) => Promise<FileOperationResult>
-      ensureDir: (path: string) => Promise<OperationResult>
       openInExplorer: (path: string) => Promise<OperationResult>
       showInExplorer: (path: string) => Promise<OperationResult>
       openFile: (path: string) => Promise<OperationResult>
@@ -497,6 +496,19 @@ declare global {
       ) => Promise<{ success: boolean; content: string; error?: string }>
 
       // Check ALL files in a folder for locks before move operations
+      // Test file locks in a folder (debugging tool for folder move failures)
+      testFileLocks: (
+        folderPath: string,
+        sampleSize?: number,
+      ) => Promise<{
+        tested: number
+        locked: number
+        unlocked: number
+        lockedFiles: string[]
+        duration?: number
+        error?: string
+      }>
+
       checkFolderLocks: (folderPath: string) => Promise<{
         lockedFiles: Array<{
           filename: string
@@ -693,6 +705,38 @@ declare global {
          * instead of paying a ~40s cold-start. No-op if SolidWorks is already running.
          */
         warmup: () => Promise<{ success: boolean; error?: string; data?: unknown }>
+
+        // Leaked SolidWorks instance management
+        getProcessStatus: () => Promise<{
+          success: boolean
+          data?: {
+            total: number
+            owned: number
+            reapable: number
+            querySource: string
+            processes: Array<{
+              pid: number
+              windowTitle: string
+              startedAt: string
+              verdict: string
+              reason: string
+            }>
+          }
+        }>
+        killOrphanedProcesses: () => Promise<{
+          success: boolean
+          data?: {
+            scanned: boolean
+            found: number
+            reapable: number
+            closeRequested: number
+            abandoned: number
+            errors: string[]
+          }
+        }>
+        onOrphansCleaned: (
+          callback: (event: { closed: number; timestamp: number }) => void,
+        ) => () => void
 
         // Metadata operations
         getBom: (

@@ -22,7 +22,6 @@ export {
   signUpWithEmail,
   signInWithPhone,
   verifyPhoneOTP,
-  checkIfSupplierAccount,
   getSupplierContact,
   signOut,
   getCurrentUser,
