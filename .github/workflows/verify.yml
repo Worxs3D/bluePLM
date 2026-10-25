@@ -8,6 +8,11 @@ name: Verify
 # repository was cut without a single test, typecheck or API build having run on it. A second copy
 # of these steps would drift again the first time only one of them was updated. One definition
 # cannot.
+#
+# Every job here gates a release: release.yml's build jobs `need` the whole of this workflow. The
+# jobs below the first were added on 2026-10-25 (.cursor/plans/test-audit-2026-10-25.md,
+# workstream D) because CI saw only TypeScript on Linux while the regressions users reported lived
+# in the SolidWorks service, the SQL schema and Windows paths.
 on:
   workflow_call:
 
@@ -19,7 +24,7 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck and Test
+    name: Typecheck and Build API
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -68,5 +73,209 @@ jobs:
       - name: Build API
         run: npm run api:build
 
+  # vitest on both platforms. The app ships on Windows and ~70 test files carry Windows path
+  # literals, but until 2026-10-25 the suite only ever ran on Linux, so a test that passes there
+  # and fails on the platform users run could not be seen.
+  #
+  # Coverage is measured on the Linux leg only (one report is enough, and v8 coverage slows the
+  # run). It is reported, not gated: there is no threshold yet.
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # api/ tests import the API's own dependencies; see the verify job.
+      - name: Install API dependencies
+        run: npm ci --prefix api
+
+      - name: Test with coverage
+        if: runner.os == 'Linux'
+        run: npm run test:coverage
+
       - name: Test
+        if: runner.os != 'Linux'
         run: npm test
+
+      - name: Publish coverage summary
+        if: runner.os == 'Linux' && always()
+        shell: bash
+        run: |
+          [ -f coverage/coverage-summary.json ] || { echo "no coverage summary"; exit 0; }
+          node -e '
+            const t = require("./coverage/coverage-summary.json").total;
+            const row = (k) => `| ${k} | ${t[k].pct}% | ${t[k].covered} / ${t[k].total} |`;
+            console.log(["## Coverage (not gated)", "", "| Metric | % | Covered |", "|---|---|---|",
+              ...["lines", "statements", "functions", "branches"].map(row),
+              "", "Per-file lcov report: the `coverage-lcov` artifact."].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage
+        if: runner.os == 'Linux' && always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-lcov
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Blocking, as a ratchet. `npm run lint` has a backlog of pre-existing errors, so `eslint .` as a
+  # gate would fail on its first run; non-blocking (what ci.yml had) let the count grow unseen.
+  # scripts/lint-ratchet.mjs fails when the error count rises above scripts/lint-baseline.json
+  # and asks for the baseline to be lowered when it falls.
+  lint:
+    name: Lint (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint ratchet
+        run: npm run lint:ratchet
+
+  # The SolidWorks service. Nothing built or tested it before release.yml's build-windows, which
+  # runs after this workflow has already passed - so a net48 API break (Math.Clamp, 20b74f3b) was
+  # first seen at packaging time, and the C# suite never ran in CI at all.
+  #
+  # Only tests tagged [Trait("Category", "Headless")] run: they need no SolidWorks, no Document
+  # Manager licence and no vault fixtures. The rest open real documents through Document Manager,
+  # which needs a licence key (DocumentManagerLicense.cs reads SOLIDWORKS_DM_LICENSE_KEY) and the
+  # Document Manager interop installed - neither exists on a hosted runner.
+  #
+  # A skipped headless test fails this job unless headless-skip-allowlist.txt names it, and so does
+  # a run that executed nothing: both are a suite proving nothing while reporting green.
+  sw-service:
+    name: SolidWorks service (build + headless tests)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The same SDK release.yml packages the service with.
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        run: dotnet build solidworks-service/BluePLM.SolidWorksService.sln -c Release
+
+      - name: Headless tests
+        run: >
+          dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release --no-build
+          --filter "Category=Headless"
+          --logger "trx;LogFileName=headless.trx"
+          --results-directory TestResults
+
+      - name: Check skipped tests against the allowlist
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem TestResults -Recurse -Filter headless.trx | Select-Object -First 1
+          if (-not $trx) { throw "No TRX file - the headless tests did not run." }
+          [xml]$doc = Get-Content $trx.FullName
+          $results = @($doc.TestRun.Results.UnitTestResult)
+          $allow = Get-Content solidworks-service/BluePLM.SolidWorksService.Tests/headless-skip-allowlist.txt |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+          $executed = @($results | Where-Object { $_.outcome -ne 'NotExecuted' })
+          $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
+          $unexpected = @($skipped | Where-Object {
+            $name = $_.testName -replace '\(.*$', ''
+            $allow -notcontains $name
+          })
+          "## SolidWorks service headless tests" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "$($executed.Count) executed, $($skipped.Count) skipped ($($unexpected.Count) not on the allowlist)." |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          foreach ($s in $skipped) { Write-Host "skipped: $($s.testName)" }
+          if ($executed.Count -eq 0) { throw "No headless test executed." }
+          if ($unexpected.Count -gt 0) {
+            $unexpected | ForEach-Object { Write-Host "::error::Skipped outside the allowlist: $($_.testName)" }
+            throw "$($unexpected.Count) headless test(s) skipped outside headless-skip-allowlist.txt."
+          }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sw-service-headless-trx
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The SQL schema, installed the way the owner installs it, on the harness's Supabase-faithful
+  # Postgres (harness/docker-compose.yml: supabase_admin as bootstrap superuser, postgres demoted,
+  # Supabase's own role bootstrap; initdb/90-assert-harness.sql refuses to start otherwise). It is
+  # the harness itself rather than a bare Postgres service container with roles stubbed by hand,
+  # because two earlier security efforts passed against a container where postgres was still a
+  # superuser, which makes every grant check meaningless.
+  #
+  # Order: core.sql, then core.sql again with every module (core idempotency), then every module
+  # again (module idempotency); then tools/verify-schema.sql, which withholds the stamp and errors
+  # when an object schema_release_manifest() names is missing; then the fast negative controls,
+  # which break the schema on purpose and require the verifier to notice.
+  sql:
+    name: SQL schema (install, idempotency, verifier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: harness
+    env:
+      # Every compose call in the harness scripts picks up the throwaway-durability override.
+      COMPOSE_FILE: docker-compose.yml:docker-compose.fast.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Start harness and install core.sql
+        run: ./reset.ps1 -CoreOnly
+
+      - name: Re-apply core.sql and install every module
+        run: ./install.ps1
+
+      - name: Re-apply core.sql and every module again
+        run: ./install.ps1
+
+      - name: Verify schema against the release manifest
+        run: |
+          docker compose exec -T -e PGPASSWORD=postgres db `
+            psql -v ON_ERROR_STOP=1 --no-psqlrc -U postgres -d postgres -h 127.0.0.1 `
+            -f /blueplm/tools/verify-schema.sql
+          if ($LASTEXITCODE -ne 0) { throw "verify-schema.sql failed (exit $LASTEXITCODE)" }
+
+      - name: Negative controls (fast, standard tier)
+        run: ./negative-controls-fast.ps1 -Tier standard
+
+      - name: Database log on failure
+        if: failure()
+        run: docker compose logs db | Select-Object -Last 200
