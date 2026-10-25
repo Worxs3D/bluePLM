@@ -7,6 +7,8 @@
 //
 //   node scripts/lint-ratchet.mjs
 import { readFileSync, appendFileSync } from 'node:fs'
+import process from 'node:process'
+import { URL } from 'node:url'
 import { ESLint } from 'eslint'
 
 const baselinePath = new URL('./lint-baseline.json', import.meta.url)
