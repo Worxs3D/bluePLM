@@ -309,7 +309,9 @@ describe('SolidWorks wire: error codes', () => {
     }
     expect(compared).toBeGreaterThan(3)
     expect(unknown).toEqual([])
-  })
+    // It parses every renderer file that mentions SolidWorks, which took past the 5 s default
+    // under v8 coverage in CI.
+  }, 30_000)
 
   it('codes the renderer imports from lib/solidworks/types are in the manifest', () => {
     const sf = parse(resolve(REPO, 'src/lib/solidworks/types.ts'))

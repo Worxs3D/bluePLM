@@ -37,7 +37,7 @@ describe('the fake SolidWorks service matches the wire manifest', () => {
 
   it('returns every response field the app reads', async () => {
     const electron = createFakeElectron()
-    const path = 'C:\vault\part.sldprt'
+    const path = 'C:\\vault\\part.sldprt'
     electron.disk.write(path, 'bytes', {
       fileProperties: { Number: 'BR-1' },
       configurations: [{ name: 'Default', properties: { Number: 'BR-1' } }],

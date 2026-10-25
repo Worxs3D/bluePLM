@@ -16,10 +16,12 @@ import { describe, expect, it } from 'vitest'
 // This parses the source with the TypeScript compiler; no Electron is loaded.
 
 const ELECTRON_DIR = __dirname
+// Forward slashes because ts.createSourceFile normalizes fileName to them. With resolve()'s
+// backslashes on Windows no source file matched a preload (found by the first windows-latest run).
 const PRELOADS = [
   resolve(ELECTRON_DIR, 'preload.ts'),
   resolve(ELECTRON_DIR, 'extension-host/preload.ts'),
-]
+].map((p) => p.replace(/\\/g, '/'))
 const TYPES_FILE = resolve(ELECTRON_DIR, '../src/electron.d.ts')
 
 function listTsFiles(dir: string): string[] {
