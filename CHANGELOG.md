@@ -6,14 +6,22 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.5] - 2026-10-25
+
 Renderer only - no schema change, no API change, SolidWorks service unchanged.
 
 ### Fixed
 
-- **An edit made while BluePLM was closed is found even when the saved hash predates hash
-  stamps.** The load kept such an unverified hash and showed the file synced, and the background
-  hash pass only re-read files with no hash at all, so the edit stayed hidden until a Full Refresh.
-  Files whose saved hash cannot be checked are now always re-hashed in the background.
+- **Saving a checked-out file shows the new version right away.** A reload reused the hash taken
+  before the edit, which still matched the server, so the file stayed "2/2" until check-in
+  re-hashed it. A cached hash is now reused only while the file's size and modified time are the
+  ones it was computed from; otherwise the file is re-hashed.
+- **Checked-in files no longer stay amber ("4/3") when they match the server.** The same stale
+  hash, taken from content later replaced, kept them marked modified until a check-out/check-in.
+- **Edits made while BluePLM was closed are found on the next start.** The sync index now keeps
+  the size and modified time each saved hash was computed from, so a hash the disk no longer
+  matches is dropped instead of trusted. The first start after updating re-hashes files whose
+  saved hash predates this, once, in the background.
 - **A moved file keeps its "moved" badge after the background hash pass**, and a file with unsaved
   metadata edits stays modified. The hash pass re-classified files with its own copy of the rules
   and dropped both.
