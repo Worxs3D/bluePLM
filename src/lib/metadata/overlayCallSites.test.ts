@@ -1007,10 +1007,11 @@ interface FoundRead extends UnroutedRead {
  * Tests are excluded: a test that quotes the bad shape is documenting it, and every fixture in the
  * suite builds both sides by hand. This file was inside its own scan until it was found matching
  * itself four times on the reserved-key rule, which is exactly how the anti-vacuity test below
- * survived having the scan's main rules deleted.
+ * survived having the scan's main rules deleted. `src/test/` is the shared test kit (the fake
+ * database ports the SQL's reserved-map merge), so it is excluded for the same reason.
  */
 const FOUND: readonly FoundRead[] = projectFiles
-  .filter((path) => !/\.test\.tsx?$/.test(path))
+  .filter((path) => !/\.test\.tsx?$/.test(path) && !posixPath(path).includes('/src/test/'))
   .flatMap((path) => {
     const source = program.getSourceFile(path)
     if (!source) return []

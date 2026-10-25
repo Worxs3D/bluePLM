@@ -5,10 +5,12 @@ import { defineConfig } from 'vitest/config'
 // plugins, which would try to build the main process during a unit test run.
 export default defineConfig({
   test: {
+    // Node by default. A component test opts into a DOM per file with `// @vitest-environment jsdom`.
     environment: 'node',
     include: [
       'api/**/*.test.ts',
       'src/**/*.test.ts',
+      'src/**/*.test.tsx',
       'electron/**/*.test.ts',
       'scripts/**/*.test.ts',
     ],
