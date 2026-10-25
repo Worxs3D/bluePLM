@@ -22,6 +22,7 @@
     "repair:config-maps": "tsx scripts/repair-config-maps.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"api/**/*.ts\" \"electron/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"api/**/*.ts\" \"electron/**/*.ts\"",
     "release": "node scripts/release.js",
