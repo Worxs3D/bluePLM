@@ -14,6 +14,16 @@ export default defineConfig({
       'electron/**/*.test.ts',
       'scripts/**/*.test.ts',
     ],
+    // Measured, not gated: `npm run test:coverage` writes a text summary and lcov to coverage/.
+    // No threshold yet; the first job is to see where the untested code is.
+    coverage: {
+      provider: 'v8',
+      // json-summary feeds the CI job summary (.github/workflows/verify.yml).
+      reporter: ['text-summary', 'text', 'lcov', 'json-summary'],
+      reportsDirectory: 'coverage',
+      include: ['src/**/*.{ts,tsx}', 'electron/**/*.ts', 'api/**/*.ts', 'scripts/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/*.test.tsx', 'src/test/**', '**/*.d.ts', 'src/types/supabase.ts', '**/dist/**'],
+    },
   },
   // Mirrors the alias in vite.config.js. Without it any module under test that
   // imports through '@/' fails to resolve, which rules out most of src.
