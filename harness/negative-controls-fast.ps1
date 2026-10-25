@@ -88,7 +88,10 @@ param(
   # Deliberately break each control and require this script to report it broken.
   # A verifier whose failure path is dead code passes everything, which is the
   # defect this whole suite exists to catch, and it applies to the suite too.
-  [switch]$SelfTest
+  [switch]$SelfTest,
+  # Control ids to leave out, applied after -Only and the tier defaults. CI uses it to run CENSUS
+  # as its own non-blocking step until census-baseline.txt has been reviewed and committed.
+  [string[]]$Skip = @()
 )
 
 $ErrorActionPreference = 'Continue'
@@ -162,7 +165,10 @@ function Emit {
   # guard was satisfied by it, and because the same error text came back every
   # time, every rollback compared equal and the restoration check was dead.
   # At run time the concatenation still produces @@NC|key|value on one line.
-  return ("SELECT '@@' || 'NC|" + $Key + "|' || COALESCE((" + $Expression + ")::text, 'null') AS emitted;`n")
+  # The leading newline matters: callers append this to here-strings, which end without one, so
+  # the SELECT was glued onto the line before it (`\i /sql/nc7-unrevokable.sqlSELECT ...`). The
+  # first CI run of this suite (2026-10-25) found it; NC7 and STAMP had never run before.
+  return ("`nSELECT '@@' || 'NC|" + $Key + "|' || COALESCE((" + $Expression + ")::text, 'null') AS emitted;`n")
 }
 
 # Mirrors Get-StampedVersion in the original: -1 rather than an exception when
@@ -290,6 +296,7 @@ $Controls = @(
 
 function Test-Wanted {
   param([string]$Id)
+  if ($Skip -contains $Id) { return $false }
   if ($Only.Count -eq 0) { return $true }
   return ($Only -contains $Id)
 }
@@ -774,7 +781,7 @@ function Invoke-EndpointCensus {
   $out = Invoke-PsqlSession -Label 'endpoint census' -Script ($PREAMBLE + "\i /sql/fast/nc-endpoint-census.sql`n")
 
   $count = Get-Emitted $out 'census_unprobed'
-  $baselineFile = Join-Path $PSScriptRoot 'sql\fast\census-baseline.txt'
+  $baselineFile = Join-Path $PSScriptRoot 'sql/fast/census-baseline.txt'
 
   if ($count -notmatch '^\d+$') {
     Write-Host "  the census did not answer:" -ForegroundColor Red
@@ -934,6 +941,7 @@ if ($Tier -eq 'smoke') {
 # cheap tier is a default rather than a restriction.
 function Test-WantedExtra {
   param([string]$Id)
+  if ($Skip -contains $Id) { return $false }
   if ($Only.Count -gt 0) { return ($Only -contains $Id) }
   return ($Tier -ne 'smoke')
 }
