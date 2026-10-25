@@ -508,7 +508,8 @@ export async function syncFile(
       if (description !== null) {
         updatePayload.description = description
       }
-      if (metadata?.customProperties !== undefined) {
+      // Nor does `null` replace the property bag, which holds every configuration's tab.
+      if (metadata?.customProperties != null) {
         updatePayload.custom_properties = metadata.customProperties
       }
 

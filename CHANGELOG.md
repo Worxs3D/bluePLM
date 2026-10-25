@@ -22,12 +22,24 @@ Renderer only - no schema change, no API change, SolidWorks service unchanged.
   a burst of check-outs looks up each owner's profile once instead of two queries per file.
 - **Re-align no longer discards the saved hash stamps**, which made the next start re-hash the
   whole vault.
+- **A file read with an empty Revision no longer blanks the revision in BluePLM.** The SolidWorks
+  panel's metadata refresh and Vault Audit's "use the file's value" relay what they read out of a
+  document; 4.4.5 stopped an empty item number or description from overwriting the row, and the
+  revision now gets the same rule. Only check-in, which carries your own edit, can clear it.
+- **An empty property bag can no longer replace a file's configuration metadata.** A `null`
+  custom-properties value from either of those writers, or from a re-upload onto an existing row,
+  used to erase every configuration's tab and description; it is now treated as "no value".
 
 ### Tests
 
 - Performance regression gate in `src/perf/` (runs in `npm test`): operation counts at 1k, 10k
   and 30k files for loads, persist bursts, folder lookups, realtime bursts, Re-align and first
   check-in. Report: `.cursor/plans/test-audit-C-report.md`.
+- Integration harness under `src/test/`: a typed in-memory Supabase checked against
+  `src/types/supabase.ts`, a fake disk and SolidWorks service, and the real store and commands.
+  Covers the metadata round trip (edit, write to file, check in, reload), every metadata writer
+  against null, empty, absent and whitespace values, load races with moves and restarts, and the
+  first rendered component tests (item number, description and tab cells, `useConfigHandlers`).
 
 ## [4.7.5] - 2026-10-25
 
