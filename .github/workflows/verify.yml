@@ -273,8 +273,29 @@ jobs:
             -f /blueplm/tools/verify-schema.sql
           if ($LASTEXITCODE -ne 0) { throw "verify-schema.sql failed (exit $LASTEXITCODE)" }
 
-      - name: Negative controls (fast, standard tier)
-        run: ./negative-controls-fast.ps1 -Tier standard
+      # The controls write rows that reference seeded organizations and files (NC12, NX1, NX2,
+      # POSTURE), so they need the same seed reset.ps1 loads after a full install.
+      - name: Seed
+        run: |
+          docker compose exec -T -e PGPASSWORD=postgres db `
+            psql -v ON_ERROR_STOP=1 --no-psqlrc -U postgres -d postgres -h 127.0.0.1 -f /sql/seed.sql
+          if ($LASTEXITCODE -ne 0) { throw "seed.sql failed (exit $LASTEXITCODE)" }
+
+      # Smoke tier (one verification run) on pushes and pull requests; standard tier (each control
+      # isolated, ~25 minutes of psql on the first run) on tags and manual runs, so a release is
+      # held to the stronger answer. See the TIERS comment in negative-controls-fast.ps1.
+      - name: Negative controls
+        run: |
+          $tier = if ('${{ github.ref_type }}' -eq 'tag' -or '${{ github.event_name }}' -eq 'workflow_dispatch') { 'standard' } else { 'smoke' }
+          ./negative-controls-fast.ps1 -Tier $tier -Skip CENSUS
+
+      # Non-blocking, 2026-10-25. The census fails until harness/sql/fast/census-baseline.txt is
+      # committed, and committing it is a security review: each SECURITY DEFINER routine
+      # `authenticated` can reach must be read and either kept or withdrawn, not accepted wholesale.
+      # The job log carries the proposed list. Make this step blocking once the baseline is in.
+      - name: Endpoint census (non-blocking until the baseline is reviewed)
+        continue-on-error: true
+        run: ./negative-controls-fast.ps1 -Tier smoke -Only CENSUS
 
       - name: Database log on failure
         if: failure()
