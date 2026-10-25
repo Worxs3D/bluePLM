@@ -99,7 +99,7 @@ describe('repairSyncIndex', () => {
     expect(result.attempted).toBe(1)
   })
 
-  it('re-stamps ino, localVersion and localHash for every server-backed file', async () => {
+  it('re-stamps ino and localVersion for every server-backed file, leaving the stamped hash alone', async () => {
     getSyncIndex.mockResolvedValue(new Map([['part.sldprt', {}]]))
     const target = serverBacked({
       relativePath: 'part.sldprt',
@@ -111,7 +111,7 @@ describe('repairSyncIndex', () => {
     await repairSyncIndex({ vaultId: VAULT_ID, files: [target] })
 
     expect(updateInodes).toHaveBeenCalledWith(VAULT_ID, [
-      { path: 'part.sldprt', ino: 42, localVersion: 7, localHash: 'abc123' },
+      { path: 'part.sldprt', ino: 42, localVersion: 7 },
     ])
   })
 

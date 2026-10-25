@@ -18,9 +18,13 @@
  * 1. Adds an entry for a currently server-backed file that the index does not yet know about.
  * 2. Removes an entry that is neither tombstoned nor `localOnly` and no longer matches any
  *    server-backed file - stale bookkeeping a bug could have left behind, not a real record.
- * 3. Re-stamps the inode, `localVersion` and `localHash` for every server-backed file from
- *    current truth, via the same `removeFromSyncIndex(old) -> addToSyncIndex(new) ->
- *    updateInodes(new, ino)` sequence `adoptServerPaths.ts` already uses to re-key a move.
+ * 3. Re-stamps the inode and `localVersion` for every server-backed file from current truth,
+ *    via the same `removeFromSyncIndex(old) -> addToSyncIndex(new) -> updateInodes(new, ino)`
+ *    sequence `adoptServerPaths.ts` already uses to re-key a move. It leaves `localHash` alone:
+ *    the store cannot say which disk state its hash was computed from, and a hash written
+ *    without that stamp clears the stored one, so re-stamping it threw away every verified
+ *    hash and made the next start re-hash the whole vault. A stored hash keeps its stamp, which
+ *    still catches a later edit; a missing one is supplied by the next load's hash pass.
  *
  * `getSyncIndex` already excludes `localOnly` entries and expired tombstones from the map it
  * returns, and this module never asks for anything more than that map - so a `localOnly` entry
@@ -111,7 +115,8 @@ export async function repairSyncIndex(ctx: SyncIndexRepairContext): Promise<Alig
     )
   }
 
-  // Re-stamp every server-backed file's inode, localVersion and localHash from current truth,
+  // Re-stamp every server-backed file's inode and localVersion from current truth (localHash is
+  // left to the hash pass, see the module comment),
   // not only the ones just added - a file already in the index can still hold a stale inode
   // from before a checkout, a get-latest, or an external edit.
   const inodeEntries = targets
@@ -120,7 +125,6 @@ export async function repairSyncIndex(ctx: SyncIndexRepairContext): Promise<Alig
       path: file.relativePath,
       ino: file.ino,
       localVersion: file.localVersion,
-      localHash: file.localHash,
     }))
 
   if (inodeEntries.length > 0) {

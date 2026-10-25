@@ -4,7 +4,11 @@ import { executeCommand } from '@/lib/commands'
 import { recordMetric } from '@/lib/performanceMetrics'
 import { log } from '@/lib/logger'
 import { describeError } from '@/lib/errorDetails'
-import { updateCachedUserInfo, type CacheWriteContext } from '@/lib/cache/vaultFileCache'
+import {
+  isSameCheckoutProfile,
+  updateCachedUserInfo,
+  type CacheWriteContext,
+} from '@/lib/cache/vaultFileCache'
 import { updateInodes, type HashStamp } from '@/lib/cache/localSyncIndex'
 import type { CheckoutHydrationStatus, LocalFile } from '@/stores/types'
 import type { CheckoutOwnerRef, CheckoutProfileScope } from '@/lib/supabase/files/queries'
@@ -12,6 +16,7 @@ import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
   type CheckoutLoadContext,
+  type CheckoutUserProfile,
 } from '@/types/pdm'
 import { fetchCheckoutProfilesWithRetry } from './checkoutProfiles'
 import { stampOf } from './cachedHashValidity'
@@ -86,9 +91,11 @@ export async function runPostLoadBackgroundTasks(ctx: BackgroundTaskContext): Pr
     .filter((fileId): fileId is string => Boolean(fileId))
 
   const hydrationOwners = new Map<string, string>()
+  const cachedProfiles = new Map<string, CheckoutUserProfile | undefined>()
   for (const file of localFiles) {
     if (!file.isDirectory && file.pdmData?.id && file.pdmData.checked_out_by) {
       hydrationOwners.set(file.pdmData.id, file.pdmData.checked_out_by)
+      cachedProfiles.set(file.pdmData.id, file.pdmData.checked_out_user ?? undefined)
     }
   }
 
@@ -171,12 +178,18 @@ export async function runPostLoadBackgroundTasks(ctx: BackgroundTaskContext): Pr
     hydrationAction.clearCheckoutHydrationStatuses(resolvedFileIds)
     hydrationAction.setCheckoutHydrationStatuses(failedStatuses)
 
+    // Only the profiles the cached rows do not already hold: an unchanged map would otherwise
+    // read the whole cache entry back on every load just to find nothing to write.
+    const changedProfiles: typeof profileResult.users = {}
+    for (const [fileId, profile] of Object.entries(profileResult.users)) {
+      if (!isSameCheckoutProfile(cachedProfiles.get(fileId), profile)) changedProfiles[fileId] = profile
+    }
     // This call is queued after the base cache write, and the context is
     // checked again inside the IndexedDB transaction.
     void updateCachedUserInfo(
       organization.id,
       loadingForVaultId,
-      profileResult.users,
+      changedProfiles,
       cacheContext,
     )
 

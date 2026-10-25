@@ -1149,6 +1149,13 @@ export interface FilesSlice {
    */
   addCloudFiles: (pdmFiles: import('../types/pdm').PDMFile[]) => void
   updateFilePdmData: (fileId: string, pdmData: Partial<import('../types/pdm').PDMFile>) => void
+  /**
+   * Batch version of updateFilePdmData: the same per-file update for a burst of realtime events,
+   * applied in arrival order per file, in one store commit instead of one per event.
+   */
+  updateFilesPdmData: (
+    updates: Array<{ fileId: string; pdmData: Partial<import('../types/pdm').PDMFile> }>,
+  ) => void
   /** Update a file's location from a realtime event (handles path changes from other users) */
   updateFileLocationFromServer: (
     fileId: string,

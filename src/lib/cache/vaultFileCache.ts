@@ -638,6 +638,17 @@ export async function getFilesWithCache(
   return fullFetchAndCache()
 }
 
+/** Whether two checkout profiles would display the same. */
+export function isSameCheckoutProfile(
+  a: CheckoutUserProfile | null | undefined,
+  b: CheckoutUserProfile | null | undefined,
+): boolean {
+  if (!a || !b) return a === b
+  return (
+    a.id === b.id && a.email === b.email && a.full_name === b.full_name && a.avatar_url === b.avatar_url
+  )
+}
+
 /**
  * Update cached files with user info.
  * Called after background task fetches checked_out_user data.
@@ -723,9 +734,14 @@ export function updateCachedUserInfo(
               )
             }
 
-            // Look before building anything: with no matching row there is nothing to write,
-            // and the replacement array would be 27k references of garbage.
-            if (!entry.files.some(matchesProfile)) {
+            // Look before building anything: with no row whose cached profile is missing or
+            // different there is nothing to write, and the replacement array would be 27k
+            // references of garbage. The profiles are re-fetched on every load, so without the
+            // comparison this rewrote the whole entry each time, watcher refreshes included,
+            // undoing the small-delta skip in getFilesWithCache.
+            const needsProfile = (file: CachedServerFile): boolean =>
+              matchesProfile(file) && !isSameCheckoutProfile(file.checked_out_user, userInfoMap[file.id])
+            if (!entry.files.some(needsProfile)) {
               resolve()
               return
             }

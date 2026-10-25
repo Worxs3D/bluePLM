@@ -19,6 +19,7 @@ import { checkoutLostWithEdits } from '@/lib/metadata/strandedEdits'
 import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
+  type CheckoutUserProfile,
   type Organization,
   type PDMFile,
 } from '@/types/pdm'
@@ -172,7 +173,7 @@ export function useRealtimeSubscriptions(
   useEffect(() => {
     if (!organization || isOfflineMode) return
 
-    const { addCloudFile, updateFilePdmData, addToast } = usePDMStore.getState()
+    const { addToast } = usePDMStore.getState()
 
     // Batch notifications to avoid toast spam when someone does bulk operations
     // Collects notifications over 500ms then shows a single summary toast
@@ -281,6 +282,66 @@ export function useRealtimeSubscriptions(
     const queueFileRemoval = (fileId: string) => {
       removalEventsBatched += 1
       removalBatcher.add(fileId)
+    }
+
+    // Inserts and server-row updates are batched the same way. Someone checking in, checking out
+    // or adding 500 files sends 500 events, and each used to be its own store update over the
+    // whole file list (a 500-event burst was 501 updates in src/perf/storeRealtime.perf.test.ts).
+    const pendingInserts = new Map<string, PDMFile>()
+    const insertBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        const inserted = ids.map((id) => pendingInserts.get(id)).filter((file): file is PDMFile => !!file)
+        pendingInserts.clear()
+        usePDMStore.getState().addCloudFiles(inserted)
+      },
+    })
+    const queueInsert = (file: PDMFile) => {
+      pendingInserts.set(file.id, file)
+      insertBatcher.add(file.id)
+    }
+
+    const pendingPdmUpdates = new Map<string, Array<Partial<PDMFile>>>()
+    const pdmUpdateBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        const updates = ids.flatMap((fileId) =>
+          (pendingPdmUpdates.get(fileId) ?? []).map((pdmData) => ({ fileId, pdmData })),
+        )
+        pendingPdmUpdates.clear()
+        usePDMStore.getState().updateFilesPdmData(updates)
+      },
+    })
+    const queuePdmUpdate = (fileId: string, pdmData: Partial<PDMFile>) => {
+      const list = pendingPdmUpdates.get(fileId)
+      if (list) list.push(pdmData)
+      else pendingPdmUpdates.set(fileId, [pdmData])
+      pdmUpdateBatcher.add(fileId)
+    }
+
+    /** Apply whatever is still waiting for this file, so the next look at the store sees it. */
+    const flushPendingFor = (fileId: string) => {
+      if (removalBatcher.has(fileId)) removalBatcher.flush()
+      if (insertBatcher.has(fileId)) insertBatcher.flush()
+      if (pdmUpdateBatcher.has(fileId)) pdmUpdateBatcher.flush()
+    }
+
+    // One profile lookup per checkout owner, not two queries per event. The owner is checked
+    // against the store again when the profile arrives (ownerStillMatches below), the same
+    // check the load's batched profile hydration relies on. A failed lookup is not kept.
+    const profileByOwner = new Map<string, Promise<CheckoutUserProfile | null>>()
+    const lookupOwnerProfile = (ownerId: string, scope: { orgId: string; vaultId: string | null }) => {
+      const known = profileByOwner.get(ownerId)
+      if (known) return known
+      const lookup = import('@/lib/supabase')
+        .then(({ getUserBasicInfo }) => getUserBasicInfo(ownerId, scope))
+        .then(({ user }) => user)
+      profileByOwner.set(ownerId, lookup)
+      lookup.then(
+        (user) => {
+          if (!user) profileByOwner.delete(ownerId)
+        },
+        () => profileByOwner.delete(ownerId),
+      )
+      return lookup
     }
 
     const flushNotifications = () => {
@@ -412,17 +473,17 @@ export function useRealtimeSubscriptions(
         return
       }
 
-      // A removal for this file is still waiting in the batch. Apply it before looking at this
-      // event, so the event sees (and acts on) the same store a one-at-a-time removal would
+      // A change for this file is still waiting in a batch. Apply it before looking at this
+      // event, so the event sees (and acts on) the same store one-at-a-time updates would
       // have left - e.g. a restore from trash arriving right after the delete.
       const eventFileId = newFile?.id ?? oldFile?.id
-      if (eventFileId && removalBatcher.has(eventFileId)) removalBatcher.flush()
+      if (eventFileId) flushPendingFor(eventFileId)
 
       switch (eventType) {
         case 'INSERT':
           // New file added by someone else
           if (newFile && newFile.created_by !== currentUserId) {
-            addCloudFile(newFile)
+            queueInsert(newFile)
             // Queue batched notification for new files
             queueNotification('add', newFile.created_by, newFile.file_name)
           }
@@ -564,7 +625,7 @@ export function useRealtimeSubscriptions(
                     },
                   )
                   // Still update pdmData to keep file_path in sync, but don't create folders
-                  updateFilePdmData(newFile.id, newFile)
+                  queuePdmUpdate(newFile.id, newFile)
                 } else {
                   // Queue the update for batching - multiple file moves from a folder move
                   // will be combined into a single store update after 100ms debounce
@@ -585,61 +646,56 @@ export function useRealtimeSubscriptions(
                   if (!ownerId) break
                   // Commit the authoritative owner first. The merge path removes any
                   // profile from the previous checkout before enrichment resolves.
-                  updateFilePdmData(newFile.id, newFile)
+                  queuePdmUpdate(newFile.id, newFile)
                   const eventSequence = ++checkoutEventSequence
                   latestCheckoutEventByFile.set(newFile.id, eventSequence)
                   const eventVaultId = newFile.vault_id ?? activeVaultId ?? null
-                  const scope = {
-                    orgId: organization.id,
-                    vaultId: eventVaultId,
-                    fileId: newFile.id,
-                  }
-                  void import('@/lib/supabase')
-                    .then(({ getUserBasicInfo }) =>
-                      getUserBasicInfo(ownerId, scope).then(({ user }) => {
-                        const currentState = usePDMStore.getState()
-                        const currentFile = currentState.files.find(
-                          (file) => file.pdmData?.id === newFile.id,
-                        )
-                        const ownerStillMatches =
-                          currentFile?.pdmData?.checked_out_by === ownerId
-                        const eventStillLatest =
-                          latestCheckoutEventByFile.get(newFile.id) === eventSequence
-                        const currentActiveVaultId =
-                          currentState.activeVaultId ?? currentState.connectedVaults[0]?.id ?? null
-                        const vaultStillMatches =
-                          currentActiveVaultId === eventVaultId
+                  void lookupOwnerProfile(ownerId, { orgId: organization.id, vaultId: eventVaultId })
+                    .then((user) => {
+                      // The checkout itself may still be waiting in the batch.
+                      if (pdmUpdateBatcher.has(newFile.id)) pdmUpdateBatcher.flush()
+                      const currentState = usePDMStore.getState()
+                      const currentFile = currentState.files.find(
+                        (file) => file.pdmData?.id === newFile.id,
+                      )
+                      const ownerStillMatches =
+                        currentFile?.pdmData?.checked_out_by === ownerId
+                      const eventStillLatest =
+                        latestCheckoutEventByFile.get(newFile.id) === eventSequence
+                      const currentActiveVaultId =
+                        currentState.activeVaultId ?? currentState.connectedVaults[0]?.id ?? null
+                      const vaultStillMatches =
+                        currentActiveVaultId === eventVaultId
 
-                        if (
-                          !subscriptionActive ||
-                          !ownerStillMatches ||
-                          !eventStillLatest ||
-                          !vaultStillMatches
-                        ) {
-                          log.debug('[Realtime]', 'Discarding stale checkout profile', {
-                            fileId: hashCheckoutIdentifier(newFile.id),
-                            ownerId: hashCheckoutIdentifier(ownerId),
-                            eventSequence,
-                            ownerStillMatches,
-                            eventStillLatest,
-                            vaultStillMatches,
-                            stale: true,
-                          })
-                          return
-                        }
+                      if (
+                        !subscriptionActive ||
+                        !ownerStillMatches ||
+                        !eventStillLatest ||
+                        !vaultStillMatches
+                      ) {
+                        log.debug('[Realtime]', 'Discarding stale checkout profile', {
+                          fileId: hashCheckoutIdentifier(newFile.id),
+                          ownerId: hashCheckoutIdentifier(ownerId),
+                          eventSequence,
+                          ownerStillMatches,
+                          eventStillLatest,
+                          vaultStillMatches,
+                          stale: true,
+                        })
+                        return
+                      }
 
-                        if (user && isCheckoutProfileForOwner(user, ownerId)) {
-                          updateFilePdmData(newFile.id, {
-                            ...newFile,
-                            checked_out_user: user,
-                          } as Partial<PDMFile>)
-                        } else {
-                          // Commit the authoritative checkout fields while removing any
-                          // profile that could belong to a previous checkout owner.
-                          updateFilePdmData(newFile.id, newFile)
-                        }
-                      }),
-                    )
+                      if (user && isCheckoutProfileForOwner(user, ownerId)) {
+                        queuePdmUpdate(newFile.id, {
+                          ...newFile,
+                          checked_out_user: user,
+                        } as Partial<PDMFile>)
+                      } else {
+                        // Commit the authoritative checkout fields while removing any
+                        // profile that could belong to a previous checkout owner.
+                        queuePdmUpdate(newFile.id, newFile)
+                      }
+                    })
                     .catch((error: unknown) => {
                       log.warn('[Realtime]', 'Checkout profile hydration failed', {
                         fileId: hashCheckoutIdentifier(newFile.id),
@@ -649,7 +705,7 @@ export function useRealtimeSubscriptions(
                     })
                 } else {
                   // No new checkout by others, just update normally
-                  updateFilePdmData(newFile.id, newFile)
+                  queuePdmUpdate(newFile.id, newFile)
                 }
               }
             }
@@ -1131,8 +1187,10 @@ export function useRealtimeSubscriptions(
         clearTimeout(locationFlushTimeout)
         flushLocationUpdates() // Flush any pending updates before cleanup
       }
-      // Apply batched removals before the refresh scheduler is cancelled below.
+      // Apply batched changes before the refresh scheduler is cancelled below.
       removalBatcher.flush()
+      insertBatcher.flush()
+      pdmUpdateBatcher.flush()
       // Clear any pending orphan-discard refresh - this effect's subscriptions are
       // unmounting, so firing it after teardown would call into a torn-down state.
       orphanDiscardRefreshScheduler.cancel()
