@@ -6,6 +6,29 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **An edit made while BluePLM was closed is found even when the saved hash predates hash
+  stamps.** The load kept such an unverified hash and showed the file synced, and the background
+  hash pass only re-read files with no hash at all, so the edit stayed hidden until a Full Refresh.
+  Files whose saved hash cannot be checked are now always re-hashed in the background.
+- **A moved file keeps its "moved" badge after the background hash pass**, and a file with unsaved
+  metadata edits stays modified. The hash pass re-classified files with its own copy of the rules
+  and dropped both.
+- **Refreshing a folder classifies files the same way as a full load.** Ignored files no longer
+  turn into new files, orphans whose server row was deleted no longer turn into new files, and a
+  file whose content matches the server shows the server's version.
+
+### Changed
+
+- The rules that decide a file's status live in one place, `src/hooks/useLoadFiles/fileClassification.ts`,
+  used by the full load, the folder refresh and the hash pass. `useLoadFiles.ts` is split into
+  modules under `src/hooks/useLoadFiles/` (3,098 to 1,352 lines), and scenario tests
+  (`fileStateScenarios.test.ts`) drive the load, hash pass and folder refresh through save,
+  revert, check-in, restart, rename and race sequences.
+
 ## [4.7.4] - 2026-10-23
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.

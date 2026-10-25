@@ -226,9 +226,13 @@ export function classifyWithComputedHash(
 /**
  * The files the background hash pass reads from disk.
  *
- * A normal load hashes only files with a server hash and no local hash that it has either never
- * tracked a version for (first sight: without a hash the merge would have to guess synced) or
- * whose cached hash was stale or unverified. A full refresh re-hashes every file with a server hash.
+ * A normal load hashes the files with a server hash whose cached hash was stale or unverified, and
+ * those seen for the first time (no hash, no tracked version: without a hash the merge would have
+ * to guess synced). A full refresh re-hashes every file with a server hash.
+ *
+ * An unverified hash is kept by the merge, so it must be selected by its path, not by a missing
+ * hash: selecting on `!localHash` alone left a pre-stamp sync index hash unchecked forever, and an
+ * edit made while the app was closed stayed "synced" until a full refresh.
  */
 export function selectFilesNeedingHash(
   localFiles: readonly LocalFile[],
@@ -241,6 +245,7 @@ export function selectFilesNeedingHash(
       hasLocalContent(f) &&
       !!f.pdmData?.content_hash &&
       (forceHashComputation ||
-        (!f.localHash && (f.localVersion === undefined || rehashPaths.has(f.relativePath)))),
+        rehashPaths.has(f.relativePath) ||
+        (!f.localHash && f.localVersion === undefined)),
   )
 }
