@@ -25,6 +25,9 @@ jobs:
   # See the comment at the top of that file.
   verify:
     uses: ./.github/workflows/verify.yml
+    secrets:
+      SOLIDWORKS_DM_LICENSE_KEY: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY }}
+      CI_ASSETS_TOKEN: ${{ secrets.CI_ASSETS_TOKEN }}
 
   # Lint used to be a separate non-blocking job here. It is a blocking ratchet in verify.yml now
   # (scripts/lint-ratchet.mjs), so tags are held to it as well.

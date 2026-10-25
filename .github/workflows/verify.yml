@@ -15,6 +15,12 @@ name: Verify
 # in the SolidWorks service, the SQL schema and Windows paths.
 on:
   workflow_call:
+    # Passed by name, not `secrets: inherit`, so this workflow sees only what sw-service-dm needs.
+    secrets:
+      SOLIDWORKS_DM_LICENSE_KEY:
+        required: false
+      CI_ASSETS_TOKEN:
+        required: false
 
 # Read-only. Nothing here publishes, comments or writes to the repository — it installs
 # dependencies and runs checks. `npm ci` executes arbitrary postinstall scripts, so the token this
@@ -167,8 +173,8 @@ jobs:
   #
   # Only tests tagged [Trait("Category", "Headless")] run: they need no SolidWorks, no Document
   # Manager licence and no vault fixtures. The rest open real documents through Document Manager,
-  # which needs a licence key (DocumentManagerLicense.cs reads SOLIDWORKS_DM_LICENSE_KEY) and the
-  # Document Manager interop installed - neither exists on a hosted runner.
+  # which needs a licence key and the Document Manager interop installed; sw-service-dm below runs
+  # those with both supplied from secrets and the private assets repo.
   #
   # A skipped headless test fails this job unless headless-skip-allowlist.txt names it, and so does
   # a run that executed nothing: both are a suite proving nothing while reporting green.
@@ -227,6 +233,124 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: sw-service-headless-trx
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The Document Manager tests: the C# tests that open real SOLIDWORKS documents (the 22 fixture
+  # facts and theories, and the interop-backed ones). Metadata write bugs that shipped - wrong
+  # vendor constants, writes reporting success either way, a cleared property dropped - live here.
+  #
+  # Document Manager is not on a hosted runner and must not be in this public repository, so the
+  # private bluerobotics/bluePLM-ci-assets repo holds the engine DLL, its interop and the two small
+  # regression fixtures (its README lists versions and hashes). The job checks the hashes, installs
+  # the DLLs where the service looks for them and registers the COM server, and puts the fixtures at
+  # RegressionFixtureGuard.DefaultFixtureRoot, the one path the fixture guard reads from.
+  #
+  # Secrets: SOLIDWORKS_DM_LICENSE_KEY (passed as BLUEPLM_DM_LICENSE_KEY, the name
+  # DocumentManagerLicense.cs reads) and CI_ASSETS_TOKEN (read-only contents on the assets repo).
+  # Without them - pull requests from forks never get secrets - the job says so in a warning and
+  # stops green; with them, any skip other than the opt-in large fixture fails the job, because a
+  # skipped Document Manager test proves nothing.
+  sw-service-dm:
+    name: SolidWorks service (Document Manager tests)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      HAS_SECRETS: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY != '' && secrets.CI_ASSETS_TOKEN != '' }}
+    steps:
+      - name: Check secrets
+        shell: pwsh
+        run: |
+          if ($env:HAS_SECRETS -ne 'true') {
+            Write-Host "::warning::Document Manager tests not run: SOLIDWORKS_DM_LICENSE_KEY or CI_ASSETS_TOKEN is not available to this run."
+            "## Document Manager tests`nNot run: secrets unavailable." | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          }
+
+      - name: Checkout
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/checkout@v5
+
+      - name: Checkout CI assets
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: bluerobotics/bluePLM-ci-assets
+          token: ${{ secrets.CI_ASSETS_TOKEN }}
+          path: ci-assets
+          persist-credentials: false
+
+      - name: Install Document Manager and fixtures
+        if: env.HAS_SECRETS == 'true'
+        shell: pwsh
+        run: |
+          $expected = @{
+            'swdocumentmgr.dll'                    = 'dfd78bdc6f5bfb146ae7268521abb457f3e9d29a24c32c66b76d57a116f0e98a'
+            'SolidWorks.Interop.swdocumentmgr.dll' = '8ad5014d651a177577663ffbddf467a8aadd735fb0cc6e42116639988aa17651'
+          }
+          $shared = 'C:\Program Files\Common Files\SOLIDWORKS Shared'
+          New-Item -ItemType Directory -Force $shared | Out-Null
+          foreach ($name in $expected.Keys) {
+            $source = Join-Path ci-assets/document-manager $name
+            $hash = (Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $expected[$name]) { throw "$name hash $hash does not match the pinned $($expected[$name])" }
+            Copy-Item $source $shared
+          }
+          $reg = Start-Process regsvr32.exe -ArgumentList '/s', "`"$shared\swdocumentmgr.dll`"" -Wait -PassThru
+          if ($reg.ExitCode -ne 0) { throw "regsvr32 swdocumentmgr.dll exited $($reg.ExitCode)" }
+          $fixtureRoot = 'C:\BluePLM\br-vault\0 - SHARED\00 - REGRESSION TESTS'
+          New-Item -ItemType Directory -Force $fixtureRoot | Out-Null
+          Copy-Item ci-assets/fixtures/* $fixtureRoot -Recurse
+          Get-ChildItem $fixtureRoot -Recurse -File | ForEach-Object { Write-Host "fixture: $($_.FullName)" }
+
+      - name: Setup .NET SDK
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        if: env.HAS_SECRETS == 'true'
+        run: dotnet build solidworks-service/BluePLM.SolidWorksService.sln -c Release
+
+      - name: Document Manager tests
+        if: env.HAS_SECRETS == 'true'
+        env:
+          BLUEPLM_DM_LICENSE_KEY: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY }}
+        run: >
+          dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release --no-build
+          --filter "Category!=Headless"
+          --logger "trx;LogFileName=dm.trx"
+          --results-directory TestResults
+
+      - name: Check skipped tests
+        if: always() && env.HAS_SECRETS == 'true'
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem TestResults -Recurse -Filter dm.trx | Select-Object -First 1
+          if (-not $trx) { throw "No TRX file - the Document Manager tests did not run." }
+          [xml]$doc = Get-Content $trx.FullName
+          $results = @($doc.TestRun.Results.UnitTestResult)
+          $executed = @($results | Where-Object { $_.outcome -ne 'NotExecuted' })
+          $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
+          # Allowed: the 297 MB opt-in fixture, and the symlink test on a runner that refuses links.
+          $allowed = 'is large; set BLUEPLM_REGRESSION_LARGE_FIXTURES|will not create a symbolic link'
+          $unexpected = @($skipped | Where-Object { "$($_.Output.ErrorInfo.Message)$($_.Output.StdOut)" -notmatch $allowed })
+          "## Document Manager tests" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "$($executed.Count) executed, $($skipped.Count) skipped ($($unexpected.Count) unexpected)." |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          foreach ($s in $skipped) { Write-Host "skipped: $($s.testName): $($s.Output.ErrorInfo.Message)" }
+          if ($executed.Count -eq 0) { throw "No Document Manager test executed." }
+          if ($unexpected.Count -gt 0) {
+            $unexpected | ForEach-Object { Write-Host "::error::Unexpected skip: $($_.testName): $($_.Output.ErrorInfo.Message)" }
+            throw "$($unexpected.Count) Document Manager test(s) skipped for a reason other than the opt-in fixture."
+          }
+
+      - name: Upload test results
+        if: always() && env.HAS_SECRETS == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: sw-service-dm-trx
           path: TestResults/
           if-no-files-found: ignore
           retention-days: 14
