@@ -17,6 +17,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// the documentation says a path should do.
     /// </summary>
     [Collection(FixtureRootEnvironmentCollection.Name)]
+    [Trait("Category", "Headless")]
     public class RegressionFixtureGuardTests : IClassFixture<AdversarialLayout>
     {
         private static readonly string Root = RegressionFixtureGuard.DefaultFixtureRoot;

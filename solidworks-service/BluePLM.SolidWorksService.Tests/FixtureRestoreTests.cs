@@ -14,6 +14,7 @@ namespace BluePLM.SolidWorksService.Tests
     ///
     /// All of it happens in a throwaway %TEMP% tree. Nothing here touches the vault.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class FixtureRestoreTests
     {
         private const string FixtureName = "PART.SLDPRT";
