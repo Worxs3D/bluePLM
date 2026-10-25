@@ -62,6 +62,7 @@ import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
 import { cloudRowsForFolderRefresh } from './useLoadFiles/refreshFolderCloudRows'
 import { findExclusionsForFilesPresentLocally } from './useLoadFiles/autoDownloadExclusionPruning'
+import { buildHashStamps, isCachedHashStale } from './useLoadFiles/cachedHashValidity'
 
 const CHECKOUT_PROFILE_MAX_ATTEMPTS = 3
 const CHECKOUT_PROFILE_RETRY_BASE_MS = 200
@@ -802,6 +803,11 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           localHash: f.hash,
         }))
 
+        // Paths whose cached hash was dropped because the file changed on disk since it was
+        // hashed. The background hash pass re-hashes them even when it otherwise skips files
+        // with a tracked localVersion.
+        const staleHashPaths = new Set<string>()
+
         // Get ignored paths checker for later use (don't filter, just mark as ignored)
         const isIgnoredPath = currentVaultId
           ? (path: string) => usePDMStore.getState().isPathIgnored(currentVaultId, path)
@@ -943,6 +949,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 existingLocalHashes.set(f.relativePath.toLowerCase(), f.localHash)
               }
             }
+            const existingHashStamps = buildHashStamps(currentFiles)
 
             // Create a map of existing files' pendingMetadata to preserve unsaved changes
             // This prevents losing user's edits (like generated part numbers) when FileWatcher triggers refresh
@@ -1257,10 +1264,20 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                 // This prevents falling back to timestamp-based diff detection after file watcher refreshes
                 // Try both full path (in-memory entries) and relativePath (IndexedDB entries) so a
                 // persisted hash from a previous app session is always reachable.
-                const existingLocalHash =
-                  existingLocalHashes.get(localFile.path) ||
-                  existingLocalHashes.get(localFile.relativePath) ||
-                  existingLocalHashes.get(localFile.relativePath.toLowerCase())
+                // A hash taken before the file last changed on disk is dropped, never reused:
+                // it decides synced vs modified (see cachedHashValidity.ts).
+                const cachedHashIsStale = isCachedHashStale(
+                  existingHashStamps.get(localFile.relativePath.toLowerCase()),
+                  localFile,
+                )
+                if (cachedHashIsStale && !localFile.localHash) {
+                  staleHashPaths.add(localFile.relativePath)
+                }
+                const existingLocalHash = cachedHashIsStale
+                  ? undefined
+                  : existingLocalHashes.get(localFile.path) ||
+                    existingLocalHashes.get(localFile.relativePath) ||
+                    existingLocalHashes.get(localFile.relativePath.toLowerCase())
                 const effectiveLocalHash = localFile.localHash || existingLocalHash
 
                 // PRIMARY: Inode-based rename detection
@@ -2188,7 +2205,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                     hasLocalContent(f) &&
                     f.pdmData?.content_hash &&
                     !f.localHash &&
-                    f.localVersion === undefined,
+                    (f.localVersion === undefined || staleHashPaths.has(f.relativePath)),
                 )
               : localFiles.filter(
                   (f) =>
