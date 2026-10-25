@@ -916,8 +916,8 @@ const DELIBERATE: readonly Allowance[] = [
       'Counts cloud-only files that have never been checked in. The question is whether the server row has a revision yet, not what the field would display.',
   },
   {
-    file: 'hooks/useLoadFiles.ts',
-    symbols: ['runLoadFiles'],
+    file: 'hooks/useLoadFiles/mergeLocalFile.ts',
+    symbols: ['buildMergeLookups', 'mergeLocalFileWithServer'],
     reason:
       'The load-time merge, which is where committed data is assembled. Its reads are diagnostics plus the move-detection mirror that seeds pendingMetadata from the row.',
   },
