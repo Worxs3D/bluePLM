@@ -183,6 +183,11 @@ export async function createHarness(): Promise<Harness> {
     return files
   }
 
+  // The local sync index's inode record (`getInodeMap`): each file this machine has seen in sync
+  // with its server row, by inode. A later load that finds the inode at another path reads it as a
+  // move, as the app does. A file whose path disagrees with its row keeps its old entry.
+  const syncedInodes = new Map<number, string[]>()
+
   const reload = async (): Promise<LocalFile[]> => {
     const { files: rows, error } = await getFilesLightweight(ORG_ID, VAULT_ID)
     if (error || !rows) throw new Error(`reload: ${String(error?.message ?? error)}`)
@@ -196,7 +201,7 @@ export async function createHarness(): Promise<Harness> {
     for (const f of pdmFiles) {
       if (f.content_hash && f.checked_out_by === USER_ID) checkedOutByMeByHash.set(f.content_hash, f)
     }
-    const renames = detectInodeRenames(localFiles, pdmMap, localPathSet, new Map())
+    const renames = detectInodeRenames(localFiles, pdmMap, localPathSet, syncedInodes)
     const lookups = buildMergeLookups(store.files, new Map(), store.isFileRecentlyModified)
     const ctx = {
       lookups,
@@ -227,6 +232,11 @@ export async function createHarness(): Promise<Harness> {
       yieldIfSlow: async () => {},
       yieldCheckStride: 256,
     })
+    for (const f of reconciled.localFiles) {
+      if (f.isDirectory || !f.ino || !f.pdmData) continue
+      if (f.pdmData.file_path.toLowerCase() !== f.relativePath.toLowerCase()) continue
+      syncedInodes.set(f.ino, [f.relativePath.toLowerCase()])
+    }
     usePDMStore.getState().setFiles(reconciled.localFiles)
     return usePDMStore.getState().files
   }
