@@ -10,6 +10,14 @@ import fs from 'fs'
 import type * as fsTypes from 'fs'
 import path from 'path'
 import { spawn, ChildProcess, execSync } from 'child_process'
+import {
+  createServiceHealth,
+  createServiceHealthMonitor,
+  shedQueue,
+  SW_QUEUE_LIMIT,
+  SW_STDOUT_LINE_LIMIT,
+  type ServiceHealthSnapshot,
+} from './swServiceHealth'
 import * as CFB from 'cfb'
 
 // Import error handling utilities from COM stability layer
@@ -119,6 +127,17 @@ const swPendingRequests: Map<
   { resolve: (value: SwServiceResult) => void; reject: (error: Error) => void }
 > = new Map()
 let swRequestId = 0
+// Long-session drift: restarted between jobs when memory or latency creeps (swServiceHealth.ts).
+const serviceHealth = createServiceHealth()
+let lastStartArgs: { dmLicenseKey?: string; verboseLogging?: boolean } = {}
+const serviceHealthMonitor = createServiceHealthMonitor({
+  health: serviceHealth,
+  pid: () => swServiceProcess?.pid,
+  busy: () => commandQueue.length > 0 || activeCommandCount > 0 || swPendingRequests.size > 0,
+  restart: (reason) => restartSWService(reason),
+  log: (message) => log(message),
+  warn: (message) => logWarn(message),
+})
 let solidWorksInstalled: boolean | null = null
 
 /**
@@ -1109,6 +1128,7 @@ async function executeCommandDirect(
       resolve: (rawResult) => {
         clearTimeout(timeout)
         const elapsed = Date.now() - startTime
+        serviceHealth.recordCompletion(action, elapsed)
 
         // Log command completion (skip verbose logging for fast polling operations)
         if (!isQuietOperation || elapsed > 500 || !rawResult.success) {
@@ -1456,6 +1476,10 @@ function handleSWServiceOutput(data: string): void {
 
   const lines = swServiceBuffer.split('\n')
   swServiceBuffer = lines.pop() || ''
+  if (swServiceBuffer.length > SW_STDOUT_LINE_LIMIT) {
+    logError(`[SolidWorks] Dropping a ${swServiceBuffer.length}-character reply with no line end`)
+    swServiceBuffer = ''
+  }
 
   for (const line of lines) {
     if (!line.trim()) continue
@@ -1552,6 +1576,10 @@ export async function sendSWCommand(
       queuedAt: Date.now(),
       priority: getCommandPriority(command),
     })
+    for (const shed of shedQueue(commandQueue, SW_QUEUE_LIMIT)) {
+      logWarn(`[SolidWorks Queue] Queue over ${SW_QUEUE_LIMIT}; dropping ${shed.command.action}`)
+      shed.resolve({ success: false, error: 'SolidWorks command queue is full', errorCode: 'QUEUE_FULL' })
+    }
 
     // Trigger queue processing
     processQueue()
@@ -1689,6 +1717,7 @@ async function startSWService(
   verboseLogging?: boolean,
 ): Promise<SwServiceResult> {
   const startTime = Date.now()
+  lastStartArgs = { dmLicenseKey, verboseLogging }
   log('[SolidWorks] [START] START SERVICE REQUESTED')
   logServiceState('startSWService called')
   ensureSwOwnershipStore()
@@ -1801,6 +1830,8 @@ async function startSWService(
         windowsHide: true,
       })
       swServiceProcess = child
+      serviceHealth.onStarted(Date.now())
+      serviceHealthMonitor.start()
 
       const pid = child.pid
       // Save PID separately so we can detect if process is alive even if reference is lost
@@ -2906,6 +2937,63 @@ export interface SolidWorksHandlerDependencies {
   logWarn: (message: string, data?: unknown) => void
 }
 
+/** Kill the service and start a fresh one: the user's force restart and the health check's. */
+async function restartSWService(reason: string, dmLicenseKey?: string): Promise<SwServiceResult> {
+  log('[SolidWorks] =======================================')
+  log(`[SolidWorks] [RESTART] ${reason}`)
+  log('[SolidWorks] =======================================')
+  logServiceState('Before restart')
+
+  // Kill existing process if any
+  if (swServiceProcess) {
+    const pid = swServiceProcess.pid
+    log(`[SolidWorks] Force killing process (PID: ${pid})...`)
+    try {
+      swServiceProcess.kill('SIGKILL')
+      log('[SolidWorks] [OK] SIGKILL sent')
+    } catch (error) {
+      logWarn(`[SolidWorks] [WARN] Kill failed: ${error}`)
+    }
+    swServiceProcess = null
+  } else {
+    log('[SolidWorks] No existing process to kill')
+  }
+
+  // Reject all pending requests
+  const pendingCount = swPendingRequests.size
+  log(`[SolidWorks] Rejecting ${pendingCount} pending requests...`)
+  for (const [id, req] of swPendingRequests) {
+    log(`[SolidWorks] Rejecting request ${id}`)
+    req.reject(new Error('Service force-restarted'))
+  }
+  swPendingRequests.clear()
+  // The old process's partial lines and request bookkeeping must not reach the new one: a
+  // leftover half line would be glued onto its first reply.
+  swServiceBuffer = ''
+  swStderrBuffer = ''
+  recentlyTimedOutRequests.clear()
+  pingCache = null
+
+  log('[SolidWorks] Starting fresh service...')
+  return startSWService(dmLicenseKey ?? lastStartArgs.dmLicenseKey, false, lastStartArgs.verboseLogging)
+}
+
+/** The service's long-session readings and queue: for the soak's main-process sampler. */
+export function getServiceHealthSnapshot(): ServiceHealthSnapshot & {
+  queueDepth: number
+  pendingRequests: number
+  stdoutBufferChars: number
+  pid: number | null
+} {
+  return {
+    ...serviceHealth.snapshot(),
+    queueDepth: commandQueue.length,
+    pendingRequests: swPendingRequests.size,
+    stdoutBufferChars: swServiceBuffer.length,
+    pid: swServiceProcess?.pid ?? null,
+  }
+}
+
 export function registerSolidWorksHandlers(
   window: BrowserWindow,
   deps: SolidWorksHandlerDependencies,
@@ -2985,39 +3073,9 @@ export function registerSolidWorksHandlers(
     return sendSWCommand({ action: 'resetComConnection' }, { timeoutMs: 5000 })
   })
 
-  ipcMain.handle('solidworks:force-restart', async (_, dmLicenseKey?: string) => {
-    log('[SolidWorks] =======================================')
-    log('[SolidWorks] [RESTART] FORCE RESTART REQUESTED')
-    log('[SolidWorks] =======================================')
-    logServiceState('Before force restart')
-
-    // Kill existing process if any
-    if (swServiceProcess) {
-      const pid = swServiceProcess.pid
-      log(`[SolidWorks] Force killing process (PID: ${pid})...`)
-      try {
-        swServiceProcess.kill('SIGKILL')
-        log('[SolidWorks] [OK] SIGKILL sent')
-      } catch (error) {
-        logWarn(`[SolidWorks] [WARN] Kill failed: ${error}`)
-      }
-      swServiceProcess = null
-    } else {
-      log('[SolidWorks] No existing process to kill')
-    }
-
-    // Reject all pending requests
-    const pendingCount = swPendingRequests.size
-    log(`[SolidWorks] Rejecting ${pendingCount} pending requests...`)
-    for (const [id, req] of swPendingRequests) {
-      log(`[SolidWorks] Rejecting request ${id}`)
-      req.reject(new Error('Service force-restarted'))
-    }
-    swPendingRequests.clear()
-
-    log('[SolidWorks] Starting fresh service...')
-    return startSWService(dmLicenseKey)
-  })
+  ipcMain.handle('solidworks:force-restart', async (_, dmLicenseKey?: string) =>
+    restartSWService('FORCE RESTART REQUESTED', dmLicenseKey),
+  )
 
   ipcMain.handle('solidworks:service-status', async () => {
     const swInstalled = isSolidWorksInstalled()
@@ -3934,6 +3992,7 @@ export async function cleanupSolidWorksService(): Promise<void> {
 
   // Stop the watchdog
   stopOrphanWatchdog()
+  serviceHealthMonitor.stop()
 
   // Record that nothing is held any more, so the next run can reap whatever the
   // service fails to close on its way out without having to infer it.
