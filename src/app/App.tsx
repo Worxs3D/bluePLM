@@ -6,6 +6,7 @@ import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
 import { shouldDeferAutoConnectLoad } from '@/hooks/useAuth'
 import { startFocusResponsivenessMonitor } from '@/lib/focusResponsivenessMonitor'
 import { startLongTaskMonitor } from '@/lib/longTaskMonitor'
+import { startAppHealthMonitor } from '@/lib/health/appHealthMonitor'
 import { SetupScreen } from '@/components/shared/Screens'
 import { OnboardingScreen } from '@/components/shared/Screens'
 import { PerformanceWindow } from '@/features/dev-tools/performance'
@@ -77,6 +78,10 @@ export function App() {
       userAgent: navigator.userAgent.split(' ').slice(-1)[0], // Last part is Chrome version
     })
   }, [])
+
+  // Notices a session's slow failures (dead realtime, broken IndexedDB, a heap past its
+  // high-water mark) and recovers without a restart: src/lib/health/healthMonitor.ts.
+  useEffect(() => startAppHealthMonitor(), [])
 
   // Records what is actually holding the main thread. Interaction feedback -
   // hover, cursor shape, scroll - stalls whenever anything blocks it, so

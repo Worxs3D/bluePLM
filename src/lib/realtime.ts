@@ -81,6 +81,15 @@ let vaultsChannel: RealtimeChannel | null = null
 let memberChangesChannel: RealtimeChannel | null = null
 let foldersChannel: RealtimeChannel | null = null
 
+/**
+ * How to subscribe each live channel again with the arguments it was made with. The health
+ * monitor (src/lib/health/healthMonitor.ts) uses it when a channel has stopped being joined and
+ * supabase-js has not brought it back: resubscribing replaces the channel, as a fresh subscribe
+ * does, and the files channel then catches up through the same reload a rejoin triggers.
+ */
+const rebuilders = new Map<string, () => void>()
+let filesCatchUp: (() => void) | null = null
+
 // Callback type for permission/access changes
 type PermissionChangeCallback = (
   changeType:
@@ -116,6 +125,8 @@ export function subscribeToFiles(
   onFileChange: FileChangeCallback,
   onResubscribed?: () => void,
 ): () => void {
+  rebuilders.set('files', () => subscribeToFiles(orgId, onFileChange, onResubscribed))
+  filesCatchUp = onResubscribed ?? null
   // Unsubscribe from previous channel if exists
   if (filesChannel) {
     filesChannel.unsubscribe()
@@ -156,6 +167,7 @@ export function subscribeToFiles(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('files')
     if (filesChannel) {
       filesChannel.unsubscribe()
       filesChannel = null
@@ -181,6 +193,7 @@ export function subscribeToFolders(
   orgId: string,
   onFolderChange: FolderChangeCallback,
 ): () => void {
+  rebuilders.set('folders', () => subscribeToFolders(orgId, onFolderChange))
   // Unsubscribe from previous channel if exists
   if (foldersChannel) {
     foldersChannel.unsubscribe()
@@ -207,6 +220,7 @@ export function subscribeToFolders(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('folders')
     if (foldersChannel) {
       foldersChannel.unsubscribe()
       foldersChannel = null
@@ -223,6 +237,7 @@ export function subscribeToFolders(
  * - Files change state
  */
 export function subscribeToActivity(orgId: string, onActivity: ActivityCallback): () => void {
+  rebuilders.set('activity', () => subscribeToActivity(orgId, onActivity))
   if (activityChannel) {
     activityChannel.unsubscribe()
   }
@@ -252,6 +267,7 @@ export function subscribeToActivity(orgId: string, onActivity: ActivityCallback)
     .subscribe()
 
   return () => {
+    rebuilders.delete('activity')
     if (activityChannel) {
       activityChannel.unsubscribe()
       activityChannel = null
@@ -275,6 +291,7 @@ export function subscribeToOrganization(
   orgId: string,
   onOrgChange: OrganizationChangeCallback,
 ): () => void {
+  rebuilders.set('organization', () => subscribeToOrganization(orgId, onOrgChange))
   // Unsubscribe from previous channel if exists
   if (organizationChannel) {
     organizationChannel.unsubscribe()
@@ -300,6 +317,7 @@ export function subscribeToOrganization(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('organization')
     if (organizationChannel) {
       organizationChannel.unsubscribe()
       organizationChannel = null
@@ -320,6 +338,7 @@ export function subscribeToColorSwatches(
   orgId: string,
   onSwatchChange: ColorSwatchChangeCallback,
 ): () => void {
+  rebuilders.set('color_swatches', () => subscribeToColorSwatches(orgId, onSwatchChange))
   // Unsubscribe from previous channel if exists
   if (colorSwatchesChannel) {
     colorSwatchesChannel.unsubscribe()
@@ -373,6 +392,7 @@ export function subscribeToColorSwatches(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('color_swatches')
     if (colorSwatchesChannel) {
       colorSwatchesChannel.unsubscribe()
       colorSwatchesChannel = null
@@ -392,6 +412,7 @@ export function subscribeToColorSwatches(
  * This ensures all admins see vault changes immediately.
  */
 export function subscribeToVaults(orgId: string, onVaultChange: VaultChangeCallback): () => void {
+  rebuilders.set('vaults', () => subscribeToVaults(orgId, onVaultChange))
   // Unsubscribe from previous channel if exists
   if (vaultsChannel) {
     vaultsChannel.unsubscribe()
@@ -426,6 +447,7 @@ export function subscribeToVaults(orgId: string, onVaultChange: VaultChangeCallb
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('vaults')
     if (vaultsChannel) {
       vaultsChannel.unsubscribe()
       vaultsChannel = null
@@ -449,6 +471,7 @@ export function subscribeToMemberChanges(
   orgId: string,
   onMemberChange: MemberChangeCallback,
 ): () => void {
+  rebuilders.set('member_changes', () => subscribeToMemberChanges(orgId, onMemberChange))
   // Unsubscribe from previous channel if exists
   if (memberChangesChannel) {
     memberChangesChannel.unsubscribe()
@@ -508,6 +531,7 @@ export function subscribeToMemberChanges(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('member_changes')
     if (memberChangesChannel) {
       memberChangesChannel.unsubscribe()
       memberChangesChannel = null
@@ -542,6 +566,7 @@ export function subscribeToPermissions(
   orgId: string,
   onPermissionChange: PermissionChangeCallback,
 ): () => void {
+  rebuilders.set('permissions', () => subscribeToPermissions(userId, orgId, onPermissionChange))
   // Unsubscribe from previous channel if exists
   if (permissionsChannel) {
     permissionsChannel.unsubscribe()
@@ -669,6 +694,7 @@ export function subscribeToPermissions(
 
   // Return unsubscribe function
   return () => {
+    rebuilders.delete('permissions')
     if (permissionsChannel) {
       permissionsChannel.unsubscribe()
       permissionsChannel = null
@@ -683,10 +709,43 @@ export function isPermissionsRealtimeConnected(): boolean {
   return permissionsChannel !== null
 }
 
+
+/** The live channels by kind, with realtime-js's state for each ('joined', 'errored', ...). */
+export function realtimeChannelStates(): Array<{ kind: string; state: string }> {
+  const channels: Array<[string, RealtimeChannel | null]> = [
+    ['files', filesChannel],
+    ['folders', foldersChannel],
+    ['activity', activityChannel],
+    ['organization', organizationChannel],
+    ['color_swatches', colorSwatchesChannel],
+    ['vaults', vaultsChannel],
+    ['member_changes', memberChangesChannel],
+    ['permissions', permissionsChannel],
+  ]
+  return channels
+    .filter((entry): entry is [string, RealtimeChannel] => entry[1] !== null)
+    .map(([kind, channel]) => ({ kind, state: String(channel.state ?? 'unknown') }))
+}
+
+/** Subscribe `kinds` again and catch the files channel up. Returns the kinds resubscribed. */
+export function resubscribeRealtime(kinds: readonly string[]): string[] {
+  const done: string[] = []
+  for (const kind of kinds) {
+    const rebuild = rebuilders.get(kind)
+    if (!rebuild) continue
+    rebuild()
+    done.push(kind)
+  }
+  if (done.includes('files')) filesCatchUp?.()
+  return done
+}
+
 /**
  * Unsubscribe from all realtime channels
  */
 export function unsubscribeAll() {
+  rebuilders.clear()
+  filesCatchUp = null
   if (filesChannel) {
     filesChannel.unsubscribe()
     filesChannel = null

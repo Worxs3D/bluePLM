@@ -386,4 +386,9 @@ export class Machine {
   watchPending(): boolean {
     return this.watchTimer !== null
   }
+
+  /** Watcher subscriptions the app holds (files changed, directory added and removed). */
+  watcherListenerCount(): number {
+    return this.listeners.files.size + this.listeners.dirAdded.size + this.listeners.dirRemoved.size
+  }
 }

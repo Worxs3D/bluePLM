@@ -17,5 +17,5 @@ export {
   defaultAlignmentPlan,
   defaultPendingMoveActions,
 } from '@/features/settings/organization/realign/RealignDialog.utils'
-export { unsubscribeAll } from '@/lib/realtime'
+export { realtimeChannelStates, resubscribeRealtime, unsubscribeAll } from '@/lib/realtime'
 export { usePDMStore } from '@/stores/pdmStore'
