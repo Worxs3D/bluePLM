@@ -1,0 +1,150 @@
+name: Nightly mutation testing
+
+# Measures how many regressions the test suite would actually catch (StrykerJS, stryker.config.mjs).
+# Coverage says a line ran; a mutation score says a test noticed when the line changed.
+#
+# Reporting only: nothing here gates a release (.cursor/plans/test-mutation-report.md proposes a
+# per-target ratchet). One matrix job per shard, the shard list read from stryker.config.mjs so
+# the two cannot drift. Incremental: each shard restores the previous night's results and re-tests
+# only mutants whose code or covering tests changed.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Ignore the incremental cache and test every mutant
+        type: boolean
+        default: false
+      shards:
+        description: Comma-separated shard names (blank = all)
+        type: string
+        default: ''
+
+# `npm ci` runs arbitrary postinstall scripts; nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-mutation
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: shards
+        env:
+          ONLY: ${{ inputs.shards }}
+        run: |
+          node --input-type=module -e '
+            const { shards } = await import("./stryker.config.mjs");
+            const only = (process.env.ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+            const unknown = only.filter((s) => !(s in shards));
+            if (unknown.length) { console.error("Unknown shards: " + unknown.join(", ")); process.exit(1); }
+            const list = only.length ? only : Object.keys(shards);
+            console.log("shards=" + JSON.stringify(list));
+          ' >> "$GITHUB_OUTPUT"
+
+  mutate:
+    name: Mutate (${{ matrix.shard }})
+    needs: plan
+    runs-on: ubuntu-latest
+    # Under the 6 h hosted-runner limit, with room for the cache save.
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      STRYKER_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+
+      - run: npm ci
+
+      # api/ tests import the API's own dependencies (see verify.yml).
+      - run: npm ci --prefix api
+
+      - name: Restore incremental results
+        if: ${{ !inputs.force }}
+        uses: actions/cache/restore@v4
+        with:
+          path: reports/mutation/${{ matrix.shard }}/stryker-incremental.json
+          key: stryker-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: stryker-${{ matrix.shard }}-
+
+      - name: Stryker
+        run: npx stryker run ${{ inputs.force && '--force' || '' }}
+
+      - name: Save incremental results
+        if: always() && hashFiles(format('reports/mutation/{0}/stryker-incremental.json', matrix.shard)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: reports/mutation/${{ matrix.shard }}/stryker-incremental.json
+          key: stryker-${{ matrix.shard }}-${{ github.run_id }}
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mutation-${{ matrix.shard }}
+          path: |
+            reports/mutation/${{ matrix.shard }}/mutation.json
+            reports/mutation/${{ matrix.shard }}/mutation.html
+          if-no-files-found: ignore
+          retention-days: 30
+
+  summary:
+    name: Summary
+    needs: mutate
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Only for mutation-testing-elements, which the merged HTML page inlines.
+      - run: npm ci --ignore-scripts
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mutation-*
+          path: reports/mutation
+
+      # download-artifact puts each artifact in a directory named after it.
+      - name: Merge and summarise
+        run: |
+          cd reports/mutation
+          for d in mutation-*; do [ -d "$d" ] && mv "$d" "${d#mutation-}"; done
+          cd ../..
+          node scripts/mutation-summary.mjs reports/mutation
+          cat reports/mutation/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mutation-report
+          path: |
+            reports/mutation/index.html
+            reports/mutation/mutation.json
+            reports/mutation/survivors.json
+            reports/mutation/summary.md
+          retention-days: 30
