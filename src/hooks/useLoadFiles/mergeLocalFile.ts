@@ -31,6 +31,12 @@ export interface MergeLookups {
   checkedOutUsers: Map<string, CheckoutUserProfile>
   /** pdmData of files just written locally, which a server row may not reflect yet. */
   recentlyModifiedPdmData: Map<string, PDMFile>
+  /**
+   * Lower-cased paths of local files the store tied to a server row. Proof of a sync as good as
+   * the sync index's, and newer: a rename or move does not write the index, so a file renamed
+   * here and then deleted on the server read as a new local file, ready to be checked in again.
+   */
+  trackedPaths: Set<string>
 }
 
 /**
@@ -50,6 +56,12 @@ export function buildMergeLookups(
   const pendingByServerPath = new Map<string, PendingMetadata>()
   const checkedOutUsers = new Map<string, CheckoutUserProfile>()
   const recentlyModifiedPdmData = new Map<string, PDMFile>()
+  const trackedPaths = new Set<string>()
+  for (const f of currentFiles) {
+    if (f.isDirectory || !f.pdmData?.id) continue
+    if (f.diffStatus === 'cloud' || f.diffStatus === 'moved_away' || f.diffStatus === 'deleted') continue
+    trackedPaths.add(f.relativePath.toLowerCase())
+  }
 
   for (const [relPath, data] of savedVersionMap) {
     if (data.localVersion !== undefined) localVersions.set(relPath, data.localVersion)
@@ -103,6 +115,7 @@ export function buildMergeLookups(
     pendingByServerPath,
     checkedOutUsers,
     recentlyModifiedPdmData,
+    trackedPaths,
   }
 }
 
@@ -232,7 +245,8 @@ export function mergeLocalFileWithServer(localFile: ScannedLocalFile, ctx: Merge
   if (!pdmData) {
     const untracked = classifyWithoutServerRow({
       ignored: ctx.isIgnoredPath(localFile.relativePath),
-      syncIndexEntry: ctx.localSyncIndex.get(lookupKey),
+      syncIndexEntry:
+        ctx.localSyncIndex.get(lookupKey) ?? (lookups.trackedPaths.has(lookupKey) ? {} : undefined),
       modifiedTime: localFile.modifiedTime,
     })
     diffStatus = untracked.diffStatus
@@ -256,9 +270,15 @@ export function mergeLocalFileWithServer(localFile: ScannedLocalFile, ctx: Merge
   let finalPdmData = pdmData
   const recentlyModifiedData = lookups.recentlyModifiedPdmData.get(localFile.path)
   if (recentlyModifiedData && pdmData) {
+    // What a Save to File wrote (the metadata) is kept; where the file is on the server is not
+    // something it wrote, and keeping the old path left a moved file's row pointing at its old
+    // path after a load (src/test/multi/savedSequences.test.ts).
     finalPdmData = mergePdmFileData(recentlyModifiedData, {
       checked_out_by: pdmData.checked_out_by,
       checked_out_at: pdmData.checked_out_at,
+      file_path: pdmData.file_path,
+      file_name: pdmData.file_name,
+      extension: pdmData.extension,
     })
     window.electronAPI?.log('debug', '[LoadFiles] SKIP merge for recently modified file', {
       path: localFile.path,

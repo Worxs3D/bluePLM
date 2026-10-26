@@ -10,6 +10,7 @@ import { getCloudOnlyFilesFromSelection, buildFullPath, getParentDir } from '../
 import { ProgressTracker } from '../executor'
 import { getDownloadUrl } from '../../storage'
 import type { LocalFile } from '../../../stores/pdmStore'
+import { usePDMStore } from '../../../stores/pdmStore'
 import { isRetryableError, getNetworkErrorMessage, getBackoffDelay, sleep } from '../../network'
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { log } from '@/lib/logger'
@@ -574,6 +575,28 @@ export const downloadCommand: Command<DownloadParams> = {
           // Folder likely already exists from parent dir creation during file downloads
         }
       }
+    }
+
+    // A file whose server row was deleted while its bytes were on the way: realtime has already
+    // taken its row out of the store, so the copy just written would sit on disk unlisted, then
+    // come back as a new local file that a sync could upload again. Nothing local is lost by
+    // undoing it - the bytes are the deleted version's - so it goes to the Recycle Bin and is
+    // left out of the store update and the sync index.
+    // No list at all means there is no store to compare against (nothing loaded).
+    const liveFiles = usePDMStore.getState().files
+    const liveStorePaths = new Set((liveFiles ?? []).map((f) => f.path.toLowerCase()))
+    const deletedWhileDownloading = !liveFiles
+      ? []
+      : pendingUpdates.filter((u) => !liveStorePaths.has(u.path.toLowerCase()))
+    for (const update of deletedWhileDownloading) {
+      pendingUpdates.splice(pendingUpdates.indexOf(update), 1)
+      succeeded--
+      const removed = await window.electronAPI?.deleteItem(update.path, true)
+      logDownload('info', 'Server row deleted during download; removed the downloaded copy', {
+        operationId,
+        path: update.path,
+        removed: !!removed?.success && !removed.skipped,
+      })
     }
 
     // Paths of files that actually landed, shared by folder-status resolution

@@ -385,6 +385,7 @@ export const renameCommand: Command<RenameParams> = {
       let nestedSyncedFiles: Array<{
         oldRelPath: string
         newRelPath: string
+        newServerPath: string
         pdmData: LocalFile['pdmData']
       }> = []
       if (file.isDirectory) {
@@ -393,11 +394,22 @@ export const renameCommand: Command<RenameParams> = {
         // the stub's own (still nonexistent) renamed path writes a meaningless value into a
         // record that already means "look at movedToRelativePath instead" - it protects nothing,
         // since there was never a real file at the stub's path for loadFiles() to lose track of.
+        // Only rows the server will re-prefix: rename_folder_files moves what sits under the old
+        // folder on the server. A file here whose server row is elsewhere (another machine moved
+        // it out, a pending move) keeps its server path; patching it claimed a move the server
+        // never made and hid the pending move (src/test/multi/savedSequences.test.ts).
+        const oldServerPrefix = `${oldRelPath.toLowerCase()}/`
         nestedSyncedFiles = nestedFiles
-          .filter((f) => f.pdmData?.file_path && hasLocalContent(f))
+          .filter(
+            (f) =>
+              f.pdmData?.file_path &&
+              hasLocalContent(f) &&
+              f.pdmData.file_path.toLowerCase().startsWith(oldServerPrefix),
+          )
           .map((f) => ({
             oldRelPath: f.relativePath,
             newRelPath: newRelPath + f.relativePath.substring(oldRelPath.length),
+            newServerPath: newRelPath + f.pdmData!.file_path.substring(oldRelPath.length),
             pdmData: f.pdmData,
           }))
       }
@@ -421,7 +433,7 @@ export const renameCommand: Command<RenameParams> = {
           updates: {
             pdmData: {
               ...nested.pdmData,
-              file_path: nested.newRelPath,
+              file_path: nested.newServerPath,
             },
           },
         }))
@@ -1034,18 +1046,28 @@ export const moveCommand: Command<MoveParams> = {
         let nestedSyncedFiles: Array<{
           oldRelPath: string
           newRelPath: string
+          newServerPath: string
           pdmData: LocalFile['pdmData']
         }> = []
         if (file.isDirectory) {
           const nestedFiles = getFilesInFolder(ctx.files, file.relativePath)
           // Only synced files with pdmData that actually have content on disk - a 'moved_away'
           // stub has `pdmData.file_path` too, but patching it to the stub's own (still
-          // nonexistent) moved path protects nothing there was never anything at.
+          // nonexistent) moved path protects nothing there was never anything at. And only rows
+          // the server moves with the folder: one whose server row is elsewhere keeps its path
+          // (see the same filter in the rename command).
+          const oldServerPrefix = `${file.relativePath.toLowerCase()}/`
           nestedSyncedFiles = nestedFiles
-            .filter((f) => f.pdmData?.file_path && hasLocalContent(f))
+            .filter(
+              (f) =>
+                f.pdmData?.file_path &&
+                hasLocalContent(f) &&
+                f.pdmData.file_path.toLowerCase().startsWith(oldServerPrefix),
+            )
             .map((f) => ({
               oldRelPath: f.relativePath,
               newRelPath: newRelPath + f.relativePath.substring(file.relativePath.length),
+              newServerPath: newRelPath + f.pdmData!.file_path.substring(file.relativePath.length),
               pdmData: f.pdmData,
             }))
         }
@@ -1064,7 +1086,7 @@ export const moveCommand: Command<MoveParams> = {
             updates: {
               pdmData: {
                 ...nested.pdmData,
-                file_path: nested.newRelPath, // Update file_path to match new relativePath
+                file_path: nested.newServerPath, // Where the server puts the row
               },
             },
           }))

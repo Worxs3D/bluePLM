@@ -11,6 +11,49 @@ the API fixes; the app expects 2.8.3.
 
 ### Fixed
 
+Found by the new two-machine simulator (`src/test/multi/`): two app instances on one server,
+with realtime delayed, dropped and reconnected.
+
+- **Another user's checkout no longer goes unseen for 15 s after your own check-in.** The guard
+  against stale echoes of your check-in dropped every update to that file, so it showed as free
+  (or not outdated) while someone else held it. It now drops only your own older echoes.
+- **Your own late echoes no longer put a checkout back.** Realtime updates wait in a short
+  batch; one queued before your check-in or checkout, applied after it, restored the old row.
+  Batched updates now skip rows older than the stored one, and never overwrite fields a local
+  write changed after they were queued. A row that says a file you hold is no longer held is
+  read back from the server before it is believed.
+- **A lost realtime connection catches up when it comes back.** Supabase does not replay what
+  it missed; the files channel now reloads silently when it rejoins.
+- **A refused checkout shows who holds the file**, instead of leaving it looking free.
+- **A file another machine moved or renamed stays on your disk as a pending move.** Realtime
+  used to move only the row (a synced file where nothing was on disk), the next load took your
+  copy for an orphan and recycled it, and the moved file did not show at all. It is now a
+  `moved` row where your bytes are and a stub where the server says, as for a move made on your
+  own machine; Re-align or Resolve Pending Moves settles it. The same holds after a restart.
+  A remote case-only rename keeps your own spelling.
+- **Re-align moves files again.** Adopting the server path counted the file's own stub at the
+  destination as an occupant and skipped every move that had one.
+- **A server row is never hidden because the same bytes exist elsewhere on disk.** The load
+  skipped such a row as a local move even when no local file claimed it.
+- **A pending move keeps its stub and its badge** across new versions, renames, folder renames
+  and unsaved edits, and loses them once settled; no empty folder is left behind.
+- **A file deleted on the server while you download it is removed again**, instead of staying
+  on disk unlisted and coming back as a new local file.
+- **A file renamed here and then deleted on the server reads as deleted, not as new** (which
+  offered it for check-in again).
+- **A folder rename or move no longer claims a server path for a file the server did not move.**
+- **A checkout no longer writes the row back as it was when the command started.**
+- **The move-detection part number copy is no longer treated as an edit**, so it no longer
+  freezes realtime for the file or turns into an edit of the old value after another user
+  changes the part number.
+- **Disk changes made while an operation runs are looked at once it finishes**, not dropped.
+
+Not fixed, recorded as failing tests for a decision: checking out a copy that is behind the
+server makes the old bytes writable, so the next check-in buries the other user's version;
+checking in a file another machine moved asks "renamed or moved locally?" and undoes their move
+on yes; a save within 5 s of an operation is taken for the app's own write. See
+`src/test/multi/` and the report in `.cursor/plans/test-two-machines-report.md`.
+
 - **API: a missing row answers 404, not 500.** `.single()` on no row returns PostgREST
   `PGRST116`, the routes threw it, and the error handler made it a 500, so the routes' own 404
   branches never ran (`DELETE /files/<unknown>`, undo-checkout, suppliers, vaults and more).

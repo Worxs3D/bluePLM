@@ -111,10 +111,28 @@ type MemberChangeCallback = (
  * - state changes (WIP → Released)
  * - revision changes
  */
-export function subscribeToFiles(orgId: string, onFileChange: FileChangeCallback): () => void {
+export function subscribeToFiles(
+  orgId: string,
+  onFileChange: FileChangeCallback,
+  onResubscribed?: () => void,
+): () => void {
   // Unsubscribe from previous channel if exists
   if (filesChannel) {
     filesChannel.unsubscribe()
+  }
+
+  // supabase-js rejoins a channel after its socket drops and reports SUBSCRIBED again, but it
+  // does not replay the changes sent while it was away. The rejoin is the cue to catch up.
+  let joinedBefore = false
+  let lostSinceJoin = false
+  const onStatus = (status: string) => {
+    if (status === 'SUBSCRIBED') {
+      if (joinedBefore && lostSinceJoin) onResubscribed?.()
+      joinedBefore = true
+      lostSinceJoin = false
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      lostSinceJoin = true
+    }
   }
 
   filesChannel = supabase
@@ -134,7 +152,7 @@ export function subscribeToFiles(orgId: string, onFileChange: FileChangeCallback
         onFileChange(eventType, newFile, oldFile)
       },
     )
-    .subscribe()
+    .subscribe(onStatus)
 
   // Return unsubscribe function
   return () => {

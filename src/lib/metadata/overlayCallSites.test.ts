@@ -923,8 +923,14 @@ const DELIBERATE: readonly Allowance[] = [
   },
   {
     file: 'hooks/useRealtimeSubscriptions.ts',
-    symbols: ['unsubscribeFiles'],
+    symbols: ['onFileChange'],
     reason: 'Logs the row a realtime event arrived for, to compare against the event payload.',
+  },
+  {
+    file: 'hooks/realtimeLocalWrites.ts',
+    symbols: ['withoutLocalChanges'],
+    reason:
+      'Compares the committed row with a snapshot of itself, field by field, to find which fields a local write changed while a realtime update waited. It decides which server fields to apply, never a displayed value.',
   },
   {
     file: 'lib/commands/handlers/fileOps.ts',

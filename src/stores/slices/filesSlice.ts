@@ -48,6 +48,7 @@ import { logExplorer } from '@/lib/userActionLogger'
 import { bumpFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { applyFileUpdates, mergeWrittenFile } from '../fileUpdates'
 import { applyServerPdmUpdate, applyServerPdmUpdates } from '../serverPdmUpdate'
+import { applyServerLocationUpdates } from '../serverLocationUpdate'
 import { migratePersistedPathKeys, type PathRename } from '../persistedPathKeys'
 
 // ============================================================================
@@ -1815,111 +1816,7 @@ export const createFilesSlice: StateCreator<
       fileIds: scopedUpdates.map((u) => u.fileId).slice(0, 5),
     })
 
-    set((state) => {
-      // Build a map of fileId -> update for O(1) lookups
-      const updateMap = new Map(scopedUpdates.map((u) => [u.fileId, u]))
-
-      // Collect all new folders that need to be created
-      const newFolders: LocalFile[] = []
-
-      // Build a comprehensive set of existing paths (case-insensitive) to prevent duplicates
-      // Include ALL files/folders, not just directories, to catch edge cases where
-      // an entry might exist with wrong isDirectory flag or from concurrent updates
-      const existingPaths = new Set(state.files.map((f) => f.relativePath.toLowerCase()))
-      // Also track by full path for extra safety
-      const existingFullPaths = new Set(state.files.map((f) => f.path.toLowerCase()))
-
-      // Track old paths for selectedFiles update
-      const oldPathToNewPath = new Map<string, string>()
-
-      // Pre-create all parent folders needed (only if they truly don't exist)
-      for (const update of scopedUpdates) {
-        const pathParts = update.newRelativePath.split('/')
-        let currentPath = ''
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentPath = currentPath ? `${currentPath}/${pathParts[i]}` : pathParts[i]
-          const lowerPath = currentPath.toLowerCase()
-          const fullPath = buildFullPath(vaultPath, currentPath)
-          const lowerFullPath = fullPath.toLowerCase()
-
-          // Skip if folder already exists in state OR was already queued for creation
-          // Check both relativePath and full path for robustness
-          if (
-            existingPaths.has(lowerPath) ||
-            existingFullPaths.has(lowerFullPath) ||
-            newFolders.some((f) => f.relativePath.toLowerCase() === lowerPath)
-          ) {
-            continue
-          }
-
-          newFolders.push({
-            name: pathParts[i],
-            path: fullPath,
-            relativePath: currentPath,
-            isDirectory: true,
-            extension: '',
-            size: 0,
-            modifiedTime: '',
-            diffStatus: 'cloud',
-          })
-          // Add to tracking sets to prevent duplicates within this batch
-          existingPaths.add(lowerPath)
-          existingFullPaths.add(lowerFullPath)
-        }
-      }
-
-      if (newFolders.length > 0) {
-        log.debug('[filesSlice]', 'batchUpdateFileLocationsFromServer creating folders', {
-          folderCount: newFolders.length,
-          paths: newFolders.map((f) => f.relativePath),
-        })
-      }
-
-      // Update all files in a single pass
-      const updatedFiles = state.files.map((f) => {
-        const update = f.pdmData?.id ? updateMap.get(f.pdmData.id) : undefined
-        if (!update || !f.pdmData) return f
-
-        const newFullPath = buildFullPath(vaultPath, update.newRelativePath)
-        oldPathToNewPath.set(f.path, newFullPath)
-
-        return {
-          ...f,
-          path: newFullPath,
-          relativePath: update.newRelativePath,
-          name: update.newFileName,
-          extension: update.newFileName.includes('.')
-            ? '.' + (update.newFileName.split('.').pop()?.toLowerCase() || '')
-            : '',
-          pdmData: mergePdmFileData(f.pdmData, update.pdmData),
-        }
-      })
-
-      // Mirror the same path changes onto state.serverFiles. Without this,
-      // refreshCurrentFolder iterates a stale serverFiles list and resurrects
-      // a ghost cloud-only entry at the old path.
-      const updatedServerFiles = state.serverFiles.map((sf) => {
-        const update = updateMap.get(sf.id)
-        if (!update) return sf
-        return {
-          ...sf,
-          file_path: update.newRelativePath,
-          name: update.newFileName,
-          extension: update.newFileName.includes('.')
-            ? '.' + (update.newFileName.split('.').pop()?.toLowerCase() || '')
-            : '',
-        }
-      })
-
-      // Update selectedFiles if any were moved
-      const updatedSelectedFiles = state.selectedFiles.map((p) => oldPathToNewPath.get(p) || p)
-
-      return {
-        files: [...updatedFiles, ...newFolders],
-        serverFiles: updatedServerFiles,
-        selectedFiles: updatedSelectedFiles,
-      }
-    })
+    set((state) => applyServerLocationUpdates(state, scopedUpdates, vaultPath))
   },
 
   removeCloudFile: (fileId) => {

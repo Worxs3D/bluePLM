@@ -45,7 +45,7 @@ import {
   shouldSkipMerge,
 } from './loadFilesCoordination'
 import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
-import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
+import { reconcileCloudFiles, serverIdsByLocalPath } from './useLoadFiles/cloudFileReconciliation'
 import { findExclusionsForFilesPresentLocally } from './useLoadFiles/autoDownloadExclusionPruning'
 import {
   buildAutoDiscardToastMessage,
@@ -674,6 +674,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               inodeMatchedServerPaths,
               inodeMatchedServerPathToLocalPath,
               existingCheckedOutUsers: lookups.checkedOutUsers,
+              previousServerIdByLocalPath: serverIdsByLocalPath(currentFiles),
               userId: user?.id,
               vaultPath: loadingForVaultPath,
               yieldIfSlow,
@@ -1350,4 +1351,4 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
 
   return { loadFiles, refreshCurrentFolder }
-}
+}

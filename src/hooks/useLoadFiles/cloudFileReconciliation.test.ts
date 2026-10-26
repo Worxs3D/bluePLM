@@ -106,8 +106,13 @@ describe('reconcileCloudFiles', () => {
     expect(stubs[0].movedToRelativePath).toBe('athom/part.sldprt')
   })
 
-  it('a hash-only move (no inode evidence) still emits no stub and no cloud row', async () => {
-    const movedFile = movedLocalFile({ ino: undefined, localHash: 'hash-1' })
+  it('a hash-only move (no inode evidence) emits one stub naming the moved file and no cloud row', async () => {
+    // The merge gives a hash-matched move its server row, so the moved file carries it.
+    const movedFile = movedLocalFile({
+      ino: undefined,
+      localHash: 'hash-1',
+      pdmData: serverFile() as unknown as LocalFile['pdmData'],
+    })
     const result = await reconcileCloudFiles({
       pdmFiles: [serverFile()],
       localFiles: [movedFile],
@@ -120,7 +125,8 @@ describe('reconcileCloudFiles', () => {
       yieldIfSlow: YIELD_NOOP,
       yieldCheckStride: 256,
     })
-    expect(result.localFiles.filter((f) => f.diffStatus === 'moved_away')).toHaveLength(0)
+    const stubs = result.localFiles.filter((f) => f.diffStatus === 'moved_away')
+    expect(stubs.map((f) => f.movedToRelativePath)).toEqual(['athom/part.sldprt'])
     expect(result.localFiles.filter((f) => f.diffStatus === 'cloud')).toHaveLength(0)
   })
 
@@ -143,7 +149,8 @@ describe('reconcileCloudFiles', () => {
     expect(result.cloudFolders.size).toBe(0)
   })
 
-  it('leaves a hash-only move unchanged (no stub - no local evidence of the destination)', async () => {
+  it('gives a hash-only move a stub naming the file that claimed it', async () => {
+    // The merge already gave the moved file its server row (a checked-out-by-me hash match).
     const hashMovedFile: LocalFile = {
       name: 'part.sldprt',
       path: 'C:/vault/new-name/part.sldprt',
@@ -153,6 +160,8 @@ describe('reconcileCloudFiles', () => {
       size: 1024,
       modifiedTime: '2026-01-01T00:00:00Z',
       localHash: 'hash-1',
+      pdmData: serverFile() as unknown as LocalFile['pdmData'],
+      diffStatus: 'moved',
     }
 
     const result = await reconcileCloudFiles({
@@ -168,9 +177,79 @@ describe('reconcileCloudFiles', () => {
       yieldCheckStride: 256,
     })
 
-    // Nothing injected at the old server path, and the hash-matched local file
-    // itself is passed through untouched by this pass.
-    expect(result.localFiles).toEqual([hashMovedFile])
+    // The hash-matched local file passes through untouched, and the old server path holds a
+    // stub pointing at it, as an inode-matched move gets.
+    expect(result.localFiles[0]).toEqual(hashMovedFile)
+    const stub = result.localFiles.find((f) => f.relativePath === serverFile().file_path)
+    expect(stub?.diffStatus).toBe('moved_away')
+    expect(stub?.movedToRelativePath).toBe('new-name/part.sldprt')
+    expect(result.localFiles).toHaveLength(2)
+  })
+
+  it('lists a server row as cloud when the same bytes are on disk but no local file carries it', async () => {
+    // A local-only file with the same content (a copy, say) is not the server file.
+    const copy: LocalFile = {
+      name: 'part.sldprt',
+      path: 'C:/vault/copies/part.sldprt',
+      relativePath: 'copies/part.sldprt',
+      isDirectory: false,
+      extension: '.sldprt',
+      size: 1024,
+      modifiedTime: '2026-01-01T00:00:00Z',
+      localHash: 'hash-1',
+      diffStatus: 'added',
+    }
+
+    const result = await reconcileCloudFiles({
+      pdmFiles: [serverFile()],
+      localFiles: [copy],
+      localPathSet: new Set(['copies/part.sldprt']),
+      inodeMatchedServerPaths: new Set(),
+      inodeMatchedServerPathToLocalPath: new Map(),
+      existingCheckedOutUsers: new Map(),
+      userId: 'user-1',
+      vaultPath: VAULT_PATH,
+      yieldIfSlow: YIELD_NOOP,
+      yieldCheckStride: 256,
+    })
+
+    const listed = result.localFiles.find((f) => f.relativePath === serverFile().file_path)
+    expect(listed?.diffStatus).toBe('cloud')
+  })
+
+  it('takes an orphan holding the bytes of a row at another path for a server-side move', async () => {
+    // This machine synced the file at old/part.sldprt; another machine moved it on the server.
+    const orphan: LocalFile = {
+      name: 'part.sldprt',
+      path: 'C:/vault/old/part.sldprt',
+      relativePath: 'old/part.sldprt',
+      isDirectory: false,
+      extension: '.sldprt',
+      size: 1024,
+      modifiedTime: '2026-01-01T00:00:00Z',
+      localHash: 'hash-1',
+      diffStatus: 'deleted_remote',
+    }
+
+    const result = await reconcileCloudFiles({
+      pdmFiles: [serverFile()],
+      localFiles: [orphan],
+      localPathSet: new Set(['old/part.sldprt']),
+      inodeMatchedServerPaths: new Set(),
+      inodeMatchedServerPathToLocalPath: new Map(),
+      existingCheckedOutUsers: new Map(),
+      userId: 'user-1',
+      vaultPath: VAULT_PATH,
+      yieldIfSlow: YIELD_NOOP,
+      yieldCheckStride: 256,
+    })
+
+    const holder = result.localFiles.find((f) => f.relativePath === 'old/part.sldprt')
+    const stub = result.localFiles.find((f) => f.relativePath === serverFile().file_path)
+    expect(holder?.diffStatus).toBe('moved')
+    expect(holder?.pdmData?.id).toBe(serverFile().id)
+    expect(stub?.diffStatus).toBe('moved_away')
+    expect(stub?.movedToRelativePath).toBe('old/part.sldprt')
   })
 
   it('does not count a moved_away stub as cloud', async () => {
