@@ -110,10 +110,12 @@ jobs:
 
   summary:
     name: Summary
-    needs: mutate
+    needs: [plan, mutate]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      SHARDS: ${{ needs.plan.outputs.shards }}
     steps:
       - uses: actions/checkout@v5
 
@@ -128,23 +130,28 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           pattern: mutation-*
-          path: reports/mutation
+          path: reports/mutation/shards
 
-      # download-artifact puts each artifact in a directory named after it.
+      # download-artifact puts each artifact in a directory named after it, except when the
+      # pattern matches exactly one: then it extracts the files straight into `path`.
       - name: Merge and summarise
         run: |
-          cd reports/mutation
+          cd reports/mutation/shards
           for d in mutation-*; do [ -d "$d" ] && mv "$d" "${d#mutation-}"; done
-          cd ../..
-          node scripts/mutation-summary.mjs reports/mutation
-          cat reports/mutation/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f mutation.json ]; then
+            only=$(node -p 'JSON.parse(process.env.SHARDS)[0]')
+            mkdir -p "$only" && mv mutation.json "$only/" && { mv mutation.html "$only/" 2>/dev/null || true; }
+          fi
+          cd ../../..
+          node scripts/mutation-summary.mjs reports/mutation/shards
+          cat reports/mutation/shards/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v6
         with:
           name: mutation-report
           path: |
-            reports/mutation/index.html
-            reports/mutation/mutation.json
-            reports/mutation/survivors.json
-            reports/mutation/summary.md
+            reports/mutation/shards/index.html
+            reports/mutation/shards/mutation.json
+            reports/mutation/shards/survivors.json
+            reports/mutation/shards/summary.md
           retention-days: 30
