@@ -779,23 +779,73 @@ export async function updateInodes(vaultId: string, entries: InodeUpdate[]): Pro
   }
 }
 
+/** Idle budget a batch needs. Between the frames of a scroll or an animation there is never this much. */
+const IDLE_BATCH_MIN_MS = 30
+
+/** Idle writes still running, per vault: `hurry` makes the rest go at once, `done` settles after. */
+const idleWrites = new Map<string, Array<{ hurry: () => void; done: Promise<void> }>>()
+
 /**
  * updateInodes for work nobody waits on (the background hash pass): batches of
  * SYNC_INDEX_WRITE_CHUNK, each its own small transaction reading its entries fresh, run one at a
- * time when the main thread is idle. A first load hashes every file, and writing all of them as
- * soon as hashing finished put ~1.7 s of IndexedDB work into whatever the user was doing (the
- * file list's scroll, in the render-perf run).
+ * time when the main thread is really idle. A first load hashes every file, and writing all of
+ * them as soon as hashing finished put ~1.7 s of IndexedDB work into whatever the user was doing
+ * (the file list's scroll, in the render-perf run); slivers of idle time between frames were not
+ * enough either, so a batch waits for an idle period with room for it. The next load's read of
+ * the saved hashes (getVersionMap) finishes whatever is still waiting first, so nothing is
+ * rehashed for having been deferred.
  */
-export async function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate[]): Promise<void> {
+export function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate[]): Promise<void> {
+  let hurried = false
+  let wake: (() => void) | null = null
   const idle = () =>
     new Promise<void>((resolve) => {
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 2000 })
-      else setTimeout(resolve, 0)
+      if (hurried || typeof requestIdleCallback !== 'function') {
+        setTimeout(resolve, 0)
+        return
+      }
+      wake = resolve
+      const wait = () =>
+        requestIdleCallback(
+          (deadline) => {
+            if (hurried || deadline.didTimeout || deadline.timeRemaining() >= IDLE_BATCH_MIN_MS) resolve()
+            else wait()
+          },
+          { timeout: 60_000 },
+        )
+      wait()
     })
-  for (let start = 0; start < entries.length; start += SYNC_INDEX_WRITE_CHUNK) {
-    await idle()
-    await updateInodes(vaultId, entries.slice(start, start + SYNC_INDEX_WRITE_CHUNK))
+
+  const run = async () => {
+    for (let start = 0; start < entries.length; start += SYNC_INDEX_WRITE_CHUNK) {
+      if (!hurried) await idle()
+      await updateInodes(vaultId, entries.slice(start, start + SYNC_INDEX_WRITE_CHUNK))
+    }
   }
+  const job = {
+    hurry: () => {
+      hurried = true
+      wake?.()
+    },
+    done: run(),
+  }
+  const pending = idleWrites.get(vaultId) ?? []
+  pending.push(job)
+  idleWrites.set(vaultId, pending)
+  void job.done.finally(() => {
+    const left = (idleWrites.get(vaultId) ?? []).filter((other) => other !== job)
+    if (left.length > 0) idleWrites.set(vaultId, left)
+    else idleWrites.delete(vaultId)
+  })
+  return job.done
+}
+
+/** Finish this vault's idle writes now: what reads the saved hashes must see them. */
+async function finishIdleWrites(vaultId: string): Promise<void> {
+  const pending = idleWrites.get(vaultId)
+  if (!pending) return
+  for (const job of pending) job.hurry()
+  await Promise.all(pending.map((job) => job.done.catch(() => undefined)))
 }
 
 /**
@@ -805,6 +855,7 @@ export async function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate
  */
 export async function getVersionMap(vaultId: string): Promise<Map<string, SavedVersionData>> {
   try {
+    await finishIdleWrites(vaultId)
     const db = await openDB()
 
     return readVaultEntries(db, vaultId).then(
