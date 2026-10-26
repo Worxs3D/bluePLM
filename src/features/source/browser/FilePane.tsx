@@ -19,6 +19,7 @@ import { LockedFilesModal, type LockedFileInfo } from '@/components/core/Dialog'
 // Shared hooks from Agent 1's foundation
 import { useClipboard } from '@/hooks/useClipboard'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
+import { useStableCallback } from '@/hooks/useStableCallback'
 import { useSelectionCategories } from '@/hooks/useSelectionCategories'
 import { useSelectionBox } from '@/hooks/useSelectionBox'
 import { useSlowDoubleClick } from '@/hooks/useSlowDoubleClick'
@@ -54,8 +55,6 @@ import {
   FilePaneHandlersProvider,
   type FilePaneHandlersContextValue,
   // Utilities
-  getFileProcessingOperation,
-  getFolderProcessingOperation,
   matchesKeybinding,
 } from './'
 
@@ -69,6 +68,12 @@ import { useMetadataWritesInFlight } from './hooks/useMetadataWritesInFlight'
 import { useConfigCommitHandlers } from './hooks/useConfigCommitHandlers'
 import { useSorting } from './hooks/useSorting'
 import { findLocalFileByPath } from './utils/localFileLookup'
+import {
+  childFoldersReader,
+  folderCheckoutStatusReader,
+  folderSyncedReader,
+  processingReader,
+} from './utils/paneReaders'
 import { ConfigDrawingCheckoutDialog } from './components/Dialogs/ConfigDrawingCheckoutDialog'
 
 // Import state management hooks
@@ -408,7 +413,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   } | null>(null)
 
   // Callback for useDragState when locked files are found during folder move
-  const handleLockedFilesFound = useCallback(
+  const handleLockedFilesFound = useStableCallback(
     (result: {
       lockedFiles: LockedFileInfo[]
       totalFiles: number
@@ -421,11 +426,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         })
       })
     },
-    [],
   )
 
   // Callback for useDragState when folder conflicts are found during folder move
-  const handleFolderConflict = useCallback(
+  const handleFolderConflict = useStableCallback(
     (
       conflicts: Array<{ sourceFolder: LocalFile; targetPath: string; existingFolderPath: string }>,
       totalConflicts: number,
@@ -445,7 +449,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         })
       })
     },
-    [setFolderConflictDialog],
   )
 
   // Drag and drop state and handlers
@@ -512,30 +515,9 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   // Breadcrumb drag-drop state and handlers
   const [crumbDragOverPath, setCrumbDragOverPath] = useState<string | null>(null)
 
-  const getChildFolders = useCallback(
-    (parentPath: string): Array<{ name: string; relativePath: string }> => {
-      return files
-        .filter((f) => {
-          if (!f.isDirectory) return false
-          const rel = f.relativePath.replace(/\\/g, '/')
-          if (parentPath === '') {
-            return !rel.includes('/')
-          }
-          const prefix = parentPath + '/'
-          if (!rel.startsWith(prefix)) return false
-          const remainder = rel.slice(prefix.length)
-          return !remainder.includes('/')
-        })
-        .map((f) => ({
-          name: f.name,
-          relativePath: f.relativePath.replace(/\\/g, '/'),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-    },
-    [files],
-  )
+  const getChildFolders = useMemo(() => childFoldersReader(files), [files])
 
-  const handleCrumbDragOver = useCallback(
+  const handleCrumbDragOver = useStableCallback(
     (e: React.DragEvent, path: string) => {
       e.preventDefault()
       // Accept if we have local dragged files OR cross-view drag from Explorer
@@ -560,7 +542,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       e.dataTransfer.dropEffect = 'move'
       setCrumbDragOverPath(path)
     },
-    [draggedFiles, currentFolder],
   )
 
   const handleCrumbDragLeave = useCallback((e: React.DragEvent) => {
@@ -568,7 +549,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     setCrumbDragOverPath(null)
   }, [])
 
-  const handleCrumbDrop = useCallback(
+  const handleCrumbDrop = useStableCallback(
     async (e: React.DragEvent, targetPath: string) => {
       e.preventDefault()
       setCrumbDragOverPath(null)
@@ -596,7 +577,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       // Use the command system to perform the move
       await executeCommand('move', { files: filesToMove, targetFolder: targetPath })
     },
-    [draggedFiles, files],
   )
 
   // Configuration local state (refs and UI state that can't be in Zustand)
@@ -662,7 +642,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
   // Wrap paste to provide current folder and show status message
   // Also handles pasting files from Windows Explorer (Ctrl+C in Explorer, then Ctrl+V here)
-  const handlePaste = useCallback(async () => {
+  const handlePaste = useStableCallback(async () => {
     // First check if we have internal clipboard content
     if (clipboard && vaultPath) {
       setStatusMessage(
@@ -735,18 +715,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     }
 
     addToast('info', 'Nothing to paste')
-  }, [
-    clipboard,
-    vaultPath,
-    currentFolder,
-    sharedHandlePaste,
-    addToast,
-    setStatusMessage,
-    addProgressToast,
-    updateProgressToast,
-    removeToast,
-    onRefresh,
-  ])
+  })
 
   const tableRef = useRef<HTMLDivElement>(null)
 
@@ -840,12 +809,12 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     setLockedFilesModalData(null)
   }, [lockedFilesModalData])
 
-  const handleLockedFilesModalProceed = useCallback(() => {
+  const handleLockedFilesModalProceed = useStableCallback(() => {
     if (lockedFilesModalData) {
       lockedFilesModalData.resolve(true) // Proceed with partial move
     }
     setLockedFilesModalData(null)
-  }, [lockedFilesModalData])
+  })
 
   // Modal handlers (review, checkout request, mention, share, ECO)
   const {
@@ -1048,7 +1017,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   })
 
   // Combined row click handler: selection + slow double-click detection
-  const handleRowClick = useCallback(
+  const handleRowClick = useStableCallback(
     (e: React.MouseEvent, file: LocalFile, index: number) => {
       const selectableIndex = selectableRows.findIndex((row) => row.file === file)
       baseHandleRowClick(e, file, selectableIndex >= 0 ? selectableIndex : index)
@@ -1058,7 +1027,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         handleSlowDoubleClick(file)
       }
     },
-    [baseHandleRowClick, handleSlowDoubleClick, selectableRows],
   )
 
   // Selection box (marquee/drag-box selection). The grid lays cards out in two
@@ -1111,38 +1079,18 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
   // Check if all files in a folder are synced (truly synced, not just content-matched)
   // Uses pre-computed folderMetrics for O(1) lookup
-  const isFolderSynced = useCallback(
-    (folderPath: string): boolean => {
-      const fm = folderMetrics.get(folderPath)
-      if (!fm) return false // Empty folder or not found = not synced
-      return fm.isSynced
-    },
-    [folderMetrics],
-  )
+  const isFolderSynced = useMemo(() => folderSyncedReader(folderMetrics), [folderMetrics])
 
   // Get folder checkout status: 'mine' | 'others' | 'both' | null
   // Uses pre-computed folderMetrics for O(1) lookup
-  const getFolderCheckoutStatus = useCallback(
-    (folderPath: string): 'mine' | 'others' | 'both' | null => {
-      const fm = folderMetrics.get(folderPath)
-      if (!fm) return null
-
-      if (fm.hasMyCheckedOutFiles && fm.hasOthersCheckedOutFiles) return 'both'
-      if (fm.hasMyCheckedOutFiles) return 'mine'
-      if (fm.hasOthersCheckedOutFiles) return 'others'
-      return null
-    },
+  const getFolderCheckoutStatus = useMemo(
+    () => folderCheckoutStatusReader(folderMetrics),
     [folderMetrics],
   )
 
   // Check if a file/folder is affected by any processing operation
-  const isBeingProcessed = useCallback(
-    (relativePath: string, isDirectory: boolean = false) => {
-      if (isDirectory) {
-        return getFolderProcessingOperation(relativePath, processingOperations) !== null
-      }
-      return getFileProcessingOperation(relativePath, processingOperations) !== null
-    },
+  const isBeingProcessed = useMemo(
+    () => processingReader(processingOperations),
     [processingOperations],
   )
 
@@ -1430,11 +1378,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
   // Helper function to check if a keyboard event matches a keybinding
   // Uses the imported matchesKeybinding utility from file-browser utils
-  const checkKeybinding = useCallback(
+  const checkKeybinding = useStableCallback(
     (e: KeyboardEvent, action: keyof typeof keybindings): boolean => {
       return matchesKeybinding(e, keybindings[action])
     },
-    [keybindings],
   )
 
   // Keyboard navigation and shortcuts (extracted to hook)
@@ -1509,7 +1456,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   // and share vaultPath, navigateToFolder, setSelectedFiles, setPendingScrollToFile.
 
   // Handler for clicking on a BOM item row - navigate to the file, select it, and scroll into view
-  const handleConfigBomRowClick = useCallback(
+  const handleConfigBomRowClick = useStableCallback(
     (e: React.MouseEvent, _file: LocalFile, item: import('@/stores/types').ConfigBomItem) => {
       e.stopPropagation()
       if (item.file_path && vaultPath) {
@@ -1524,11 +1471,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         setPendingScrollToFile(fullPath)
       }
     },
-    [vaultPath, navigateToFolder, setSelectedFiles, setPendingScrollToFile],
   )
 
   // Handler for clicking on a drawing reference row - navigate to the referenced file, select it, and scroll into view
-  const handleDrawingRefRowClick = useCallback(
+  const handleDrawingRefRowClick = useStableCallback(
     (e: React.MouseEvent, _file: LocalFile, item: import('@/stores/types').DrawingRefItem) => {
       e.stopPropagation()
       if (item.file_path && vaultPath) {
@@ -1543,31 +1489,28 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         setPendingScrollToFile(fullPath)
       }
     },
-    [vaultPath, navigateToFolder, setSelectedFiles, setPendingScrollToFile],
   )
 
   // Handler for toggling the section owned by a configuration row.
-  const onConfigSectionsToggle = useCallback(
+  const onConfigSectionsToggle = useStableCallback(
     (e: React.MouseEvent, file: LocalFile, configName: string) => {
       e.stopPropagation()
       void toggleConfigSectionsExpansion(file, configName)
     },
-    [toggleConfigSectionsExpansion],
   )
 
   // Handler for toggling one independent group nested under a configuration row.
-  const onConfigGroupToggle = useCallback(
+  const onConfigGroupToggle = useStableCallback(
     (e: React.MouseEvent, file: LocalFile, configName: string, group: 'drawings' | 'ebom') => {
       e.stopPropagation()
       void toggleConfigGroupExpansion(file, configName, group)
     },
-    [toggleConfigGroupExpansion],
   )
 
   // Handler for the chevron on a drawing ref row, which the unresolved placeholder reuses as its
   // retry: that row has no configurations to expand, only a read to attempt again.
   const toggleDrawingRefFileExpansion = usePDMStore((s) => s.toggleDrawingRefFileExpansion)
-  const handleDrawingRefFileToggle = useCallback(
+  const handleDrawingRefFileToggle = useStableCallback(
     (e: React.MouseEvent, file: LocalFile, item: import('@/stores/types').DrawingRefItem) => {
       e.stopPropagation()
       if (item.unresolved) {
@@ -1577,11 +1520,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       const key = `${file.path}::${item.file_path}`
       toggleDrawingRefFileExpansion(key)
     },
-    [toggleDrawingRefFileExpansion, retryDrawingRefs],
   )
 
   // Resolved config drawings participate in normal selection; unresolved rows retain legacy navigation.
-  const handleConfigDrawingRowClick = useCallback(
+  const handleConfigDrawingRowClick = useStableCallback(
     (
       e: React.MouseEvent,
       _file: LocalFile,
@@ -1612,36 +1554,25 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
         setPendingScrollToFile(fullPath)
       }
     },
-    [
-      files,
-      selectableRows,
-      baseHandleRowClick,
-      vaultPath,
-      navigateToFolder,
-      setSelectedFiles,
-      setPendingScrollToFile,
-    ],
   )
 
-  const handleConfigDrawingFileContextMenu = useCallback(
+  const handleConfigDrawingFileContextMenu = useStableCallback(
     (e: React.MouseEvent, file: LocalFile) => {
       handleContextMenu(e, file)
     },
-    [handleContextMenu],
   )
 
   // Handler for right-clicking on a drawing reference row or config drawing row
-  const handleRefRowContextMenu = useCallback(
+  const handleRefRowContextMenu = useStableCallback(
     (e: React.MouseEvent, _file: LocalFile, item: import('@/stores/types').DrawingRefItem) => {
       e.preventDefault()
       e.stopPropagation()
       setRefRowContextMenu({ x: e.clientX, y: e.clientY, item })
     },
-    [setRefRowContextMenu],
   )
 
   // Handler for navigating to a file from the ref row context menu
-  const handleRefRowNavigateToFile = useCallback(() => {
+  const handleRefRowNavigateToFile = useStableCallback(() => {
     if (!refRowContextMenu || !vaultPath) return
     const item = refRowContextMenu.item
     if (item.file_path) {
@@ -1654,7 +1585,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       setSelectedFiles([fullPath])
       setPendingScrollToFile(fullPath)
     }
-  }, [refRowContextMenu, vaultPath, navigateToFolder, setSelectedFiles, setPendingScrollToFile])
+  })
 
   // Listen for menu events (File > Add Files / Add Folder)
   useEffect(() => {

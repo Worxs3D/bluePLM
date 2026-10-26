@@ -63,6 +63,7 @@ import {
   useAutoScrollOnDrag,
 } from '@/hooks'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
+import { useStableCallback } from '@/hooks/useStableCallback'
 // Logging
 import { logExplorer } from '@/lib/userActionLogger'
 // Constants
@@ -732,6 +733,33 @@ export function FileTree({ onRefresh }: FileTreeProps) {
   )
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // STABLE ROW HANDLERS
+  // VirtualizedTreeRow's comparator ignores its handlers, so a row that skips a
+  // render keeps the handlers of the last render it took. Each of those closed
+  // over that whole FileTree render (files, tree, folder metrics), and with
+  // folders expanded every realtime update left another generation pinned by
+  // some row: about 165 MB per 10 minutes in the render-perf session. The rows
+  // get identity-stable wrappers instead, which always call the latest handler.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const rowRenameSubmit = useStableCallback(handleRenameSubmit)
+  const rowRenameCancel = useStableCallback(() => {
+    setRenamingFile(null)
+    setRenameValue('')
+  })
+  const rowClick = useStableCallback(handleTreeItemClick)
+  const rowDoubleClick = useStableCallback(handleTreeItemDoubleClick)
+  const rowContextMenu = useStableCallback(handleTreeItemContextMenu)
+  const rowSlowDoubleClick = useStableCallback(handleSlowDoubleClick)
+  const rowResetSlowDoubleClick = useStableCallback(resetSlowDoubleClick)
+  const rowRefresh = useStableCallback((silent?: boolean) => onRefresh?.(silent))
+  const rowResolveMoves = useStableCallback(handleResolveMoves)
+  const rowDragStart = useStableCallback(handleDragStart)
+  const rowDragEnd = useStableCallback(handleDragEnd)
+  const rowFolderDragOver = useStableCallback(handleFolderDragOver)
+  const rowFolderDragLeave = useStableCallback(handleFolderDragLeave)
+  const rowDropOnFolder = useStableCallback(handleDropOnFolder)
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // VIRTUALIZER SETUP
   // Only render visible rows plus overscan for smooth scrolling
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1079,16 +1107,13 @@ export function FileTree({ onRefresh }: FileTreeProps) {
                       isRenaming={isRenaming}
                       renameValue={renameValue}
                       onRenameChange={setRenameValue}
-                      onRenameSubmit={handleRenameSubmit}
-                      onRenameCancel={() => {
-                        setRenamingFile(null)
-                        setRenameValue('')
-                      }}
-                      onClick={handleTreeItemClick}
-                      onDoubleClick={handleTreeItemDoubleClick}
-                      onContextMenu={handleTreeItemContextMenu}
-                      onSlowDoubleClick={handleSlowDoubleClick}
-                      resetSlowDoubleClick={resetSlowDoubleClick}
+                      onRenameSubmit={rowRenameSubmit}
+                      onRenameCancel={rowRenameCancel}
+                      onClick={rowClick}
+                      onDoubleClick={rowDoubleClick}
+                      onContextMenu={rowContextMenu}
+                      onSlowDoubleClick={rowSlowDoubleClick}
+                      resetSlowDoubleClick={rowResetSlowDoubleClick}
                       isDragTarget={isDragTarget}
                       clipboard={clipboard}
                       operationType={operationType}
@@ -1104,23 +1129,20 @@ export function FileTree({ onRefresh }: FileTreeProps) {
                       isHiddenFromNonAdmins={
                         file.isDirectory && isMarkedHidden(file.relativePath)
                       }
-                      onRefresh={onRefresh}
-                      onResolveMoves={handleResolveMoves}
+                      onRefresh={rowRefresh}
+                      onResolveMoves={rowResolveMoves}
                       selectedFiles={selectedFiles}
                       selectedCloudOnlyFiles={categories.cloudOnly}
                       selectedUploadableFiles={categories.uploadable}
                       selectedCheckoutableFiles={categories.checkoutable}
                       selectedCheckinableFiles={categories.checkinable}
                       selectedUpdatableFiles={categories.updatable}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                      onFolderDragOver={handleFolderDragOver}
-                      onFolderDragLeave={handleFolderDragLeave}
-                      onDropOnFolder={handleDropOnFolder}
+                      onDragStart={rowDragStart}
+                      onDragEnd={rowDragEnd}
+                      onFolderDragOver={rowFolderDragOver}
+                      onFolderDragLeave={rowFolderDragLeave}
+                      onDropOnFolder={rowDropOnFolder}
                       draggedFilesRef={draggedFilesRef}
-                      files={files}
-                      checkFolderSynced={checkFolderSynced}
-                      checkFolderCheckoutStatus={checkFolderCheckoutStatus}
                       // Props passed from parent to avoid store subscriptions
                       currentFolder={currentFolder}
                       lowercaseExtensions={lowercaseExtensions}
