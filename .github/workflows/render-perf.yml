@@ -39,6 +39,10 @@ jobs:
     name: Render performance (Electron, 30k files)
     runs-on: windows-latest
     timeout-minutes: 150
+    # One at a time, whether from the nightly or a dispatch: each pushes to perf-results.
+    concurrency:
+      group: render-perf
+      cancel-in-progress: false
     defaults:
       run:
         shell: bash
