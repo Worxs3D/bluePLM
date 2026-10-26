@@ -845,6 +845,13 @@ export function useRealtimeSubscriptions(
                         error: error instanceof Error ? error.message : String(error),
                       })
                     })
+                    .finally(() => {
+                      // Only an in-flight lookup needs its sequence; a settled one would keep
+                      // an entry per file ever checked out for the session's life.
+                      if (latestCheckoutEventByFile.get(newFile.id) === eventSequence) {
+                        latestCheckoutEventByFile.delete(newFile.id)
+                      }
+                    })
                 } else {
                   // No new checkout by others, just update normally
                   queuePdmUpdate(newFile.id, newFile)
