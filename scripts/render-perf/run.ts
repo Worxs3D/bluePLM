@@ -187,6 +187,10 @@ async function stopTrace(cdp: CDPSession, saveAs?: string): Promise<TraceEvent[]
 }
 
 async function heapMB(cdp: CDPSession): Promise<number> {
+  // With DevTools attached the inspector keeps every console message's arguments alive (the app
+  // logs each realtime event with its data). Without DevTools, as users run it, nothing holds
+  // them; left in, they read as ~0.8 KB per realtime event of 'leak' allocated in emitRealtime.
+  await cdp.send('Runtime.discardConsoleEntries').catch(() => undefined)
   await cdp.send('HeapProfiler.collectGarbage')
   const { usedSize } = await cdp.send('Runtime.getHeapUsage')
   return usedSize / (1024 * 1024)
@@ -477,6 +481,7 @@ async function longSession(minutes: number, out: string): Promise<SessionResult>
     const end = await page.evaluate(() => window.__blueplmPerf!.now())
     heap.push({ minute: Math.round(((Date.now() - start) / 60_000) * 100) / 100, usedMB: await heapMB(cdp) })
     const lt = await page.evaluate(([a, b]) => window.__blueplmPerf!.longTasks(a, b), [startPage, end] as const)
+    await cdp.send('Runtime.discardConsoleEntries').catch(() => undefined)
     await cdp.send('HeapProfiler.collectGarbage')
     const { profile } = await cdp.send('HeapProfiler.getSamplingProfile')
     await cdp.send('HeapProfiler.stopSampling')
