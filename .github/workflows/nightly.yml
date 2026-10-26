@@ -191,8 +191,9 @@ jobs:
       contents: write
     uses: ./.github/workflows/render-perf.yml
     with:
-      reps: ${{ inputs.render_reps || 3 }}
-      session_minutes: ${{ inputs.render_session_minutes || 30 }}
+      # Dispatch inputs arrive as strings; the called workflow's inputs are numbers.
+      reps: ${{ fromJSON(inputs.render_reps || '3') }}
+      session_minutes: ${{ fromJSON(inputs.render_session_minutes || '30') }}
 
   multi-machine:
     name: Multi-machine simulator (random seed)
