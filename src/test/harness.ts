@@ -26,6 +26,7 @@ import { detectInodeRenames } from '@/hooks/useLoadFiles/renameDetection'
 import type { CachedServerFile } from '@/lib/cache/vaultFileCache'
 import type { SerializationSettings } from '@/lib/serialization'
 import { checkoutFile } from '@/lib/supabase/files/checkout'
+import { getVaultFolders } from '@/lib/supabase/files/folders'
 import { getFilesLightweight } from '@/lib/supabase/files/queries'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { LocalFile } from '@/stores/types'
@@ -110,7 +111,10 @@ export async function createHarness(): Promise<Harness> {
     serialization_settings: SERIALIZATION as unknown as RowOf<'organizations'>['serialization_settings'],
   })
 
-  const electron = createFakeElectron()
+  const electron = createFakeElectron(undefined, {
+    workingDir: () => usePDMStore.getState().vaultPath,
+    resolveDownload: (url) => db.objectAtSignedUrl(url),
+  })
   installWindow(electron)
 
   const user = {
@@ -169,6 +173,13 @@ export async function createHarness(): Promise<Harness> {
         localHash: electron.disk.hash(entry.path),
       })
     }
+    // Empty folders exist only as directories.
+    for (const dir of electron.disk.dirs()) {
+      if (!dir.toLowerCase().startsWith(prefix)) continue
+      const relativePath = dir.slice(prefix.length).replace(/\\/g, '/')
+      const parts = relativePath.split('/')
+      for (let i = 1; i <= parts.length; i++) folders.add(parts.slice(0, i).join('/'))
+    }
     for (const folder of folders) {
       files.push({
         name: folder.split('/').pop()!,
@@ -193,6 +204,8 @@ export async function createHarness(): Promise<Harness> {
     if (error || !rows) throw new Error(`reload: ${String(error?.message ?? error)}`)
     const pdmFiles = rows as unknown as PDMFile[]
     const pdmMap = new Map(pdmFiles.map((f) => [f.file_path.toLowerCase(), f]))
+    const { folders: serverFolders } = await getVaultFolders(VAULT_ID)
+    const serverFoldersMap = new Map(serverFolders.map((f) => [f.folder_path.toLowerCase(), f]))
 
     let localFiles = scan()
     const localPathSet = new Set(localFiles.map((f) => f.relativePath.toLowerCase()))
@@ -206,7 +219,7 @@ export async function createHarness(): Promise<Harness> {
     const ctx = {
       lookups,
       pdmMap,
-      serverFoldersMap: new Map(),
+      serverFoldersMap,
       inodeRenameMap: renames.inodeRenameMap,
       checkedOutByMeByHash,
       localPathSet,
@@ -237,7 +250,25 @@ export async function createHarness(): Promise<Harness> {
       if (f.pdmData.file_path.toLowerCase() !== f.relativePath.toLowerCase()) continue
       syncedInodes.set(f.ino, [f.relativePath.toLowerCase()])
     }
-    usePDMStore.getState().setFiles(reconciled.localFiles)
+    // What useLoadFiles commits beside the files: the server list (deletion targets, folder
+    // expansion) and every folder the server implies or records.
+    const serverFolderPaths = new Set<string>(serverFolders.map((f) => f.folder_path))
+    for (const f of pdmFiles) {
+      const parts = f.file_path.split('/')
+      for (let i = 1; i < parts.length; i++) serverFolderPaths.add(parts.slice(0, i).join('/'))
+    }
+    const state = usePDMStore.getState()
+    state.setServerFiles(
+      pdmFiles.map((f) => ({
+        id: f.id,
+        file_path: f.file_path,
+        name: f.file_name,
+        extension: f.extension ?? '',
+        content_hash: f.content_hash || '',
+      })),
+    )
+    state.setServerFolderPaths(serverFolderPaths)
+    state.setFiles(reconciled.localFiles)
     return usePDMStore.getState().files
   }
 
@@ -258,7 +289,7 @@ export async function createHarness(): Promise<Harness> {
       electron.disk.write(path, options.body ?? `bytes of ${relativePath}`, options.document)
       electron.disk.require(path).readonly = options.checked_out_by !== USER_ID
       const hash = electron.disk.hash(path)
-      db.storeObject(`vault/${ORG_ID}/${hash.slice(0, 2)}/${hash}`, new TextEncoder().encode(hash))
+      db.storeObject(`vault/${ORG_ID}/${hash.slice(0, 2)}/${hash}`, new TextEncoder().encode(electron.disk.bytes(path)))
       const row = db.seed('files', {
         org_id: ORG_ID,
         vault_id: VAULT_ID,

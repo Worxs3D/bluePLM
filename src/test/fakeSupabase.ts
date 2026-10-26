@@ -20,6 +20,26 @@ import type { Database } from '@/types/supabase'
 import { loadSchemaShape, type SchemaShape } from './supabaseSchema'
 
 type PublicTables = Database['public']['Tables']
+
+/**
+ * An embedded to-one select: `alias:table!fk_column(col, col)`. Without `!fk_column` the foreign
+ * key is `<alias>_id`, as for `workflow_state:workflow_states(...)`.
+ */
+const EMBED = /^(\w+):(\w+)(?:!(\w+))?\s*\(([^)]*)\)$/
+
+/** A Blob's bytes. jsdom's Blob has no `arrayBuffer()`, so fall back to FileReader there. */
+async function blobBytes(blob: Blob): Promise<Uint8Array> {
+  if (typeof blob.arrayBuffer === 'function') return new Uint8Array(await blob.arrayBuffer())
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsArrayBuffer(blob)
+  })
+}
+
+/** Signed URLs from the fake storage: `fake-storage://<bucket>/<path>`. */
+export const FAKE_SIGNED_URL_PREFIX = 'fake-storage://'
 export type TableName = keyof PublicTables & string
 export type RowOf<T extends TableName> = PublicTables[T]['Row']
 
@@ -173,6 +193,19 @@ class QueryBuilder implements PromiseLike<FakeResult<unknown>> {
   neq(column: string, value: unknown): this {
     this.column(column)
     this.filters.push((row) => row[column] !== value)
+    return this
+  }
+
+  /** `.not(column, 'is', null)` and `.not(column, 'eq', value)`: the negations the app uses. */
+  not(column: string, operator: string, value: unknown): this {
+    this.column(column)
+    if (operator === 'is') {
+      this.filters.push((row) => (value === null ? row[column] != null : row[column] !== value))
+    } else if (operator === 'eq') {
+      this.filters.push((row) => row[column] !== value)
+    } else {
+      throw new FakeSupabaseMisuse(`not('${column}', '${operator}'): operator not modelled`)
+    }
     return this
   }
 
@@ -431,9 +464,21 @@ export class FakeSupabase {
         if (this.storageObjects.has(key)) {
           return { data: null, error: { message: 'The resource already exists' } }
         }
-        const bytes = body instanceof Uint8Array ? body : new Uint8Array(await body.arrayBuffer())
+        const bytes = body instanceof Uint8Array ? body : await blobBytes(body)
         this.storageObjects.set(key, { bytes })
         return { data: { path }, error: null }
+      },
+      createSignedUrl: async (path: string) => {
+        this.recordCall({ kind: 'storage', name: bucket, op: 'createSignedUrl' })
+        if (!this.storageObjects.has(`${bucket}/${path}`)) {
+          return { data: null, error: { message: 'Object not found' } }
+        }
+        return { data: { signedUrl: `${FAKE_SIGNED_URL_PREFIX}${bucket}/${path}` }, error: null }
+      },
+      remove: async (paths: string[]) => {
+        this.recordCall({ kind: 'storage', name: bucket, op: 'remove' })
+        for (const path of paths) this.storageObjects.delete(`${bucket}/${path}`)
+        return { data: paths.map((name) => ({ name })), error: null }
       },
       download: async (path: string) => {
         this.recordCall({ kind: 'storage', name: bucket, op: 'download' })
@@ -556,25 +601,60 @@ export class FakeSupabase {
   }
 
   parseSelect(table: TableName, columns: string): string[] | null {
-    const parts = columns
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean)
+    // Split on top-level commas only: an embedded select has its own column list.
+    const raw: string[] = []
+    let depth = 0
+    let current = ''
+    for (const ch of columns) {
+      if (ch === '(') depth++
+      if (ch === ')') depth--
+      if (ch === ',' && depth === 0) {
+        raw.push(current.trim())
+        current = ''
+      } else current += ch
+    }
+    raw.push(current.trim())
+    const parts = raw.map((p) => p.replace(/\s+/g, ' ')).filter(Boolean)
     if (parts.length === 1 && parts[0] === '*') return null
     for (const part of parts) {
+      if (part === '*') continue
+      const embed = EMBED.exec(part)
+      if (embed) {
+        // `alias:table!fk_column(cols)`: a to-one join through a foreign key on this row.
+        const [, alias, other, named, inner] = embed
+        const otherTable = this.assertTable(other)
+        this.assertColumn(table, named ?? `${alias}_id`)
+        for (const column of inner.split(',').map((c) => c.trim()).filter(Boolean)) {
+          this.assertColumn(otherTable, column)
+        }
+        continue
+      }
       if (part.includes('(') || part.includes(':') || part.includes('!')) {
-        throw new FakeSupabaseMisuse(`select('${columns}'): embedded selects are not modelled`)
+        throw new FakeSupabaseMisuse(`select('${columns}'): this embedded select shape is not modelled`)
       }
       this.assertColumn(table, part)
     }
-    return parts
+    // `*, org_id` is every column: naming one again adds nothing.
+    return parts.includes('*') ? null : parts
   }
 
   project(row: Row, columns: string[] | null): Row {
     const copy = structuredClone(row)
     if (!columns) return copy
     const out: Row = {}
-    for (const column of columns) out[column] = copy[column]
+    for (const column of columns) {
+      const embed = EMBED.exec(column)
+      if (!embed) {
+        out[column] = copy[column]
+        continue
+      }
+      const [, alias, other, named, inner] = embed
+      const fk = named ?? `${alias}_id`
+      const target = this.rows(other as TableName).find((r) => r.id === copy[fk])
+      out[alias] = target
+        ? Object.fromEntries(inner.split(',').map((c) => [c.trim(), structuredClone(target[c.trim()])]))
+        : null
+    }
     return out
   }
 
@@ -664,6 +744,13 @@ export class FakeSupabase {
 
   hasObject(path: string): boolean {
     return this.storageObjects.has(path)
+  }
+
+  /** The bytes behind a URL from `createSignedUrl`, as text; null when there is no object. */
+  objectAtSignedUrl(url: string): string | null {
+    if (!url.startsWith(FAKE_SIGNED_URL_PREFIX)) return null
+    const stored = this.storageObjects.get(url.slice(FAKE_SIGNED_URL_PREFIX.length))
+    return stored ? new TextDecoder().decode(stored.bytes) : null
   }
 
   /**

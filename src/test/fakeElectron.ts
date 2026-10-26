@@ -13,6 +13,8 @@
  */
 import { createHash } from 'node:crypto'
 
+import { createFakeFsApi, type FakeFsOptions } from './fakeElectronFs'
+
 type ElectronAPI = Window['electronAPI']
 type SolidWorksAPI = ElectronAPI['solidworks']
 
@@ -81,6 +83,34 @@ export class FakeDisk {
       document: document ? structuredClone(document) : existing?.document,
     }
     this.entries.set(key(path), entry)
+    // A real directory outlives the files in it.
+    this.mkdir(parentOf(normalize(path)))
+    return entry
+  }
+
+  /**
+   * Write bytes as they arrive from the server or an upload: a serialized SolidWorks document
+   * gets its document back, so its properties survive a download.
+   */
+  writeBytes(path: string, bytes: string): DiskEntry {
+    try {
+      const parsed = JSON.parse(bytes) as {
+        body?: unknown
+        file?: Record<string, string>
+        configurations?: Array<{ name: string; properties: Record<string, string> }>
+      }
+      if (typeof parsed.body === 'string' && parsed.file && Array.isArray(parsed.configurations)) {
+        return this.write(path, parsed.body, {
+          fileProperties: parsed.file,
+          configurations: parsed.configurations,
+        })
+      }
+    } catch {
+      // Not a document: plain bytes.
+    }
+    const entry = this.write(path, bytes)
+    // Plain bytes replace a document that was here before; they are not its properties.
+    entry.document = undefined
     return entry
   }
 
@@ -120,7 +150,130 @@ export class FakeDisk {
   all(): DiskEntry[] {
     return [...this.entries.values()]
   }
+
+  // ── Directories ──────────────────────────────────────────────────────────
+  // A directory exists when it was made explicitly (an empty folder) or when a file lives under
+  // it. Keys are case-insensitive, as on Windows; the stored path keeps the spelling it was made
+  // with, which is what a case-only rename changes.
+  private readonly directories = new Map<string, string>()
+
+  mkdir(path: string): void {
+    const parts = normalize(path).split(SEP)
+    // parts[0] is the drive ("C:"), never a directory of its own here.
+    for (let i = 2; i <= parts.length; i++) {
+      const dir = parts.slice(0, i).join(SEP)
+      if (!this.directories.has(key(dir))) this.directories.set(key(dir), dir)
+    }
+  }
+
+  isDir(path: string): boolean {
+    const k = key(path)
+    if (this.directories.has(k)) return true
+    const prefix = k + SEP
+    for (const entryKey of this.entries.keys()) if (entryKey.startsWith(prefix)) return true
+    return false
+  }
+
+  exists(path: string): boolean {
+    return !!this.get(path) || this.isDir(path)
+  }
+
+  /** Explicit directories, original case. */
+  dirs(): string[] {
+    return [...this.directories.values()]
+  }
+
+  /** Every file at any depth under `dir`. */
+  filesUnder(dir: string): DiskEntry[] {
+    const prefix = key(dir) + SEP
+    return this.all().filter((e) => key(e.path).startsWith(prefix))
+  }
+
+  /** Move a file or a directory tree. A case-only rename keeps the entries and changes the spelling. */
+  move(from: string, to: string): number {
+    const fromKey = key(from)
+    const target = normalize(to)
+    const file = this.entries.get(fromKey)
+    if (file) {
+      this.entries.delete(fromKey)
+      this.entries.set(key(target), { ...file, path: target })
+      this.mkdir(parentOf(target))
+      return 1
+    }
+    const prefix = fromKey + SEP
+    let moved = 0
+    for (const [entryKey, entry] of [...this.entries]) {
+      if (!entryKey.startsWith(prefix)) continue
+      this.entries.delete(entryKey)
+      const path = target + entry.path.slice(from.length)
+      this.entries.set(key(path), { ...entry, path })
+      moved += 1
+    }
+    for (const [dirKey, dir] of [...this.directories]) {
+      if (dirKey !== fromKey && !dirKey.startsWith(prefix)) continue
+      this.directories.delete(dirKey)
+      const path = target + dir.slice(from.length)
+      this.directories.set(key(path), path)
+    }
+    this.mkdir(target)
+    return moved
+  }
+
+  /** Copy a file or a directory tree. Copies are writable, with new inodes and modified times. */
+  copy(from: string, to: string): number {
+    const target = normalize(to)
+    const one = (entry: DiskEntry, path: string) => {
+      this.entries.set(key(path), {
+        ...structuredClone(entry),
+        path,
+        readonly: false,
+        ino: this.nextIno++,
+        mtimeMs: this.tick(),
+      })
+    }
+    const file = this.get(from)
+    if (file) {
+      one(file, target)
+      this.mkdir(parentOf(target))
+      return 1
+    }
+    const sources = this.filesUnder(from)
+    for (const entry of sources) one(entry, target + entry.path.slice(from.length))
+    const fromKey = key(from)
+    for (const dir of this.dirs()) {
+      if (key(dir) === fromKey || key(dir).startsWith(fromKey + SEP)) {
+        this.mkdir(target + dir.slice(from.length))
+      }
+    }
+    this.mkdir(target)
+    return sources.length
+  }
+
+  /** Remove a file or a directory tree. Returns the removed file entries. */
+  removeTree(path: string): DiskEntry[] {
+    const file = this.get(path)
+    if (file) {
+      this.remove(path)
+      return [file]
+    }
+    const removed = this.filesUnder(path)
+    for (const entry of removed) this.remove(entry.path)
+    const k = key(path)
+    for (const dirKey of [...this.directories.keys()]) {
+      if (dirKey === k || dirKey.startsWith(k + SEP)) this.directories.delete(dirKey)
+    }
+    return removed
+  }
+
+  /** What went to the Recycle Bin, in order. */
+  readonly recycleBin: Array<{ path: string; files: DiskEntry[] }> = []
+  /** When true, the Recycle Bin refuses everything (`shell.trashItem` throws). */
+  recycleBinUnavailable = false
 }
+
+const SEP = '\\'
+const normalize = (path: string) => path.replace(/\//g, SEP)
+const parentOf = (path: string) => path.slice(0, path.lastIndexOf(SEP))
 
 /** The service error codes the fake emits; wire-manifest.json must list each one. */
 export const FAKE_SERVICE_ERROR_CODES = { readOnly: 'DM_FILE_READ_ONLY' } as const
@@ -167,6 +320,8 @@ function recorded<T extends object>(
       if (typeof prop !== 'string') return Reflect.get(obj, prop, receiver)
       const value = Reflect.get(obj, prop, receiver)
       if (value === undefined) {
+        // An event subscription the fake does not model: subscribe to nothing.
+        if (/^on[A-Z]/.test(prop)) return () => () => {}
         if (prop !== 'then') missing.add(`${prefix}${prop}`)
         return undefined
       }
@@ -179,7 +334,10 @@ function recorded<T extends object>(
   })
 }
 
-export function createFakeElectron(disk = new FakeDisk()): FakeElectron {
+export function createFakeElectron(
+  disk = new FakeDisk(),
+  fsOptions: FakeFsOptions = { workingDir: () => null, resolveDownload: () => null },
+): FakeElectron {
   const calls: FakeElectron['calls'] = []
   const missing = new Set<string>()
   const scripted: ScriptedResponse[] = []
@@ -399,6 +557,13 @@ export function createFakeElectron(disk = new FakeDisk()): FakeElectron {
     },
   }
   const proxiedSolidworks = recorded(solidworks as SolidWorksAPI, 'solidworks.', calls, missing)
-  fake.api = recorded({ ...api, solidworks: proxiedSolidworks } as ElectronAPI, '', calls, missing)
+  // The file-system methods win over the single-file ones above: they also know directories.
+  const fsApi = createFakeFsApi(disk, fsOptions)
+  fake.api = recorded(
+    { ...api, ...fsApi, solidworks: proxiedSolidworks } as ElectronAPI,
+    '',
+    calls,
+    missing,
+  )
   return fake
 }

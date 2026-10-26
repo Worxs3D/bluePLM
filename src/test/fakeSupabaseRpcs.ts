@@ -237,10 +237,61 @@ export function getActiveFileByPath(args: Row, db: FakeSupabase): unknown {
     .map((row) => ({ ...row }))
 }
 
+/** `move_file`: refused when someone else holds the file; logs a `move` activity row. */
+export function moveFile(args: Row, db: FakeSupabase): unknown {
+  const file = fileRow(db, args.p_file_id)
+  if (!file) return { success: false, error: 'File not found' }
+  if (file.checked_out_by != null && file.checked_out_by !== db.actorId) {
+    return { success: false, error: 'Cannot move: file is checked out by another user' }
+  }
+  const oldPath = file.file_path
+  const oldName = file.file_name
+  const newName = text(args.p_new_file_name) ?? oldName
+  const failure = db.applyUpdate('files', file, {
+    file_path: args.p_new_file_path,
+    file_name: newName,
+    updated_by: db.actorId,
+    updated_at: db.isoNow(),
+  })
+  // A unique-index violation raises in SQL, which PostgREST returns as an error.
+  if (failure) throw new Error(failure.message)
+  logActivity(db, file, 'move', {
+    old_path: oldPath,
+    new_path: args.p_new_file_path,
+    old_name: oldName,
+    new_name: newName,
+  })
+  return { success: true, file: { ...file } }
+}
+
+/** `rename_folder_files`: re-prefix every live row under the folder, in the given vault. */
+export function renameFolderFiles(args: Row, db: FakeSupabase): unknown {
+  const oldPrefix = String(args.p_old_folder_path).replace(/\/+$/, '')
+  const newPrefix = String(args.p_new_folder_path).replace(/\/+$/, '')
+  const under = `${oldPrefix.toLowerCase()}/`
+  let updated = 0
+  for (const row of db.rows('files')) {
+    if (row.deleted_at != null) continue
+    if (args.p_vault_id != null && row.vault_id !== args.p_vault_id) continue
+    const path = String(row.file_path)
+    if (!path.toLowerCase().startsWith(under)) continue
+    const failure = db.applyUpdate('files', row, {
+      file_path: newPrefix + path.slice(oldPrefix.length),
+      updated_by: db.actorId,
+      updated_at: db.isoNow(),
+    })
+    if (failure) return { success: false, error: failure.message, updated: 0 }
+    updated += 1
+  }
+  return { success: true, updated }
+}
+
 /** Register every RPC above on a fake. */
 export function defineFileRpcs(db: FakeSupabase): void {
   db.defineRpc('checkout_file', checkoutFile)
   db.defineRpc('checkin_file', checkinFile)
+  db.defineRpc('move_file', moveFile)
+  db.defineRpc('rename_folder_files', renameFolderFiles)
   // Both are called through `(client.rpc as any)`: missing from the generated types.
   db.defineRpc('get_vault_files_fast', getVaultFilesFast, { untyped: !db.schema.functions.has('get_vault_files_fast') })
   db.defineRpc('get_active_file_by_path', getActiveFileByPath, {
