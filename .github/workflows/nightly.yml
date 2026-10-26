@@ -50,8 +50,10 @@ on:
 permissions:
   contents: read
 
+# One group per suite: GitHub keeps a single pending run per group, so a shared group let a
+# render-perf dispatch cancel a queued mutation run (and the other way round).
 concurrency:
-  group: nightly-mutation
+  group: nightly-${{ inputs.suite || 'all' }}
   cancel-in-progress: false
 
 jobs:
