@@ -129,6 +129,18 @@ describe('render counts, 30k-file folder', () => {
     expect(elapsed).toBeLessThan(60_000)
   })
 
+  // Scrolling mounts and unmounts whole rows every frame, so a row's element count is the cost of
+  // scrolling (render-perf nightly: DOM creation and removal led the scroll profile). Measured
+  // 2026-10-26: 40 elements for a synced file row.
+  it('mounts a bounded number of elements per file row', () => {
+    renderBoth()
+    const row = document.querySelectorAll('tr[data-path]')[3]
+    const elements = row.querySelectorAll('*').length
+    process.stdout.write(`[perf:render] elements per file row: ${elements}
+`)
+    expect(elements).toBeLessThanOrEqual(48)
+  })
+
   // Measured 2026-10-26: one file change takes 3 pane commits and a selection change 2 (one of
   // them a nested update from the virtualizer's layout effect), and each commit re-renders every
   // mounted row, because every cell reads FilePaneContext, whose value changes with any file or

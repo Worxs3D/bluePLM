@@ -43,13 +43,15 @@ export function HalloweenEffects() {
   const setSparksOpacity = usePDMStore((s) => s.setHalloweenSparksOpacity)
   const setSparksSpeed = usePDMStore((s) => s.setHalloweenSparksSpeed)
 
-  const [sparks, setSparks] = useState<Spark[]>([])
+  const sparksRef = useRef<Spark[]>([])
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [flyingGhosts, setFlyingGhosts] = useState<FlyingGhost[]>([])
   const [pumpkins, setPumpkins] = useState<Pumpkin[]>([])
   const [showControls, setShowControls] = useState(false)
   const animationRef = useRef<number>(0)
   const sparksSpeedRef = useRef(sparksSpeed ?? 40)
   const ghostsOpacityRef = useRef(ghostsOpacity ?? 30)
+  const sparksOpacityRef = useRef(sparksOpacity ?? 70)
 
   // Keep refs in sync
   useEffect(() => {
@@ -59,6 +61,10 @@ export function HalloweenEffects() {
   useEffect(() => {
     ghostsOpacityRef.current = ghostsOpacity ?? 30
   }, [ghostsOpacity])
+
+  useEffect(() => {
+    sparksOpacityRef.current = sparksOpacity ?? 70
+  }, [sparksOpacity])
 
   // Only render if Halloween theme is active
   const isHalloween = theme === 'halloween'
@@ -140,14 +146,27 @@ export function HalloweenEffects() {
     }
   }, [isHalloween])
 
-  // Initialize sparks and animate everything
+  // Sparks are drawn on a canvas from refs, like the Christmas and weather effects: no React
+  // render per frame. As 80 divs moved through state they re-rendered this component and
+  // restyled ~160 elements 60 times a second all October (4-5 ms a frame in the render-perf
+  // run), with a box-shadow and a blur filter to paint on each.
   useEffect(() => {
     if (!isHalloween) {
-      setSparks([])
+      sparksRef.current = []
       return
     }
 
-    // Create initial sparks
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+
+    const resizeCanvas = () => {
+      if (!canvas) return
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+
     const initialSparks: Spark[] = []
     for (let i = 0; i < 80; i++) {
       initialSparks.push({
@@ -162,44 +181,54 @@ export function HalloweenEffects() {
         color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
       })
     }
-    setSparks(initialSparks)
+    sparksRef.current = initialSparks
+
+    const drawSparks = () => {
+      if (!canvas || !ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const opacity = sparksOpacityRef.current / 100
+      if (opacity <= 0) return
+      for (const spark of sparksRef.current) {
+        let displayOpacity = spark.baseOpacity
+        if (spark.y < 30) displayOpacity = spark.baseOpacity * (spark.y / 30)
+        const x = (spark.x / 100) * canvas.width
+        const y = (spark.y / 100) * canvas.height
+        ctx.globalAlpha = Math.max(0, displayOpacity * opacity)
+        ctx.shadowColor = spark.color
+        ctx.shadowBlur = spark.size * 2
+        ctx.fillStyle = spark.color
+        ctx.beginPath()
+        ctx.arc(x, y, spark.size / 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+      ctx.shadowBlur = 0
+    }
 
     // Main animation loop
     const animate = () => {
       const speedValue = sparksSpeedRef.current ?? 40
       const speedMultiplier = 0.1 + (speedValue / 100) * 2.9
 
-      // Animate sparks
-      setSparks((prev) =>
-        prev.map((spark) => {
-          let newY = spark.y - spark.speed * 0.1 * speedMultiplier
-          let newWobble = spark.wobble + spark.wobbleSpeed
-          let newX = spark.x + Math.sin(newWobble) * 0.1
-          let newBaseOpacity = spark.baseOpacity
+      for (const spark of sparksRef.current) {
+        spark.y -= spark.speed * 0.1 * speedMultiplier
+        spark.wobble += spark.wobbleSpeed
+        spark.x += Math.sin(spark.wobble) * 0.1
+        if (spark.y < -5) {
+          spark.y = 105 + Math.random() * 10
+          spark.x = Math.random() * 100
+          spark.baseOpacity = Math.random() * 0.8 + 0.2
+          spark.color = sparkColors[Math.floor(Math.random() * sparkColors.length)]
+          spark.size = Math.random() * 4 + 2
+          spark.speed = Math.random() * 2 + 1
+        }
+      }
+      drawSparks()
 
-          if (newY < -5) {
-            newY = 105 + Math.random() * 10
-            newX = Math.random() * 100
-            newBaseOpacity = Math.random() * 0.8 + 0.2
-            return {
-              ...spark,
-              x: newX,
-              y: newY,
-              wobble: newWobble,
-              baseOpacity: newBaseOpacity,
-              color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-              size: Math.random() * 4 + 2,
-              speed: Math.random() * 2 + 1,
-            }
-          }
-
-          return { ...spark, x: newX, y: newY, wobble: newWobble }
-        }),
-      )
-
-      // Animate flying ghosts
-      setFlyingGhosts((prev) =>
-        prev.map((ghost) => {
+      // Flying ghosts are rare (one every 8-15 s): only a frame with one in flight changes state.
+      setFlyingGhosts((prev) => {
+        if (!prev.some((ghost) => ghost.active)) return prev
+        return prev.map((ghost) => {
           if (!ghost.active) return ghost
 
           const newX = ghost.x + ghost.speed
@@ -210,8 +239,8 @@ export function HalloweenEffects() {
           }
 
           return { ...ghost, x: newX }
-        }),
-      )
+        })
+      })
 
       animationRef.current = requestAnimationFrame(animate)
     }
@@ -219,6 +248,7 @@ export function HalloweenEffects() {
     animationRef.current = requestAnimationFrame(animate)
 
     return () => {
+      window.removeEventListener('resize', resizeCanvas)
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
       }
@@ -354,35 +384,12 @@ export function HalloweenEffects() {
         </div>
       )}
 
-      {/* Bonfire sparks floating upward */}
-      {sparksOpacity > 0 && (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 9999 }}>
-          {sparks.map((spark) => {
-            let displayOpacity = spark.baseOpacity
-            if (spark.y < 30) {
-              displayOpacity = spark.baseOpacity * (spark.y / 30)
-            }
-
-            return (
-              <div
-                key={spark.id}
-                style={{
-                  position: 'absolute',
-                  left: `${spark.x}%`,
-                  top: `${spark.y}%`,
-                  width: `${spark.size}px`,
-                  height: `${spark.size}px`,
-                  borderRadius: '50%',
-                  backgroundColor: spark.color,
-                  opacity: displayOpacity * (sparksOpacity / 100),
-                  boxShadow: `0 0 ${spark.size * 2}px ${spark.color}, 0 0 ${spark.size}px ${spark.color}`,
-                  filter: 'blur(0.5px)',
-                }}
-              />
-            )
-          })}
-        </div>
-      )}
+      {/* Bonfire sparks floating upward, drawn by the animation loop */}
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 9999 }}
+      />
 
       {/* Glowing pumpkins at bottom */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: -6 }}>
