@@ -6,8 +6,8 @@ with the test kit's fakes (no network, signed in as a test admin). On main: 86a4
 
 ## Status
 
-- `nightly.yml` → job `render-perf` (calls `render-perf.yml`; dispatch alone with `suite=render-perf`).
-  Run 40288345978 on 74c066bb completed every measurement and recorded the first baseline on the
+- `render-perf.yml`, its own nightly (06:41 UTC), kept apart from `nightly.yml` so its red run
+  cannot hide a mutation failure. Run 40288345978 on 74c066bb completed every measurement and recorded the first baseline on the
   `perf-results` branch (`render/2026-10-26T083328Z-74c066bb-40288345978.json`).
 - It is **red on purpose**: only the two heap ceilings fail, and that is a real leak (below). The
   ceilings were not raised to make it green.

@@ -2,7 +2,7 @@
  * Render-performance runner: launches the built app in its perf boot (src/perf/app/boot.ts) with
  * Playwright, drives it, records DevTools traces and writes one result JSON.
  *
- * CI only (.github/workflows/nightly.yml). Never run it on a developer machine: it opens the app.
+ * CI only (.github/workflows/render-perf.yml). Never run it on a developer machine: it opens the app.
  *
  *   BLUEPLM_PERF_BUILD=1 npx vite build
  *   npx tsx scripts/render-perf/run.ts --out perf-out [--reps 3] [--session-minutes 30]

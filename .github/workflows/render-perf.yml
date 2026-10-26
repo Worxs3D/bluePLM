@@ -10,16 +10,12 @@ name: Render performance
 # summary table; nothing blocks a push or a release. Main runs append their result to the
 # `perf-results` branch, the history the next run compares against.
 #
-# Called nightly from nightly.yml; also runnable on its own.
+# Its own nightly, apart from nightly.yml: a red render run (the heap ceilings fail until the
+# explorer tree leak is fixed) must not hide a mutation or simulator failure behind one badge.
+# A scheduled run has no inputs; run.ts then uses its defaults (3 repetitions, 30 minutes).
 on:
-  workflow_call:
-    inputs:
-      reps:
-        type: number
-        default: 3
-      session_minutes:
-        type: number
-        default: 30
+  schedule:
+    - cron: '41 6 * * *'
   workflow_dispatch:
     inputs:
       reps:

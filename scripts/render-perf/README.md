@@ -1,7 +1,7 @@
 # Render performance (nightly, CI only)
 
 Measures what the jsdom count gates in `src/perf/` cannot: layout, paint, frame times and memory of
-the real Electron app. Runs in `.github/workflows/render-perf.yml`, called from `nightly.yml` on
+the real Electron app. Runs nightly in its own workflow, `.github/workflows/render-perf.yml`, on
 `windows-latest`. Never launch it on a developer machine.
 
 ## How the app boots
@@ -36,4 +36,4 @@ A metric is flagged only when it is over 25% worse and over its absolute floor; 
 session has fixed ceilings. A flag fails the nightly with a summary table. Nothing blocks a push or
 a release.
 
-Run by hand: Actions, "Render performance", Run workflow (or `nightly.yml` with suite `render-perf`).
+Run by hand: Actions, "Render performance", Run workflow.

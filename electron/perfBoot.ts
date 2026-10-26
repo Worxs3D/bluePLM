@@ -1,5 +1,5 @@
 /**
- * Render-performance boot, CI only (.github/workflows/nightly.yml, render-perf job).
+ * Render-performance boot, CI only (.github/workflows/render-perf.yml).
  *
  * On when the app is unpackaged and started with BLUEPLM_PERF_BOOT=1; inert in every packaged
  * build, whatever the environment says. When on, the main process:

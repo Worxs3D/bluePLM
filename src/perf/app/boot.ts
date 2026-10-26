@@ -1,6 +1,6 @@
 /**
  * The render-performance boot: the real app, signed in as a test user over a 30k-file synthetic
- * vault, with no network. CI only (.github/workflows/nightly.yml, render-perf job).
+ * vault, with no network. CI only (.github/workflows/render-perf.yml).
  *
  * Reached only through `perf.html`, which only the perf build emits (BLUEPLM_PERF_BUILD=1, see
  * vite.config.ts), and loaded only by an unpackaged main process started with BLUEPLM_PERF_BOOT=1

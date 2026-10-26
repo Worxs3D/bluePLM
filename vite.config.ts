@@ -6,7 +6,7 @@ import { resolve } from 'path'
 import pkg from './package.json'
 import { perfBuildPlugin } from './vite.perf'
 
-// The render-performance build (CI only, .github/workflows/nightly.yml): `perf.html` instead of
+// The render-performance build (CI only, .github/workflows/render-perf.yml): `perf.html` instead of
 // `index.html`, with the fake backends of src/perf/app wired in. A release build never sets this.
 const perfBuild = process.env.BLUEPLM_PERF_BUILD === '1'
 

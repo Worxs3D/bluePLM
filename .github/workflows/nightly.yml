@@ -8,9 +8,6 @@ name: Nightly mutation testing
 # the two cannot drift. Incremental: each shard restores the previous night's results and re-tests
 # only mutants whose code or covering tests changed.
 #
-# Also runs render performance on Windows (render-perf.yml): the real Electron app over a 30k-file
-# synthetic vault, compared with the last main runs. Reporting only as well.
-#
 # And the multi-machine simulator (src/test/multi/) from a fresh random seed: CI runs it from a
 # fixed seed on every push; here it looks for new failing sequences. A failure prints its seed
 # and shrunk sequence; save it in src/test/multi/savedSequences.test.ts with the fix.
@@ -30,23 +27,14 @@ on:
       suite:
         description: Which nightly suite to run
         type: choice
-        options: [all, mutation, render-perf, multi-machine]
+        options: [all, mutation, multi-machine]
         default: all
-      render_reps:
-        description: Render performance repetitions (medians are reported)
-        type: number
-        default: 3
-      render_session_minutes:
-        description: Render performance long session, minutes (heap leak check)
-        type: number
-        default: 30
       multi_runs:
         description: Multi-machine simulator, random sequences to run
         type: number
         default: 1000
 
-# `npm ci` runs arbitrary postinstall scripts; nothing here writes to the repository, except the
-# render-perf job, which appends its result to the `perf-results` branch.
+# `npm ci` runs arbitrary postinstall scripts; nothing here writes to the repository.
 permissions:
   contents: read
 
@@ -183,17 +171,6 @@ jobs:
             reports/mutation/shards/survivors.json
             reports/mutation/shards/summary.md
           retention-days: 30
-
-  render-perf:
-    name: Render performance
-    if: ${{ inputs.suite != 'mutation' }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/render-perf.yml
-    with:
-      # Dispatch inputs arrive as strings; the called workflow's inputs are numbers.
-      reps: ${{ fromJSON(inputs.render_reps || '3') }}
-      session_minutes: ${{ fromJSON(inputs.render_session_minutes || '30') }}
 
   multi-machine:
     name: Multi-machine simulator (random seed)
