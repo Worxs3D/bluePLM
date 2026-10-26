@@ -95,3 +95,45 @@ export function heapStats(samples: readonly HeapSample[]): HeapStats {
     slopeMBPer10Min: r1(slope(samples.map((s) => ({ x: s.minute, y: s.usedMB }))) * 10),
   }
 }
+
+/** A node of a V8 sampling heap profile (`HeapProfiler.getSamplingProfile`). */
+export interface SamplingHeapNode {
+  callFrame: { functionName: string; url: string; lineNumber: number; columnNumber: number }
+  selfSize: number
+  children: SamplingHeapNode[]
+}
+
+/**
+ * Where the memory still alive at the end of a session was allocated: self size summed by the
+ * innermost `depth` frames of each allocation stack, largest first.
+ */
+export function retainedByStack(
+  head: SamplingHeapNode,
+  options: {
+    depth?: number
+    top?: number
+    /** Names a frame; the default is `function file:line`. The runner passes a source-map lookup. */
+    frameName?: (callFrame: SamplingHeapNode['callFrame']) => string
+  } = {},
+): Array<{ stack: string; MB: number }> {
+  const depth = options.depth ?? 6
+  const sizes = new Map<string, number>()
+  const frame = (n: SamplingHeapNode) => {
+    if (options.frameName) return options.frameName(n.callFrame)
+    const file = n.callFrame.url.slice(n.callFrame.url.lastIndexOf('/') + 1)
+    return `${n.callFrame.functionName || '(anonymous)'}${file ? ` ${file}:${n.callFrame.lineNumber + 1}` : ''}`
+  }
+  const visit = (node: SamplingHeapNode, path: string[]) => {
+    const here = [...path, frame(node)]
+    if (node.selfSize > 0) {
+      const key = here.slice(-depth).reverse().join(' < ')
+      sizes.set(key, (sizes.get(key) ?? 0) + node.selfSize)
+    }
+    for (const child of node.children) visit(child, here)
+  }
+  visit(head, [])
+  return [...sizes]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, options.top ?? 20)
+    .map(([stack, bytes]) => ({ stack, MB: Math.round((bytes / (1024 * 1024)) * 10) / 10 }))
+}

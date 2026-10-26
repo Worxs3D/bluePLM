@@ -34,7 +34,10 @@ export interface PerfControl {
   fileCount: number
   longTasks(fromMs: number, toMs: number): LongTaskSummary
   now(): number
-  /** Resolve after `ms` with no long task, or after `timeoutMs`. Returns the quiet point. */
+  /**
+   * Resolve after `ms` with no long task, or after `timeoutMs`. Returns when the work settled: the
+   * end of the last long task that ran after this call, or the call itself when none did.
+   */
   waitForQuiet(ms: number, timeoutMs: number): Promise<number>
   scrollFileList(pxPerFrame: number): Promise<FrameRun & { distance: number }>
   scrollFileListToTop(): Promise<void>
@@ -121,11 +124,12 @@ export function installControl(
     now: () => performance.now(),
 
     async waitForQuiet(ms, timeoutMs) {
-      const deadline = performance.now() + timeoutMs
+      const calledAt = performance.now()
+      const deadline = calledAt + timeoutMs
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 50))
         const now = performance.now()
-        if (now - lastTaskEnd >= ms || now >= deadline) return Math.min(now, Math.max(lastTaskEnd, now - ms))
+        if (now - lastTaskEnd >= ms || now >= deadline) return Math.min(now, Math.max(calledAt, lastTaskEnd))
       }
     },
 

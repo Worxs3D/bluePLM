@@ -76,6 +76,8 @@ export default defineConfig({
     keepNames: true,
   },
   build: {
+    // The perf build maps its frames back to source for the heap report (scripts/render-perf).
+    sourcemap: perfBuild,
     rollupOptions: {
       input: {
         ...(perfBuild

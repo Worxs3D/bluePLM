@@ -22,6 +22,8 @@ const summaryPath = arg('summary') ?? 'perf-out/summary.md'
 const current = JSON.parse(readFileSync(resultPath, 'utf8')) as RenderPerfResult & {
   unmodelled?: Array<[string, number]>
   topSelfTime?: Record<string, Array<[string, number]>>
+  heapByStep?: Record<string, number>
+  retained?: Array<{ stack: string; MB: number }>
 }
 const history: RenderPerfResult[] =
   historyDir && existsSync(historyDir)
@@ -38,6 +40,18 @@ if (current.topSelfTime && Object.keys(current.topSelfTime).length) {
     summary += `\n**${scenario}**: ${top.map(([name, ms]) => `${name} ${Math.round(ms)} ms`).join(', ')}\n`
   }
   summary += '\n</details>'
+}
+if (current.retained?.length) {
+  const steps = Object.entries(current.heapByStep ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([step, mb]) => `${step} ${mb} MB`)
+    .join(', ')
+  summary +=
+    '\n\n<details><summary>Long session: what holds the heap</summary>\n\n' +
+    (steps ? `Retained per step (every 10th cycle, after a forced GC): ${steps}\n\n` : '') +
+    'Live at the end, by allocation stack (sampling heap profile, innermost first):\n\n' +
+    current.retained.map((r) => `- ${r.MB} MB: \`${r.stack}\``).join('\n') +
+    '\n\n</details>'
 }
 if (current.unmodelled?.length) {
   summary +=

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { compare, markdownTable, METRICS, type RenderPerfResult } from './compare'
-import { frameStats, heapStats, median, percentile } from './stats'
+import { frameStats, heapStats, median, percentile, retainedByStack, type SamplingHeapNode } from './stats'
+import { decodeSegment, SourceMapLookup } from './sourceMap'
 import { categoryOf, mainThreadBreakdown, TraceStreamParser, type TraceEvent } from './traceMetrics'
 
 const MAIN = { pid: 7, tid: 1 }
@@ -174,5 +175,42 @@ describe('TraceStreamParser', () => {
       expect(parser.events.map((e) => e.name)).toEqual(['thread_name', 'RunTask', 'FunctionCall'])
       expect(mainThreadBreakdown(parser.events)!.scriptingMs).toBe(80)
     }
+  })
+})
+
+describe('retainedByStack', () => {
+  const node = (fn: string, selfSize: number, children: SamplingHeapNode[] = []): SamplingHeapNode => ({
+    callFrame: { functionName: fn, url: `file:///app/assets/${fn}.js`, lineNumber: 9, columnNumber: 0 },
+    selfSize,
+    children,
+  })
+  it('sums live bytes by the innermost frames, largest first', () => {
+    const head = node('(root)', 0, [
+      node('onRealtime', 0, [node('push', 3 * 1024 * 1024), node('clone', 1024 * 1024)]),
+      node('scroll', 0, [node('push', 1024 * 1024)]),
+    ])
+    const top = retainedByStack(head, { depth: 2 })
+    expect(top[0]).toEqual({ stack: 'push push.js:10 < onRealtime onRealtime.js:10', MB: 3 })
+    expect(top).toHaveLength(3)
+  })
+})
+
+describe('SourceMapLookup', () => {
+  it('decodes VLQ segments, negative values included', () => {
+    expect(decodeSegment('AACAA')).toEqual([0, 0, 1, 0, 0])
+    expect(decodeSegment('D')).toEqual([-1])
+    expect(decodeSegment('gB')).toEqual([16])
+  })
+
+  it('maps a built position to the source line and name', () => {
+    const map = new SourceMapLookup({
+      version: 3,
+      sources: ['../src/a.ts'],
+      names: ['foo'],
+      mappings: 'AAAA;AACAA,IAAI',
+    })
+    expect(map.lookup(2, 0)).toEqual({ source: '../src/a.ts', line: 2, column: 0, name: 'foo' })
+    expect(map.lookup(2, 9)).toEqual({ source: '../src/a.ts', line: 2, column: 4, name: null })
+    expect(map.lookup(5, 0)).toBeNull()
   })
 })

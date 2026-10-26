@@ -13,7 +13,8 @@
  * long session repeats those operations for `--session-minutes` and samples the JS heap after a
  * forced GC every minute (leak check).
  */
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,7 +24,8 @@ import { _electron, type CDPSession, type ElectronApplication, type Page } from 
 import type {} from '../../src/perf/app/control'
 
 import type { RenderPerfResult } from './compare'
-import { frameStats, heapStats, median, type HeapSample } from './stats'
+import { frameStats, heapStats, median, retainedByStack, type HeapSample, type SamplingHeapNode } from './stats'
+import { SourceMapLookup, type RawSourceMap } from './sourceMap'
 import { mainThreadBreakdown, TraceStreamParser, type TraceEvent } from './traceMetrics'
 
 interface Options {
@@ -343,37 +345,92 @@ async function repetition(rep: number, out: string): Promise<{ metrics: Record<s
   }
 }
 
-/** One cycle of ordinary use, for the long session. Deterministic: `n` picks the folders. */
-async function sessionCycle(page: Page, n: number): Promise<void> {
+/** The steps of one cycle of ordinary use, for the long session. Deterministic: `n` picks the folders. */
+function sessionSteps(page: Page, n: number): Array<[string, () => Promise<unknown>]> {
   const project = `P${String(n % 20).padStart(2, '0')}`
   const assembly = `${project}/Assy-${String(n % 12).padStart(2, '0')}`
   const folder = `${assembly}/Sub-${String(n % 10).padStart(2, '0')}`
-  await page.evaluate((paths) => window.__blueplmPerf!.expandFolders(paths), [project, assembly, folder])
-  await page.evaluate((p) => window.__blueplmPerf!.openFolder(p), folder)
-  await clickRows(page, 4)
-  await page.evaluate(() => window.__blueplmPerf!.search('Rev-A'))
-  await page.evaluate(() => window.__blueplmPerf!.scrollFileList(4000))
-  await page.evaluate(() => window.__blueplmPerf!.scrollFileListToTop())
-  await page.evaluate(() => window.__blueplmPerf!.search(''))
-  await page.evaluate(() => window.__blueplmPerf!.realtimeBurst(50))
-  if (n % 5 === 4) await page.evaluate(() => window.__blueplmPerf!.collapseAll())
-  await page.evaluate(() => window.__blueplmPerf!.waitForQuiet(300, 20_000))
+  return [
+    ['expand', () => page.evaluate((paths) => window.__blueplmPerf!.expandFolders(paths), [project, assembly, folder])],
+    ['open-folder', () => page.evaluate((p) => window.__blueplmPerf!.openFolder(p), folder)],
+    ['select', () => clickRows(page, 4)],
+    ['search', () => page.evaluate(() => window.__blueplmPerf!.search('Rev-A'))],
+    ['scroll', () => page.evaluate(() => window.__blueplmPerf!.scrollFileList(4000))],
+    ['scroll-top', () => page.evaluate(() => window.__blueplmPerf!.scrollFileListToTop())],
+    ['clear-search', () => page.evaluate(() => window.__blueplmPerf!.search(''))],
+    ['realtime-50', () => page.evaluate(() => window.__blueplmPerf!.realtimeBurst(50))],
+    ['collapse', () => (n % 5 === 4 ? page.evaluate(() => window.__blueplmPerf!.collapseAll()) : Promise.resolve())],
+    ['settle', () => page.evaluate(() => window.__blueplmPerf!.waitForQuiet(300, 20_000))],
+  ]
 }
 
-async function longSession(minutes: number, out: string): Promise<{ metrics: Record<string, number>; heap: HeapSample[] }> {
+/**
+ * Names a profile frame by its source position, through the perf build's source maps: the
+ * function as written (`name` from the map, else V8's) and `src/...:line`.
+ */
+function sourceFrameName(): (callFrame: SamplingHeapNode['callFrame']) => string {
+  const maps = new Map<string, SourceMapLookup | null>()
+  const mapFor = (url: string) => {
+    if (!maps.has(url)) {
+      let lookup: SourceMapLookup | null = null
+      try {
+        const file = fileURLToPath(url)
+        if (existsSync(`${file}.map`)) lookup = new SourceMapLookup(JSON.parse(readFileSync(`${file}.map`, 'utf8')) as RawSourceMap)
+      } catch {
+        lookup = null
+      }
+      maps.set(url, lookup)
+    }
+    return maps.get(url) ?? null
+  }
+  return (callFrame) => {
+    const fn = callFrame.functionName || '(anonymous)'
+    if (!callFrame.url.startsWith('file:')) return fn
+    const original = mapFor(callFrame.url)?.lookup(callFrame.lineNumber + 1, callFrame.columnNumber)
+    if (!original) return `${fn} ${callFrame.url.slice(callFrame.url.lastIndexOf('/') + 1)}:${callFrame.lineNumber + 1}`
+    const source = original.source.replace(/^(\.\.\/)+/, '').replace(/^.*node_modules\//, 'node_modules/')
+    return `${original.name ?? fn} ${source}:${original.line}`
+  }
+}
+
+/** Every this many cycles, the heap is measured after each step, to say which step keeps memory. */
+const STEP_HEAP_EVERY = 10
+
+interface SessionResult {
+  metrics: Record<string, number>
+  heap: HeapSample[]
+  /** MB retained per step, summed over the cycles measured step by step. */
+  heapByStep: Record<string, number>
+  /** Live memory at the end of the session by allocation stack (sampling heap profile). */
+  retained: Array<{ stack: string; MB: number }>
+}
+
+async function longSession(minutes: number, out: string): Promise<SessionResult> {
   const launched = await launch()
   const { app, page, cdp } = launched
   try {
     await page.waitForFunction(() => !!window.__blueplmPerf?.loaded, null, { timeout: 240_000, polling: 250 })
     await page.evaluate(() => window.__blueplmPerf!.waitForQuiet(1000, 60_000))
     await cdp.send('HeapProfiler.enable')
+    await cdp.send('HeapProfiler.collectGarbage')
+    await cdp.send('HeapProfiler.startSampling', { samplingInterval: 64 * 1024 })
+    const heapByStep: Record<string, number> = {}
     const start = Date.now()
     const startPage = await page.evaluate(() => window.__blueplmPerf!.now())
     const heap: HeapSample[] = [{ minute: 0, usedMB: await heapMB(cdp) }]
     let nextSample = 1
     let cycles = 0
     while (Date.now() - start < minutes * 60_000) {
-      await sessionCycle(page, cycles++)
+      const n = cycles++
+      const measureSteps = n % STEP_HEAP_EVERY === STEP_HEAP_EVERY - 1
+      let before = measureSteps ? await heapMB(cdp) : 0
+      for (const [name, step] of sessionSteps(page, n)) {
+        await step()
+        if (!measureSteps) continue
+        const after = await heapMB(cdp)
+        heapByStep[name] = Math.round(((heapByStep[name] ?? 0) + after - before) * 10) / 10
+        before = after
+      }
       const elapsed = (Date.now() - start) / 60_000
       if (elapsed >= nextSample) {
         heap.push({ minute: Math.round(elapsed * 100) / 100, usedMB: await heapMB(cdp) })
@@ -383,10 +440,17 @@ async function longSession(minutes: number, out: string): Promise<{ metrics: Rec
     const end = await page.evaluate(() => window.__blueplmPerf!.now())
     heap.push({ minute: Math.round(((Date.now() - start) / 60_000) * 100) / 100, usedMB: await heapMB(cdp) })
     const lt = await page.evaluate(([a, b]) => window.__blueplmPerf!.longTasks(a, b), [startPage, end] as const)
+    await cdp.send('HeapProfiler.collectGarbage')
+    const { profile } = await cdp.send('HeapProfiler.getSamplingProfile')
+    await cdp.send('HeapProfiler.stopSampling')
+    writeFileSync(join(out, 'session-heap.heapprofile'), JSON.stringify(profile))
+    const retained = retainedByStack(profile.head as SamplingHeapNode, { frameName: sourceFrameName() })
     const hs = heapStats(heap)
     say(`session: ${cycles} cycles, heap ${hs.startMB} -> ${hs.endMB} MB`)
     return {
       heap,
+      heapByStep,
+      retained,
       metrics: {
         'session.cycles': cycles,
         'session.heapStartMB': hs.startMB,
@@ -428,6 +492,8 @@ async function main(): Promise<void> {
   const result: RenderPerfResult & {
     repetitions: typeof reps
     heap: HeapSample[]
+    heapByStep: Record<string, number>
+    retained: SessionResult['retained']
     topSelfTime: typeof topSelfTime
     unmodelled: typeof misses
   } = {
@@ -442,6 +508,8 @@ async function main(): Promise<void> {
     metrics,
     repetitions: reps,
     heap: session?.heap ?? [],
+    heapByStep: session?.heapByStep ?? {},
+    retained: session?.retained ?? [],
     topSelfTime,
     unmodelled: misses.slice(0, 50),
   }
