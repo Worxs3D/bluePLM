@@ -1,0 +1,122 @@
+name: Render performance
+
+# Real rendering performance of the Electron app on Windows, the platform users run, over a
+# synthetic 30k-file vault and fake backends (src/perf/app/boot.ts; no network, no sign-in).
+# Launched only here, never on a developer machine. Measures cold start to the vault looking
+# loaded, search and scrolling all 30k rows, expanding a deep tree, selecting files, a realtime
+# burst of 500 updates, and a long session's heap growth (scripts/render-perf/run.ts).
+#
+# Reporting only: a large change (scripts/render-perf/compare.ts) turns the run red with a
+# summary table; nothing blocks a push or a release. Main runs append their result to the
+# `perf-results` branch, the history the next run compares against.
+#
+# Called nightly from nightly.yml; also runnable on its own.
+on:
+  workflow_call:
+    inputs:
+      reps:
+        type: number
+        default: 3
+      session_minutes:
+        type: number
+        default: 30
+  workflow_dispatch:
+    inputs:
+      reps:
+        description: Repetitions of each measurement (medians are reported)
+        type: number
+        default: 3
+      session_minutes:
+        description: Length of the long session (heap leak check); 0 skips it
+        type: number
+        default: 30
+
+permissions:
+  contents: write
+
+jobs:
+  render-perf:
+    name: Render performance (Electron, 30k files)
+    runs-on: windows-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # The perf boot must not reach a release: the release renderer has no perf entry and no
+      # trace of the boot's control surface.
+      - name: Release renderer carries no perf boot
+        run: |
+          npx vite build
+          test ! -e dist/perf.html
+          if grep -rl "__blueplmPerf\|perf.blueplm.invalid" dist dist-electron; then
+            echo "::error::the release build contains the render-performance boot"; exit 1
+          fi
+
+      - name: Build the perf app
+        env:
+          BLUEPLM_PERF_BUILD: '1'
+        run: |
+          npx tsx scripts/render-perf/emitSchemaShape.ts
+          npx vite build
+          node scripts/copy-extension-host.js
+          test -e dist/perf.html
+
+      - name: Fetch history
+        run: |
+          if git fetch --depth=1 origin perf-results; then
+            git worktree add perf-history FETCH_HEAD
+          else
+            mkdir -p perf-history
+          fi
+
+      - name: Measure
+        run: npx tsx scripts/render-perf/run.ts --out perf-out --reps "${{ inputs.reps }}" --session-minutes "${{ inputs.session_minutes }}"
+
+      - name: Compare with the last main runs
+        id: compare
+        run: |
+          set +e
+          npx tsx scripts/render-perf/report.ts --result perf-out/result.json --history perf-history/render --summary perf-out/summary.md
+          echo "failed=$?" >> "$GITHUB_OUTPUT"
+          cat perf-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results and traces
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: render-perf
+          path: perf-out
+          retention-days: 30
+
+      - name: Record the result on perf-results
+        if: github.ref == 'refs/heads/main' && hashFiles('perf-out/result.json') != ''
+        run: |
+          name="$(date -u +%Y-%m-%dT%H%M%SZ)-${GITHUB_SHA::8}-${GITHUB_RUN_ID}.json"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -e perf-history/.git ]; then
+            cd perf-history
+          else
+            rm -rf perf-history && git worktree add --orphan -b perf-results perf-history && cd perf-history
+          fi
+          mkdir -p render
+          cp ../perf-out/result.json "render/$name"
+          git add render
+          git commit -m "render-perf: $name"
+          git push origin HEAD:refs/heads/perf-results
+
+      - name: Fail on a large change
+        if: steps.compare.outputs.failed != '0'
+        run: |
+          echo "::error::render performance changed a lot; see the job summary"
+          exit 1
