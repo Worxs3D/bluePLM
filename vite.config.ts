@@ -4,12 +4,18 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
 import pkg from './package.json'
+import { perfBuildPlugin } from './vite.perf'
+
+// The render-performance build (CI only, .github/workflows/nightly.yml): `perf.html` instead of
+// `index.html`, with the fake backends of src/perf/app wired in. A release build never sets this.
+const perfBuild = process.env.BLUEPLM_PERF_BUILD === '1'
 
 export default defineConfig({
   define: {
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(pkg.version),
   },
   plugins: [
+    ...(perfBuild ? [perfBuildPlugin(__dirname)] : []),
     react(),
     electron([
       {
@@ -72,7 +78,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
+        ...(perfBuild
+          ? { perf: resolve(__dirname, 'perf.html') }
+          : { main: resolve(__dirname, 'index.html') }),
       },
     },
   },

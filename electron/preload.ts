@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge as electronContextBridge, ipcRenderer, webUtils } from 'electron'
+import { PERF_BOOT_ARG } from './perfBootFlag'
 import type { LocalFileInfo } from './types'
 
 // Result types
@@ -84,6 +85,17 @@ interface TitleBarOverlayRect {
   width: number
   height: number
 }
+
+// A render-performance boot (electron/perfBoot.ts; main passes PERF_BOOT_ARG only when unpackaged)
+// exposes the real API as `electronAPIReal`, leaving `electronAPI` to the renderer's fakes.
+const contextBridge: Pick<typeof electronContextBridge, 'exposeInMainWorld'> = process.argv.includes(
+  PERF_BOOT_ARG,
+)
+  ? {
+      exposeInMainWorld: (key, api) =>
+        electronContextBridge.exposeInMainWorld(key === 'electronAPI' ? 'electronAPIReal' : key, api),
+    }
+  : electronContextBridge
 
 // Expose APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {

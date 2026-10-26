@@ -1,6 +1,8 @@
 // BluePLM Electron Main Process
 // This file contains only app lifecycle, window creation, and imports handlers from modules
 
+// First: in a render-performance boot it moves userData before any module reads it.
+import { isPerfBoot, PERF_BOOT_ARG, PERF_BLOCKED_URLS } from './perfBoot'
 import { app, BrowserWindow, shell, screen, nativeTheme, session, Menu, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -528,7 +530,8 @@ if (initialDeepLink) {
   storePendingDeepLink(initialDeepLink)
 }
 
-const isTestMode = process.argv.includes('--test-mode') || process.env.BLUEPLM_TEST === '1'
+const isTestMode =
+  process.argv.includes('--test-mode') || process.env.BLUEPLM_TEST === '1' || isPerfBoot
 
 /**
  * Attempt to acquire the single instance lock with stale lock recovery.
@@ -903,6 +906,7 @@ function createWindow() {
       // backgrounded window stopped reconciling file changes entirely and then
       // ran every deferred refresh at once on refocus.
       backgroundThrottling: false,
+      additionalArguments: isPerfBoot ? [PERF_BOOT_ARG] : [],
     },
     show: false,
   })
@@ -918,6 +922,12 @@ function createWindow() {
       callback(false)
     }
   })
+
+  if (isPerfBoot) {
+    session.defaultSession.webRequest.onBeforeRequest({ urls: PERF_BLOCKED_URLS }, (_details, callback) =>
+      callback({ cancel: true }),
+    )
+  }
 
   // Restore maximized state
   if (savedState.isMaximized) {
@@ -999,11 +1009,15 @@ function createWindow() {
     }
   })
 
-  const loadPath = isDev ? 'http://localhost:5173' : path.join(__dirname, '../dist/index.html')
+  const loadPath = isPerfBoot
+    ? path.join(__dirname, '../dist/perf.html')
+    : isDev
+      ? 'http://localhost:5173'
+      : path.join(__dirname, '../dist/index.html')
 
   log('Loading: ' + loadPath)
 
-  if (isDev) {
+  if (isDev && !isPerfBoot) {
     mainWindow.loadURL(loadPath)
   } else {
     mainWindow.loadFile(loadPath).catch((error) => log('Error loading file: ' + String(error)))

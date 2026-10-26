@@ -98,9 +98,18 @@ function readFunction(literal: ts.TypeLiteralNode): FunctionShape {
 
 export function loadSchemaShape(): SchemaShape {
   if (cached) return cached
-
   const path = resolve(__dirname, '../types/supabase.ts')
-  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest)
+  cached = parseSchemaShape(readFileSync(path, 'utf8'))
+  return cached
+}
+
+/**
+ * The shape out of the text of `src/types/supabase.ts`. Exported for the render-performance build
+ * (scripts/render-perf/perfBuildPlugin.ts), which parses at build time and ships the result to a
+ * renderer that has neither `fs` nor the compiler.
+ */
+export function parseSchemaShape(text: string): SchemaShape {
+  const source = ts.createSourceFile('supabase.ts', text, ts.ScriptTarget.Latest)
 
   let publicSchema: ts.TypeLiteralNode | null = null
   source.forEachChild((node) => {
@@ -127,6 +136,5 @@ export function loadSchemaShape(): SchemaShape {
     if (name && literal) functions.set(name, readFunction(literal))
   }
 
-  cached = { tables, functions }
-  return cached
+  return { tables, functions }
 }
