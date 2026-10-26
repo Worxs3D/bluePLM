@@ -114,11 +114,10 @@ export async function reconcileCloudFiles(
     const wasMoved = pdmFile.content_hash && localContentHashes.has(pdmFile.content_hash)
     const wasInodeRenamed = inodeMatchedServerPaths.has(serverPathLower)
 
-    // Hash-only move: the content exists locally at some other path, but nothing
-    // upstream recorded exactly which file claimed it, so there is no destination
-    // to point a stub at. The file is handled entirely at its new location.
-    if (wasMoved) continue
-
+    // Inode evidence first: it names the destination, so the stub can point at it. A rename
+    // that kept its bytes also matches by hash, and checking the hash first dropped the stub
+    // for exactly the common case - and only once the main process had re-hashed the file at
+    // its new path, so the stub showed on the first load after a move and vanished on the next.
     if (wasInodeRenamed) {
       const movedToRelativePath = inodeMatchedServerPathToLocalPath.get(serverPathLower)
       // inodeMatchedServerPaths and inodeMatchedServerPathToLocalPath are built
@@ -153,6 +152,11 @@ export async function reconcileCloudFiles(
       }
       continue
     }
+
+    // Hash-only move: the content exists locally at some other path, but nothing
+    // upstream recorded exactly which file claimed it, so there is no destination
+    // to point a stub at. The file is handled entirely at its new location.
+    if (wasMoved) continue
 
     // Neither move signal fired - a genuine cloud-only file (or, if I had it
     // checked out, a ghost of one I deleted/moved without either signal catching it).

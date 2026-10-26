@@ -79,6 +79,51 @@ describe('reconcileCloudFiles', () => {
     expect(movedRows[0].relativePath).toBe('athom/part.sldprt')
   })
 
+  it('keeps the stub once the renamed file has been re-hashed at its new path', async () => {
+    // A rename keeps the bytes, so once the main process hashes the file at its new path the
+    // content hash matches too. The inode names the destination; the stub must stay.
+    const movedFile = movedLocalFile({
+      pdmData: serverFile() as unknown as LocalFile['pdmData'],
+      localHash: 'hash-1',
+    })
+    const serverPathLower = 'fixed lens models/part.sldprt'
+
+    const result = await reconcileCloudFiles({
+      pdmFiles: [serverFile()],
+      localFiles: [movedFile],
+      localPathSet: new Set(['athom/part.sldprt']),
+      inodeMatchedServerPaths: new Set([serverPathLower]),
+      inodeMatchedServerPathToLocalPath: new Map([[serverPathLower, 'athom/part.sldprt']]),
+      existingCheckedOutUsers: new Map(),
+      userId: 'user-1',
+      vaultPath: VAULT_PATH,
+      yieldIfSlow: YIELD_NOOP,
+      yieldCheckStride: 256,
+    })
+
+    const stubs = result.localFiles.filter((f) => f.diffStatus === 'moved_away')
+    expect(stubs).toHaveLength(1)
+    expect(stubs[0].movedToRelativePath).toBe('athom/part.sldprt')
+  })
+
+  it('a hash-only move (no inode evidence) still emits no stub and no cloud row', async () => {
+    const movedFile = movedLocalFile({ ino: undefined, localHash: 'hash-1' })
+    const result = await reconcileCloudFiles({
+      pdmFiles: [serverFile()],
+      localFiles: [movedFile],
+      localPathSet: new Set(['athom/part.sldprt']),
+      inodeMatchedServerPaths: new Set(),
+      inodeMatchedServerPathToLocalPath: new Map(),
+      existingCheckedOutUsers: new Map(),
+      userId: 'user-1',
+      vaultPath: VAULT_PATH,
+      yieldIfSlow: YIELD_NOOP,
+      yieldCheckStride: 256,
+    })
+    expect(result.localFiles.filter((f) => f.diffStatus === 'moved_away')).toHaveLength(0)
+    expect(result.localFiles.filter((f) => f.diffStatus === 'cloud')).toHaveLength(0)
+  })
+
   it('produces neither a moved row nor a moved_away stub once the paths are reconciled', async () => {
     // The local file already sits at the server's path - no move to report.
     const result = await reconcileCloudFiles({

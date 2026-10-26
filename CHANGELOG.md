@@ -40,6 +40,16 @@ the API fixes; the app expects 2.8.3.
 - **An empty property bag can no longer replace a file's configuration metadata.** A `null`
   custom-properties value from either of those writers, or from a re-upload onto an existing row,
   used to erase every configuration's tab and description; it is now treated as "no value".
+- **A moved file's "Moved Away" row no longer disappears on the next full load.** A rename keeps
+  the file's bytes, so once the file had been re-hashed at its new path the load took it for a
+  hash-only move and dropped the stub at the old path, even though the inode named where it went.
+  The stub showed on the first load after a move and vanished on the next, while a folder refresh
+  kept it. The load now checks the inode first, as the folder refresh already did.
+- **The SolidWorks properties tab reads the item number BluePLM writes.** Its P/N, description and
+  revision used a short list of property names without `Number`, so a part numbered by BluePLM
+  showed no number and its PDM block was flagged as disagreeing with the file. They now use the
+  shared read lists, accept `Number` or `Base Item Number` for the comparison, and a `$PRP`
+  reference reads as empty instead of being copied into the database by "Refresh metadata".
 
 ### Tests
 
@@ -56,6 +66,10 @@ the API fixes; the app expects 2.8.3.
   Covers the metadata round trip (edit, write to file, check in, reload), every metadata writer
   against null, empty, absent and whitespace values, load races with moves and restarts, and the
   first rendered component tests (item number, description and tab cells, `useConfigHandlers`).
+- Render tests for the file pane, details panel, SolidWorks properties and Where Used tabs, and a
+  smoke render of the whole app: file states and badges, pending metadata shown the same in the
+  list and the details panel, who may edit, context menu entries per state, and empty and
+  1,000-file vaults. Report: `.cursor/plans/test-gaps-ui-report.md`.
 
 ## [4.7.5] - 2026-10-25
 
