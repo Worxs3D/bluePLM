@@ -27,6 +27,10 @@ const TARGETS = [
   'electron/handlers/fs.ts',
   'electron/handlers/solidworks.ts',
   'api/routes/',
+  'src/hooks/useRealtimeSubscriptions.ts',
+  'src/hooks/realtimeLocalWrites.ts',
+  'src/stores/serverLocationUpdate.ts',
+  'src/stores/serverPdmUpdate.ts',
 ]
 
 const shards = existsSync(root)

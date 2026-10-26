@@ -32,6 +32,14 @@ export const shards = {
   'files-slice-2': ['src/stores/slices/filesSlice.ts:831-1660'],
   'files-slice-3': ['src/stores/slices/filesSlice.ts:1661-99999'],
   'load-files': ['src/hooks/useLoadFiles/**/*.ts'],
+  // Where most multi-user bugs lived (src/test/multi/** covers them). cloudFileReconciliation.ts,
+  // also on that list, is mutated once, in load-files.
+  realtime: [
+    'src/hooks/useRealtimeSubscriptions.ts',
+    'src/hooks/realtimeLocalWrites.ts',
+    'src/stores/serverLocationUpdate.ts',
+    'src/stores/serverPdmUpdate.ts',
+  ],
   'realign-transfer': ['src/lib/realign/**/*.ts', 'src/lib/vaultTransfer/**/*.ts'],
   electron: ['electron/handlers/fs.ts', 'electron/handlers/solidworks.ts'],
   'api-routes': ['api/routes/**/*.ts'],

@@ -9,6 +9,9 @@ export default mergeConfig(
   defineConfig({
     test: {
       exclude: ['**/node_modules/**', '**/*.perf.test.ts', '**/*.perf.test.tsx', '.stryker-tmp/**'],
+      // The multi-machine property test runs 30 fixed-seed sequences (about 7 s) by default; under
+      // mutation that cost repeats per mutant. Five keep it deterministic and still cover the paths.
+      env: { MULTI_SIM_RUNS: '5' },
     },
   }),
 )
