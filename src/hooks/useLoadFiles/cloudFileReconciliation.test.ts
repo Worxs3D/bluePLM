@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { reconcileCloudFiles } from './cloudFileReconciliation'
 import type { CachedServerFile } from '@/lib/cache/vaultFileCache'
@@ -231,5 +231,163 @@ describe('reconcileCloudFiles', () => {
     })
 
     expect(result.localFiles).toHaveLength(0)
+  })
+})
+
+// Pinned by mutation testing (.cursor/plans/test-mutation-report.md): the ghost/orphan safety
+// net had no test at all, and the cloud-folder and placeholder fields were only reached in passing.
+function reconcile(pdmFiles: CachedServerFile[], localFiles: LocalFile[], localPaths: string[] = []) {
+  return reconcileCloudFiles({
+    pdmFiles,
+    localFiles,
+    localPathSet: new Set([...localPaths, ...localFiles.map((f) => f.relativePath)].map((p) => p.toLowerCase())),
+    inodeMatchedServerPaths: new Set(),
+    inodeMatchedServerPathToLocalPath: new Map(),
+    existingCheckedOutUsers: new Map(),
+    userId: 'user-1',
+    vaultPath: VAULT_PATH,
+    yieldIfSlow: YIELD_NOOP,
+    yieldCheckStride: 256,
+  })
+}
+
+/** A local file whose server row is gone: what a rename the inode pass missed leaves behind. */
+function orphan(relativePath: string, overrides: Partial<LocalFile> = {}): LocalFile {
+  return movedLocalFile({
+    name: relativePath.split('/').pop() ?? relativePath,
+    path: `${VAULT_PATH}/${relativePath}`,
+    relativePath,
+    diffStatus: 'deleted_remote',
+    isSynced: false,
+    ino: undefined,
+    ...overrides,
+  })
+}
+
+/** A server row checked out by this user with nothing on disk: the ghost of a local rename. */
+function myGhost(filePath: string, overrides: Partial<CachedServerFile> = {}): CachedServerFile {
+  return serverFile({
+    id: `id-${filePath}`,
+    file_path: filePath,
+    file_name: filePath.split('/').pop() ?? filePath,
+    checked_out_by: 'user-1',
+    ...overrides,
+  })
+}
+
+describe('reconcileCloudFiles placeholders', () => {
+  it('marks a missing file I have checked out as deleted, and one another user holds as cloud', async () => {
+    const result = await reconcile(
+      [myGhost('A/mine.sldprt'), serverFile({ id: 'theirs', file_path: 'A/theirs.sldprt', checked_out_by: 'user-2' })],
+      [],
+    )
+
+    const status = Object.fromEntries(result.localFiles.map((f) => [f.relativePath, f.diffStatus]))
+    expect(status).toEqual({ 'A/mine.sldprt': 'deleted', 'A/theirs.sldprt': 'cloud' })
+  })
+
+  it('fills a placeholder from the server row, with safe defaults for missing fields', async () => {
+    const result = await reconcile(
+      [
+        serverFile({ file_path: 'A/full.sldprt', file_size: 2048, updated_at: '2026-02-02T00:00:00Z' }),
+        serverFile({ id: 'bare', file_path: 'A/bare', extension: null as unknown as string, file_size: null as unknown as number, updated_at: null as unknown as string }),
+      ],
+      [],
+    )
+
+    expect(result.localFiles[0]).toMatchObject({
+      extension: '.sldprt',
+      size: 2048,
+      modifiedTime: '2026-02-02T00:00:00Z',
+      isSynced: false,
+    })
+    expect(result.localFiles[1]).toMatchObject({ extension: '', size: 0, modifiedTime: '' })
+  })
+
+  it('names every folder a placeholder needs that is not already on disk, matching case-insensitively', async () => {
+    const result = await reconcile([serverFile({ file_path: 'Parts/Brackets/Steel/b.sldprt' })], [], ['parts'])
+
+    expect([...result.cloudFolders].sort()).toEqual(['Parts/Brackets', 'Parts/Brackets/Steel'])
+  })
+
+  it('names no folder for a placeholder at the vault root', async () => {
+    const result = await reconcile([serverFile({ file_path: 'root.sldprt' })], [])
+
+    expect([...result.cloudFolders]).toEqual([])
+  })
+})
+
+describe('reconcileCloudFiles ghost/orphan matching', () => {
+  // A match is logged through window.electronAPI, which the renderer always has.
+  beforeEach(() => {
+    vi.stubGlobal('window', { electronAPI: { log: vi.fn() } })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('pairs a ghost with the one orphan in its folder and extension as a move', async () => {
+    const ghost = myGhost('Parts/Old.SLDPRT')
+    const renamed = orphan('Parts/New.sldprt')
+
+    const result = await reconcile([ghost], [renamed])
+
+    expect(result.localFiles).toHaveLength(1)
+    expect(result.localFiles[0]).toMatchObject({
+      relativePath: 'Parts/New.sldprt',
+      diffStatus: 'moved',
+      isSynced: true,
+    })
+    expect(result.localFiles[0].pdmData?.id).toBe('id-Parts/Old.SLDPRT')
+  })
+
+  it('matches the folder case-insensitively', async () => {
+    const result = await reconcile([myGhost('PARTS/Old.sldprt')], [orphan('parts/New.sldprt')])
+
+    expect(result.localFiles.map((f) => f.diffStatus)).toEqual(['moved'])
+  })
+
+  it('pairs nothing when two orphans could be the rename', async () => {
+    const result = await reconcile(
+      [myGhost('Parts/Old.sldprt')],
+      [orphan('Parts/New1.sldprt'), orphan('Parts/New2.sldprt')],
+    )
+
+    const status = Object.fromEntries(result.localFiles.map((f) => [f.relativePath, f.diffStatus]))
+    expect(status).toEqual({
+      'Parts/New1.sldprt': 'deleted_remote',
+      'Parts/New2.sldprt': 'deleted_remote',
+      'Parts/Old.sldprt': 'deleted',
+    })
+  })
+
+  it('gives one orphan to one ghost only', async () => {
+    const result = await reconcile(
+      [myGhost('Parts/Old1.sldprt'), myGhost('Parts/Old2.sldprt')],
+      [orphan('Parts/New.sldprt')],
+    )
+
+    expect(result.localFiles.filter((f) => f.diffStatus === 'moved')).toHaveLength(1)
+    expect(result.localFiles.filter((f) => f.diffStatus === 'deleted')).toHaveLength(1)
+  })
+
+  it.each([
+    ['another folder', orphan('Other/New.sldprt')],
+    ['another extension', orphan('Parts/New.sldasm', { extension: '.sldasm' })],
+    ['a folder', orphan('Parts/New.sldprt', { isDirectory: true })],
+  ])('does not pair a ghost with an orphan in %s', async (_label, candidate) => {
+    const result = await reconcile([myGhost('Parts/Old.sldprt')], [candidate])
+
+    expect(result.localFiles.find((f) => f.relativePath === 'Parts/Old.sldprt')?.diffStatus).toBe('deleted')
+    expect(result.localFiles.find((f) => f.diffStatus === 'moved')).toBeUndefined()
+  })
+
+  it('does not treat a cloud file another user holds as a ghost', async () => {
+    const result = await reconcile(
+      [serverFile({ id: 'theirs', file_path: 'Parts/Old.sldprt', checked_out_by: 'user-2' })],
+      [orphan('Parts/New.sldprt')],
+    )
+
+    expect(result.localFiles.map((f) => f.diffStatus).sort()).toEqual(['cloud', 'deleted_remote'])
   })
 })
