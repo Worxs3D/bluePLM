@@ -13,7 +13,12 @@
     "isolatedModules": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // Route tests reuse the renderer's typed Supabase fake (src/test), which
+    // imports the generated types through the renderer's alias.
+    "paths": {
+      "@/*": ["../src/*"]
+    }
   },
   "include": [
     "./**/*.ts"
