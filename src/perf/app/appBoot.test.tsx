@@ -4,12 +4,18 @@
  * load, over the fakes the nightly render-performance run uses, with a small vault. Proves the
  * boot reaches "vault looks loaded" without Electron; the nightly measures it in Electron.
  */
-import { render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render } from '@testing-library/react'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { installDomShims } from '@/test/render'
 
 vi.mock('@/lib/supabase/client', async () => await import('./supabaseClient'))
+
+// Unmount and let React's scheduled work run while jsdom still exists.
+afterAll(async () => {
+  cleanup()
+  await new Promise((resolve) => setTimeout(resolve, 200))
+})
 
 describe('perf boot', () => {
   it('boots the real App signed in, and the vault looks loaded', async () => {

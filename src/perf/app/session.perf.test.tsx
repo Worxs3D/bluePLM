@@ -14,10 +14,10 @@
  *   Per-event lookups are gated by row reads in src/perf/storeRealtime.perf.test.ts.
  */
 import { Profiler, type ProfilerOnRenderCallback } from 'react'
-import { act, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { setFlagsFromString } from 'node:v8'
 import { runInNewContext } from 'node:vm'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { installDomShims } from '@/test/render'
 
@@ -65,6 +65,13 @@ let env: Awaited<ReturnType<typeof boot>>
 beforeAll(async () => {
   env = await boot()
 }, 60_000)
+
+// Unmount and let React's scheduled work run while jsdom still exists: work left queued ran
+// after the environment was torn down ("window is not defined" in CI on 4f720800).
+afterAll(async () => {
+  cleanup()
+  await pause(200)
+})
 
 /** Wait out the realtime batching windows (250 ms quiet) and the lookups they start. */
 const settle = () => pause(700)

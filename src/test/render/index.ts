@@ -97,6 +97,9 @@ export function installDomShims(): void {
     )
   }
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  // jsdom has no 2D canvas and logs an error for every getContext call. The seasonal effects
+  // (Halloween sparks, snow) draw on one and draw nothing without a context.
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
   setViewport(VIEWPORT.width, VIEWPORT.height)
 }
 
