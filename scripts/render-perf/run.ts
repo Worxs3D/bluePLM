@@ -24,7 +24,16 @@ import { _electron, type CDPSession, type ElectronApplication, type Page } from 
 import type {} from '../../src/perf/app/control'
 
 import type { RenderPerfResult } from './compare'
-import { frameStats, heapStats, median, retainedByStack, type HeapSample, type SamplingHeapNode } from './stats'
+import {
+  cpuTimeByFunction,
+  frameStats,
+  heapStats,
+  median,
+  retainedByStack,
+  type CpuProfile,
+  type HeapSample,
+  type SamplingHeapNode,
+} from './stats'
 import { SourceMapLookup, type RawSourceMap } from './sourceMap'
 import { mainThreadBreakdown, TraceStreamParser, type TraceEvent } from './traceMetrics'
 
@@ -193,10 +202,23 @@ async function measured<T>(
 ): Promise<{ result: T; metrics: Record<string, number>; quietAt: number }> {
   await page.evaluate(() => window.__blueplmPerf!.waitForQuiet(500, 15_000))
   const from = await page.evaluate(() => window.__blueplmPerf!.now())
+  // The first repetition also samples the JS stacks: the trace says how long script ran, the
+  // profile says in which functions.
+  if (traceDir) {
+    await cdp.send('Profiler.enable')
+    await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
+    await cdp.send('Profiler.start')
+  }
   await startTrace(cdp)
   const result = await body()
   const to = await page.evaluate(() => window.__blueplmPerf!.waitForQuiet(300, 30_000))
   const events = await stopTrace(cdp, traceDir ? join(traceDir, `${name}.json`) : undefined)
+  if (traceDir) {
+    const { profile } = await cdp.send('Profiler.stop')
+    await cdp.send('Profiler.disable')
+    writeFileSync(join(traceDir, `${name}.cpuprofile`), JSON.stringify(profile))
+    topFunctions[name] = cpuTimeByFunction(profile as unknown as CpuProfile, { frameName: sourceFrameName() })
+  }
   const lt = await page.evaluate(([a, b]) => window.__blueplmPerf!.longTasks(a, b), [from, to + 1] as const)
   const breakdown = mainThreadBreakdown(events)
   if (breakdown && !topSelfTime[name]) topSelfTime[name] = breakdown.top
@@ -221,6 +243,8 @@ async function measured<T>(
 
 /** Per scenario, the trace event names with the most main-thread self time (first repetition wins). */
 const topSelfTime: Record<string, Array<[string, number]>> = {}
+/** Per scenario, the functions with the most sampled time (first repetition, source-mapped). */
+const topFunctions: Record<string, ReturnType<typeof cpuTimeByFunction>> = {}
 
 const SEARCH = 'Bracket' // every synthetic file name has it
 const DEEP_FOLDER = 'P00/Assy-00/Sub-00'
@@ -495,6 +519,7 @@ async function main(): Promise<void> {
     heapByStep: Record<string, number>
     retained: SessionResult['retained']
     topSelfTime: typeof topSelfTime
+    topFunctions: typeof topFunctions
     unmodelled: typeof misses
   } = {
     schema: 1,
@@ -511,6 +536,7 @@ async function main(): Promise<void> {
     heapByStep: session?.heapByStep ?? {},
     retained: session?.retained ?? [],
     topSelfTime,
+    topFunctions,
     unmodelled: misses.slice(0, 50),
   }
   writeFileSync(join(options.out, 'result.json'), JSON.stringify(result, null, 2))

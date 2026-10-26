@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { compare, markdownTable, METRICS, type RenderPerfResult } from './compare'
-import { frameStats, heapStats, median, percentile, retainedByStack, type SamplingHeapNode } from './stats'
+import {
+  cpuTimeByFunction,
+  frameStats,
+  heapStats,
+  median,
+  percentile,
+  retainedByStack,
+  type SamplingHeapNode,
+} from './stats'
 import { decodeSegment, SourceMapLookup } from './sourceMap'
 import { categoryOf, mainThreadBreakdown, TraceStreamParser, type TraceEvent } from './traceMetrics'
 
@@ -192,6 +200,34 @@ describe('retainedByStack', () => {
     const top = retainedByStack(head, { depth: 2 })
     expect(top[0]).toEqual({ stack: 'push push.js:10 < onRealtime onRealtime.js:10', MB: 3 })
     expect(top).toHaveLength(3)
+  })
+})
+
+describe('cpuTimeByFunction', () => {
+  const frame = (fn: string) => ({ functionName: fn, url: `file:///app/assets/${fn}.js`, lineNumber: 0, columnNumber: 0 })
+  it('sums sampled time by function, self and total, largest first', () => {
+    // root > render > (sort, render > sort): render recurses, so its total counts each sample once.
+    const profile = {
+      nodes: [
+        { id: 1, callFrame: frame('(root)'), children: [2] },
+        { id: 2, callFrame: frame('render'), children: [3, 4] },
+        { id: 3, callFrame: frame('sort') },
+        { id: 4, callFrame: frame('render'), children: [5] },
+        { id: 5, callFrame: frame('sort') },
+      ],
+      samples: [3, 5, 2, 3],
+      // Sample i lasts until sample i + 1; the last one has no end and counts nothing.
+      timeDeltas: [0, 2000, 3000, 1000],
+    }
+    const { self, total } = cpuTimeByFunction(profile)
+    expect(self).toEqual([
+      ['sort sort.js:1', 5],
+      ['render render.js:1', 1],
+    ])
+    expect(total).toEqual([
+      ['render render.js:1', 6],
+      ['sort sort.js:1', 5],
+    ])
   })
 })
 

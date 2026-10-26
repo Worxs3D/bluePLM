@@ -103,6 +103,72 @@ export interface SamplingHeapNode {
   children: SamplingHeapNode[]
 }
 
+/** A CPU profile as `Profiler.stop` returns it. */
+export interface CpuProfile {
+  nodes: Array<{ id: number; callFrame: SamplingHeapNode['callFrame']; children?: number[] }>
+  samples?: number[]
+  timeDeltas?: number[]
+}
+
+/**
+ * Where a step spent its script time: sampled time summed by function, self (the function's own
+ * code) and total (with everything it called), largest first. A frame named twice on one stack
+ * (recursion) counts once toward its total.
+ */
+export function cpuTimeByFunction(
+  profile: CpuProfile,
+  options: {
+    top?: number
+    frameName?: (callFrame: SamplingHeapNode['callFrame']) => string
+  } = {},
+): { self: Array<[string, number]>; total: Array<[string, number]> } {
+  const name = (callFrame: SamplingHeapNode['callFrame']) => {
+    if (options.frameName) return options.frameName(callFrame)
+    const file = callFrame.url.slice(callFrame.url.lastIndexOf('/') + 1)
+    return `${callFrame.functionName || '(anonymous)'}${file ? ` ${file}:${callFrame.lineNumber + 1}` : ''}`
+  }
+  const byId = new Map(profile.nodes.map((n) => [n.id, n]))
+  const parent = new Map<number, number>()
+  for (const n of profile.nodes) for (const child of n.children ?? []) parent.set(child, n.id)
+  const names = new Map<number, string>()
+  // V8's bookkeeping frames are not functions of the app.
+  const synthetic = new Set(['(root)', '(program)', '(idle)'])
+  const nameOf = (id: number) => {
+    let known = names.get(id)
+    if (known === undefined) {
+      const callFrame = byId.get(id)!.callFrame
+      known = synthetic.has(callFrame.functionName) ? '' : name(callFrame)
+      names.set(id, known)
+    }
+    return known
+  }
+  const self = new Map<string, number>()
+  const total = new Map<string, number>()
+  const samples = profile.samples ?? []
+  const deltas = profile.timeDeltas ?? []
+  for (let i = 0; i < samples.length; i++) {
+    // A sample's time is the gap to the next one.
+    const ms = (deltas[i + 1] ?? 0) / 1000
+    if (!byId.has(samples[i])) continue
+    const own = nameOf(samples[i])
+    self.set(own, (self.get(own) ?? 0) + ms)
+    const seen = new Set<string>()
+    for (let id: number | undefined = samples[i]; id !== undefined; id = parent.get(id)) {
+      const frame = nameOf(id)
+      if (seen.has(frame)) continue
+      seen.add(frame)
+      total.set(frame, (total.get(frame) ?? 0) + ms)
+    }
+  }
+  const ranked = (m: Map<string, number>) =>
+    [...m]
+      .filter(([frame]) => frame !== '')
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, options.top ?? 25)
+      .map(([frame, ms]): [string, number] => [frame, Math.round(ms * 10) / 10])
+  return { self: ranked(self), total: ranked(total) }
+}
+
 /**
  * Where the memory still alive at the end of a session was allocated: self size summed by the
  * innermost `depth` frames of each allocation stack, largest first.
