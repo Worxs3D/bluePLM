@@ -113,6 +113,23 @@ describe('native vault watcher', () => {
     expect(known.get('Parts/a.sldprt')).toBe('file')
   })
 
+  it('coalesces a burst of 500 changes, each reported twice, into one IPC send', async () => {
+    const names: string[] = []
+    for (let i = 0; i < 500; i++) {
+      const name = `part-${i}.sldprt`
+      fs.writeFileSync(path.join(vault, name), String(i))
+      names.push(name)
+    }
+    for (const name of names) emit(name)
+    for (const name of names) emit(name)
+
+    await vi.waitFor(() => expect(sentOn('files-changed')).toHaveLength(1), { timeout: 8_000 })
+    expect(sentOn('files-changed')[0]).toEqual(names)
+    // Nothing trails behind the batch
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    expect(sent).toHaveLength(1)
+  }, 15_000)
+
   it('holds a file that is still being written until it stops changing', async () => {
     const full = path.join(vault, 'big.sldasm')
     fs.writeFileSync(full, 'first chunk')
