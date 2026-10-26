@@ -199,8 +199,9 @@ export function createFakeFsApi(disk: FakeDisk, options: FakeFsOptions): Partial
           disk.isDir(path) &&
           disk.filesUnder(path).length === 0 &&
           !disk.dirs().some((d) => d.toLowerCase().startsWith(k))
-        if (!empty) return { path, success: true, skipped: true }
-        if (disk.recycleBinUnavailable) return { path, success: true, skipped: true }
+        // electron/handlers/emptyDirs.ts: a directory left on disk is `success: false, skipped: true`.
+        if (!empty) return { path, success: false, skipped: true }
+        if (disk.recycleBinUnavailable) return { path, success: false, skipped: true }
         disk.removeTree(path)
         disk.recycleBin.push({ path, files: [] })
         return { path, success: true }

@@ -10,6 +10,10 @@ name: Nightly mutation testing
 #
 # Also runs render performance on Windows (render-perf.yml): the real Electron app over a 30k-file
 # synthetic vault, compared with the last main runs. Reporting only as well.
+#
+# And the multi-machine simulator (src/test/multi/) from a fresh random seed: CI runs it from a
+# fixed seed on every push; here it looks for new failing sequences. A failure prints its seed
+# and shrunk sequence; save it in src/test/multi/savedSequences.test.ts with the fix.
 on:
   schedule:
     - cron: '23 7 * * *'
@@ -26,7 +30,7 @@ on:
       suite:
         description: Which nightly suite to run
         type: choice
-        options: [all, mutation, render-perf]
+        options: [all, mutation, render-perf, multi-machine]
         default: all
       render_reps:
         description: Render performance repetitions (medians are reported)
@@ -36,6 +40,10 @@ on:
         description: Render performance long session, minutes (heap leak check)
         type: number
         default: 30
+      multi_runs:
+        description: Multi-machine simulator, random sequences to run
+        type: number
+        default: 1000
 
 # `npm ci` runs arbitrary postinstall scripts; nothing here writes to the repository, except the
 # render-perf job, which appends its result to the `perf-results` branch.
@@ -183,3 +191,44 @@ jobs:
     with:
       reps: ${{ inputs.render_reps || 3 }}
       session_minutes: ${{ inputs.render_session_minutes || 30 }}
+
+  multi-machine:
+    name: Multi-machine simulator (random seed)
+    if: ${{ inputs.suite != 'mutation' && inputs.suite != 'render-perf' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Random two-machine sequences
+        env:
+          MULTI_SIM_SEED: random
+          MULTI_SIM_RUNS: ${{ inputs.multi_runs || 1000 }}
+          MULTI_SIM_STEPS: '24'
+        run: npx vitest run src/test/multi/randomInterleavings.test.ts 2>&1 | tee multi-machine.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Multi-machine simulator'
+            echo
+            if grep -q 'Property failed' multi-machine.log; then
+              echo 'A sequence failed. Seed and shrunk counterexample:'
+              echo
+              echo '```'
+              grep -A3 'Property failed' multi-machine.log | head -20
+              echo '```'
+            else
+              echo "${MULTI_SIM_RUNS:-1000} random sequences converged."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MULTI_SIM_RUNS: ${{ inputs.multi_runs || 1000 }}
