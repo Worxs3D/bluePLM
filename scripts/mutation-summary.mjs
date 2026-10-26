@@ -46,7 +46,12 @@ let merged
 for (const shard of shards) {
   const report = JSON.parse(readFileSync(join(root, shard, 'mutation.json'), 'utf8'))
   if (!merged) merged = { ...report, files: {} }
-  for (const [file, data] of Object.entries(report.files)) merged.files[file.replace(/\\/g, '/')] = data
+  for (const [name, data] of Object.entries(report.files)) {
+    const file = name.replace(/\\/g, '/')
+    // A file split across shards by line range arrives once per shard, each with its own mutants.
+    const seen = merged.files[file]
+    merged.files[file] = seen ? { ...seen, mutants: [...seen.mutants, ...data.mutants] } : data
+  }
 }
 
 function emptyCounts() {

@@ -26,8 +26,11 @@ export const shards = {
   'handlers-d': [`${handlers}/[q-z]*.ts`],
   metadata: ['src/lib/metadata/**/*.ts'],
   'supabase-files': ['src/lib/supabase/files/**/*.ts'],
-  // Split: nearly every journey test reaches filesSlice, so it alone ran past an hour together.
-  'files-slice': ['src/stores/slices/filesSlice.ts'],
+  // Split by line range: nearly every journey test reaches filesSlice, so each of its mutants reruns
+  // hundreds of slow tests (about 7.6 s a mutant); the whole file does not fit one job.
+  'files-slice-1': ['src/stores/slices/filesSlice.ts:1-830'],
+  'files-slice-2': ['src/stores/slices/filesSlice.ts:831-1660'],
+  'files-slice-3': ['src/stores/slices/filesSlice.ts:1661-99999'],
   'load-files': ['src/hooks/useLoadFiles/**/*.ts'],
   'realign-transfer': ['src/lib/realign/**/*.ts', 'src/lib/vaultTransfer/**/*.ts'],
   electron: ['electron/handlers/fs.ts', 'electron/handlers/solidworks.ts'],
@@ -77,6 +80,8 @@ export default {
   inPlace: Boolean(process.env.CI),
   tempDirName: '.stryker-tmp',
   timeoutMS: 10000,
+  // Hosted runners have 4 cores; Stryker's default leaves one idle.
+  concurrency: 4,
   // Measured, not gated (nightly.yml does not fail on score). The ratchet is proposed in
   // .cursor/plans/test-mutation-report.md.
   thresholds: { high: 80, low: 60, break: null },
