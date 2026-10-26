@@ -840,10 +840,12 @@ export function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate[]): P
   return job.done
 }
 
-/** Finish this vault's idle writes now: what reads the saved hashes must see them. */
-async function finishIdleWrites(vaultId: string): Promise<void> {
-  const pending = idleWrites.get(vaultId)
-  if (!pending) return
+/**
+ * Finish idle writes now, for one vault or all of them: what reads the saved hashes must see
+ * them, and a measurement of a load counts them as that load's work.
+ */
+export async function finishIdleSyncIndexWrites(vaultId?: string): Promise<void> {
+  const pending = vaultId ? (idleWrites.get(vaultId) ?? []) : [...idleWrites.values()].flat()
   for (const job of pending) job.hurry()
   await Promise.all(pending.map((job) => job.done.catch(() => undefined)))
 }
@@ -855,7 +857,9 @@ async function finishIdleWrites(vaultId: string): Promise<void> {
  */
 export async function getVersionMap(vaultId: string): Promise<Map<string, SavedVersionData>> {
   try {
-    await finishIdleWrites(vaultId)
+    // Only when something waits: an await here would miss the vault read already in flight
+    // for the load's other readers, and read the whole vault a second time.
+    if (idleWrites.has(vaultId)) await finishIdleSyncIndexWrites(vaultId)
     const db = await openDB()
 
     return readVaultEntries(db, vaultId).then(

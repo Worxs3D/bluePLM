@@ -30,6 +30,7 @@ import {
 } from '@/lib/loadPipelineFakes'
 import { buildSyntheticVault, FIXTURE_USER_ID, FIXTURE_VAULT_ROOT, type FixtureLocalEntry } from '@/lib/loadPipelineFixtures'
 import type { CachedServerFile } from '@/lib/cache/vaultFileCache'
+import { finishIdleSyncIndexWrites } from '@/lib/cache/localSyncIndex'
 
 const SIZES = [1_000, 10_000, 30_000] as const
 const ORG_ID = 'org-perf'
@@ -203,6 +204,9 @@ describe('load pipeline performance gate', () => {
     // The background pass starts 50 ms after the merge commits.
     for (let i = 0; i < 100 && h.backgroundRuns.length === backgroundBefore; i++) await sleep(10)
     await Promise.all(h.backgroundRuns.slice(backgroundBefore))
+    // The background hash pass persists its hashes when the main thread is idle; that write is
+    // still this load's work, so it is finished and counted here.
+    await finishIdleSyncIndexWrites()
     const wallMs = Math.round(performance.now() - startedAt)
     // Fire-and-forget IndexedDB writes, then the persist debounce.
     await settleMacrotasks()
