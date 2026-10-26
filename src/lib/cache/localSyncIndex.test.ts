@@ -6,6 +6,7 @@ import {
   getVersionMap,
   removeFromSyncIndex,
   updateInodes,
+  INODE_WRITE_CHUNK,
   updateSyncIndexFromServer,
 } from './localSyncIndex'
 
@@ -24,9 +25,16 @@ interface StoredRecord {
  * IDBKeyRange.only, and get/put/delete. vitest's environment is 'node', so there is
  * no real indexedDB.
  */
-function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: string[] } {
+function installFakeIndexedDB(): {
+  records: Map<string, StoredRecord>
+  deletes: string[]
+  putBursts: number[]
+} {
   const records = new Map<string, StoredRecord>()
   const deletes: string[] = []
+  // Puts queued between two request callbacks: what one callback did on the main thread.
+  const putBursts: number[] = []
+  let putsSinceCallback = 0
 
   class FakeRequest {
     result: unknown
@@ -37,7 +45,11 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
 
   function succeed(request: FakeRequest, result: unknown) {
     request.result = result
-    queueMicrotask(() => request.onsuccess?.())
+    queueMicrotask(() => {
+      if (putsSinceCallback > 0) putBursts.push(putsSinceCallback)
+      putsSinceCallback = 0
+      request.onsuccess?.()
+    })
   }
 
   class FakeIndex {
@@ -75,6 +87,7 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
     }
     put(value: StoredRecord) {
       const request = new FakeRequest()
+      putsSinceCallback++
       records.set(value.key, { ...value })
       succeed(request, undefined)
       return request
@@ -111,7 +124,7 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
   }
   globals.IDBKeyRange = { only: (value: string) => ({ value }) }
 
-  return { records, deletes }
+  return { records, deletes, putBursts }
 }
 
 /** Flushes the queueMicrotask chains the fake IndexedDB uses. */
@@ -154,7 +167,7 @@ async function runLoadWrites(options: {
 // Installed once: localSyncIndex.ts caches its IDBDatabase in a module-level promise,
 // so a per-test database would be opened and then ignored. Tests get a clean index by
 // emptying the records instead.
-const { records, deletes } = installFakeIndexedDB()
+const { records, deletes, putBursts } = installFakeIndexedDB()
 
 describe('localSyncIndex orphan durability', () => {
   beforeEach(() => {
@@ -440,5 +453,28 @@ describe('localSyncIndex hash stamps', () => {
       localHash: 'h1',
       hashStamp: stamp,
     })
+  })
+})
+
+describe('localSyncIndex bulk inode writes', () => {
+  beforeEach(() => {
+    records.clear()
+    deletes.length = 0
+    putBursts.length = 0
+  })
+
+  // A first load writes every entry. All of them in one callback was 1-2 s of main thread right
+  // after the vault came up (render-perf nightly); they go in chunks, in one transaction.
+  it('writes every entry, at most one chunk per callback', async () => {
+    const count = INODE_WRITE_CHUNK * 2 + 37
+    const entries = Array.from({ length: count }, (_, i) => ({ path: `designs/part-${i}.sldprt`, ino: i + 1 }))
+    await updateInodes(VAULT_ID, entries)
+    await flush()
+
+    expect(records.size).toBe(count)
+    expect(Math.max(...putBursts)).toBeLessThanOrEqual(INODE_WRITE_CHUNK)
+    expect(putBursts.reduce((a, b) => a + b, 0)).toBe(count)
+    const inodes = await getInodeMap(VAULT_ID)
+    expect(inodes.get(count)).toEqual([`designs/part-${count - 1}.sldprt`])
   })
 })

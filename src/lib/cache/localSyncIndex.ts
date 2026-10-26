@@ -134,6 +134,14 @@ export interface InodeUpdate {
 /** At or above this many entries updateInodes reads the vault's entries once instead of one by one. */
 const BULK_READ_MIN_ENTRIES = 256
 
+/**
+ * Puts queued per callback by updateInodes' bulk path. Each put clones its entry on the main
+ * thread; a first load writes every entry, and 30k puts in one callback blocked for 1-2 s right
+ * after the vault came up (render-perf nightly). Each chunk is queued from the last request
+ * callback of the one before, which keeps the transaction open, so the write stays atomic.
+ */
+export const INODE_WRITE_CHUNK = 500
+
 /** True when two entries of a server-backed path hold the same data, ignoring lastSyncedAt. */
 function isSameServerBackedEntry(existing: SyncIndexEntry, next: SyncIndexEntry): boolean {
   return (
@@ -706,12 +714,37 @@ export async function updateInodes(vaultId: string, entries: InodeUpdate[]): Pro
           const existingByKey = new Map(
             (request.result as SyncIndexEntry[]).map((entry) => [entry.key, entry]),
           )
-          for (const update of entries) {
-            const key = makeKey(vaultId, update.path)
-            const written = write(key, existingByKey.get(key), update)
-            if (written) existingByKey.set(key, written)
+          let next = 0
+          const writeChunk = () => {
+            let puts = 0
+            let lastRequest: IDBRequest | null = null
+            while (next < entries.length && puts < INODE_WRITE_CHUNK) {
+              const update = entries[next++]
+              const key = makeKey(vaultId, update.path)
+              const before = existingByKey.get(key)
+              const updated = applyInodeUpdate(key, vaultId, before, update)
+              if (updated) {
+                lastRequest = store.put(updated)
+                existingByKey.set(key, updated)
+                puts++
+              }
+            }
+            if (next >= entries.length) {
+              resolve()
+              return
+            }
+            // A chunk always ends on a put, so there is a request to continue from.
+            if (lastRequest) {
+              lastRequest.onsuccess = writeChunk
+              // A failed put aborts the transaction: nothing more will be written, and the load
+              // must not wait on it.
+              lastRequest.onerror = () => {
+                log.error('[SyncIndex]', 'Failed to write inode updates', { error: lastRequest?.error })
+                resolve()
+              }
+            }
           }
-          resolve()
+          writeChunk()
         }
         request.onerror = () => {
           log.error('[SyncIndex]', 'Failed to read entries for inode update', { error: request.error })

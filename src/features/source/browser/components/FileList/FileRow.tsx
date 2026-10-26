@@ -97,8 +97,11 @@ export const FileRow = memo(function FileRow({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      {/* No width per cell: .file-table is table-layout: fixed, so the header cells set the
+          column widths. An inline width on every cell was style work on every row mounted while
+          scrolling (render-perf profile). */}
       {visibleColumns.map((column) => (
-        <td key={column.id} style={{ width: column.width }}>
+        <td key={column.id}>
           {renderCell(file, column.id)}
         </td>
       ))}
