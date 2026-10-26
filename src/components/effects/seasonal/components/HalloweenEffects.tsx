@@ -183,6 +183,30 @@ export function HalloweenEffects() {
     }
     sparksRef.current = initialSparks
 
+    // One glowing dot per colour, drawn once and stamped for every spark: a shadowBlur per spark
+    // per frame is a blur on the CPU, which made the canvas cost more paint than the divs did.
+    const SPRITE_PX = 32
+    const sprites = new Map<string, HTMLCanvasElement>()
+    const spriteFor = (color: string) => {
+      let sprite = sprites.get(color)
+      if (!sprite) {
+        sprite = document.createElement('canvas')
+        sprite.width = sprite.height = SPRITE_PX
+        const sctx = sprite.getContext('2d')
+        if (sctx) {
+          const r = SPRITE_PX / 2
+          const glow = sctx.createRadialGradient(r, r, 0, r, r, r)
+          glow.addColorStop(0, color)
+          glow.addColorStop(0.25, color)
+          glow.addColorStop(1, 'rgba(0, 0, 0, 0)')
+          sctx.fillStyle = glow
+          sctx.fillRect(0, 0, SPRITE_PX, SPRITE_PX)
+        }
+        sprites.set(color, sprite)
+      }
+      return sprite
+    }
+
     const drawSparks = () => {
       if (!canvas || !ctx) return
       ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -191,18 +215,14 @@ export function HalloweenEffects() {
       for (const spark of sparksRef.current) {
         let displayOpacity = spark.baseOpacity
         if (spark.y < 30) displayOpacity = spark.baseOpacity * (spark.y / 30)
-        const x = (spark.x / 100) * canvas.width
-        const y = (spark.y / 100) * canvas.height
+        // The dot and its glow: the old box-shadow reached about twice the spark's size.
+        const d = spark.size * 4
+        const x = (spark.x / 100) * canvas.width - d / 2
+        const y = (spark.y / 100) * canvas.height - d / 2
         ctx.globalAlpha = Math.max(0, displayOpacity * opacity)
-        ctx.shadowColor = spark.color
-        ctx.shadowBlur = spark.size * 2
-        ctx.fillStyle = spark.color
-        ctx.beginPath()
-        ctx.arc(x, y, spark.size / 2, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.drawImage(spriteFor(spark.color), x, y, d, d)
       }
       ctx.globalAlpha = 1
-      ctx.shadowBlur = 0
     }
 
     // Main animation loop

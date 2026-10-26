@@ -140,7 +140,7 @@ const BULK_READ_MIN_ENTRIES = 256
  * after the vault came up (render-perf nightly). Each chunk is queued from the last request
  * callback of the one before, which keeps the transaction open, so the write stays atomic.
  */
-export const INODE_WRITE_CHUNK = 500
+export const INODE_WRITE_CHUNK = 200
 
 /** True when two entries of a server-backed path hold the same data, ignoring lastSyncedAt. */
 function isSameServerBackedEntry(existing: SyncIndexEntry, next: SyncIndexEntry): boolean {
