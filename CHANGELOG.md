@@ -6,10 +6,21 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Renderer only - no schema change, no API change, SolidWorks service unchanged.
+Renderer and API 2.8.3 - no schema change, SolidWorks service unchanged. Redeploy the API for
+the API fixes; the app expects 2.8.3.
 
 ### Fixed
 
+- **API: a missing row answers 404, not 500.** `.single()` on no row returns PostgREST
+  `PGRST116`, the routes threw it, and the error handler made it a 500, so the routes' own 404
+  branches never ran (`DELETE /files/<unknown>`, undo-checkout, suppliers, vaults and more).
+- **API: Administrators-team members with the viewer role can write suppliers.** The five
+  supplier write routes refused `role = 'viewer'` without checking `isAdmin`.
+- **API: `PATCH /files/:id/metadata` no longer changes the state of a checked-out file**
+  (409, as `/release` and `/obsolete` already did), and answers 404 for another organization's file.
+- **API: check-in by someone without the lock answers 403**, as intended; the route matched a
+  message `checkin_file` does not send and answered 409. Checkout and check-in also accept a
+  call with no body, since every field is optional (it was a 400).
 - **Watcher refreshes and restarts no longer rewrite the whole local sync index.** Every
   committed load put every entry back, changed or not (about 2 writes and 1 read per file, so
   ~60,000 IndexedDB operations for one saved file in a 30k vault). Only entries that change are
@@ -32,6 +43,11 @@ Renderer only - no schema change, no API change, SolidWorks service unchanged.
 
 ### Tests
 
+- API route tests (`api/routes/authMatrix.test.ts`, `files.routes.test.ts`, harness in
+  `api/test/routeHarness.ts`): every registered route is checked for 401 without a token, and
+  for which personas get 403 (engineer, viewer, admin by role, admin by team with the viewer
+  role, admin whose `is_org_admin()` check fails). Checkout, check-in, undo-checkout, soft delete,
+  state changes and release are checked against what lands in the typed fake Supabase.
 - Performance regression gate in `src/perf/` (runs in `npm test`): operation counts at 1k, 10k
   and 30k files for loads, persist bursts, folder lookups, realtime bursts, Re-align and first
   check-in. Report: `.cursor/plans/test-audit-C-report.md`.
