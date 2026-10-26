@@ -995,6 +995,8 @@ export const deleteServerCommand: Command<DeleteServerParams> = {
     // Server operations still need individual API calls (no batch endpoint)
     let completedCount = 0
     let serverResults: boolean[] = []
+    // Local copies kept by "delete from server, keep local" (deleteLocal = false).
+    const keptLocalCopies: LocalFile[] = []
 
     if (uniqueFiles.length > 0) {
       const serverDeleteStepId = tracker.startStep('Delete from server', {
@@ -1054,7 +1056,7 @@ export const deleteServerCommand: Command<DeleteServerParams> = {
       // If keeping local copies (deleteLocal = false), update successfully deleted files
       // to show as local-only (clear pdmData)
       if (!deleteLocal) {
-        const keptLocalFiles: LocalFile[] = []
+        const keptLocalFiles = keptLocalCopies
         uniqueFiles.forEach((target, i) => {
           const localFile = target.localFile
           if (!serverResults[i] || !localFile) return
@@ -1132,9 +1134,12 @@ export const deleteServerCommand: Command<DeleteServerParams> = {
     // Collect all successfully deleted file paths
     const successfullyDeletedPaths: string[] = []
 
-    // Files deleted from server (and optionally locally)
+    // Files deleted from server (and optionally locally). A local copy the user kept stays:
+    // it was just turned into a local-only row above, and removing it here hid a file that is
+    // still on disk until the next full load.
+    const keptPaths = new Set(keptLocalCopies.map((f) => f.path))
     uniqueFiles.forEach((file, i) => {
-      if (serverResults[i]) {
+      if (serverResults[i] && !keptPaths.has(file.path)) {
         successfullyDeletedPaths.push(file.path)
       }
     })

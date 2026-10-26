@@ -406,6 +406,8 @@ export const en: TranslationDict = {
       'Some renames did not reach the server, which still records the old paths. Affected files show as moved; run reconcile-moved-paths to update them.',
     cloudRenameFailed: 'Could not rename on the server',
     movedAwayBlocked: 'File has moved - resolve the pending move first',
+    moveTargetExists: '"{{name}}" already exists in the target folder, so it was not moved',
+    mergeKeptConflicts: '{{count}} files exist in both folders, so they were left in {{folder}}',
     checkIn: 'Check In',
     checkOut: 'Check Out',
     download: 'Download',

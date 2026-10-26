@@ -141,6 +141,28 @@ function extractMetadataForCopy(source: LocalFile): PendingMetadata | undefined 
 }
 
 /**
+ * The name a rename writes to disk: a file keeps its extension when the typed name has none.
+ * Validation must check this name, not the typed one, or "B" passes next to "b.sldprt" and the
+ * rename then replaces that file (`fs.renameSync` overwrites an existing file on Windows).
+ */
+function finalRenameName(file: LocalFile, newName: string): string {
+  if (file.isDirectory) return newName
+  const originalExt = getExtension(file.name)
+  return originalExt && !getExtension(newName) ? newName + originalExt : newName
+}
+
+/**
+ * Whether a folder rename or move has server rows to carry along. Not the folder's own
+ * `pdmData`: a folder gets a `folders` row only when the directory watcher or New Folder
+ * created it, so folders that arrived by download, copy or move often have none, while the
+ * files inside them do. Gating on the folder's row left those files at their old server paths
+ * (reloaded as pending moves) and skipped the other-user checkout guard.
+ */
+function folderHasServerContent(files: LocalFile[], folder: LocalFile): boolean {
+  return !!folder.pdmData?.id || getFilesInFolder(files, folder.relativePath).some((f) => !!f.pdmData?.id)
+}
+
+/**
  * Rename Command - Rename a file or folder
  */
 export const renameCommand: Command<RenameParams> = {
@@ -176,7 +198,7 @@ export const renameCommand: Command<RenameParams> = {
     }
 
     // Block renaming if checked out by others
-    if (file.pdmData?.id) {
+    if (file.isDirectory ? folderHasServerContent(ctx.files, file) : file.pdmData?.id) {
       if (file.isDirectory) {
         // For folders: block if any nested file is checked out by another user
         const nestedFiles = getFilesInFolder(ctx.files, file.relativePath)
@@ -189,7 +211,8 @@ export const renameCommand: Command<RenameParams> = {
           return `Cannot rename folder: ${blockedBy.name} is checked out by ${userName}`
         }
       } else {
-        if (file.pdmData.checked_out_by && file.pdmData.checked_out_by !== ctx.user?.id) {
+        const holder = file.pdmData?.checked_out_by
+        if (holder && holder !== ctx.user?.id) {
           const checkoutProfile = getCheckoutProfileForOwner(file)
           const userName = checkoutProfile?.full_name || 'another user'
           return `Cannot rename: file is checked out by ${userName}`
@@ -202,7 +225,7 @@ export const renameCommand: Command<RenameParams> = {
       ? file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))
       : ''
 
-    const newNameLower = newName.trim().toLowerCase()
+    const newNameLower = finalRenameName(file, newName.trim()).toLowerCase()
     const existingSibling = ctx.files.find((f) => {
       if (f.path === file.path) return false // Skip the file being renamed
       const siblingParent = f.relativePath.includes('/')
@@ -222,17 +245,7 @@ export const renameCommand: Command<RenameParams> = {
     let pathsToClear: string[] | null = null
     try {
       // Preserve the original file extension if not provided in the new name
-      // Only applies to files, not directories
-      let finalName = newName
-      if (!file.isDirectory) {
-        const originalExt = getExtension(file.name)
-        const newNameExt = getExtension(newName)
-
-        // If original file had an extension but new name doesn't, append the original extension
-        if (originalExt && !newNameExt) {
-          finalName = newName + originalExt
-        }
-      }
+      const finalName = finalRenameName(file, newName)
 
       // Rename locally first
       const oldPath = file.path
@@ -389,6 +402,9 @@ export const renameCommand: Command<RenameParams> = {
           }))
       }
 
+      // Read before the store rename below re-keys the nested files.
+      const hasServerContent = file.isDirectory && folderHasServerContent(ctx.files, file)
+
       // Optimistic UI update: rename in store BEFORE server updates
       // Must run before updateFolderPath because server updates trigger realtime events
       // that trickle in one-by-one. If the store isn't updated first, the folder entry
@@ -427,8 +443,9 @@ export const renameCommand: Command<RenameParams> = {
       // The FS rename and store update are already done -- the UI is correct.
       // Server updates are slow for large folders (~2min for 164 files) and
       // must not block the rename UI.
-      if (file.pdmData?.id) {
-        const recordId = file.pdmData.id
+      if (file.isDirectory ? hasServerContent : file.pdmData?.id) {
+        // '' for a folder with no `folders` row: only its contents have server paths to fix.
+        const recordId = file.pdmData?.id ?? ''
         const vaultId = ctx.activeVaultId || undefined
         const noteFailure = (kind: ServerPathUpdateKind, error: string) =>
           noteServerPathUpdateFailure(
@@ -456,6 +473,7 @@ export const renameCommand: Command<RenameParams> = {
                 folderResult.errors.join('; ') || folderResult.error || 'Unknown error',
               )
             }
+            if (!recordId) return
             try {
               const folderPathResult = await updateFolderServerPath(recordId, newRelPath)
               if (folderPathResult.success) {
@@ -513,6 +531,9 @@ export const renameCommand: Command<RenameParams> = {
     }
   },
 }
+
+/** Marks a move refused because the target name is taken; the rest is the message. */
+const MOVE_TARGET_EXISTS = 'TARGET_EXISTS:'
 
 /**
  * Move Command - Move files to a new location
@@ -885,6 +906,20 @@ export const moveCommand: Command<MoveParams> = {
           }
         }
 
+        // fs.renameSync replaces an existing file on Windows (MoveFileEx with REPLACE_EXISTING),
+        // so moving onto a name the target folder already has would destroy that file, and the
+        // server move then fails on the path index and rolls back, leaving one copy of two.
+        // The same path in another case is this file being re-cased, not a clash.
+        if (
+          newPath.toLowerCase() !== file.path.toLowerCase() &&
+          (await window.electronAPI?.fileExists(newPath))
+        ) {
+          log.warn('[Move]', 'Target already exists, not moving', { fileName: file.name, destPath: newPath })
+          failedItems++
+          errors.push(`${MOVE_TARGET_EXISTS}${t('fileOps.moveTargetExists', { name: effectiveName })}`)
+          continue
+        }
+
         // Debug logging for move inputs
         log.debug('[Move]', 'Attempting local move', {
           fileName: file.name,
@@ -931,7 +966,7 @@ export const moveCommand: Command<MoveParams> = {
         }
 
         // Update server if synced (newRelPath already computed at start of loop)
-        if (file.pdmData?.id) {
+        if (file.isDirectory ? folderHasServerContent(ctx.files, file) : file.pdmData?.id) {
           if (file.isDirectory) {
             const folderResult = await updateFolderPath(
               file.relativePath,
@@ -951,7 +986,7 @@ export const moveCommand: Command<MoveParams> = {
               )
             }
             try {
-              await updateFolderServerPath(file.pdmData.id, newRelPath)
+              if (file.pdmData?.id) await updateFolderServerPath(file.pdmData.id, newRelPath)
               log.info('[Move]', 'Updated folder path on server', {
                 oldPath: file.relativePath,
                 newPath: newRelPath,
@@ -961,7 +996,7 @@ export const moveCommand: Command<MoveParams> = {
                 error: error instanceof Error ? error.message : String(error),
               })
             }
-          } else {
+          } else if (file.pdmData?.id) {
             const serverMoveResult = ctx.user?.id
               ? await moveFileOnServer(file.pdmData.id, ctx.user.id, newRelPath, effectiveName)
               : await updateFilePath(file.pdmData.id, newRelPath)
@@ -1092,7 +1127,10 @@ export const moveCommand: Command<MoveParams> = {
             (e) => e.includes('ENOENT') || e.includes('no such file'),
           )
 
-          if (hasLockError) {
+          const targetExists = errors.find((e) => e.startsWith(MOVE_TARGET_EXISTS))
+          if (targetExists) {
+            ctx.addToast('error', targetExists.slice(MOVE_TARGET_EXISTS.length))
+          } else if (hasLockError) {
             ctx.addToast(
               'error',
               `Cannot move: file or folder is in use by another application. Try again in a few seconds.`,
@@ -1754,7 +1792,10 @@ export const mergeFolderCommand: Command<MergeFolderParams> = {
 
       let succeeded = 0
       let failed = 0
+      let skipped = 0
       const errors: string[] = []
+      // Folders the merge creates under the destination, so they can be shown at once.
+      const createdFolders = new Set<string>()
 
       // Register expected file changes
       const expectedPaths = [
@@ -1774,6 +1815,11 @@ export const mergeFolderCommand: Command<MergeFolderParams> = {
           const parentDir = destPath.substring(0, destPath.lastIndexOf(sep))
           if (parentDir !== destFolderPath) {
             await window.electronAPI?.createFolder(parentDir)
+            const parentRel = parentDir.substring(vaultPath.length + 1).replace(/\\/g, '/')
+            const parts = parentRel.substring(destFolderRelPath.length + 1).split('/')
+            for (let i = 1; i <= parts.length; i++) {
+              createdFolders.add(`${destFolderRelPath}/${parts.slice(0, i).join('/')}`)
+            }
           }
 
           // Move the file
@@ -1814,10 +1860,13 @@ export const mergeFolderCommand: Command<MergeFolderParams> = {
           let finalDestPath = destPath
           let finalDestRelPath = destPath.substring(vaultPath.length + 1).replace(/\\/g, '/')
 
-          if (conflictResolution === 'skip') {
-            // Skip this file - just remove from source (delete source copy)
-            log.debug('[MergeFolder]', 'Skipping conflicting file', { name: source.name })
-            // Don't delete the source - user chose to skip, so leave it
+          // 'prompt' has no prompt behind it: nothing asks the user per file, and the drop
+          // handler sends no resolution. Falling through to the overwrite below replaced the
+          // destination file on disk (fs.renameSync replaces on Windows) and then failed on
+          // the server path index, so a file both folders held was lost. Keep both instead.
+          if (conflictResolution === 'skip' || conflictResolution === 'prompt') {
+            log.debug('[MergeFolder]', 'Leaving conflicting file in the source folder', { name: source.name })
+            skipped++
             progress.update()
             continue
           } else if (conflictResolution === 'rename') {
@@ -1870,29 +1919,55 @@ export const mergeFolderCommand: Command<MergeFolderParams> = {
         progress.update()
       }
 
-      // Delete the now-empty source folder
-      try {
-        await window.electronAPI?.deleteItem(sourceFolder.path)
-        ctx.removeFilesFromStore([sourceFolder.path])
+      // Show the folders the merge created (the store only learns of files by rename).
+      const knownFolders = new Set(
+        ctx.files.filter((f) => f.isDirectory).map((f) => f.relativePath.toLowerCase()),
+      )
+      const newFolders: LocalFile[] = [...createdFolders]
+        .filter((rel) => !knownFolders.has(rel.toLowerCase()))
+        .map((rel) => ({
+          name: rel.substring(rel.lastIndexOf('/') + 1),
+          path: `${vaultPath}${sep}${rel.replace(/\//g, sep)}`,
+          relativePath: rel,
+          isDirectory: true,
+          extension: '',
+          size: 0,
+          modifiedTime: new Date().toISOString(),
+        }))
+      if (newFolders.length > 0) ctx.addFilesToStore(newFolders)
 
-        if (sourceFolder.pdmData?.id && ctx.user?.id) {
-          const deleteResult = await deleteFolderOnServer(sourceFolder.pdmData.id, ctx.user.id)
-          if (!deleteResult.success) {
-            log.warn('[MergeFolder]', 'Failed to delete source folder on server', {
-              folderId: sourceFolder.pdmData.id,
-              error: deleteResult.error,
-            })
+      // Delete the source folder only when the merge emptied it: a file left behind (a
+      // conflict kept, a move that failed) would go to the Recycle Bin with it.
+      if (skipped > 0 || failed > 0) {
+        log.info('[MergeFolder]', 'Source folder kept: files remain in it', {
+          path: sourceFolder.relativePath,
+          skipped,
+          failed,
+        })
+      } else {
+        try {
+          await window.electronAPI?.deleteItem(sourceFolder.path)
+          ctx.removeFilesFromStore([sourceFolder.path])
+
+          if (sourceFolder.pdmData?.id && ctx.user?.id) {
+            const deleteResult = await deleteFolderOnServer(sourceFolder.pdmData.id, ctx.user.id)
+            if (!deleteResult.success) {
+              log.warn('[MergeFolder]', 'Failed to delete source folder on server', {
+                folderId: sourceFolder.pdmData.id,
+                error: deleteResult.error,
+              })
+            }
           }
-        }
 
-        log.info('[MergeFolder]', 'Deleted empty source folder', {
-          path: sourceFolder.relativePath,
-        })
-      } catch (error) {
-        log.warn('[MergeFolder]', 'Failed to delete source folder (may not be empty)', {
-          path: sourceFolder.relativePath,
-          error: error instanceof Error ? error.message : String(error),
-        })
+          log.info('[MergeFolder]', 'Deleted empty source folder', {
+            path: sourceFolder.relativePath,
+          })
+        } catch (error) {
+          log.warn('[MergeFolder]', 'Failed to delete source folder (may not be empty)', {
+            path: sourceFolder.relativePath,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
       }
 
       const { duration } = progress.finish()
@@ -1900,6 +1975,11 @@ export const mergeFolderCommand: Command<MergeFolderParams> = {
 
       if (failed > 0) {
         ctx.addToast('warning', `Merged ${succeeded} files, ${failed} failed`)
+      } else if (skipped > 0) {
+        ctx.addToast(
+          'warning',
+          t('fileOps.mergeKeptConflicts', { count: skipped, folder: sourceFolder.relativePath }),
+        )
       } else {
         ctx.addToast(
           'success',

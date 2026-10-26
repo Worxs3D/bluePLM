@@ -21,6 +21,24 @@ the API fixes; the app expects 2.8.3.
 - **API: check-in by someone without the lock answers 403**, as intended; the route matched a
   message `checkin_file` does not send and answered 409. Checkout and check-in also accept a
   call with no body, since every field is optional (it was a 400).
+- **Moving a file onto a folder that already holds that name no longer destroys the other file.**
+  The move renamed over it (Windows replaces an existing file on rename), the server then refused
+  the duplicate path and rolled the move back, leaving one file where there were two. The move is
+  now refused with a message naming the file.
+- **Dropping a folder onto a folder of the same name no longer overwrites files both hold.** The
+  merge ran with "prompt", which nothing prompts for, and fell through to overwrite. Files in
+  both folders now stay where they are (you are told how many), the source folder is recycled
+  only when the merge emptied it, and subfolders the merge creates show up at once.
+- **Renaming to a name typed without its extension checks the real name.** "B" next to
+  `b.sldprt` passed the duplicate check (it compared "B"), then became `B.sldprt` and replaced
+  the other file.
+- **Renaming or moving a folder that has no folders row now moves its files on the server and
+  respects other users' checkouts.** Folders that arrived by download, copy or move often have no
+  row; both the server path update and the "checked out by someone else" guard were skipped for
+  them, so the files reloaded as pending moves.
+- **"Delete from Server" with the local copy kept no longer hides that copy until the next
+  load.** It was turned into a local-only file and then removed from the list anyway.
+
 - **Watcher refreshes and restarts no longer rewrite the whole local sync index.** Every
   committed load put every entry back, changed or not (about 2 writes and 1 read per file, so
   ~60,000 IndexedDB operations for one saved file in a 30k vault). Only entries that change are
