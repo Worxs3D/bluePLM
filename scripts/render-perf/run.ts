@@ -192,6 +192,26 @@ async function heapMB(cdp: CDPSession): Promise<number> {
   return usedSize / (1024 * 1024)
 }
 
+async function startProfile(cdp: CDPSession): Promise<void> {
+  await cdp.send('Profiler.enable')
+  await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
+  await cdp.send('Profiler.start')
+}
+
+/** Stop the CPU profile, save it beside the traces, and keep its summary in topFunctions. */
+async function stopProfile(cdp: CDPSession, name: string, traceDir: string): Promise<void> {
+  const { profile } = await cdp.send('Profiler.stop')
+  await cdp.send('Profiler.disable')
+  writeFileSync(join(traceDir, `${name}.cpuprofile`), JSON.stringify(profile))
+  const byFunction = cpuTimeByFunction(profile as unknown as CpuProfile, { frameName: sourceFrameName(), top: 2000 })
+  topFunctions[name] = {
+    self: byFunction.self.slice(0, 25),
+    total: byFunction.total.slice(0, 25),
+    // React's own frames fill the top of `total`; the app's functions are what to act on.
+    app: byFunction.total.filter(([frame]) => frame.includes(' src/')).slice(0, 25),
+  }
+}
+
 /** Run `body` under a trace and the in-page long task window; returns both with its own result. */
 async function measured<T>(
   page: Page,
@@ -204,27 +224,12 @@ async function measured<T>(
   const from = await page.evaluate(() => window.__blueplmPerf!.now())
   // The first repetition also samples the JS stacks: the trace says how long script ran, the
   // profile says in which functions.
-  if (traceDir) {
-    await cdp.send('Profiler.enable')
-    await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
-    await cdp.send('Profiler.start')
-  }
+  if (traceDir) await startProfile(cdp)
   await startTrace(cdp)
   const result = await body()
   const to = await page.evaluate(() => window.__blueplmPerf!.waitForQuiet(300, 30_000))
   const events = await stopTrace(cdp, traceDir ? join(traceDir, `${name}.json`) : undefined)
-  if (traceDir) {
-    const { profile } = await cdp.send('Profiler.stop')
-    await cdp.send('Profiler.disable')
-    writeFileSync(join(traceDir, `${name}.cpuprofile`), JSON.stringify(profile))
-    const byFunction = cpuTimeByFunction(profile as unknown as CpuProfile, { frameName: sourceFrameName(), top: 2000 })
-    topFunctions[name] = {
-      self: byFunction.self.slice(0, 25),
-      total: byFunction.total.slice(0, 25),
-      // React's own frames fill the top of `total`; the app's functions are what to act on.
-      app: byFunction.total.filter(([frame]) => frame.includes(' src/')).slice(0, 25),
-    }
-  }
+  if (traceDir) await stopProfile(cdp, name, traceDir)
   const lt = await page.evaluate(([a, b]) => window.__blueplmPerf!.longTasks(a, b), [from, to + 1] as const)
   const breakdown = mainThreadBreakdown(events)
   if (breakdown && !topSelfTime[name]) topSelfTime[name] = breakdown.top
@@ -276,6 +281,7 @@ async function repetition(rep: number, out: string): Promise<{ metrics: Record<s
   const { app, page, cdp, launchedAt } = launched
   const metrics: Record<string, number> = {}
   try {
+    if (traceDir) await startProfile(cdp)
     await startTrace(cdp)
     await page.waitForFunction(
       () => {
@@ -287,6 +293,7 @@ async function repetition(rep: number, out: string): Promise<{ metrics: Record<s
     )
     const loaded = await page.evaluate(() => window.__blueplmPerf!.loaded!)
     const coldEvents = await stopTrace(cdp, traceDir ? join(traceDir, 'cold-start.json') : undefined)
+    if (traceDir) await stopProfile(cdp, 'cold-start', traceDir)
     const coldLt = await page.evaluate((at) => window.__blueplmPerf!.longTasks(0, at + 1), loaded.at)
     const cold = mainThreadBreakdown(coldEvents)
     if (cold && !topSelfTime['cold-start']) topSelfTime['cold-start'] = cold.top
