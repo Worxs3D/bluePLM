@@ -5,6 +5,7 @@
 //   log.info(...) / console.warn(...) / request.log.error(...)   (member call on log/console/logger)
 //   log(...) / logError(...) / logDebug(...)                      (electron/handlers helpers)
 //   t('key', ...)                                                 (src/lib/i18n)
+//   function logApplyAlignment(...) { ... }                       (a module's own log wrapper)
 // Logic inside the arguments of these calls is ignored with them; that is the trade.
 import { PluginKind, declareValuePlugin } from '@stryker-mutator/api/plugin'
 
@@ -24,6 +25,14 @@ export const strykerPlugins = [
   declareValuePlugin(PluginKind.Ignore, 'logging', {
     shouldIgnore(path) {
       if (path.isCallExpression() && isLoggingCallee(path.node.callee)) return 'Logging or i18n call'
+      // The statement-removal mutant sits on the statement, not on the call inside it.
+      if (path.isExpressionStatement()) {
+        const expression = path.node.expression
+        if (expression.type === 'CallExpression' && isLoggingCallee(expression.callee)) return 'Logging call'
+      }
+      if (path.isFunctionDeclaration() && path.node.id && LOG_FUNCTIONS.test(path.node.id.name)) {
+        return 'Log wrapper'
+      }
       return undefined
     },
   }),

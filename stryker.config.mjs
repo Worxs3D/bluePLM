@@ -68,7 +68,8 @@ export default {
   reporters: ['html', 'json', 'clear-text', 'progress'],
   htmlReporter: { fileName: `reports/mutation/${name}/mutation.html` },
   jsonReporter: { fileName: `reports/mutation/${name}/mutation.json` },
-  clearTextReporter: { allowColor: false, logTests: false, maxTestsToLog: 0 },
+  // The survivor list lives in the JSON/HTML reports; printing it too floods the job log.
+  clearTextReporter: { allowColor: false, logTests: false, reportMutants: false },
   // CI checks out a throwaway tree, so mutate it in place: the sandbox copy would miss api/'s own
   // node_modules. Off locally so a stray run cannot leave a mutated working tree behind.
   inPlace: Boolean(process.env.CI),
