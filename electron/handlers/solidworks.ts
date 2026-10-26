@@ -1796,21 +1796,29 @@ async function startSWService(
       log(`[SolidWorks] DM License: ${dmLicenseKey ? 'provided' : 'not provided'}`)
       log(`[SolidWorks] SolidWorks ProgID: ${preferredProgId ?? 'machine default'}`)
 
-      swServiceProcess = spawn(servicePath, args, {
+      const child = spawn(servicePath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       })
+      swServiceProcess = child
 
-      const pid = swServiceProcess.pid
+      const pid = child.pid
       // Save PID separately so we can detect if process is alive even if reference is lost
       lastKnownServicePid = pid ?? null
       log(`[SolidWorks] [OK] Process spawned with PID: ${pid}`)
 
-      swServiceProcess.stdout?.on('data', (data: Buffer) => {
+      // A force-restart (or a stop followed by a start) replaces the process before the old
+      // one has reported its exit. Its late events describe a process nobody holds any more,
+      // and acting on them would clear the state of the replacement: its startup ping
+      // rejected, its queue cancelled, and the new process left running unreferenced.
+      const isSuperseded = (): boolean => swServiceProcess !== null && swServiceProcess !== child
+
+      child.stdout?.on('data', (data: Buffer) => {
+        if (swServiceProcess !== child) return
         handleSWServiceOutput(data.toString())
       })
 
-      swServiceProcess.stderr?.on('data', (data: Buffer) => {
+      child.stderr?.on('data', (data: Buffer) => {
         // Ownership markers are read off complete lines only. A pipe chunk can
         // split one anywhere, including inside a PID.
         for (const line of readSwServiceStderr(data.toString())) {
@@ -1835,7 +1843,11 @@ async function startSWService(
         }
       })
 
-      swServiceProcess.on('error', (error) => {
+      child.on('error', (error) => {
+        if (isSuperseded()) {
+          log(`[SolidWorks] Ignoring error from superseded service process ${pid}: ${String(error)}`)
+          return
+        }
         // Error event can fire for IPC issues without the process dying
         logError(`[SolidWorks] [FAIL] PROCESS ERROR EVENT: ${String(error)}`)
         logServiceState('After process error event')
@@ -1843,14 +1855,19 @@ async function startSWService(
         clearServiceState(`Process error: ${String(error)}`, false)
       })
 
-      swServiceProcess.on('close', (code, signal) => {
+      child.on('close', (code, signal) => {
+        if (isSuperseded()) {
+          log(`[SolidWorks] Superseded service process ${pid} exited (code: ${code}, signal: ${signal})`)
+          return
+        }
         // Close event means process actually exited - force clear state
         log(`[SolidWorks] [DEAD] PROCESS EXITED (code: ${code}, signal: ${signal})`)
         logServiceState('After process close event')
         clearServiceState(`Process exited (code: ${code}, signal: ${signal})`, true)
       })
 
-      swServiceProcess.on('disconnect', () => {
+      child.on('disconnect', () => {
+        if (isSuperseded()) return
         // Disconnect can happen due to stdio issues without process dying
         log('[SolidWorks] [WARN] PROCESS DISCONNECTED')
         logServiceState('After process disconnect event')
