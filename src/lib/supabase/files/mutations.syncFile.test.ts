@@ -66,6 +66,17 @@ let filesInsertAttempts = 0
 /** Whether storage already holds the content for the hash being synced. */
 let storageHasContent = true
 let uploads = 0
+/** Every storage list and upload, to check the content-addressed layout. */
+let storageLists: Array<{ prefix: string; search?: string }> = []
+let storageUploads: Array<{ path: string; body: Blob; options: unknown }> = []
+/** What the next storage upload answers with. */
+let uploadError: { message: string } | null = null
+/** Every files insert payload, to check the defaults a new row gets. */
+let insertPayloads: Row[] = []
+/** Makes the next files insert fail with this error instead of applying the index. */
+let insertError: QueryError | null = null
+/** Makes every files update answer with this instead of applying its payload. */
+let updateOutcome: { data: null; error: QueryError | null } | null = null
 const logged: Array<{ level: string; message: string; data?: unknown }> = []
 
 /** Turns a LIKE/ILIKE pattern (as `escapeLikePattern` produces it) into a case-insensitive RegExp. */
@@ -143,7 +154,8 @@ class SelectQuery {
   /** PostgREST reports both "no rows" and "more than one row" as PGRST116. */
   async single(): Promise<{ data: FileRow | null; error: QueryError | null }> {
     const rows = this.run()
-    if (rows.length === 1) return { data: rows[0], error: null }
+    // A copy, as PostgREST returns: a later update must not reach back into a row read earlier.
+    if (rows.length === 1) return { data: { ...rows[0] }, error: null }
     return {
       data: null,
       error: { code: NO_ROWS, message: 'JSON object requested, multiple (or no) rows returned' },
@@ -170,6 +182,11 @@ class FilesInsertQuery {
   /** The insert PostgREST would perform, under idx_files_vault_path_unique_active. */
   async single(): Promise<{ data: FileRow | null; error: QueryError | null }> {
     filesInsertAttempts++
+    if (insertError) {
+      const error = insertError
+      insertError = null
+      return { data: null, error }
+    }
     const filePath = String(this.values.file_path)
     const collides = table.some(
       (row) =>
@@ -222,6 +239,7 @@ class UpdateQuery {
   }
 
   async single(): Promise<{ data: FileRow | null; error: QueryError | null }> {
+    if (updateOutcome) return updateOutcome
     const row = table.find((candidate) => candidate.id === this.targetId)
     if (!row) return { data: null, error: { code: NO_ROWS, message: 'no rows' } }
     Object.assign(row, this.payload)
@@ -243,10 +261,14 @@ const fakeClient = {
     from: () => ({
       // Report the content as already stored so the upload path is skipped -
       // this suite is about the database write, not about storage.
-      list: async () => ({ data: storageHasContent ? [{ name: 'hash' }] : [], error: null }),
-      upload: async () => {
+      list: async (prefix: string, options?: { search?: string }) => {
+        storageLists.push({ prefix, search: options?.search })
+        return { data: storageHasContent ? [{ name: 'hash' }] : [], error: null }
+      },
+      upload: async (path: string, body: Blob, options: unknown) => {
         uploads++
-        return { data: null, error: null }
+        storageUploads.push({ path, body, options })
+        return { data: null, error: uploadError }
       },
     }),
   },
@@ -262,7 +284,10 @@ const fakeClient = {
     expect(name).toBe('files')
     return {
       select: () => new SelectQuery(),
-      insert: (values: Row) => new FilesInsertQuery(values),
+      insert: (values: Row) => {
+        insertPayloads.push(values)
+        return new FilesInsertQuery(values)
+      },
       update: (payload: Row) => new UpdateQuery(payload),
     }
   },
@@ -347,6 +372,12 @@ beforeEach(() => {
   filesInsertAttempts = 0
   storageHasContent = true
   uploads = 0
+  storageLists = []
+  storageUploads = []
+  uploadError = null
+  insertPayloads = []
+  insertError = null
+  updateOutcome = null
   versionInserts = []
   logged.length = 0
   // syncFile logs through window.electronAPI when it is there; the test
@@ -703,5 +734,176 @@ describe('content already in storage (null base64)', () => {
     expect(uploads).toBe(0)
     expect(table).toHaveLength(0)
     expect(filesInsertAttempts).toBe(0)
+  })
+})
+
+// Pinned by mutation testing (.cursor/plans/test-mutation-report.md): what syncFile writes,
+// where, and what it does when a write fails.
+function syncBytes(filePath: string, base64: string) {
+  const fileName = filePath.split('/').pop() ?? filePath
+  return syncFile(ORG, VAULT, USER, filePath, fileName, '.sldprt', 2, 'ab12cd', base64)
+}
+
+function syncInsertOnlyAt(filePath: string) {
+  const fileName = filePath.split('/').pop() ?? filePath
+  return syncFile(ORG, VAULT, USER, filePath, fileName, '.sldprt', 42, 'new-hash', '', undefined, undefined, {
+    insertOnly: true,
+  })
+}
+
+describe('storing new content', () => {
+  beforeEach(() => {
+    storageHasContent = false
+  })
+
+  it('looks the hash up and uploads it under org/first-two-chars/hash, never overwriting', async () => {
+    const result = await syncBytes('Parts/Bracket.SLDPRT', btoa('hi'))
+
+    expect(result.error).toBeNull()
+    expect(storageLists).toEqual([{ prefix: `${ORG}/ab`, search: 'ab12cd' }])
+    expect(storageUploads).toHaveLength(1)
+    expect(storageUploads[0].path).toBe(`${ORG}/ab/ab12cd`)
+    expect(storageUploads[0].options).toMatchObject({ upsert: false })
+  })
+
+  it('uploads the decoded bytes, not the base64 text', async () => {
+    await syncBytes('Parts/Bracket.SLDPRT', btoa('hi'))
+
+    const bytes = new Uint8Array(await storageUploads[0].body.arrayBuffer())
+    expect([...bytes]).toEqual([104, 105])
+  })
+
+  it('fails without a row when the upload is refused', async () => {
+    uploadError = { message: 'new row violates row-level security policy' }
+
+    const result = await syncBytes('Parts/Bracket.SLDPRT', btoa('hi'))
+
+    expect(result.file).toBeNull()
+    expect(result.error).toMatchObject({ message: 'new row violates row-level security policy' })
+    expect(filesInsertAttempts).toBe(0)
+  })
+
+  it('carries on when another upload stored the same content first', async () => {
+    uploadError = { message: 'The resource already exists' }
+
+    const result = await syncBytes('Parts/Bracket.SLDPRT', btoa('hi'))
+
+    expect(result.error).toBeNull()
+    expect(result.isNew).toBe(true)
+  })
+})
+
+describe('updating an existing row', () => {
+  it('records the new version with the row state, defaulting a missing state', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', { state: null }))
+
+    await sync('Parts/Bracket.SLDPRT')
+
+    expect(versionInserts).toEqual([
+      expect.objectContaining({
+        file_id: 'id-parts/bracket.sldprt',
+        version: 4,
+        state: 'not_tracked',
+        content_hash: 'new-hash',
+      }),
+    ])
+  })
+
+  it('keeps the row state in the version when it has one', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+
+    await sync('Parts/Bracket.SLDPRT')
+
+    expect(versionInserts[0]).toMatchObject({ state: 'wip' })
+  })
+
+  it('writes a carried description and property bag, and keeps the bag when none is carried', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT', { description: 'Old' }))
+
+    await sync('Parts/Bracket.SLDPRT', { description: 'New', customProperties: { Material: 'Al' } })
+    expect(table[0]).toMatchObject({ description: 'New', custom_properties: { Material: 'Al' } })
+
+    await sync('Parts/Bracket.SLDPRT', {})
+    expect(table[0]).toMatchObject({ description: 'New', custom_properties: { Material: 'Al' } })
+  })
+
+  it.each([
+    ['an error', { data: null, error: { message: 'permission denied' } }],
+    ['no row', { data: null, error: null }],
+  ])('fails and records no version when the update returns %s', async (_label, outcome) => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+    updateOutcome = outcome
+
+    const result = await sync('Parts/Bracket.SLDPRT')
+
+    expect(result.file).toBeNull()
+    expect(result.error).not.toBeNull()
+    expect(versionInserts).toEqual([])
+  })
+})
+
+describe('inserting a new row', () => {
+  it('starts untracked at version 1 with empty metadata when none is carried', async () => {
+    await sync('Parts/Bracket.SLDPRT')
+
+    expect(insertPayloads[0]).toMatchObject({
+      state: 'not_tracked',
+      version: 1,
+      revision: '',
+      part_number: null,
+      description: null,
+      custom_properties: {},
+      created_by: USER,
+    })
+  })
+
+  it('writes the metadata it does carry', async () => {
+    await sync('Parts/Bracket.SLDPRT', {
+      revision: 'B',
+      partNumber: 'BR-1',
+      description: 'Bracket',
+      customProperties: { Material: 'Al' },
+    })
+
+    expect(insertPayloads[0]).toMatchObject({
+      revision: 'B',
+      part_number: 'BR-1',
+      description: 'Bracket',
+      custom_properties: { Material: 'Al' },
+    })
+  })
+
+  it('does not treat an ordinary insert error as a case collision', async () => {
+    // A row in another case is there, but the insert failed for its own reason: that row must
+    // not be updated in its place.
+    table.push(existingFile('Parts/BRACKET.SLDPRT'))
+    insertError = { code: '42501', message: 'permission denied for table files' }
+
+    const result = await sync('Parts/Bracket.SLDPRT')
+
+    expect(result.error).toMatchObject({ code: '42501' })
+    expect(activeFileByPathCalls).toEqual([])
+    expect(table[0].version).toBe(3)
+  })
+
+  it('reports the insert-only refusal as not new', async () => {
+    table.push(existingFile('Parts/Bracket.SLDPRT'))
+
+    const exact = await syncInsertOnlyAt('Parts/Bracket.SLDPRT')
+    const cased = await syncInsertOnlyAt('Parts/bracket.SLDPRT')
+
+    expect(isSyncFileExistsError(exact.error)).toBe(true)
+    expect(exact.isNew).toBe(false)
+    expect(isSyncFileExistsError(cased.error)).toBe(true)
+    expect(cased.isNew).toBe(false)
+  })
+})
+
+describe('isSyncFileExistsError', () => {
+  it('is false for anything that is not the refusal', () => {
+    expect(isSyncFileExistsError(null)).toBe(false)
+    expect(isSyncFileExistsError(undefined)).toBe(false)
+    expect(isSyncFileExistsError('SYNC_FILE_EXISTS')).toBe(false)
+    expect(isSyncFileExistsError({ code: '23505' })).toBe(false)
   })
 })

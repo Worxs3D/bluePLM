@@ -18,6 +18,10 @@ let rowVisible = true
 let updatePayloads: Row[] = []
 let activityInserts: Row[] = []
 let versionWrites = 0
+/** Row-level security refuses the UPDATE while the row stays readable. */
+let updateDenied = false
+/** Which query answers with an error: the file lookup, the update, or the re-read after it. */
+let failing = new Set<'file' | 'update' | 'read'>()
 
 function isEmpty(value: unknown): boolean {
   return value === null || value === undefined || value === ''
@@ -44,6 +48,8 @@ function updateQuery(payload: Row) {
     },
     async maybeSingle() {
       updatePayloads.push(payload)
+      if (failing.has('update')) return { data: null, error: { message: 'update boom' } }
+      if (updateDenied) return { data: null, error: null }
       if (!rowVisible || !filters.every((filter) => filter(row))) {
         return { data: null, error: null }
       }
@@ -71,9 +77,13 @@ vi.mock('../client', () => ({
       }
       return {
         update: (payload: Row) => updateQuery(payload),
-        select: () => ({
+        select: (columns: string) => ({
           eq: () => ({
-            maybeSingle: async () => ({ data: rowVisible ? { ...row } : null, error: null }),
+            maybeSingle: async () => {
+              const query = columns.startsWith('org_id') ? 'file' : 'read'
+              if (failing.has(query)) return { data: null, error: { message: `${query} boom` } }
+              return { data: rowVisible ? { ...row } : null, error: null }
+            },
           }),
         }),
       }
@@ -101,6 +111,8 @@ beforeEach(() => {
   updatePayloads = []
   activityInserts = []
   versionWrites = 0
+  updateDenied = false
+  failing = new Set()
 })
 
 describe('fillEmptyFileMetadata', () => {
@@ -219,5 +231,86 @@ describe('fillEmptyFileMetadataBatch', () => {
     )
     expect(held.heldByOther).toEqual(['ELEC/A.SLDPRT'])
     expect(held.filled).toBe(0)
+  })
+})
+
+// Pinned by mutation testing (.cursor/plans/test-mutation-report.md).
+describe('fillEmptyFileMetadata when the write does not land', () => {
+  it('reports a value the update was not allowed to write as refused, not already set', async () => {
+    updateDenied = true
+
+    const result = await fillEmptyFileMetadata(FILE_ID, USER_ID, { part_number: 'BR-100077' })
+
+    expect(result.refused).toEqual(['part_number'])
+    expect(result.alreadySet).toEqual([])
+    expect(result.row).toBeUndefined()
+    expect(activityInserts).toHaveLength(0)
+  })
+
+  it('logs no activity when every value was already set', async () => {
+    row.part_number = 'BR-1'
+    row.description = 'Set'
+
+    const result = await fillEmptyFileMetadata(FILE_ID, USER_ID, { part_number: 'BR-2', description: 'Other' })
+
+    expect(result.alreadySet).toEqual(['part_number', 'description'])
+    expect(activityInserts).toHaveLength(0)
+  })
+
+  it('says no version was created in the activity it logs', async () => {
+    await fillEmptyFileMetadata(FILE_ID, USER_ID, { part_number: 'BR-100077' })
+
+    expect(activityInserts[0]).toMatchObject({ details: { versionCreated: false, source: 'solidworks' } })
+  })
+
+  it.each([
+    ['the file lookup', 'file' as const, 'file boom'],
+    ['the update', 'update' as const, 'update boom'],
+    ['the re-read', 'read' as const, 'read boom'],
+  ])('stops and reports an error from %s', async (_label, query, message) => {
+    failing.add(query)
+    updateDenied = query === 'read'
+
+    const result = await fillEmptyFileMetadata(FILE_ID, USER_ID, { part_number: 'BR-100077' })
+
+    expect(result.error).toBe(message)
+    expect(result.filled).toEqual([])
+    expect(result.alreadySet).toEqual([])
+    expect(result.refused).toEqual([])
+  })
+})
+
+describe('fillEmptyFileMetadataBatch accounting', () => {
+  it('counts refusals, names the refused file and puts no row in the store for it', async () => {
+    updateDenied = true
+
+    const receipt = await fillEmptyFileMetadataBatch(
+      [{ fileId: FILE_ID, relativePath: 'ELEC/A.SLDPRT', values: { part_number: 'BR-1', description: 'PCB' } }],
+      USER_ID,
+    )
+
+    expect(receipt).toMatchObject({ filled: 0, refused: 2, refusedPaths: ['ELEC/A.SLDPRT'], updatedRows: [] })
+  })
+
+  it('names no file as refused when nothing was refused', async () => {
+    const receipt = await fillEmptyFileMetadataBatch(
+      [{ fileId: FILE_ID, relativePath: 'ELEC/A.SLDPRT', values: { part_number: 'BR-1' } }],
+      USER_ID,
+    )
+
+    expect(receipt.refusedPaths).toEqual([])
+    expect(receipt.updatedRows).toEqual([{ fileId: FILE_ID, row: expect.objectContaining({ part_number: 'BR-1' }) }])
+  })
+
+  it('lists a file whose write errored as failed, with the reason', async () => {
+    failing.add('update')
+
+    const receipt = await fillEmptyFileMetadataBatch(
+      [{ fileId: FILE_ID, relativePath: 'ELEC/A.SLDPRT', values: { part_number: 'BR-1' } }],
+      USER_ID,
+    )
+
+    expect(receipt.failed).toEqual([{ relativePath: 'ELEC/A.SLDPRT', reason: 'update boom' }])
+    expect(receipt.filled).toBe(0)
   })
 })
