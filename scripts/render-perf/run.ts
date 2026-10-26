@@ -217,7 +217,13 @@ async function measured<T>(
     const { profile } = await cdp.send('Profiler.stop')
     await cdp.send('Profiler.disable')
     writeFileSync(join(traceDir, `${name}.cpuprofile`), JSON.stringify(profile))
-    topFunctions[name] = cpuTimeByFunction(profile as unknown as CpuProfile, { frameName: sourceFrameName() })
+    const byFunction = cpuTimeByFunction(profile as unknown as CpuProfile, { frameName: sourceFrameName(), top: 2000 })
+    topFunctions[name] = {
+      self: byFunction.self.slice(0, 25),
+      total: byFunction.total.slice(0, 25),
+      // React's own frames fill the top of `total`; the app's functions are what to act on.
+      app: byFunction.total.filter(([frame]) => frame.includes(' src/')).slice(0, 25),
+    }
   }
   const lt = await page.evaluate(([a, b]) => window.__blueplmPerf!.longTasks(a, b), [from, to + 1] as const)
   const breakdown = mainThreadBreakdown(events)
@@ -244,7 +250,7 @@ async function measured<T>(
 /** Per scenario, the trace event names with the most main-thread self time (first repetition wins). */
 const topSelfTime: Record<string, Array<[string, number]>> = {}
 /** Per scenario, the functions with the most sampled time (first repetition, source-mapped). */
-const topFunctions: Record<string, ReturnType<typeof cpuTimeByFunction>> = {}
+const topFunctions: Record<string, ReturnType<typeof cpuTimeByFunction> & { app: Array<[string, number]> }> = {}
 
 const SEARCH = 'Bracket' // every synthetic file name has it
 const DEEP_FOLDER = 'P00/Assy-00/Sub-00'
