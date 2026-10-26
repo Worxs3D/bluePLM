@@ -30,8 +30,17 @@ const EMBED = /^(\w+):(\w+)(?:!(\w+))?\s*\(([^)]*)\)$/
 /** A Blob's bytes. jsdom's Blob has no `arrayBuffer()`, so fall back to FileReader there. */
 async function blobBytes(blob: Blob): Promise<Uint8Array> {
   if (typeof blob.arrayBuffer === 'function') return new Uint8Array(await blob.arrayBuffer())
+  // Typed here rather than from the DOM lib: api/'s typecheck reads this file without it.
+  type Reader = {
+    result: unknown
+    error: unknown
+    onload: (() => void) | null
+    onerror: (() => void) | null
+    readAsArrayBuffer(blob: Blob): void
+  }
+  const FileReaderCtor = (globalThis as unknown as { FileReader: new () => Reader }).FileReader
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+    const reader = new FileReaderCtor()
     reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer))
     reader.onerror = () => reject(reader.error)
     reader.readAsArrayBuffer(blob)

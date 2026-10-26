@@ -12,7 +12,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const here = resolve(__dirname)
-const typesSource = readFileSync(resolve(here, '../../lib/commands/types.ts'), 'utf8')
+// Windows checkouts have CRLF line endings.
+const typesSource = readFileSync(resolve(here, '../../lib/commands/types.ts'), 'utf8').replace(/\r\n/g, '\n')
 
 /** Command id -> [journey file, a test title in it]. */
 const JOURNEYS: Record<string, Array<[string, string]>> = {
