@@ -15,6 +15,7 @@ import { buildFullPath } from '@/lib/commands/types'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { createTrailingBatcher } from '@/lib/trailingBatcher'
+import { findFileById, findStoredFileById } from '@/stores/fileIdIndex'
 import { createLocalWriteGuard } from './realtimeLocalWrites'
 import { checkoutLostWithEdits } from '@/lib/metadata/strandedEdits'
 import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
@@ -237,10 +238,7 @@ export function useRealtimeSubscriptions(
     const scheduleOrphanDiscardRefresh = orphanDiscardRefreshScheduler.schedule
 
     // The row a file holds in the store now: the one with its bytes, not its moved-away stub.
-    const storedRow = (fileId: string) =>
-      usePDMStore
-        .getState()
-        .files.find((f) => f.pdmData?.id === fileId && f.diffStatus !== 'moved_away')?.pdmData
+    const storedRow = (fileId: string) => findStoredFileById(usePDMStore.getState().files, fileId)?.pdmData
     const localWrites = createLocalWriteGuard(storedRow)
 
     // Batch file location updates to prevent render cascade when folder is moved
@@ -384,6 +382,15 @@ export function useRealtimeSubscriptions(
       if (list) list.push(pdmData)
       else pendingPdmUpdates.set(fileId, [pdmData])
       pdmUpdateBatcher.add(fileId)
+    }
+
+    /** Who holds the file once the rows waiting in the batch land: the latest that says, else the store. */
+    const holderOnceApplied = (fileId: string) => {
+      const pending = pendingPdmUpdates.get(fileId) ?? []
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (pending[i].checked_out_by !== undefined) return pending[i].checked_out_by
+      }
+      return findFileById(usePDMStore.getState().files, fileId)?.pdmData?.checked_out_by
     }
 
     /** Apply whatever is still waiting for this file, so the next look at the store sees it. */
@@ -575,7 +582,7 @@ export function useRealtimeSubscriptions(
           // File updated - could be checkout, version change, state change, path change (move), etc.
           if (newFile) {
             const { isFileRecentlyModified, files, vaultPath } = usePDMStore.getState()
-            const localFile = files.find((f) => f.pdmData?.id === newFile.id)
+            const localFile = findFileById(files, newFile.id)
 
             // The window after this machine's own check-in or discard exists to drop the late
             // echoes of that write. It only covers rows this user wrote: another user's checkout
@@ -789,14 +796,12 @@ export function useRealtimeSubscriptions(
                   const eventVaultId = newFile.vault_id ?? activeVaultId ?? null
                   void lookupOwnerProfile(ownerId, { orgId: organization.id, vaultId: eventVaultId })
                     .then((user) => {
-                      // The checkout itself may still be waiting in the batch.
-                      if (pdmUpdateBatcher.has(newFile.id)) pdmUpdateBatcher.flush()
+                      // The checkout itself may still be waiting in the batch. It is not flushed
+                      // to look: every flush is a store write and a full re-render, and a burst
+                      // of checkouts flushed once per profile (12 renders of ~170 ms in the
+                      // render-perf burst). The profile is queued behind it in the same batch.
                       const currentState = usePDMStore.getState()
-                      const currentFile = currentState.files.find(
-                        (file) => file.pdmData?.id === newFile.id,
-                      )
-                      const ownerStillMatches =
-                        currentFile?.pdmData?.checked_out_by === ownerId
+                      const ownerStillMatches = holderOnceApplied(newFile.id) === ownerId
                       const eventStillLatest =
                         latestCheckoutEventByFile.get(newFile.id) === eventSequence
                       const currentActiveVaultId =

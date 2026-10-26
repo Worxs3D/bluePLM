@@ -217,7 +217,8 @@ describe('store, folder index and realtime performance gate', () => {
         try {
           const vaultId = `vault-perf-${size}`
           const vault = buildSyntheticVault(size)
-          const files = buildLoadedStoreFiles(vault)
+          // Rows count their property reads, so a scan per event shows up as reads x events.
+          const { rows: files, reads } = countReads(buildLoadedStoreFiles(vault))
           store.setState({
             organization: { id: ORG_ID } as never,
             user: { id: FIXTURE_USER_ID, email: 'perf@example.test', full_name: 'Perf' } as never,
@@ -232,6 +233,7 @@ describe('store, folder index and realtime performance gate', () => {
           const rowOf = (file: LocalFile) => ({ ...(file.pdmData as PDMFile), vault_id: vaultId }) as PDMFile
 
           // Another user checks in a new version of a batch of files.
+          const readsBefore = reads()
           const versions = await playBurst(
             'version',
             size,
@@ -240,6 +242,12 @@ describe('store, folder index and realtime performance gate', () => {
               return ['UPDATE', { ...before, version: before.version + 1, updated_by: OTHER_USER } as PDMFile, before]
             }),
           )
+
+          // Each event used to look its row up with a scan of the store (two or three of them):
+          // 200 events over 30k rows were ~18M row reads. Now an index per files array.
+          const versionReads = reads() - readsBefore
+          out(`realtime ${size}: version burst read ${versionReads} row properties`)
+          expect(versionReads).toBeLessThanOrEqual(files.length * 60)
 
           // Another user trashes a batch of files (a soft delete arrives as an UPDATE).
           const deletes = await playBurst(
