@@ -25,6 +25,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase, getCurrentConfig, isSupabaseConfigured } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -70,7 +71,12 @@ interface NetworkStats {
 }
 
 export function SupabaseSettings() {
-  const { organization, getEffectiveRole } = usePDMStore()
+  const { organization, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   const [status, setStatus] = useState<'unknown' | 'online' | 'offline' | 'checking'>('unknown')
   const [showKey, setShowKey] = useState(false)

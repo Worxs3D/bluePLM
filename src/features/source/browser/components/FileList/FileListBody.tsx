@@ -296,6 +296,10 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     )
 
     const virtualizer = useVirtualizer({
+      // Render scroll updates in React's own scheduling, not flushSync inside every scroll event:
+      // the forced synchronous render and layout per event held the 30k-row scroll near 15-19 fps
+      // in the render-perf run (scripts/render-perf/run.ts), with overscan covering the gap.
+      useFlushSync: false,
       count: virtualRows.length,
       getScrollElement: () => tableRef.current,
       estimateSize: getRowHeight,

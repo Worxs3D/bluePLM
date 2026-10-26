@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
 import { shouldDeferAutoConnectLoad } from '@/hooks/useAuth'
@@ -181,7 +182,29 @@ export function App() {
     setVaultPath,
     setVaultConnected,
     getEffectiveRole,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      authInitialized: s.authInitialized,
+      isOfflineMode: s.isOfflineMode,
+      vaultPath: s.vaultPath,
+      isVaultConnected: s.isVaultConnected,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      statusMessage: s.statusMessage,
+      toggleSidebar: s.toggleSidebar,
+      toggleDetailsPanel: s.toggleDetailsPanel,
+      setApiServerUrl: s.setApiServerUrl,
+      apiServerUrl: s.apiServerUrl,
+      addToast: s.addToast,
+      setIsLoading: s.setIsLoading,
+      setStatusMessage: s.setStatusMessage,
+      setVaultPath: s.setVaultPath,
+      setVaultConnected: s.setVaultConnected,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   // Get current vault ID (from activeVaultId or first connected vault)
   const currentVaultId = activeVaultId || connectedVaults[0]?.id

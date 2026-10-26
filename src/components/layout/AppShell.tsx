@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense, lazy } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useLoadFiles, useVaultManagement, useStagedCheckins, useDeniedModules } from '@/hooks'
 import type { ModuleId } from '@/types/modules'
 import { Toast } from '@/components/core'
@@ -59,7 +60,21 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     rightPanelTabs,
     itemPanel,
     customerPanel,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      activeView: s.activeView,
+      setActiveView: s.setActiveView,
+      sidebarVisible: s.sidebarVisible,
+      setSidebarWidth: s.setSidebarWidth,
+      detailsPanelVisible: s.detailsPanelVisible,
+      setDetailsPanelHeight: s.setDetailsPanelHeight,
+      rightPanelVisible: s.rightPanelVisible,
+      setRightPanelWidth: s.setRightPanelWidth,
+      rightPanelTabs: s.rightPanelTabs,
+      itemPanel: s.itemPanel,
+      customerPanel: s.customerPanel,
+    })),
+  )
 
   const deniedModules = useDeniedModules()
 

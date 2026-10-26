@@ -11,6 +11,7 @@ import type React from 'react'
 import * as LucideIcons from 'lucide-react'
 import { Users } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { insertTeamMember } from '../../hooks/supabaseHelpers'
 import type { OrgUser, TeamWithDetails } from '../../types'
 
@@ -29,7 +30,7 @@ export function AddToTeamModal({
   onClose,
   onSuccess,
 }: AddToTeamModalProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const handleAddToTeam = async (team: TeamWithDetails) => {
     try {

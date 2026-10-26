@@ -7,6 +7,7 @@ import { Boxes } from 'lucide-react'
 import type { ActionComponentProps } from './types'
 import { ContextSubmenu } from '../components'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 interface OpenAssembly {
@@ -27,7 +28,7 @@ export function AssemblyActions({ multiSelect, firstFile, onClose }: ActionCompo
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasFetchedRef = useRef(false)
 
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const solidworksEnabled = usePDMStore((s) => s.solidworksIntegrationEnabled)
 
   // Check if the file(s) are SolidWorks parts or assemblies that can be inserted

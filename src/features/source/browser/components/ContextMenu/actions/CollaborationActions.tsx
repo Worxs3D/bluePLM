@@ -15,6 +15,7 @@ import {
   ListChecks,
 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
 import type { RefreshableActionProps, SelectionState } from './types'
@@ -53,7 +54,14 @@ export function CollaborationActions({
   isCreatingShareLink,
   handleQuickShareLink,
 }: CollaborationActionsProps) {
-  const { user, files, addToast, setActiveView } = usePDMStore()
+  const { user, files, addToast, setActiveView } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      files: s.files,
+      addToast: s.addToast,
+      setActiveView: s.setActiveView,
+    })),
+  )
   const isFolder = firstFile.isDirectory
 
   // Check for SolidWorks assembly files

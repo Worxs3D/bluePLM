@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { ClipboardList, File, Loader2 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getActiveECOs as fetchActiveECOs, addFileToECO } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -22,8 +23,16 @@ export function AddToECODialog({
   userId,
   onSuccess,
 }: AddToECODialogProps) {
-  const { addToast, ecosLoaded, getActiveECOs, setECOs, setECOsLoading, ecosLoading } =
-    usePDMStore()
+  const { addToast, ecosLoaded, getActiveECOs, setECOs, setECOsLoading, ecosLoading } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      ecosLoaded: s.ecosLoaded,
+      getActiveECOs: s.getActiveECOs,
+      setECOs: s.setECOs,
+      setECOsLoading: s.setECOsLoading,
+      ecosLoading: s.ecosLoading,
+    })),
+  )
 
   // Get active ECOs from store
   const activeECOs = getActiveECOs()

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, Save, Shield, Users, Truck, Mail, Phone } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_AUTH_PROVIDERS, type AuthProviderSettings } from '@/types/pdm'
 
@@ -72,7 +73,13 @@ function ProviderToggle({ label, icon, enabled, onChange, disabled }: ProviderTo
 }
 
 export function AuthProvidersSettings() {
-  const { organization, addToast, getEffectiveRole } = usePDMStore()
+  const { organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

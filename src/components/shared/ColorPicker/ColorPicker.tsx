@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Plus, RotateCcw } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Default preset colors
 export const DEFAULT_PRESET_COLORS = [
@@ -55,8 +56,15 @@ export function ColorPicker({
   inline = false,
   className = '',
 }: ColorPickerProps) {
-  const { colorSwatches, orgColorSwatches, addColorSwatch, removeColorSwatch, getEffectiveRole } =
-    usePDMStore()
+  const { colorSwatches, orgColorSwatches, addColorSwatch, removeColorSwatch, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      colorSwatches: s.colorSwatches,
+      orgColorSwatches: s.orgColorSwatches,
+      addColorSwatch: s.addColorSwatch,
+      removeColorSwatch: s.removeColorSwatch,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   const [customColor, setCustomColor] = useState(color || '#3b82f6')
   const inputRef = useRef<HTMLInputElement>(null)

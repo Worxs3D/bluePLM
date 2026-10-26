@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 
@@ -17,8 +18,14 @@ const db = supabase as any // TODO: type this
 export function useSolidWorksServiceControl() {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
-  const { addToast, organization, autoStartSolidworksService, solidworksServiceVerboseLogging } =
-    usePDMStore()
+  const { addToast, organization, autoStartSolidworksService, solidworksServiceVerboseLogging } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+      autoStartSolidworksService: s.autoStartSolidworksService,
+      solidworksServiceVerboseLogging: s.solidworksServiceVerboseLogging,
+    })),
+  )
 
   // Use consolidated status hook
   const { status, refreshStatus } = useSolidWorksStatus()
@@ -140,7 +147,38 @@ export function useSolidWorksSettings() {
     user,
     files,
     getEffectiveRole,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      setOrganization: s.setOrganization,
+      addToast: s.addToast,
+      cadPreviewMode: s.cadPreviewMode,
+      setCadPreviewMode: s.setCadPreviewMode,
+      solidworksPath: s.solidworksPath,
+      setSolidworksPath: s.setSolidworksPath,
+      autoStartSolidworksService: s.autoStartSolidworksService,
+      setAutoStartSolidworksService: s.setAutoStartSolidworksService,
+      hideSolidworksTempFiles: s.hideSolidworksTempFiles,
+      setHideSolidworksTempFiles: s.setHideSolidworksTempFiles,
+      ignoreSolidworksTempFiles: s.ignoreSolidworksTempFiles,
+      setIgnoreSolidworksTempFiles: s.setIgnoreSolidworksTempFiles,
+      lockDrawingRevision: s.lockDrawingRevision,
+      setLockDrawingRevision: s.setLockDrawingRevision,
+      lockDrawingItemNumber: s.lockDrawingItemNumber,
+      setLockDrawingItemNumber: s.setLockDrawingItemNumber,
+      lockDrawingDescription: s.lockDrawingDescription,
+      setLockDrawingDescription: s.setLockDrawingDescription,
+      solidworksServiceVerboseLogging: s.solidworksServiceVerboseLogging,
+      setSolidworksServiceVerboseLogging: s.setSolidworksServiceVerboseLogging,
+      solidworksProgId: s.solidworksProgId,
+      setSolidworksProgId: s.setSolidworksProgId,
+      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
+      vaultPath: s.vaultPath,
+      user: s.user,
+      files: s.files,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   const serviceControl = useSolidWorksServiceControl()
   const { status } = serviceControl

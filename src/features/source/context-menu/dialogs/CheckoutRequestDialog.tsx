@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { ArrowDown, File, Send, Loader2 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 
 interface CheckoutRequestDialogProps {
@@ -21,7 +22,7 @@ export function CheckoutRequestDialog({
   userId,
   onSuccess,
 }: CheckoutRequestDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const [message, setMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Users, File, Loader2, Check, Send } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { OrgUser } from '../types'
 import { getOrgUsers } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -23,7 +24,7 @@ export function MentionDialog({
   userId,
   onSuccess,
 }: MentionDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])

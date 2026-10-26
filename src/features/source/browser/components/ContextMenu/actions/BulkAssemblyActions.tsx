@@ -24,6 +24,7 @@ import {
 import type { ActionComponentProps } from './types'
 import { ContextSubmenu } from '../components'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 import {
   resolveAssociatedFiles,
@@ -50,7 +51,14 @@ export function BulkAssemblyActions({ multiSelect, firstFile, onClose }: ActionC
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasFetchedRef = useRef(false)
 
-  const { files, organization, user, addToast } = usePDMStore()
+  const { files, organization, user, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+    })),
+  )
 
   const isAssembly = useCallback(() => {
     const ext = firstFile.extension?.toLowerCase()

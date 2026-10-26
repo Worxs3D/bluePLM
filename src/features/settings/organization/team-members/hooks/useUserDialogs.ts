@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { OrgUser } from '../types'
 
 export function useUserDialogs() {
@@ -11,7 +12,16 @@ export function useUserDialogs() {
     setIsRemoving,
     editingTeamsUser,
     setEditingTeamsUser,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      removingUser: s.removingUser,
+      setRemovingUser: s.setRemovingUser,
+      isRemoving: s.isRemoving,
+      setIsRemoving: s.setIsRemoving,
+      editingTeamsUser: s.editingTeamsUser,
+      setEditingTeamsUser: s.setEditingTeamsUser,
+    })),
+  )
 
   // === Local state (component-specific dialogs) ===
 

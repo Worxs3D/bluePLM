@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Globe, ChevronDown, Check } from 'lucide-react'
 import { usePDMStore, Language } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Only show languages that have actual translations (not English fallback)
 const languageOptions: { value: Language; label: string; nativeLabel: string }[] = [
@@ -25,7 +26,12 @@ export function LanguageSelector({
   compact = false,
   dropdownPosition = 'bottom-right',
 }: LanguageSelectorProps) {
-  const { language, setLanguage } = usePDMStore()
+  const { language, setLanguage } = usePDMStore(
+    useShallow((s) => ({
+      language: s.language,
+      setLanguage: s.setLanguage,
+    })),
+  )
   const [isOpen, setIsOpen] = useState(false)
 
   const currentLang = languageOptions.find((l) => l.value === language) || languageOptions[0]

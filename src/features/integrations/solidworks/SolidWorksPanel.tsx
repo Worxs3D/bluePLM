@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { syncSolidWorksFileMetadata, getWhereUsed } from '@/lib/supabase'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -58,7 +59,12 @@ export function useSolidWorksService() {
     running: false,
   })
   const [isStarting, setIsStarting] = useState(false)
-  const { addToast, organization } = usePDMStore()
+  const { addToast, organization } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+    })),
+  )
 
   // Get DM license key from organization settings
   const dmLicenseKey = organization?.settings?.solidworks_dm_license_key
@@ -151,7 +157,13 @@ export function WhereUsedTab({ file }: { file: LocalFile }) {
   const [isLoading, setIsLoading] = useState(false)
   const [usedIn, setUsedIn] = useState<WhereUsedResult[]>([])
   const [error, setError] = useState<string | null>(null)
-  const { files, setSelectedFiles, addToast } = usePDMStore()
+  const { files, setSelectedFiles, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      setSelectedFiles: s.setSelectedFiles,
+      addToast: s.addToast,
+    })),
+  )
 
   const ext = file.extension?.toLowerCase() || ''
   const isSolidWorks = ['.sldprt', '.sldasm'].includes(ext)
@@ -440,7 +452,7 @@ function SWDatacardMock({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['identification', 'physical']),
   )
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
 
   const ext = file.extension?.toLowerCase() || ''
   const fileType = ext === '.sldprt' ? 'Part' : ext === '.sldasm' ? 'Assembly' : 'Drawing'
@@ -855,7 +867,16 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
     lockDrawingItemNumber,
     lockDrawingDescription,
     lockDrawingRevision,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      user: s.user,
+      updateFileInStore: s.updateFileInStore,
+      lockDrawingItemNumber: s.lockDrawingItemNumber,
+      lockDrawingDescription: s.lockDrawingDescription,
+      lockDrawingRevision: s.lockDrawingRevision,
+    })),
+  )
 
   const ext = file.extension?.toLowerCase() || ''
   const isSolidWorks = ['.sldprt', '.sldasm', '.slddrw'].includes(ext)
@@ -1601,7 +1622,7 @@ export const SWDatacardTab = SWPropertiesTab
 export function SWExportActions({ file }: { file: LocalFile }) {
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const { status } = useSolidWorksService()
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const ext = file.extension?.toLowerCase() || ''
   const isDrawing = ext === '.slddrw'

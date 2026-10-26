@@ -4,6 +4,7 @@
 import { useMemo } from 'react'
 import { CloudOff, Trash2, Undo2 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand, getServerDeletionTargets } from '@/lib/commands'
 import type { RefreshableActionProps, SelectionCounts, SelectionState } from './types'
@@ -44,7 +45,13 @@ export function DeleteActions({
   undoStack,
   handleUndo,
 }: DeleteActionsProps) {
-  const { files, user, addToast } = usePDMStore()
+  const { files, user, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      user: s.user,
+      addToast: s.addToast,
+    })),
+  )
   const serverFiles = usePDMStore((s) => s.serverFiles)
   const vaultPath = usePDMStore((s) => s.vaultPath)
 

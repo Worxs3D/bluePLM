@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 import { log } from '@/lib/logger'
 import type { StagedCheckin } from '@/stores/pdmStore'
@@ -18,8 +19,17 @@ interface StagedConflict {
  * - Managing conflict dialog state
  */
 export function useStagedCheckins(loadFiles: (silent?: boolean) => void) {
-  const { user, organization, vaultPath, isOfflineMode, stagedCheckins, unstageCheckin, addToast } =
-    usePDMStore()
+  const { user, organization, vaultPath, isOfflineMode, stagedCheckins, unstageCheckin, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      vaultPath: s.vaultPath,
+      isOfflineMode: s.isOfflineMode,
+      stagedCheckins: s.stagedCheckins,
+      unstageCheckin: s.unstageCheckin,
+      addToast: s.addToast,
+    })),
+  )
 
   // Track previous offline mode to detect transition
   const prevOfflineModeRef = useRef(isOfflineMode)

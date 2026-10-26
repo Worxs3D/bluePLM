@@ -2,6 +2,7 @@
 import { ArrowDown, ArrowUp, Undo2, RefreshCw, Network, FileSearch, Package2 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
   executeCommand,
@@ -68,7 +69,12 @@ export function PDMItems({
   onClose,
   onRefresh,
 }: PDMItemsProps) {
-  const { hasPermission, addToast } = usePDMStore()
+  const { hasPermission, addToast } = usePDMStore(
+    useShallow((s) => ({
+      hasPermission: s.hasPermission,
+      addToast: s.addToast,
+    })),
+  )
   const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null
   const heldFileHydration = usePDMStore((s) =>
     heldFile?.pdmData?.id ? s.checkoutHydration[heldFile.pdmData.id]?.state : undefined,

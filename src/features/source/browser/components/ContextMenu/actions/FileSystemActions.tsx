@@ -3,6 +3,7 @@
  */
 import { Copy, FolderOpen, Pencil, Star } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { copyToClipboard } from '@/lib/clipboard'
 import { buildFullPath } from '@/lib/utils/path'
@@ -32,7 +33,18 @@ export function FileSystemActions({
     unpinFolder,
     addToast,
     vaultPath,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      activeVaultId: s.activeVaultId,
+      connectedVaults: s.connectedVaults,
+      pinnedFolders: s.pinnedFolders,
+      pinFolder: s.pinFolder,
+      unpinFolder: s.unpinFolder,
+      addToast: s.addToast,
+      vaultPath: s.vaultPath,
+    })),
+  )
 
   const allCloudOnly = contextFiles.every((f) => f.diffStatus === 'cloud')
   const isFolder = firstFile.isDirectory

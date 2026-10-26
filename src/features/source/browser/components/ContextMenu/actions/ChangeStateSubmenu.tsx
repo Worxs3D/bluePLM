@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react'
 import { Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { supabase } from '@/lib/supabase'
 import {
@@ -39,7 +40,13 @@ export function ChangeStateSubmenu({
   setShowStateSubmenu,
   stateSubmenuTimeoutRef,
 }: ChangeStateSubmenuProps) {
-  const { user, organization, addToast } = usePDMStore()
+  const { user, organization, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+    })),
+  )
 
   const [loading, setLoading] = useState(false)
   const [transitions, setTransitions] = useState<AvailableTransition[]>([])

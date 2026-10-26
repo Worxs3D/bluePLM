@@ -12,6 +12,7 @@
 import React, { useState, useMemo } from 'react'
 import { Clipboard, FileOutput, FolderOpen } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 
 // Import action components
@@ -165,7 +166,14 @@ export function FileContextMenu({
   savingConfigsToSW,
 }: FileContextMenuProps) {
   // Get user and other values from store
-  const { user, files, getEffectiveRole, solidworksIntegrationEnabled } = usePDMStore()
+  const { user, files, getEffectiveRole, solidworksIntegrationEnabled } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      files: s.files,
+      getEffectiveRole: s.getEffectiveRole,
+      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
+    })),
+  )
 
   // State for expandable section
   const [isExpanded, setIsExpanded] = useState(false)

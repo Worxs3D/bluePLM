@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore, ThemeMode, Language } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { CalendarDays } from 'lucide-react'
 import { signOut, getSupabaseClient, endRemoteSession } from '@/lib/supabase'
 import { getMachineId } from '@/lib/backup'
@@ -91,7 +92,37 @@ export function PreferencesSettings() {
     setLogSharingEnabled,
     tabsEnabled,
     setTabsEnabled,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      setUser: s.setUser,
+      setOrganization: s.setOrganization,
+      activeVaultId: s.activeVaultId,
+      lowercaseExtensions: s.lowercaseExtensions,
+      setLowercaseExtensions: s.setLowercaseExtensions,
+      ignorePatterns: s.ignorePatterns,
+      addIgnorePattern: s.addIgnorePattern,
+      removeIgnorePattern: s.removeIgnorePattern,
+      theme: s.theme,
+      setTheme: s.setTheme,
+      autoApplySeasonalThemes: s.autoApplySeasonalThemes,
+      setAutoApplySeasonalThemes: s.setAutoApplySeasonalThemes,
+      language: s.language,
+      setLanguage: s.setLanguage,
+      autoDownloadCloudFiles: s.autoDownloadCloudFiles,
+      setAutoDownloadCloudFiles: s.setAutoDownloadCloudFiles,
+      autoDownloadUpdates: s.autoDownloadUpdates,
+      setAutoDownloadUpdates: s.setAutoDownloadUpdates,
+      autoDownloadSizeLimit: s.autoDownloadSizeLimit,
+      setAutoDownloadSizeLimit: s.setAutoDownloadSizeLimit,
+      autoDownloadExcludedFiles: s.autoDownloadExcludedFiles,
+      clearAutoDownloadExclusions: s.clearAutoDownloadExclusions,
+      logSharingEnabled: s.logSharingEnabled,
+      setLogSharingEnabled: s.setLogSharingEnabled,
+      tabsEnabled: s.tabsEnabled,
+      setTabsEnabled: s.setTabsEnabled,
+    })),
+  )
 
   const [sessions, setSessions] = useState<UserSession[]>([])
   const [currentMachineId, setCurrentMachineId] = useState<string | null>(null)

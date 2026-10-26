@@ -1,13 +1,19 @@
 import { memo } from 'react'
 import { Database, Settings } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * Empty state component shown when no vault is connected
  * Provides a link to vault settings to connect a vault
  */
 export const NoVaultEmptyState = memo(function NoVaultEmptyState() {
-  const { setActiveView, setSettingsTab } = usePDMStore()
+  const { setActiveView, setSettingsTab } = usePDMStore(
+    useShallow((s) => ({
+      setActiveView: s.setActiveView,
+      setSettingsTab: s.setSettingsTab,
+    })),
+  )
 
   const handleGoToVaultSettings = () => {
     setActiveView('settings')

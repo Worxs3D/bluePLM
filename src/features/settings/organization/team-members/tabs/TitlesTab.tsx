@@ -12,6 +12,7 @@ import { Briefcase, Plus, Pencil, Trash2 } from 'lucide-react'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { useState } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useMembers, useJobTitles, useJobTitleDialogs } from '../hooks'
 import { JobTitleFormDialog, DeleteJobTitleDialog } from '../components/dialogs'
 
@@ -24,7 +25,13 @@ export interface TitlesTabProps {
 
 export function TitlesTab({ searchQuery = '', onShowCreateTitleDialog }: TitlesTabProps) {
   // Get user/org info from store
-  const { organization, getEffectiveRole, addToast } = usePDMStore()
+  const { organization, getEffectiveRole, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+      addToast: s.addToast,
+    })),
+  )
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
 

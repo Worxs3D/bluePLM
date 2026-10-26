@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom'
 import { Sparkles, Loader2, Layers, FileInput } from 'lucide-react'
 import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { formatFileSize } from '@/lib/utils'
 import { getNextSerialNumber } from '@/lib/serialization'
@@ -170,7 +171,13 @@ function EditableField({
   const [isGenerating, setIsGenerating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { organization, addToast, updatePendingMetadata } = usePDMStore()
+  const { organization, addToast, updatePendingMetadata } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      updatePendingMetadata: s.updatePendingMetadata,
+    })),
+  )
 
   useEffect(() => {
     if (isEditing && inputRef.current) {

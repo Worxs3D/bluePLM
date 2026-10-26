@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 interface BaseButtonProps {
@@ -595,7 +596,13 @@ const NotificationInlineButton: React.FC<NotificationInlineButtonProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = React.useRef<HTMLDivElement>(null)
 
-  const { user: currentUser, organization, addToast } = usePDMStore()
+  const { user: currentUser, organization, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+    })),
+  )
 
   // Close dropdown when clicking outside
   React.useEffect(() => {

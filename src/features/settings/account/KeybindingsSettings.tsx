@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Keyboard, RotateCcw, Edit3, Check, X, Info } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { KeybindingAction, Keybinding } from '@/types/settings'
 
 // Keybinding action definitions with labels and descriptions
@@ -266,7 +267,14 @@ function KeybindingRow({
 }
 
 export function KeybindingsSettings() {
-  const { keybindings, setKeybinding, resetKeybindings, addToast } = usePDMStore()
+  const { keybindings, setKeybinding, resetKeybindings, addToast } = usePDMStore(
+    useShallow((s) => ({
+      keybindings: s.keybindings,
+      setKeybinding: s.setKeybinding,
+      resetKeybindings: s.resetKeybindings,
+      addToast: s.addToast,
+    })),
+  )
   const [editingAction, setEditingAction] = useState<KeybindingAction | null>(null)
 
   const handleEdit = useCallback((action: KeybindingAction) => {

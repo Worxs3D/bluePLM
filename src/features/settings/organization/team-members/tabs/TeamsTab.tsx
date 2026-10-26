@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { PermissionsEditor } from '@/features/settings/organization/PermissionsEditor'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useTeams, useMembers, useVaultAccess, useTeamDialogs } from '../hooks'
 import { useFilteredData } from '../hooks/useFilteredData'
 import { ConnectedUserRow } from '../components/user'
@@ -44,7 +45,15 @@ export interface TeamsTabProps {
 
 export function TeamsTab({ searchQuery = '', onShowCreateTeamDialog }: TeamsTabProps) {
   // Get user/org info from store
-  const { user, organization, setOrganization, getEffectiveRole, workflowRoles } = usePDMStore()
+  const { user, organization, setOrganization, getEffectiveRole, workflowRoles } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      setOrganization: s.setOrganization,
+      getEffectiveRole: s.getEffectiveRole,
+      workflowRoles: s.workflowRoles,
+    })),
+  )
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
 

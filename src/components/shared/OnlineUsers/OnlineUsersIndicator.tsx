@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Monitor, Laptop } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getOrgOnlineUsers, subscribeToOrgOnlineUsers, OnlineUser } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { UserProfileModal } from '@/features/settings/account'
@@ -10,7 +11,12 @@ interface OnlineUsersIndicatorProps {
 }
 
 export function OnlineUsersIndicator({ orgLogoUrl }: OnlineUsersIndicatorProps) {
-  const { organization, user } = usePDMStore()
+  const { organization, user } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+    })),
+  )
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [viewingUserId, setViewingUserId] = useState<string | null>(null)

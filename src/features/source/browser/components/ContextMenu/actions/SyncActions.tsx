@@ -5,6 +5,7 @@ import React from 'react'
 import { ArrowDown, ArrowUp, EyeOff, FileX, FolderX, RefreshCw } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand, getCloudOnlyFilesFromSelection } from '@/lib/commands'
 import { getOutdatedFilesFromSelection } from '@/lib/commands/handlers/getLatest'
@@ -33,7 +34,15 @@ export function SyncActions({
   setShowIgnoreSubmenu,
   ignoreSubmenuTimeoutRef,
 }: SyncActionsProps) {
-  const { files, activeVaultId, addIgnorePattern, getIgnorePatterns, addToast } = usePDMStore()
+  const { files, activeVaultId, addIgnorePattern, getIgnorePatterns, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      activeVaultId: s.activeVaultId,
+      addIgnorePattern: s.addIgnorePattern,
+      getIgnorePatterns: s.getIgnorePatterns,
+      addToast: s.addToast,
+    })),
+  )
 
   const anyCloudOnly =
     counts.cloudOnlyCount > 0 || contextFiles.some((f) => f.diffStatus === 'cloud')

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import type { Team, PermissionPreset, PermissionAction } from '@/types/permissions'
 import {
@@ -119,7 +120,7 @@ const RESOURCE_GROUPS: {
 ]
 
 export function PermissionsEditor({ team, onClose, userId, isAdmin }: PermissionsEditorProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   // State
   const [permissions, setPermissions] = useState<Record<string, PermissionAction[]>>({})

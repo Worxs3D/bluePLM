@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect } from 'react'
 import { Upload, FolderPlus, ChevronDown } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { checkOperationPermission, getPermissionRequirement } from '@/lib/permissions'
 
 export interface AddMenuProps {
@@ -12,7 +13,12 @@ export interface AddMenuProps {
  * Dropdown menu for adding files or folders
  */
 export const AddMenu = memo(function AddMenu({ onAddFiles, onAddFolder }: AddMenuProps) {
-  const { hasPermission, addToast } = usePDMStore()
+  const { hasPermission, addToast } = usePDMStore(
+    useShallow((s) => ({
+      hasPermission: s.hasPermission,
+      addToast: s.addToast,
+    })),
+  )
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 

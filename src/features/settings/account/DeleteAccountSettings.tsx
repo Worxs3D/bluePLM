@@ -2,10 +2,18 @@ import { useState } from 'react'
 import { AlertTriangle, Loader2, Trash2, UserX } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient, signOut } from '@/lib/supabase'
 
 export function DeleteAccountSettings() {
-  const { user, setUser, setOrganization, addToast } = usePDMStore()
+  const { user, setUser, setOrganization, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      setUser: s.setUser,
+      setOrganization: s.setOrganization,
+      addToast: s.addToast,
+    })),
+  )
   const [confirmationText, setConfirmationText] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)

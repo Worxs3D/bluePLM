@@ -2,6 +2,7 @@
 import { useRef, useLayoutEffect, useState, type ReactNode } from 'react'
 import { Trash2, EyeOff, FileX, FolderX, CloudOff, UserX } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
   executeCommand,
@@ -126,7 +127,7 @@ export function DeleteItems({
   addToast,
   firstFile,
 }: DeleteItemsProps) {
-  const { hasPermission } = usePDMStore()
+  const { hasPermission } = usePDMStore(useShallow((s) => ({ hasPermission: s.hasPermission })))
   const serverFiles = usePDMStore((s) => s.serverFiles)
   const vaultPath = usePDMStore((s) => s.vaultPath)
 

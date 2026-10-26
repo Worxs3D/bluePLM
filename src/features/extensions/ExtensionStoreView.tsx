@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { Store, Package, RefreshCw, Upload, Bell } from 'lucide-react'
 
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useExtensions } from '@/hooks/useExtensions'
 import { log } from '@/lib/logger'
 
@@ -40,7 +41,18 @@ export function ExtensionStoreView() {
     checkForUpdates,
     pendingDeepLinkInstall,
     clearPendingDeepLinkInstall,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      fetchStoreExtensions: s.fetchStoreExtensions,
+      loadInstalledExtensions: s.loadInstalledExtensions,
+      uninstallExtension: s.uninstallExtension,
+      enableExtension: s.enableExtension,
+      disableExtension: s.disableExtension,
+      checkForUpdates: s.checkForUpdates,
+      pendingDeepLinkInstall: s.pendingDeepLinkInstall,
+      clearPendingDeepLinkInstall: s.clearPendingDeepLinkInstall,
+    })),
+  )
 
   // Load data on mount
   useEffect(() => {

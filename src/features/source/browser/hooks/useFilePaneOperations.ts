@@ -4,6 +4,7 @@
  */
 import { useState, useCallback } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { updateFileMetadata } from '@/lib/supabase'
 import { executeCommand } from '@/lib/commands'
@@ -40,7 +41,22 @@ export function useFilePaneOperations({
     renameFileInStore,
     updateFileInStore,
     setStatusMessage,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      selectedFiles: s.selectedFiles,
+      user: s.user,
+      addToast: s.addToast,
+      addProgressToast: s.addProgressToast,
+      updateProgressToast: s.updateProgressToast,
+      removeToast: s.removeToast,
+      addProcessingFolder: s.addProcessingFolder,
+      removeProcessingFolder: s.removeProcessingFolder,
+      renameFileInStore: s.renameFileInStore,
+      updateFileInStore: s.updateFileInStore,
+      setStatusMessage: s.setStatusMessage,
+    })),
+  )
 
   // Dialog state setters - these will be passed from the parent
   const [customConfirm, setCustomConfirm] = useState<{

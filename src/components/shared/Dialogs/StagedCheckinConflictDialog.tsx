@@ -24,6 +24,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { usePDMStore, StagedCheckin } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 
 type ActionType = 'keep-local' | 'keep-server' | 'backup'
@@ -75,7 +76,13 @@ export function StagedCheckinConflictDialog({
   onClose,
   onRefresh,
 }: ConflictDialogProps) {
-  const { unstageCheckin, addToast, vaultPath } = usePDMStore()
+  const { unstageCheckin, addToast, vaultPath } = usePDMStore(
+    useShallow((s) => ({
+      unstageCheckin: s.unstageCheckin,
+      addToast: s.addToast,
+      vaultPath: s.vaultPath,
+    })),
+  )
   const [processing, setProcessing] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 

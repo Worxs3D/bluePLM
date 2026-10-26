@@ -11,6 +11,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { ReferenceDiagnostics } from '@/features/dev-tools/reference-diagnostics'
 import { FileOperationTiming } from '@/features/dev-tools/performance'
 import { FileOperationLog } from '@/features/dev-tools/operation-log'
@@ -36,7 +37,7 @@ const devicePresets: DevicePreset[] = [
 ]
 
 export function DevToolsSettings() {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const [currentSize, setCurrentSize] = useState<{ width: number; height: number } | null>(null)
   const [selectedPreset, setSelectedPreset] = useState<string>('')
   const [showRefDiagnostics, setShowRefDiagnostics] = useState(false)

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -49,7 +50,16 @@ export function ApiSettings() {
     getEffectiveRole,
     apiServerUrl,
     setApiServerUrl,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      setOrganization: s.setOrganization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+      apiServerUrl: s.apiServerUrl,
+      setApiServerUrl: s.setApiServerUrl,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const [apiToken, setApiToken] = useState<string | null>(null)

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, type SetStateAction, type Dispatch } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type {
   WorkflowTemplate,
   WorkflowState,
@@ -43,7 +44,28 @@ export function useWorkflowData(options: UseWorkflowDataOptions = {}) {
     setWorkflowTransitions,
     setWorkflowGates,
     getSelectedWorkflow,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+      workflows: s.workflows,
+      workflowsLoading: s.workflowsLoading,
+      workflowStates: s.workflowStates,
+      workflowTransitions: s.workflowTransitions,
+      workflowGates: s.workflowGates,
+      setWorkflows: s.setWorkflows,
+      setWorkflowsLoading: s.setWorkflowsLoading,
+      updateWorkflow: s.updateWorkflow,
+      removeWorkflow: s.removeWorkflow,
+      setSelectedWorkflowId: s.setSelectedWorkflowId,
+      setWorkflowStates: s.setWorkflowStates,
+      setWorkflowTransitions: s.setWorkflowTransitions,
+      setWorkflowGates: s.setWorkflowGates,
+      getSelectedWorkflow: s.getSelectedWorkflow,
+    })),
+  )
 
   // Derived state
   const selectedWorkflow = getSelectedWorkflow()

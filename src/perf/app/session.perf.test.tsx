@@ -13,7 +13,8 @@
  *   it looked up. Each store write is a synchronous re-render of the explorer and the file list.
  *   Per-event lookups are gated by row reads in src/perf/storeRealtime.perf.test.ts.
  */
-import { render } from '@testing-library/react'
+import { Profiler, type ProfilerOnRenderCallback } from 'react'
+import { act, render } from '@testing-library/react'
 import { setFlagsFromString } from 'node:v8'
 import { runInNewContext } from 'node:vm'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -36,13 +37,22 @@ const CYCLES = 12
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+let commits = 0
+const onRender: ProfilerOnRenderCallback = () => {
+  commits += 1
+}
+
 async function boot() {
   installDomShims()
   const { installPerfBoot } = await import('./boot')
   await installPerfBoot(FILE_COUNT)
   const { App } = await import('@/app/App')
   const { usePDMStore } = await import('@/stores/pdmStore')
-  render(<App />)
+  render(
+    <Profiler id="app" onRender={onRender}>
+      <App />
+    </Profiler>,
+  )
   const perf = window.__blueplmPerf!
   const deadline = Date.now() + 45_000
   while (!perf.loaded && Date.now() < deadline) await pause(100)
@@ -60,6 +70,21 @@ beforeAll(async () => {
 const settle = () => pause(700)
 
 describe('render-perf session in jsdom', () => {
+  it('re-renders nothing for a store write no component reads', async () => {
+    await settle()
+    commits = 0
+    // Heartbeats, monitors and toasts write the store all the time. Components that took the
+    // whole store (`usePDMStore()` with no selector: the app shell, every row's inline action
+    // buttons) re-rendered on each of them, and in the nightly the shell and the explorer were
+    // rendering all through the file list's scroll.
+    for (let i = 0; i < 5; i++) {
+      act(() => {
+        env.store.setState({ __perfProbe: i } as never)
+      })
+    }
+    expect(commits).toBe(0)
+  })
+
   it('applies a burst of 500 realtime updates in at most two store writes', async () => {
     const { perf, store } = env
     await perf.expandFolders(['P00', 'P00/Assy-00', 'P00/Assy-00/Sub-00'])

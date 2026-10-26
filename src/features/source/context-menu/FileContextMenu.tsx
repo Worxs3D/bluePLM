@@ -1,6 +1,7 @@
 // src/features/source/context-menu/FileContextMenu.tsx
 import { useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   executeCommand,
   getSyncedFilesFromSelection,
@@ -82,7 +83,21 @@ export function FileContextMenu({
     getIgnorePatterns,
     serverFolderPaths,
     organization,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      activeVaultId: s.activeVaultId,
+      addToast: s.addToast,
+      pinnedFolders: s.pinnedFolders,
+      pinFolder: s.pinFolder,
+      unpinFolder: s.unpinFolder,
+      connectedVaults: s.connectedVaults,
+      addIgnorePattern: s.addIgnorePattern,
+      getIgnorePatterns: s.getIgnorePatterns,
+      serverFolderPaths: s.serverFolderPaths,
+      organization: s.organization,
+    })),
+  )
 
   const menuRef = useRef<HTMLDivElement>(null)
 

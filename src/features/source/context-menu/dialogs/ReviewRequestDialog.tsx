@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { OrgUser } from '../types'
 import {
   getOrgUsers,
@@ -43,7 +44,7 @@ export function ReviewRequestDialog({
   vaultId,
   onSuccess,
 }: ReviewRequestDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
   const [teams, setTeams] = useState<TeamWithMembers[]>([])

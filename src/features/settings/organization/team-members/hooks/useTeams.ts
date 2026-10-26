@@ -28,6 +28,7 @@ import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { TeamWithDetails, TeamFormData } from '../types'
 import {
   type TeamWithCounts,
@@ -49,7 +50,17 @@ export function useTeams(orgId: string | null) {
     teamsLoaded,
     setTeams,
     setTeamsLoading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      addToast: s.addToast,
+      teams: s.teams,
+      teamsLoading: s.teamsLoading,
+      teamsLoaded: s.teamsLoaded,
+      setTeams: s.setTeams,
+      setTeamsLoading: s.setTeamsLoading,
+    })),
+  )
 
   const loadTeams = useCallback(async () => {
     if (!orgId) return

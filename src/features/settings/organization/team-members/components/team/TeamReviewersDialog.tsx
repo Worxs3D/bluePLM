@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Users, X, Loader2, Plus, UserCircle, ShieldCheck } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { getTeamReviewers, addTeamReviewer, removeTeamReviewer } from '@/lib/supabase/teams'
 import type { TeamReviewerRow } from '@/lib/supabase/teams'
@@ -26,7 +27,7 @@ export function TeamReviewersDialog({
   onClose,
   userId,
 }: TeamReviewersDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const [reviewers, setReviewers] = useState<TeamReviewerRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)

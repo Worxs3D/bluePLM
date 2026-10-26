@@ -24,6 +24,7 @@ import {
   FileEdit,
 } from 'lucide-react'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   deriveCheckoutDisplay,
   getCheckoutSignature,
@@ -722,7 +723,21 @@ export function PendingView({ onRefresh }: PendingViewProps) {
     expandedPendingSections,
     togglePendingSection,
     checkoutHydration,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      user: s.user,
+      setCurrentFolder: s.setCurrentFolder,
+      toggleFolder: s.toggleFolder,
+      expandedFolders: s.expandedFolders,
+      hideSolidworksTempFiles: s.hideSolidworksTempFiles,
+      setSelectedFiles: s.setSelectedFiles,
+      setPendingScrollToFile: s.setPendingScrollToFile,
+      expandedPendingSections: s.expandedPendingSections,
+      togglePendingSection: s.togglePendingSection,
+      checkoutHydration: s.checkoutHydration,
+    })),
+  )
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [selectedAddedFiles, setSelectedAddedFiles] = useState<Set<string>>(new Set())
   const [selectedOthersFiles, setSelectedOthersFiles] = useState<Set<string>>(new Set())

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { Supplier } from '@/stores/types'
 import { supabase } from '@/lib/supabase'
 
@@ -34,7 +35,18 @@ export function SuppliersView() {
     // Suppliers slice actions
     setSuppliers,
     setSuppliersLoading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      setActiveView: s.setActiveView,
+      suppliers: s.suppliers,
+      suppliersLoading: s.suppliersLoading,
+      suppliersLoaded: s.suppliersLoaded,
+      setSuppliers: s.setSuppliers,
+      setSuppliersLoading: s.setSuppliersLoading,
+    })),
+  )
 
   // Local UI state (not persisted)
   const [syncing, setSyncing] = useState(false)

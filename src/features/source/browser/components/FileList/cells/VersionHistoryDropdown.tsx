@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/supabase'
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
@@ -76,7 +77,19 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
     addExpectedFileChanges,
     clearExpectedFileChanges,
     setLastOperationCompletedAt,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      updateFileInStore: s.updateFileInStore,
+      updatePendingVersionNote: s.updatePendingVersionNote,
+      updatePendingCheckinNote: s.updatePendingCheckinNote,
+      addExpectedFileChanges: s.addExpectedFileChanges,
+      clearExpectedFileChanges: s.clearExpectedFileChanges,
+      setLastOperationCompletedAt: s.setLastOperationCompletedAt,
+    })),
+  )
 
   // Calculate dropdown position when opening
   useEffect(() => {

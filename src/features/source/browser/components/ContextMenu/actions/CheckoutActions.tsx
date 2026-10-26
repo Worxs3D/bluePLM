@@ -4,6 +4,7 @@
 import React, { useState } from 'react'
 import { ArrowDown, ArrowUp, Loader2, RefreshCw, Undo2, Unlock } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
 import { checkOperationPermission, getPermissionRequirement } from '@/lib/permissions'
@@ -47,8 +48,15 @@ export function CheckoutActions({
   stateSubmenuTimeoutRef,
   savingConfigsToSW,
 }: CheckoutActionsProps) {
-  const { user, getEffectiveRole, hasPermission, addToast, solidworksIntegrationEnabled } =
-    usePDMStore()
+  const { user, getEffectiveRole, hasPermission, addToast, solidworksIntegrationEnabled } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      getEffectiveRole: s.getEffectiveRole,
+      hasPermission: s.hasPermission,
+      addToast: s.addToast,
+      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
+    })),
+  )
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
   const [isSyncing, setIsSyncing] = useState(false)
   const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null

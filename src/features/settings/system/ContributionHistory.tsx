@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient } from '@/lib/supabase'
 
 // Supabase v2 type inference incomplete for contribution history queries
@@ -149,7 +150,12 @@ function getMonthLabels(grid: { date: Date }[]): { month: string; weekIndex: num
 }
 
 export function ContributionHistory() {
-  const { user, organization } = usePDMStore()
+  const { user, organization } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+    })),
+  )
 
   const [isLoading, setIsLoading] = useState(true)
   const [activityData, setActivityData] = useState<Map<string, DayData>>(new Map())
