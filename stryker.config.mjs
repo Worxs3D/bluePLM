@@ -26,7 +26,9 @@ export const shards = {
   'handlers-d': [`${handlers}/[q-z]*.ts`],
   metadata: ['src/lib/metadata/**/*.ts'],
   'supabase-files': ['src/lib/supabase/files/**/*.ts'],
-  'store-load': ['src/stores/slices/filesSlice.ts', 'src/hooks/useLoadFiles/**/*.ts'],
+  // Split: nearly every journey test reaches filesSlice, so it alone ran past an hour together.
+  'files-slice': ['src/stores/slices/filesSlice.ts'],
+  'load-files': ['src/hooks/useLoadFiles/**/*.ts'],
   'realign-transfer': ['src/lib/realign/**/*.ts', 'src/lib/vaultTransfer/**/*.ts'],
   electron: ['electron/handlers/fs.ts', 'electron/handlers/solidworks.ts'],
   'api-routes': ['api/routes/**/*.ts'],
