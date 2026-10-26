@@ -2642,6 +2642,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
 
                 if (sourceGone && destExists) {
                   log(`[Rename-PS] Move verified successfully`)
+                  invalidateScanCacheAfterWrite('rename (Move-Item)', { oldPath, newPath, fileCount })
                   return { success: true, fileCount }
                 } else {
                   log(`[Rename-PS] Move verification FAILED - source still exists or dest missing`)
@@ -3017,8 +3018,22 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         })
         return { success: true, fileCount: copiedCount }
       } else {
+        const destExisted = fs.existsSync(destPath)
         copyFileWritable(sourcePath, destPath)
-        fs.unlinkSync(sourcePath)
+        try {
+          fs.unlinkSync(sourcePath)
+        } catch (unlinkErr) {
+          // The source is still there (locked, or read-only on Windows), so a copy left at the
+          // destination would be a second live file the next scan reports as new local work.
+          if (!destExisted) {
+            try {
+              fs.unlinkSync(destPath)
+            } catch {
+              // Best effort: the move is reported as failed either way.
+            }
+          }
+          throw unlinkErr
+        }
         log('Moved (copy+delete) file: ' + sourcePath + ' -> ' + destPath)
         invalidateScanCacheAfterWrite('move', { sourcePath, destPath, fileCount: 1 })
         return { success: true, fileCount: 1 }
