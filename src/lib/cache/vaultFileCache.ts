@@ -144,13 +144,15 @@ function isCacheContextCurrent(context?: CacheWriteContext): boolean {
  * full fetch, because the rejected open promise was cached for the life of the page and the
  * failure was never retried or repaired.
  *
- * What happens now, once per session and never on the load's critical path (the open that
+ * What happens now, at most once per `REPAIR_COOLDOWN_MS` (sessions last weeks, so "once per
+ * session" would mean never again) and never on the load's critical path (the open that
  * failed rejects immediately, so that load falls back to a full fetch exactly as before):
  * 1. `indexedDB.deleteDatabase` for this cache, then reopen.
  * 2. If that fails too, ask the main process to clear the session's IndexedDB storage.
  * Every later call opens the database afresh, so a repaired database is picked up by itself.
  */
-let repairStarted = false
+const REPAIR_COOLDOWN_MS = 60 * 60_000
+let lastRepairAt = -Infinity
 let repairPromise: Promise<void> | null = null
 
 function openRaw(): Promise<IDBDatabase> {
@@ -242,12 +244,12 @@ async function repairDatabase(trigger: unknown): Promise<void> {
 }
 
 /**
- * Start the one repair attempt of this session if `error` looks like a corrupt backing store.
+ * Start a repair if `error` looks like a corrupt backing store and none ran within the cooldown.
  * Fire-and-forget: the caller's failed open is not delayed by it.
  */
 function maybeStartRepair(error: unknown): void {
-  if (repairStarted || !isIndexedDbCorruptionError(error)) return
-  repairStarted = true
+  if (Date.now() - lastRepairAt < REPAIR_COOLDOWN_MS || !isIndexedDbCorruptionError(error)) return
+  lastRepairAt = Date.now()
   repairPromise = repairDatabase(error).catch(() => undefined)
 }
 
@@ -269,7 +271,20 @@ function openDB(): Promise<IDBDatabase> {
   return attempt
 }
 
-/** Resolves when the session's repair attempt (if one started) has finished. For tests. */
+/**
+ * Can the cache database be opened? A failed open starts the repair above by itself, so the health
+ * monitor's periodic probe is also how a cache that broke mid-session gets repaired.
+ */
+export async function probeVaultCache(): Promise<boolean> {
+  try {
+    await openDB()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Resolves when the latest repair attempt (if one started) has finished. For tests. */
 export function waitForVaultCacheRepair(): Promise<void> {
   return repairPromise ?? Promise.resolve()
 }

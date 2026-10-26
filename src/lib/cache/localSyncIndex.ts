@@ -92,16 +92,27 @@ let dbPromise: Promise<IDBDatabase> | null = null
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise
 
-  dbPromise = new Promise((resolve, reject) => {
+  // Neither a failed open nor a connection the browser closed is remembered: the next call opens
+  // again. A rejected promise kept here used to disable the index until the app restarted.
+  const attempt: Promise<IDBDatabase> = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => {
       log.error('[SyncIndex]', 'Failed to open IndexedDB', { error: request.error })
+      if (dbPromise === attempt) dbPromise = null
       reject(request.error)
     }
 
     request.onsuccess = () => {
-      resolve(request.result)
+      const db = request.result
+      db.onclose = () => {
+        if (dbPromise === attempt) dbPromise = null
+      }
+      db.onversionchange = () => {
+        db.close()
+        if (dbPromise === attempt) dbPromise = null
+      }
+      resolve(db)
     }
 
     request.onupgradeneeded = (event) => {
@@ -117,8 +128,8 @@ function openDB(): Promise<IDBDatabase> {
       }
     }
   })
-
-  return dbPromise
+  dbPromise = attempt
+  return attempt
 }
 
 /** One entry for updateInodes. */

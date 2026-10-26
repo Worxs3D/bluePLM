@@ -30,6 +30,7 @@ import { log } from '@/lib/logger'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 import { isPathHidden, readHiddenFolderPaths } from '@/lib/hiddenFolders'
 import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
+import { isRecentlyModified, markRecentlyModified } from '@/lib/recentlyModified'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
 import { applyPendingEdit, noPendingEdit } from '@/lib/metadata/pendingEdits'
 import { unwritableFieldGroups } from '@/lib/metadata/writeOwnership'
@@ -2327,10 +2328,7 @@ export const createFilesSlice: StateCreator<
 
   // Actions - Realtime update debouncing
   markFileAsRecentlyModified: (fileId: string) => {
-    const { recentlyModifiedFiles } = get()
-    const newMap = new Map(recentlyModifiedFiles)
-    newMap.set(fileId, Date.now())
-    set({ recentlyModifiedFiles: newMap })
+    set({ recentlyModifiedFiles: markRecentlyModified(get().recentlyModifiedFiles, fileId, Date.now()) })
   },
 
   clearRecentlyModified: (fileId: string) => {
@@ -2340,14 +2338,8 @@ export const createFilesSlice: StateCreator<
     set({ recentlyModifiedFiles: newMap })
   },
 
-  isFileRecentlyModified: (fileId: string) => {
-    const { recentlyModifiedFiles } = get()
-    const timestamp = recentlyModifiedFiles.get(fileId)
-    if (!timestamp) return false
-    // 15 second window - after this, realtime updates are allowed again
-    const DEBOUNCE_WINDOW_MS = 15000
-    return Date.now() - timestamp < DEBOUNCE_WINDOW_MS
-  },
+  isFileRecentlyModified: (fileId: string) =>
+    isRecentlyModified(get().recentlyModifiedFiles, fileId, Date.now()),
 
   // Actions - Pending pane sections
   togglePendingSection: (sectionId: string) => {

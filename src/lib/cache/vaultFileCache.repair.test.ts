@@ -234,7 +234,7 @@ describe('vault file cache IndexedDB self-repair', () => {
     expect((await cache.getCachedVaultFiles(ORG_ID, VAULT_ID))?.files).toHaveLength(1)
   })
 
-  it('never repairs twice in a session and never throws into the load', async () => {
+  it('never repairs twice within the cooldown and never throws into the load', async () => {
     const corruption = { name: 'UnknownError', message: BACKING_STORE_MESSAGE }
     const fake = installFakeIndexedDB({
       // The first failure starts the repair; the repair's own reopen fails, and so do two more.
@@ -253,6 +253,30 @@ describe('vault file cache IndexedDB self-repair', () => {
 
     expect(fake.counts.delete).toBe(1)
     expect(clearIndexedDbStorage).toHaveBeenCalledTimes(1)
+  })
+
+  it('repairs again once the cooldown has passed: a month-long session is not left broken', async () => {
+    const corruption = { name: 'UnknownError', message: BACKING_STORE_MESSAGE }
+    // Fails on the first load, the repair reopen succeeds, then fails again on the later probe.
+    const fake = installFakeIndexedDB({ openFailures: [corruption, undefined, corruption] })
+    const realNow = Date.now
+    let now = realNow()
+    Date.now = () => now
+    try {
+      await loadCache()
+      expect(await cache.getCachedVaultFiles(ORG_ID, VAULT_ID)).toBeNull()
+      await cache.waitForVaultCacheRepair()
+      expect(fake.counts.delete).toBe(1)
+
+      // The probe the health monitor runs finds the database broken again, two hours later.
+      now += 2 * 60 * 60_000
+      expect(await cache.probeVaultCache()).toBe(false)
+      await cache.waitForVaultCacheRepair()
+      expect(fake.counts.delete).toBe(2)
+      expect(await cache.probeVaultCache()).toBe(true)
+    } finally {
+      Date.now = realNow
+    }
   })
 
   it('does not open the database for an empty checkout profile map', async () => {

@@ -70,6 +70,19 @@ function scheduleProgressFlush(
   })
 }
 
+/**
+ * Most message toasts kept. A toast with no timeout (duration 0) stays until dismissed, and an app
+ * left unattended for days can collect one per failed background job. Past this the oldest go;
+ * progress toasts are never dropped, since their operation still owns them.
+ */
+export const MAX_MESSAGE_TOASTS = 50
+
+export function capToasts(toasts: ToastMessage[]): ToastMessage[] {
+  let excess = toasts.filter((t) => t.type !== 'progress').length - MAX_MESSAGE_TOASTS
+  if (excess <= 0) return toasts
+  return toasts.filter((t) => t.type === 'progress' || excess-- <= 0)
+}
+
 export const createToastsSlice: StateCreator<
   PDMStoreState,
   [['zustand/persist', unknown]],
@@ -83,7 +96,7 @@ export const createToastsSlice: StateCreator<
   addToast: (type: ToastType, message: string, duration = 5000) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const toast: ToastMessage = { id, type, message, duration }
-    set((state) => ({ toasts: [...state.toasts, toast] }))
+    set((state) => ({ toasts: capToasts([...state.toasts, toast]) }))
   },
 
   addProgressToast: (id: string, message: string, total: number, queued?: boolean) => {
