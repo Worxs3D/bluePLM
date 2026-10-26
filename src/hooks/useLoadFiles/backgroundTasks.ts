@@ -9,7 +9,7 @@ import {
   updateCachedUserInfo,
   type CacheWriteContext,
 } from '@/lib/cache/vaultFileCache'
-import { updateInodes, type HashStamp } from '@/lib/cache/localSyncIndex'
+import { updateInodesWhenIdle, type HashStamp } from '@/lib/cache/localSyncIndex'
 import type { CheckoutHydrationStatus, LocalFile } from '@/stores/types'
 import type { CheckoutOwnerRef, CheckoutProfileScope } from '@/lib/supabase/files/queries'
 import {
@@ -325,7 +325,7 @@ export async function runPostLoadBackgroundTasks(ctx: BackgroundTaskContext): Pr
         // Persist the fresh hashes with their stamps, so the next start can tell
         // whether the file changed while the app was closed.
         if (loadingForVaultId && freshlyHashed.length > 0) {
-          updateInodes(loadingForVaultId, freshlyHashed).catch((error) => {
+          updateInodesWhenIdle(loadingForVaultId, freshlyHashed).catch((error) => {
             window.electronAPI?.log('warn', '[LoadFiles] Failed to persist hashes', {
               error: String(error),
             })

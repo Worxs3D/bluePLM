@@ -135,12 +135,34 @@ export interface InodeUpdate {
 const BULK_READ_MIN_ENTRIES = 256
 
 /**
- * Puts queued per callback by updateInodes' bulk path. Each put clones its entry on the main
+ * Puts queued per callback by the bulk writes (putInChunks). Each put clones its entry on the main
  * thread; a first load writes every entry, and 30k puts in one callback blocked for 1-2 s right
- * after the vault came up (render-perf nightly). Each chunk is queued from the last request
- * callback of the one before, which keeps the transaction open, so the write stays atomic.
+ * after the vault came up (render-perf nightly).
  */
-export const INODE_WRITE_CHUNK = 200
+export const SYNC_INDEX_WRITE_CHUNK = 200
+
+/**
+ * Queue `entries` as puts, SYNC_INDEX_WRITE_CHUNK per callback. Each chunk is queued from the last
+ * request of the one before, which keeps the transaction open, so the write stays one atomic
+ * transaction. `done` runs once the last put succeeded, or with the error when one failed (a
+ * failed put aborts the transaction, so nothing more is written).
+ */
+function putInChunks(store: IDBObjectStore, entries: SyncIndexEntry[], done: (error?: unknown) => void): void {
+  let next = 0
+  const chunk = () => {
+    const end = Math.min(next + SYNC_INDEX_WRITE_CHUNK, entries.length)
+    let last: IDBRequest | null = null
+    for (; next < end; next++) last = store.put(entries[next])
+    if (!last) {
+      done()
+      return
+    }
+    const request = last
+    request.onsuccess = next < entries.length ? chunk : () => done()
+    request.onerror = () => done(request.error)
+  }
+  chunk()
+}
 
 /** True when two entries of a server-backed path hold the same data, ignoring lastSyncedAt. */
 function isSameServerBackedEntry(existing: SyncIndexEntry, next: SyncIndexEntry): boolean {
@@ -555,18 +577,14 @@ export async function updateSyncIndexFromServer(
           return
         }
 
-        let completed = 0
-        for (const entry of writes) {
-          const request = store.put(entry)
-          request.onsuccess = () => {
-            completed++
-            if (completed === writes.length) finish()
+        putInChunks(store, writes, (error) => {
+          if (error) {
+            log.error('[SyncIndex]', 'Failed to write server paths', { error })
+            resolve()
+            return
           }
-          request.onerror = () => {
-            completed++
-            if (completed === writes.length) resolve()
-          }
-        }
+          finish()
+        })
       }
 
       existingRequest.onerror = () => {
@@ -714,37 +732,19 @@ export async function updateInodes(vaultId: string, entries: InodeUpdate[]): Pro
           const existingByKey = new Map(
             (request.result as SyncIndexEntry[]).map((entry) => [entry.key, entry]),
           )
-          let next = 0
-          const writeChunk = () => {
-            let puts = 0
-            let lastRequest: IDBRequest | null = null
-            while (next < entries.length && puts < INODE_WRITE_CHUNK) {
-              const update = entries[next++]
-              const key = makeKey(vaultId, update.path)
-              const before = existingByKey.get(key)
-              const updated = applyInodeUpdate(key, vaultId, before, update)
-              if (updated) {
-                lastRequest = store.put(updated)
-                existingByKey.set(key, updated)
-                puts++
-              }
-            }
-            if (next >= entries.length) {
-              resolve()
-              return
-            }
-            // A chunk always ends on a put, so there is a request to continue from.
-            if (lastRequest) {
-              lastRequest.onsuccess = writeChunk
-              // A failed put aborts the transaction: nothing more will be written, and the load
-              // must not wait on it.
-              lastRequest.onerror = () => {
-                log.error('[SyncIndex]', 'Failed to write inode updates', { error: lastRequest?.error })
-                resolve()
-              }
+          const writes: SyncIndexEntry[] = []
+          for (const update of entries) {
+            const key = makeKey(vaultId, update.path)
+            const updated = applyInodeUpdate(key, vaultId, existingByKey.get(key), update)
+            if (updated) {
+              writes.push(updated)
+              existingByKey.set(key, updated)
             }
           }
-          writeChunk()
+          putInChunks(store, writes, (error) => {
+            if (error) log.error('[SyncIndex]', 'Failed to write inode updates', { error })
+            resolve()
+          })
         }
         request.onerror = () => {
           log.error('[SyncIndex]', 'Failed to read entries for inode update', { error: request.error })
@@ -776,6 +776,25 @@ export async function updateInodes(vaultId: string, entries: InodeUpdate[]): Pro
     })
   } catch (error) {
     log.error('[SyncIndex]', 'Error updating inodes', { error })
+  }
+}
+
+/**
+ * updateInodes for work nobody waits on (the background hash pass): batches of
+ * SYNC_INDEX_WRITE_CHUNK, each its own small transaction reading its entries fresh, run one at a
+ * time when the main thread is idle. A first load hashes every file, and writing all of them as
+ * soon as hashing finished put ~1.7 s of IndexedDB work into whatever the user was doing (the
+ * file list's scroll, in the render-perf run).
+ */
+export async function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate[]): Promise<void> {
+  const idle = () =>
+    new Promise<void>((resolve) => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 2000 })
+      else setTimeout(resolve, 0)
+    })
+  for (let start = 0; start < entries.length; start += SYNC_INDEX_WRITE_CHUNK) {
+    await idle()
+    await updateInodes(vaultId, entries.slice(start, start + SYNC_INDEX_WRITE_CHUNK))
   }
 }
 

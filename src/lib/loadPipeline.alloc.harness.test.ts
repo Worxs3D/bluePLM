@@ -92,6 +92,7 @@ vi.mock('@/lib/cache/localSyncIndex', () => {
     }),
     updateSyncIndexFromServer: vi.fn(async () => undefined),
     updateInodes: vi.fn(async () => undefined),
+    updateInodesWhenIdle: vi.fn(async () => undefined),
   }
 })
 

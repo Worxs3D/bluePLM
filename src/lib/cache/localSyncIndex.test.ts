@@ -6,7 +6,7 @@ import {
   getVersionMap,
   removeFromSyncIndex,
   updateInodes,
-  INODE_WRITE_CHUNK,
+  SYNC_INDEX_WRITE_CHUNK,
   updateSyncIndexFromServer,
 } from './localSyncIndex'
 
@@ -466,15 +466,26 @@ describe('localSyncIndex bulk inode writes', () => {
   // A first load writes every entry. All of them in one callback was 1-2 s of main thread right
   // after the vault came up (render-perf nightly); they go in chunks, in one transaction.
   it('writes every entry, at most one chunk per callback', async () => {
-    const count = INODE_WRITE_CHUNK * 2 + 37
+    const count = SYNC_INDEX_WRITE_CHUNK * 2 + 37
     const entries = Array.from({ length: count }, (_, i) => ({ path: `designs/part-${i}.sldprt`, ino: i + 1 }))
     await updateInodes(VAULT_ID, entries)
     await flush()
 
     expect(records.size).toBe(count)
-    expect(Math.max(...putBursts)).toBeLessThanOrEqual(INODE_WRITE_CHUNK)
+    expect(Math.max(...putBursts)).toBeLessThanOrEqual(SYNC_INDEX_WRITE_CHUNK)
     expect(putBursts.reduce((a, b) => a + b, 0)).toBe(count)
     const inodes = await getInodeMap(VAULT_ID)
     expect(inodes.get(count)).toEqual([`designs/part-${count - 1}.sldprt`])
+  })
+
+  it('rebuilds a first load from the server list the same way', async () => {
+    const count = SYNC_INDEX_WRITE_CHUNK * 3 + 5
+    const paths = Array.from({ length: count }, (_, i) => `designs/part-${i}.sldprt`)
+    await updateSyncIndexFromServer(VAULT_ID, paths, new Set(paths))
+    await flush()
+
+    expect(records.size).toBe(count)
+    expect(Math.max(...putBursts)).toBeLessThanOrEqual(SYNC_INDEX_WRITE_CHUNK)
+    expect((await getSyncIndex(VAULT_ID)).size).toBe(count)
   })
 })
