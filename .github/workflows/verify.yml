@@ -250,7 +250,7 @@ jobs:
   # Secrets: SOLIDWORKS_DM_LICENSE_KEY (passed as BLUEPLM_DM_LICENSE_KEY, the name
   # DocumentManagerLicense.cs reads) and CI_ASSETS_TOKEN (read-only contents on the assets repo).
   # Without them - pull requests from forks never get secrets - the job says so in a warning and
-  # stops green; with them, any skip other than the opt-in large fixture fails the job, because a
+  # stops green; with them, any skip other than the T500X fixture fails the job, because a
   # skipped Document Manager test proves nothing.
   sw-service-dm:
     name: SolidWorks service (Document Manager tests)
@@ -301,6 +301,9 @@ jobs:
           $fixtureRoot = 'C:\BluePLM\br-vault\0 - SHARED\00 - REGRESSION TESTS'
           New-Item -ItemType Directory -Force $fixtureRoot | Out-Null
           Copy-Item ci-assets/fixtures/* $fixtureRoot -Recurse
+          # Git does not keep the read-only attribute, and every fixture file is read-only in the vault
+          # (as every file not checked out is); FixtureSandboxTests and DrawingReferenceTests rely on it.
+          Get-ChildItem $fixtureRoot -Recurse -File | ForEach-Object { $_.IsReadOnly = $true }
           Get-ChildItem $fixtureRoot -Recurse -File | ForEach-Object { Write-Host "fixture: $($_.FullName)" }
 
       - name: Setup .NET SDK
@@ -333,8 +336,9 @@ jobs:
           $results = @($doc.TestRun.Results.UnitTestResult)
           $executed = @($results | Where-Object { $_.outcome -ne 'NotExecuted' })
           $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
-          # Allowed: the 297 MB opt-in fixture, and the symlink test on a runner that refuses links.
-          $allowed = 'is large; set BLUEPLM_REGRESSION_LARGE_FIXTURES|will not create a symbolic link'
+          # Allowed: the 297 MB T500X fixture, which the assets repo leaves out, and the symlink test on a
+          # runner that refuses links.
+          $allowed = "REGRESSION-TEST-T500X' is (not present|large)|will not create a symbolic link"
           $unexpected = @($skipped | Where-Object { "$($_.Output.ErrorInfo.Message)$($_.Output.StdOut)" -notmatch $allowed })
           "## Document Manager tests" | Out-File $env:GITHUB_STEP_SUMMARY -Append
           "$($executed.Count) executed, $($skipped.Count) skipped ($($unexpected.Count) unexpected)." |
