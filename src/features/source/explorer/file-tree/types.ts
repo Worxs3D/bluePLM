@@ -23,9 +23,8 @@ export interface FolderDiffCounts {
   modified: number
   moved: number
   /**
-   * The stub side of the same moves ('moved_away' rows) - a file contributes
-   * exactly one of `moved` (new location) or `movedAway` (old location's stub),
-   * never both, so this never double-counts a single logical move.
+   * Moves that left this folder: 'moved_away' stubs whose moved file is not under
+   * it too (`stubCountsAsMoveIn`), so `moved + movedAway` counts each move once.
    */
   movedAway: number
   deleted: number

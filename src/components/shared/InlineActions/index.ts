@@ -12,6 +12,7 @@ export {
   FolderCheckinButton,
   InlineDiscardButton,
 } from './InlineActionButtons'
+export { FolderMovedBadge } from './FolderMovedBadge'
 
 // Checkout users dropdown for folder/vault notifications
 export { CheckoutUsersDropdown } from './CheckoutUsersDropdown'

@@ -1,5 +1,5 @@
 // Inline action buttons for tree items
-import { Loader2, ArrowLeftRight } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
 import { t } from '@/lib/i18n'
 import type { LocalFile } from '@/stores/pdmStore'
@@ -17,6 +17,7 @@ import {
   FolderUploadButton,
   FolderCheckinButton,
   InlineDiscardButton,
+  FolderMovedBadge,
 } from '@/components/shared/InlineActions'
 import { NotifiableCheckoutAvatar } from '@/components/shared/Avatar'
 import { executeCommand } from '@/lib/commands'
@@ -432,38 +433,6 @@ interface FolderActionButtonsProps {
    * rewired to open that dialog once it ships.
    */
   onResolveMoves?: (file: LocalFile) => void
-}
-
-interface FolderMovedBadgeProps {
-  onClick: (e: React.MouseEvent) => void
-  /** moved + movedAway, combined. See the comment at the call site for why these are summed. */
-  totalCount: number
-  title: string
-}
-
-/**
- * Pending-move badge for a folder row - one combined count for `diffCounts.moved` and
- * `diffCounts.movedAway` together.
- *
- * These two counts are two views of the same underlying moves (the file's new location and the
- * stub left at its old one), so a folder that is a common ancestor of both sides of a move
- * legitimately has both counts positive for what is, from the user's perspective, a single
- * pending decision. Showing one badge with one number - rather than two badges, or a "moved: 1,
- * away: 1" pair - keeps that from reading as two separate problems.
- */
-function FolderMovedBadge({ onClick, totalCount, title }: FolderMovedBadgeProps) {
-  return (
-    <button
-      className="group/moved flex items-center gap-0 px-1.5 py-0.5 rounded-md transition-all duration-200 bg-white/10 text-blue-400 hover:bg-blue-400/30 hover:gap-1"
-      onClick={onClick}
-      title={title}
-    >
-      <ArrowLeftRight size={12} className="transition-colors duration-200" />
-      <span className="text-[10px] font-medium text-blue-400 max-w-0 overflow-hidden transition-all duration-200 group-hover/moved:max-w-[2rem]">
-        {totalCount}
-      </span>
-    </button>
-  )
 }
 
 /**

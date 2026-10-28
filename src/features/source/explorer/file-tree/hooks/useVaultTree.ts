@@ -6,6 +6,7 @@ import {
 } from '@/lib/checkout/checkoutDisplay'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { isPathHidden } from '@/lib/hiddenFolders'
+import { stubCountsAsMoveIn } from '@/lib/files/pendingMoves'
 import type { OperationType } from '@/stores/types'
 import {
   getFolderCheckoutStatus,
@@ -76,9 +77,9 @@ export interface FolderMetrics {
   /** Number of moved files (path changed, pending sync) */
   movedCount: number
   /**
-   * Number of 'moved_away' stubs - the same moves as movedCount, counted at the
-   * old location instead of the new one. Never overlaps movedCount: each moved
-   * file contributes to exactly one of the two, at different folders.
+   * Number of 'moved_away' stubs whose moved file is not under this folder too -
+   * the moves that left it. A folder holding both sides of a move counts it once,
+   * in movedCount, so movedCount + movedAwayCount is the number of moves.
    */
   movedAwayCount: number
   /** Number of deleted files (removed locally, pending sync) */
@@ -416,7 +417,7 @@ export function useVaultTree() {
         } else if (file.diffStatus === 'moved') {
           m.movedCount++
         } else if (file.diffStatus === 'moved_away') {
-          m.movedAwayCount++
+          if (stubCountsAsMoveIn(file, currentPath)) m.movedAwayCount++
         } else if (file.diffStatus === 'deleted') {
           m.deletedCount++
         } else if (file.diffStatus === 'deleted_remote') {
@@ -699,7 +700,9 @@ export function useVaultTree() {
         if (file.diffStatus === 'added') added++
         else if (file.diffStatus === 'modified') modified++
         else if (file.diffStatus === 'moved') moved++
-        else if (file.diffStatus === 'moved_away') movedAway++
+        else if (file.diffStatus === 'moved_away') {
+          if (stubCountsAsMoveIn(file, folderPath)) movedAway++
+        }
         else if (file.diffStatus === 'deleted') deleted++
         else if (file.diffStatus === 'outdated') outdated++
         else if (file.diffStatus === 'cloud') {

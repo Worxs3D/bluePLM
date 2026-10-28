@@ -5,7 +5,8 @@
  * - useFilePaneContext() for UI state
  * - useFilePaneHandlers() for action handlers
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, HardDrive, Loader2 } from 'lucide-react'
 import { getCheckoutDisplayUser } from '@/lib/checkout/checkoutDisplay'
 import { getInitials } from '@/lib/utils'
@@ -18,10 +19,13 @@ import {
   FolderDownloadButton,
   FolderUploadButton,
   FolderCheckinButton,
+  FolderMovedBadge,
 } from '@/components/shared/InlineActions'
 import { NotifiableCheckoutAvatar } from '@/components/shared/Avatar'
 import { HiddenFolderBadge } from '@/components/shared/HiddenFolder'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
+import { t } from '@/lib/i18n'
+import { ResolveMovedFilesDialog } from '@/features/source/context-menu/dialogs'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { CheckoutUser } from '../../../types'
 import { useFilePaneContext, useFilePaneHandlers } from '../../../context'
@@ -73,6 +77,7 @@ export function NameCell({
     setIsCheckinHovered,
     isUpdateHovered,
     setIsUpdateHovered,
+    onRefresh,
   } = useFilePaneContext()
 
   const nameRowClassName = `flex items-center ${nested ? 'gap-1.5' : 'gap-1'} group/name`
@@ -227,6 +232,12 @@ export function NameCell({
   const cloudFilesCount = fm?.cloudFilesCount || 0
   const myCheckedOutFilesCount = fm?.myCheckedOutFilesCount || 0
   const totalCheckedOutFilesCount = fm?.totalCheckedOutFilesCount || 0
+  const pendingMoveCount = (fm?.movedCount || 0) + (fm?.movedAwayCount || 0)
+  // The dialog is mounted by the row whose badge opened it: its backdrop covers the list, so the
+  // row cannot scroll out of view while it is open. It is portalled to the body because the
+  // virtualized row is transformed, which would pin a `fixed` overlay to the row; and its events
+  // stop at the portal, since React would otherwise bubble them into the row's click handlers.
+  const [isResolvingMoves, setIsResolvingMoves] = useState(false)
 
   // Get checkout users for avatars (for both files and folders)
   const getCheckoutAvatars = (): CheckoutUser[] => {
@@ -337,12 +348,27 @@ export function NameCell({
       {file.isDirectory &&
         operationType !== 'delete' &&
         (checkoutUsers.length > 0 ||
+          pendingMoveCount > 0 ||
           cloudFilesCount > 0 ||
           file.diffStatus === 'cloud' ||
           checkoutableFilesCount > 0 ||
           localOnlyFilesCount > 0 ||
           (fm?.outdatedFilesCount || 0) > 0) && (
           <span className="flex items-center gap-1 ml-auto mr-0.5 text-[10px]">
+            {/* Pending moves - the same badge and dialog as the folder tree */}
+            {pendingMoveCount > 0 && (
+              <FolderMovedBadge
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsResolvingMoves(true)
+                }}
+                totalCount={pendingMoveCount}
+                title={t(
+                  `explorer.pendingMovesBadgeTitle${pendingMoveCount === 1 ? '_one' : '_other'}`,
+                  { count: pendingMoveCount },
+                )}
+              />
+            )}
             {/* Sync/update button */}
             {(fm?.outdatedFilesCount || 0) > 0 && (
               <InlineSyncButton
@@ -636,6 +662,24 @@ export function NameCell({
             </span>
           )
         })()}
+
+      {isResolvingMoves &&
+        createPortal(
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <ResolveMovedFilesDialog
+              isOpen
+              onClose={() => setIsResolvingMoves(false)}
+              contextFile={file}
+              onRefresh={onRefresh}
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

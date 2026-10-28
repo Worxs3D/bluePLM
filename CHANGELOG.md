@@ -16,6 +16,12 @@ Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expect
   belongs to exactly one scope (personal or organization), every organization member can read
   the shared colors, and only an administrator (`is_org_admin()`) of that organization can add or
   remove them. Existing personal swatches are kept; the creator is set by the database.
+- **Pending moves show on folder rows in the file list, counted once.** The pending-move badge
+  was only on the folder tree, so a subfolder in the file list showed nothing. The file list's
+  folder rows now carry the same badge and open the same Resolve Pending Moves dialog. A move is
+  two rows (the file at its new path and a stub at the old one), and a folder holding both counted
+  it twice: one move into a subfolder showed "2" while the dialog listed one. Each move now counts
+  once per folder (`stubCountsAsMoveIn`).
 
 ## [4.8.0] - 2026-10-28
 

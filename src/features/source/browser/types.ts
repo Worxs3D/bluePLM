@@ -136,6 +136,9 @@ export interface FolderMetrics {
   totalCheckedOutFilesCount: number
   checkoutUsers: CheckoutUser[]
   isSynced: boolean
+  /** Pending moves under the folder: `movedCount + movedAwayCount` counts each move once. */
+  movedCount: number
+  movedAwayCount: number
 }
 
 export type FolderMetricsMap = Map<string, FolderMetrics>

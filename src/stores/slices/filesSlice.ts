@@ -29,6 +29,7 @@ import { recordMetric } from '@/lib/performanceMetrics'
 import { log } from '@/lib/logger'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 import { isPathHidden, readHiddenFolderPaths } from '@/lib/hiddenFolders'
+import { stubCountsAsMoveIn } from '@/lib/files/pendingMoves'
 import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
 import { isRecentlyModified, markRecentlyModified } from '@/lib/recentlyModified'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
@@ -2455,9 +2456,8 @@ export const createFilesSlice: StateCreator<
     let added = 0
     let modified = 0
     let moved = 0
-    // The stub side of the same moves - a file contributes exactly one of
-    // 'moved' (new location) or 'movedAway' (old location's stub), never both,
-    // so summing the two never double-counts a single logical move.
+    // Moves that left the folder: a stub counts only where its moved file is not
+    // counted too (stubCountsAsMoveIn), so moved + movedAway is the move count.
     let movedAway = 0
     let deleted = 0
     let outdated = 0
@@ -2475,7 +2475,7 @@ export const createFilesSlice: StateCreator<
       if (file.diffStatus === 'added') added++
       else if (file.diffStatus === 'modified') modified++
       else if (file.diffStatus === 'moved') moved++
-      else if (file.diffStatus === 'moved_away') movedAway++
+      else if (file.diffStatus === 'moved_away') movedAway += stubCountsAsMoveIn(file, folderPath) ? 1 : 0
       else if (file.diffStatus === 'deleted') deleted++
       else if (file.diffStatus === 'outdated') outdated++
       else if (file.diffStatus === 'cloud') cloud++
