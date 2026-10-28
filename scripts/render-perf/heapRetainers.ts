@@ -83,6 +83,16 @@ export function probeRetainers(snap: HeapSnapshot, property = '__probe', samples
   const nodeLabel = (i: number) =>
     `${nodeTypes[nodes[i * nf + nType]]}:${String(strings[nodes[i * nf + nName]]).slice(0, 60)}`
 
+  // A WeakMap value is reachable only while its key is; V8 records that as an internal edge from
+  // the table named '<n> / part of key (...) -> value (...) pair in WeakMap (...)'. Following it
+  // would name the WeakMap (a cache) instead of whatever keeps the key alive, so it counts as weak:
+  // the walk then reaches the value through the key's own holder.
+  const isWeak = (e: number) => {
+    const type = edgeTypes[edges[e + eType]]
+    if (type === 'weak') return true
+    return type === 'internal' && String(strings[edges[e + eName]]).includes('part of key')
+  }
+
   // One breadth-first walk from the root gives the shortest path to every node.
   const prev = new Int32Array(count).fill(-1)
   const prevEdge = new Int32Array(count).fill(-1)
@@ -94,7 +104,7 @@ export function probeRetainers(snap: HeapSnapshot, property = '__probe', samples
   while (head < tail) {
     const i = queue[head++]
     for (let e = firstEdge[i]; e < firstEdge[i + 1]; e += ef) {
-      if (edgeTypes[edges[e + eType]] === 'weak') continue
+      if (isWeak(e)) continue
       const to = edges[e + eTo] / nf
       if (prev[to] !== -1) continue
       prev[to] = i

@@ -315,6 +315,41 @@ describe('probeRetainers', () => {
     strings,
   }
 
+  it('paths a WeakMap value through what holds its key, not through the WeakMap', () => {
+    // root -(cache)-> WeakMap -(ephemeron)-> Index -(first)-> Row p1f0;
+    // root -(holder)-> Closure -(files)-> Array (the key) -[0]-> Row p1f0. Row p2f0 is the latest.
+    const s = ['', 'root', 'WeakMap', 'Index', 'Closure', 'Array', 'Row', 'cache', 'holder', 'files',
+      '1 / part of key (Array @9) -> value (Index @7) pair in WeakMap (table @5)', 'first', '__probe', 'p1f0', 'p2f0', 'latest']
+    const types = ['synthetic', 'object', 'array', 'string', 'closure']
+    const edgeT = ['context', 'element', 'property', 'internal', 'hidden', 'shortcut', 'weak']
+    const PR = edgeT.indexOf('property')
+    const IN = edgeT.indexOf('internal')
+    const EL = edgeT.indexOf('element')
+    const nodes = [
+      0, 1, 1, 0, 3, // 0 root: cache, holder, latest
+      1, 2, 2, 0, 1, // 1 WeakMap: ephemeron -> Index
+      1, 3, 3, 0, 1, // 2 Index: first -> Row p1
+      4, 4, 4, 0, 1, // 3 Closure: files -> Array
+      2, 5, 5, 0, 1, // 4 Array: [0] -> Row p1
+      1, 6, 6, 0, 1, // 5 Row p1f0
+      3, 13, 7, 0, 0, // 6 'p1f0'
+      1, 6, 8, 0, 1, // 7 Row p2f0
+      3, 14, 9, 0, 0, // 8 'p2f0'
+    ]
+    const edges = [
+      PR, 7, 1 * NF, PR, 8, 3 * NF, PR, 15, 7 * NF, // root
+      IN, 10, 2 * NF, // WeakMap ephemeron
+      PR, 11, 5 * NF, // Index.first
+      PR, 9, 4 * NF, // Closure.files
+      EL, 0, 5 * NF, // Array[0]
+      PR, 12, 6 * NF, // Row p1f0.__probe
+      PR, 12, 8 * NF, // Row p2f0.__probe
+    ]
+    const report = probeRetainers({ ...snap, nodes, edges, strings: s, snapshot: { meta: { ...snap.snapshot.meta, node_types: [types] as [string[]] } } }, '__probe', 1)
+    expect(report.superseded).toBe(1)
+    expect(report.oldest[0].path).toEqual(['holder -> closure:Closure', 'files -> array:Array', '[0] -> object:Row'])
+  })
+
   it('counts rows a later event for the same file superseded, and paths the oldest of them', () => {
     // The tag scan sees every tagged object in the snapshot, including the weakly held p9.
     const report = probeRetainers(snap, '__probe', 1)
