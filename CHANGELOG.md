@@ -6,6 +6,8 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expects 105.
+
 ### Added
 
 - **Optional embedded eDrawings 3D preview (Windows, off by default)** (#76, by @Worxs3D). A
@@ -21,6 +23,15 @@ All notable changes to BluePLM will be documented in this file.
   configured vault (UNC roots included) and reports failures. Release builds on
   `windows-2022` must build both payloads (`BLUEPLM_EDRAWINGS_RELEASE_BUILD=1`); development
   builds without the toolchain warn and skip.
+
+### Fixed
+
+- **Organization color swatches work on databases built from `core.sql`** (schema 105, #75 by
+  @Worxs3D). The client already read and wrote `color_swatches.org_id`, but the table had no such
+  column, so the shared palette failed. The table gains `org_id` and `created_by`, each row
+  belongs to exactly one scope (personal or organization), every organization member can read
+  the shared colors, and only an administrator (`is_org_admin()`) of that organization can add or
+  remove them. Existing personal swatches are kept; the creator is set by the database.
 
 ## [4.8.0] - 2026-10-28
 
