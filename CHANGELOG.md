@@ -38,6 +38,10 @@ Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expect
   two rows (the file at its new path and a stub at the old one), and a folder holding both counted
   it twice: one move into a subfolder showed "2" while the dialog listed one. Each move now counts
   once per folder (`stubCountsAsMoveIn`).
+- **Folder buttons spin while their files are already being updated.** Get Latest from the vault
+  header tracks only the files it updates, so every subfolder still offered a clickable Get Latest
+  for those same files. Folder buttons in the tree and the file pane now show their spinner while
+  that operation runs on anything beneath the folder (`getFolderDescendantOperations`).
 
 ## [4.8.0] - 2026-10-28
 

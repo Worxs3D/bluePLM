@@ -11,6 +11,7 @@ import { LocalFile } from '@/stores/pdmStore'
 import { FileIcon } from '@/components/shared/FileItem'
 import { HiddenFolderBadge } from '@/components/shared/HiddenFolder'
 import { FileActionButtons, FolderActionButtons } from './TreeItemActions'
+import { sameOperationSet } from '@/features/source/browser/utils/processingStatus'
 import {
   TREE_BASE_PADDING_PX,
   TREE_INDENT_PX,
@@ -63,6 +64,8 @@ interface VirtualizedTreeRowProps {
   clipboard: { files: LocalFile[]; operation: 'copy' | 'cut' } | null
   /** Operation type if file is being processed */
   operationType: OperationType | null
+  /** Operations running beneath this folder (folders only) - spins its inline buttons */
+  descendantOperations: ReadonlySet<OperationType> | null
   /** Folder diff counts (for folders only) */
   diffCounts: FolderDiffCounts | null
   /** Stable checkout identity signature for this row */
@@ -169,6 +172,8 @@ function arePropsEqual(
 
   // 4. Processing state
   if (prevProps.operationType !== nextProps.operationType) return false
+  if (!sameOperationSet(prevProps.descendantOperations, nextProps.descendantOperations))
+    return false
 
   // 5. Clipboard state (only check if this file is cut)
   const prevIsCut =
@@ -257,6 +262,7 @@ export const VirtualizedTreeRow = memo(function VirtualizedTreeRow({
   isDragTarget,
   clipboard,
   operationType,
+  descendantOperations,
   diffCounts,
   folderMetrics,
   isHiddenFromNonAdmins,
@@ -493,6 +499,7 @@ export const VirtualizedTreeRow = memo(function VirtualizedTreeRow({
           totalCheckouts={folderStats.totalCheckouts}
           syncedCount={folderStats.syncedCount}
           operationType={operationType}
+          descendantOperations={descendantOperations}
           onRefresh={onRefresh}
           isOfflineMode={isOfflineMode}
           onResolveMoves={onResolveMoves}

@@ -18,6 +18,7 @@ import {
 import type { TreeMap, FolderDiffCounts } from '../types'
 import { recordMetric } from '@/lib/performanceMetrics'
 import { logExplorer } from '@/lib/userActionLogger'
+import { getFolderDescendantOperations } from '@/features/source/browser/utils/processingStatus'
 
 /**
  * Pre-computed folder metrics for O(1) lookups instead of O(N) per-folder computations.
@@ -568,6 +569,13 @@ export function useVaultTree() {
     [processingOperations],
   )
 
+  // Operations running beneath a folder (spinners for its inline buttons; see the helper)
+  const getDescendantOperations = useCallback(
+    (relativePath: string): ReadonlySet<OperationType> | null =>
+      getFolderDescendantOperations(relativePath, processingOperations),
+    [processingOperations],
+  )
+
   /**
    * Check if a folder is fully synced (for text styling: normal vs italic/muted).
    * O(1) lookup from pre-computed folderMetrics Map.
@@ -811,6 +819,7 @@ export function useVaultTree() {
     folderMetrics,
     isBeingProcessed,
     getProcessingOperation,
+    getDescendantOperations,
     checkFolderSynced,
     checkFolderCheckoutStatus,
     /** Get priority-based folder icon color (Tailwind class) */

@@ -31,6 +31,8 @@ import type { CheckoutUser } from '../../../types'
 import { useFilePaneContext, useFilePaneHandlers } from '../../../context'
 import { ListRowIcon } from '../ListRowIcon'
 import type { CellRendererBaseProps } from './types'
+import { getFolderDescendantOperations } from '../../../utils/processingStatus'
+import type { OperationType } from '@/stores/types'
 
 export interface NameCellProps extends CellRendererBaseProps {
   indentPx?: number
@@ -110,6 +112,16 @@ export function NameCell({
 
   // Get operation type for this file (if any operation is in progress)
   const operationType = getProcessingOperation(file.relativePath, file.isDirectory)
+  // Operations on files beneath this folder. Get Latest from the vault header tracks only file
+  // paths, so the folder's own lookup is null while its files are in flight. The index is cached
+  // per processing map, so this returns the same Set until that map changes.
+  const descendantOperations = usePDMStore((s) =>
+    file.isDirectory
+      ? getFolderDescendantOperations(file.relativePath, s.processingOperations)
+      : null,
+  )
+  const isRunning = (op: OperationType): boolean =>
+    operationType === op || (descendantOperations?.has(op) ?? false)
 
   const isSynced = !!file.pdmData
   const isBeingRenamed = renamingFile?.path === file.path
@@ -374,7 +386,7 @@ export function NameCell({
               <InlineSyncButton
                 onClick={(e) => handleInlineGetLatest(e, file)}
                 count={fm?.outdatedFilesCount || 0}
-                isProcessing={operationType === 'sync'}
+                isProcessing={isRunning('sync')}
               />
             )}
             {/* Download button */}
@@ -382,7 +394,7 @@ export function NameCell({
               <FolderDownloadButton
                 onClick={(e) => handleInlineDownload(e, file)}
                 cloudCount={cloudFilesCount}
-                isProcessing={operationType === 'download'}
+                isProcessing={isRunning('download')}
               />
             )}
             {/* Checkin button */}
@@ -397,7 +409,7 @@ export function NameCell({
                     users={checkoutUsers}
                     myCheckedOutCount={myCheckedOutFilesCount}
                     totalCheckouts={totalCheckedOutFilesCount}
-                    isProcessing={operationType === 'checkin'}
+                    isProcessing={isRunning('checkin')}
                     folderId={folderId}
                     folderName={file.name}
                   />
@@ -408,7 +420,7 @@ export function NameCell({
               <InlineCheckoutButton
                 onClick={(e) => handleInlineCheckout(e, file)}
                 count={checkoutableFilesCount}
-                isProcessing={operationType === 'checkout'}
+                isProcessing={isRunning('checkout')}
               />
             )}
             {/* Upload button */}
@@ -416,7 +428,7 @@ export function NameCell({
               <FolderUploadButton
                 onClick={(e) => handleInlineUpload(e, file)}
                 localCount={localOnlyFilesCount}
-                isProcessing={operationType === 'upload'}
+                isProcessing={isRunning('upload')}
               />
             )}
           </span>

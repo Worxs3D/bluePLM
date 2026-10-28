@@ -206,6 +206,7 @@ export function FileTree({ onRefresh }: FileTreeProps) {
     folderMetrics,
     isBeingProcessed,
     getProcessingOperation,
+    getDescendantOperations,
     checkFolderSynced,
     checkFolderCheckoutStatus,
     getDiffCounts,
@@ -1089,6 +1090,9 @@ export function FileTree({ onRefresh }: FileTreeProps) {
                     ? (folderMetrics.get(file.relativePath) ?? null)
                     : null
                   const diffCounts = file.isDirectory ? getDiffCounts(file.relativePath) : null
+                  const descendantOperations = file.isDirectory
+                    ? getDescendantOperations(file.relativePath)
+                    : null
                   const isDragTarget = file.isDirectory && dragOverFolder === file.relativePath
 
                   return (
@@ -1117,6 +1121,7 @@ export function FileTree({ onRefresh }: FileTreeProps) {
                       isDragTarget={isDragTarget}
                       clipboard={clipboard}
                       operationType={operationType}
+                      descendantOperations={descendantOperations}
                       diffCounts={diffCounts}
                       checkoutSignature={getCheckoutSignature(
                         file,

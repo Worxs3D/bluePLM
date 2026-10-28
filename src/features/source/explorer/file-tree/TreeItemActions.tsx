@@ -422,6 +422,13 @@ interface FolderActionButtonsProps {
   totalCheckouts: number
   syncedCount: number
   operationType: OperationType | null
+  /**
+   * Operations running on paths beneath this folder. A command started on a file list (Get Latest
+   * from the vault header, a multi-select) tracks only file paths, so `operationType` stays null
+   * here while this folder's files are in flight. Each button also spins for its own operation
+   * found here, so it is not offered as clickable for files already being processed.
+   */
+  descendantOperations?: ReadonlySet<OperationType> | null
   onRefresh?: (silent?: boolean) => void
   // Props passed from parent (eliminates store subscriptions)
   isOfflineMode: boolean
@@ -451,11 +458,16 @@ export function FolderActionButtons({
   totalCheckouts,
   syncedCount,
   operationType,
+  descendantOperations,
   onRefresh,
   isOfflineMode,
   onResolveMoves,
 }: FolderActionButtonsProps) {
   if (!file.isDirectory) return null
+
+  // The folder itself, or something beneath it, is running this operation
+  const isRunning = (op: OperationType): boolean =>
+    operationType === op || (descendantOperations?.has(op) ?? false)
 
   const movedCount = diffCounts?.moved ?? 0
   const movedAwayCount = diffCounts?.movedAway ?? 0
@@ -533,7 +545,7 @@ export function FolderActionButtons({
           <InlineSyncButton
             onClick={handleInlineGetLatest}
             count={diffCounts.outdated}
-            isProcessing={operationType === 'sync'}
+            isProcessing={isRunning('sync')}
           />
         )}
         {/* 1b. Pending file moves - shown regardless of online/offline, since resolving one is a
@@ -555,7 +567,7 @@ export function FolderActionButtons({
           <FolderDownloadButton
             onClick={(e) => handleInlineDownload(e)}
             cloudCount={diffCounts.cloud}
-            isProcessing={operationType === 'download'}
+            isProcessing={isRunning('download')}
           />
         )}
       </span>
@@ -576,7 +588,7 @@ export function FolderActionButtons({
                 users={checkoutUsers}
                 myCheckedOutCount={checkedOutByMeCount}
                 totalCheckouts={totalCheckouts}
-                isProcessing={operationType === 'checkin'}
+                isProcessing={isRunning('checkin')}
                 folderId={folderId}
                 folderName={file.name}
               />
@@ -587,7 +599,7 @@ export function FolderActionButtons({
           <InlineCheckoutButton
             onClick={handleInlineCheckout}
             count={syncedCount}
-            isProcessing={operationType === 'checkout'}
+            isProcessing={isRunning('checkout')}
           />
         )}
         {/* 5. Local files - clickable upload button when online only */}
@@ -595,7 +607,9 @@ export function FolderActionButtons({
           <FolderUploadButton
             onClick={handleInlineFirstCheckin}
             localCount={localOnlyCount}
-            isProcessing={operationType === 'upload' || operationType === 'sync'}
+            isProcessing={
+              operationType === 'upload' || operationType === 'sync' || isRunning('upload')
+            }
           />
         )}
       </span>
