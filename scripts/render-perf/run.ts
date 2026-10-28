@@ -506,7 +506,9 @@ async function longSession(minutes: number, out: string): Promise<SessionResult>
     writeFileSync(join(out, 'session-heap.heapprofile'), JSON.stringify(profile))
     const probes = await snapshotProbes(cdp)
     writeFileSync(join(out, 'session-probes.json'), JSON.stringify(probes, null, 2))
-    say(`session: ${probes.alive} realtime rows alive (newest event ${probes.newestEvent})`)
+    say(
+      `session: ${probes.alive} realtime rows alive over ${probes.files} files, ${probes.superseded} superseded (newest event ${probes.newestEvent})`,
+    )
     const retained = retainedByStack(profile.head as SamplingHeapNode, { frameName: sourceFrameName() })
     const hs = heapStats(heap)
     say(`session: ${cycles} cycles, heap ${hs.startMB} -> ${hs.endMB} MB`)

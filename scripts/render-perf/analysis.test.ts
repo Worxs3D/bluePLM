@@ -253,28 +253,35 @@ describe('SourceMapLookup', () => {
 })
 
 describe('probeRetainers', () => {
-  // root -(holder)-> Cache -(rows)-> Array -[0]-> Row{__probe:'p3'}; Row{__probe:'p9'} only weakly.
+  // root -(holder)-> Cache -(rows)-> Array -[0]-> Row p3 (file 7); root -(store)-> Row p5 (file 7,
+  // its latest) and Row p4 (file 2); Row p9 (file 2) only weakly, so it is not alive.
   const NF = 5
-  const strings = ['', 'root', 'Cache', 'Array', 'Row', 'holder', 'rows', '__probe', 'p3', 'p9', 'ref']
+  const strings = ['', 'root', 'Cache', 'Array', 'Row', 'holder', 'rows', '__probe', 'p3f7', 'p9f2', 'ref', 'p5f7', 'p4f2', 'store', 'other']
   const nodeTypes = ['synthetic', 'object', 'array', 'string']
   const edgeTypes = ['context', 'element', 'property', 'internal', 'hidden', 'shortcut', 'weak']
   // type, name, id, self_size, edge_count
   const nodes = [
-    0, 1, 1, 0, 2, // 0 root: holder, weak ref
+    0, 1, 1, 0, 4, // 0 root: holder, weak ref, store, other
     1, 2, 2, 0, 1, // 1 Cache: rows
     2, 3, 3, 0, 1, // 2 Array: [0]
-    1, 4, 4, 0, 1, // 3 Row p3
-    3, 8, 5, 0, 0, // 4 'p3'
-    1, 4, 6, 0, 1, // 5 Row p9
-    3, 9, 7, 0, 0, // 6 'p9'
+    1, 4, 4, 0, 1, // 3 Row p3f7
+    3, 8, 5, 0, 0, // 4 'p3f7'
+    1, 4, 6, 0, 1, // 5 Row p9f2
+    3, 9, 7, 0, 0, // 6 'p9f2'
+    1, 4, 8, 0, 1, // 7 Row p5f7
+    3, 11, 9, 0, 0, // 8 'p5f7'
+    1, 4, 10, 0, 1, // 9 Row p4f2
+    3, 12, 11, 0, 0, // 10 'p4f2'
   ]
   const P = edgeTypes.indexOf('property')
   const edges = [
-    P, 5, 1 * NF, edgeTypes.indexOf('weak'), 10, 5 * NF, // root
+    P, 5, 1 * NF, edgeTypes.indexOf('weak'), 10, 5 * NF, P, 13, 7 * NF, P, 14, 9 * NF, // root
     P, 6, 2 * NF, // Cache.rows
     edgeTypes.indexOf('element'), 0, 3 * NF, // Array[0]
-    P, 7, 4 * NF, // Row.__probe = 'p3'
-    P, 7, 6 * NF, // Row.__probe = 'p9'
+    P, 7, 4 * NF, // Row.__probe = 'p3f7'
+    P, 7, 6 * NF, // Row.__probe = 'p9f2'
+    P, 7, 8 * NF, // Row.__probe = 'p5f7'
+    P, 7, 10 * NF, // Row.__probe = 'p4f2'
   ]
   const snap = {
     snapshot: {
@@ -290,12 +297,21 @@ describe('probeRetainers', () => {
     strings,
   }
 
-  it('finds tagged objects and the shortest strong path to the oldest', () => {
+  it('counts rows a later event for the same file superseded, and paths the oldest of them', () => {
+    // The tag scan sees every tagged object in the snapshot, including the weakly held p9.
     const report = probeRetainers(snap, '__probe', 1)
-    expect(report.alive).toBe(2)
+    expect(report.alive).toBe(4)
     expect(report.newestEvent).toBe(9)
+    expect(report.files).toBe(2)
+    // p3 (file 7, newer p5) and p4 (file 2, newer p9) are superseded.
+    expect(report.superseded).toBe(2)
     expect(report.oldest).toEqual([
-      { event: 3, path: ['holder -> object:Cache', 'rows -> array:Array', '[0] -> object:Row'] },
+      {
+        event: 3,
+        file: 7,
+        superseded: true,
+        path: ['holder -> object:Cache', 'rows -> array:Array', '[0] -> object:Row'],
+      },
     ])
   })
 })

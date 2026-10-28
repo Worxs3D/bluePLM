@@ -1,11 +1,12 @@
 /**
  * Who keeps a tagged object alive, from a V8 heap snapshot (`HeapProfiler.takeHeapSnapshot`).
  *
- * The perf control tags each realtime row it sends with `__probe: 'p<event>'`. After the long
- * session, a row from an early event that is still alive is held by something: the store only
- * keeps a file's latest row. This walks the snapshot from the GC roots (weak edges skipped) and
- * returns the shortest retainer path of a few of the oldest tagged objects, so the nightly names
- * the holder instead of only the allocation site.
+ * The perf control tags each realtime row it sends with `__probe: 'p<event>f<file>'`. A row whose
+ * file was sent a later event and is still alive is held by something: the store only keeps a
+ * file's latest row. Rows that are a file's latest are expected to be alive, so they are counted
+ * apart. This walks the snapshot from the GC roots (weak edges skipped) and returns the shortest
+ * retainer path of a few of the oldest superseded rows (or of the oldest rows, when none is
+ * superseded), so the nightly names the holder instead of only the allocation site.
  */
 
 export interface HeapSnapshot {
@@ -26,8 +27,12 @@ export interface ProbeReport {
   /** Tagged objects alive, and the highest event number seen among them. */
   alive: number
   newestEvent: number
-  /** Shortest path from the roots to each of a few of the oldest tagged objects. */
-  oldest: Array<{ event: number; path: string[] }>
+  /** Distinct files among them. */
+  files: number
+  /** Alive objects from an event older than the newest alive one for their file: a leak. */
+  superseded: number
+  /** Shortest path from the roots to a few of the oldest superseded objects (else the oldest). */
+  oldest: Array<{ event: number; file: number; superseded: boolean; path: string[] }>
 }
 
 export function probeRetainers(snap: HeapSnapshot, property = '__probe', samples = 4): ProbeReport {
@@ -53,18 +58,22 @@ export function probeRetainers(snap: HeapSnapshot, property = '__probe', samples
   firstEdge[count] = edges.length
 
   // Tagged objects and their event numbers.
-  const tagged: Array<{ node: number; event: number }> = []
+  const tagged: Array<{ node: number; event: number; file: number }> = []
   for (let i = 0; i < count; i++) {
     for (let e = firstEdge[i]; e < firstEdge[i + 1]; e += ef) {
       if (edgeTypes[edges[e + eType]] !== 'property' || strings[edges[e + eName]] !== property) continue
       const value = strings[nodes[(edges[e + eTo] / nf) * nf + nName]]
-      const event = /^p(\d+)$/.exec(value ?? '')
-      if (event) tagged.push({ node: i, event: Number(event[1]) })
+      const tag = /^p(\d+)(?:f(\d+))?$/.exec(value ?? '')
+      if (tag) tagged.push({ node: i, event: Number(tag[1]), file: tag[2] === undefined ? -1 : Number(tag[2]) })
       break
     }
   }
-  if (tagged.length === 0) return { alive: 0, newestEvent: -1, oldest: [] }
+  if (tagged.length === 0) return { alive: 0, newestEvent: -1, files: 0, superseded: 0, oldest: [] }
   tagged.sort((a, b) => a.event - b.event)
+  const newestPerFile = new Map<number, number>()
+  for (const t of tagged) newestPerFile.set(t.file, Math.max(newestPerFile.get(t.file) ?? -1, t.event))
+  const isSuperseded = (t: { event: number; file: number }) => t.event < (newestPerFile.get(t.file) ?? -1)
+  const superseded = tagged.filter(isSuperseded)
 
   const edgeLabel = (e: number) => {
     const type = edgeTypes[edges[e + eType]]
@@ -105,6 +114,10 @@ export function probeRetainers(snap: HeapSnapshot, property = '__probe', samples
   return {
     alive: tagged.length,
     newestEvent: tagged[tagged.length - 1].event,
-    oldest: tagged.slice(0, samples).map(({ node, event }) => ({ event, path: pathTo(node) })),
+    files: newestPerFile.size,
+    superseded: superseded.length,
+    oldest: (superseded.length > 0 ? superseded : tagged)
+      .slice(0, samples)
+      .map((t) => ({ event: t.event, file: t.file, superseded: isSuperseded(t), path: pathTo(t.node) })),
   }
 }
