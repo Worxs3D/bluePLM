@@ -39,6 +39,8 @@ export function useVaultWatchers(
     const SUPPRESSION_WINDOW_MS = 5000
 
     let refreshTimeout: NodeJS.Timeout | null = null
+    // Paths reported since the debounce timer last fired.
+    let debouncedPaths = new Set<string>()
 
     // Changes that arrive while an operation runs are looked at again once it is done. They used
     // to be dropped: a file moved in Explorer during a checkout stayed at its old place in the app
@@ -153,7 +155,16 @@ export function useVaultWatchers(
         clearTimeout(refreshTimeout)
       }
 
+      // Every batch that lands inside the debounce is reloaded, not only the last one. Restarting
+      // the timer used to drop the earlier batches' paths: an Explorer move reported as the old
+      // path in one batch and the new path in the next reached the delta scan as the new path
+      // alone, the old path stayed in the scan, and the move was not seen until a full scan
+      // (blueplm-2026-10-26 log, 7000aw angular contact bearing).
+      for (const path of unexpectedChanges) debouncedPaths.add(path)
+
       refreshTimeout = setTimeout(async () => {
+        const unexpectedChanges = [...debouncedPaths]
+        debouncedPaths = new Set()
         const currentState = usePDMStore.getState()
         if (currentState.syncProgress.isActive || currentState.processingOperations.size > 0) {
           window.electronAPI?.log('info', '[FileWatcher] Decision (after debounce)', {

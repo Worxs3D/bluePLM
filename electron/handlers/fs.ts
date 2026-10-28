@@ -214,6 +214,51 @@ function deleteScanEntry(entries: Map<string, LocalFileInfo>, relativePath: stri
 }
 
 /**
+ * Drop cached entries that a move has left behind.
+ *
+ * A file that turns up at a new path with a file index another cached entry still carries was
+ * moved there, and the old path is only right if it still holds that file. The watcher does not
+ * always deliver the old path: the 2026-10-26 log has an Explorer move whose delta loads only
+ * ever named the destination, so the source stayed in the scan, the renderer's inode rename
+ * detection saw both paths on disk, and the move stayed invisible until a full scan. Only the
+ * cached paths sharing an arrived index are re-stated, so a delta stays a delta.
+ */
+async function dropMovedAwaySources(
+  entries: Map<string, LocalFileInfo>,
+  arrivedInodes: ReadonlyMap<number, string>,
+  rootDir: string,
+): Promise<void> {
+  if (arrivedInodes.size === 0) return
+
+  const suspects: LocalFileInfo[] = []
+  for (const [key, entry] of entries) {
+    if (entry.isDirectory || !entry.ino) continue
+    const arrivedAt = arrivedInodes.get(entry.ino)
+    if (arrivedAt !== undefined && arrivedAt !== key) suspects.push(entry)
+  }
+
+  for (const entry of suspects) {
+    const fullPath = path.join(rootDir, entry.relativePath)
+    let stats: fsTypes.Stats
+    try {
+      stats = await fs.promises.stat(fullPath)
+    } catch {
+      deleteScanEntry(entries, entry.relativePath)
+      continue
+    }
+    // Something new took the old name; a hard link keeps the same index and stays as it is.
+    if (stats.ino !== entry.ino) {
+      entries.set(
+        entry.relativePath,
+        stats.isDirectory()
+          ? buildDirectoryEntry(fullPath, entry.relativePath, stats)
+          : buildFileEntry(fullPath, entry.relativePath, stats),
+      )
+    }
+  }
+}
+
+/**
  * Exposes the last full scan to the watcher so it can tell an added directory from a
  * removed one. Writes go straight into the cache the delta handler reads, keeping a
  * single view of what is on disk.
@@ -1633,6 +1678,11 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
 
     const entries = new Map(cache.entries)
     const rootDir = workingDirectory
+    // File index -> the path a file with it just turned up at, for the stale-source sweep below.
+    const arrivedInodes = new Map<number, string>()
+    const noteArrival = (entry: LocalFileInfo) => {
+      if (!entry.isDirectory && entry.ino) arrivedInodes.set(entry.ino, entry.relativePath)
+    }
 
     for (const changedPath of changedPaths) {
       const relativePath = changedPath.replace(/\\/g, '/')
@@ -1656,11 +1706,18 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         }
         entries.set(relativePath, buildDirectoryEntry(fullPath, relativePath, stats))
         const subtree = await scanWorkingTree(rootDir, fullPath)
-        for (const [key, entry] of subtree) entries.set(key, entry)
+        for (const [key, entry] of subtree) {
+          entries.set(key, entry)
+          noteArrival(entry)
+        }
       } else {
-        entries.set(relativePath, buildFileEntry(fullPath, relativePath, stats))
+        const entry = buildFileEntry(fullPath, relativePath, stats)
+        entries.set(relativePath, entry)
+        noteArrival(entry)
       }
     }
+
+    await dropMovedAwaySources(entries, arrivedInodes, rootDir)
 
     workingFilesScanCache = { rootDir, entries }
 

@@ -360,6 +360,34 @@ describe('vault scan and hash stamps', () => {
     const result = await delta(['Old'])
     expect(paths(result.files)).toEqual(['Keep', 'Keep/z.sldprt'])
   })
+
+  // The 2026-10-26 Explorer move: the delta loads named only the destination, the source stayed
+  // in the scan, and inode rename detection could not see the move until a full scan.
+  it('drops the source of a move when only the destination was reported', async () => {
+    const source = put('dev/bearing.sldasm', 'asm')
+    put('dev/keep.sldprt', 'keep')
+    await scan()
+
+    fs.mkdirSync(path.join(vault, 'dev', 'New Folder'))
+    realRenameSync(source, path.join(vault, 'dev', 'New Folder', 'bearing.sldasm'))
+
+    const result = await delta(['dev/New Folder/bearing.sldasm'])
+    expect(result.wasFullScan).toBe(false)
+    expect(paths(result.files)).not.toContain('dev/bearing.sldasm')
+    expect(paths(result.files)).toContain('dev/New Folder/bearing.sldasm')
+    expect(paths(result.files)).toContain('dev/keep.sldprt')
+  })
+
+  it('keeps a source path that something new has taken since the move', async () => {
+    const source = put('dev/bearing.sldasm', 'asm')
+    await scan()
+
+    realRenameSync(source, path.join(vault, 'bearing.sldasm'))
+    put('dev/bearing.sldasm', 'resaved')
+
+    const result = await delta(['bearing.sldasm'])
+    expect(paths(result.files)).toEqual(expect.arrayContaining(['bearing.sldasm', 'dev/bearing.sldasm']))
+  })
 })
 
 describe('copy and move', () => {
