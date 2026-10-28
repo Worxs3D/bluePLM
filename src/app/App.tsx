@@ -35,6 +35,7 @@ import {
   useIntegrationStatus,
   useAppStartup,
   useDeepLinkInstall,
+  useNativeExtensions,
 } from '@/hooks'
 
 // Check if we're in performance mode (pop-out window)
@@ -271,6 +272,9 @@ export function App() {
 
   // Deep link handling - listens for blueplm:// protocol links
   useDeepLinkInstall()
+
+  // Org-installed native extensions: activate on sign-in/org switch, deactivate on sign-out
+  useNativeExtensions()
 
   // Integration status orchestration hook - handles status checks lifecycle
   useIntegrationStatus()

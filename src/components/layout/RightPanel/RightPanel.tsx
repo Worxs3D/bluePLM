@@ -12,6 +12,7 @@ import { SWDatacardPanel } from '@/features/integrations/solidworks'
 import { InspectionTab } from '@/features/integrations/solidworks'
 import { VendorsTab } from '@/features/source/details/VendorsTab'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
+import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { FileBox, Layers, File, Loader2, FilePen, ExternalLink, ArrowLeft } from 'lucide-react'
 
 // Lazy so the customers feature (and its charting library) stays out of the
@@ -92,6 +93,11 @@ export function RightPanel() {
       customerPanel: s.customerPanel,
       setCustomerPanel: s.setCustomerPanel,
     })),
+  )
+  const extensionPanelWorkspace = usePDMStore((s) =>
+    s.extensionRightPanel && s.extensionRightPanel === s.activeView
+      ? (s.extensionWorkspaces.find((w) => w.id === s.extensionRightPanel && w.RightPanel) ?? null)
+      : null,
   )
 
   // Handle tab drop from either panel
@@ -207,6 +213,18 @@ export function RightPanel() {
     if (!file) return <File size={24} className="text-plm-fg-muted" />
     // Use OS icons for files
     return <RightPanelIcon file={file} size={24} />
+  }
+
+  // A native extension workspace's own right panel, in its error boundary.
+  if (extensionPanelWorkspace) {
+    return (
+      <div
+        className="bg-plm-panel border-l border-plm-border flex flex-col"
+        style={{ width: rightPanelWidth }}
+      >
+        <ExtensionRightPanelView workspace={extensionPanelWorkspace} />
+      </div>
+    )
   }
 
   // The Customers workspace owns the right panel while it is open, the same

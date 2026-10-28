@@ -1585,8 +1585,8 @@ declare global {
       // EXTENSION SYSTEM API
       // ═══════════════════════════════════════════════════════════════════════════════
 
-      // Per-machine extension packages: store browsing, install, uninstall. The
-      // desktop has no runtime for them (see docs/extensions/index.md).
+      // Per-machine extension packages (store browsing, install, uninstall; never run)
+      // and org-installed native extensions (see docs/extensions/index.md).
       extensions: {
         // ----- Queries -----
         getAll: () => Promise<ExtensionInfo[]>
@@ -1621,6 +1621,18 @@ declare global {
           acknowledgeUnsigned?: boolean,
         ) => Promise<ExtensionInstallResult>
         uninstall: (extensionId: string) => Promise<{ success: boolean; error?: string }>
+
+        // ----- Native extensions (org-installed, SHA-256 pinned) -----
+        nativePrepare: (request: {
+          extensionId: string
+          version: string
+          sha256: string
+          downloadUrl: string
+        }) => Promise<NativePrepareResult>
+        nativePrune: (
+          keepShas: string[],
+        ) => Promise<{ success: boolean; removed: string[]; error?: string }>
+        nativeInspect: () => Promise<NativeInspectResult>
 
         // ----- Events -----
         onStateChange: (callback: (event: ExtensionStateChangeEvent) => void) => () => void
@@ -1703,6 +1715,31 @@ interface ExtensionInstallResult {
   warning?: string
   requiresAcknowledgment?: boolean
 }
+
+/** `extensions:native-prepare` result */
+type NativePrepareResult =
+  | {
+      success: true
+      sha256: string
+      /** `blueplm-ext://<sha256>/` */
+      baseUrl: string
+      clientEntryUrl: string
+      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
+      cached: boolean
+    }
+  | { success: false; error: string }
+
+/** `extensions:native-inspect` result (admin upload) */
+type NativeInspectResult =
+  | {
+      success: true
+      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
+      sha256: string
+      size: number
+      sqlFiles: Array<{ name: string; content: string }>
+      data: Uint8Array
+    }
+  | { success: false; canceled?: boolean; error?: string }
 
 /** `extension:state-change`: sent by main after an install or an uninstall */
 interface ExtensionStateChangeEvent {

@@ -4,23 +4,29 @@ Welcome to the BluePLM Extension Development documentation. This comprehensive g
 
 ## Status: what actually runs (October 2026)
 
-Read this first. Most of these pages describe the extension API as designed, not as it runs today.
+Read this first. Most of these pages describe the sandboxed extension API as designed, not as
+it runs today.
 
-- **No extension code runs on the desktop.** BluePLM installs `.bpx` packages per machine
-  (from the store or a file), lists them and uninstalls them. It does not load or activate
-  them: there is no Extension Host and no client sandbox. Settings > Extensions says so.
-- **No sandboxed code runs on the API server.** The V8 isolate pool returns
-  `SANDBOX_UNAVAILABLE` for every handler.
-- **What install does check:** the package id and version against the manifest schema,
-  every zip entry (no absolute paths, no `..`, no symlinks, size and entry limits), and, for
-  store downloads, the SHA-256 the store states in the `X-Content-SHA256` response header.
-  No stated hash, or a mismatch, refuses the install. `SIGNATURE` files are not verified.
+- **Native extensions run.** A `.bpx` with `"category": "native"` is installed for the whole
+  organization by an administrator (Settings > Extensions > Install for organization). The
+  package is stored in the organization's `org-extensions` bucket and pinned by SHA-256 in
+  `org_installed_extensions`. Every desktop runs `client/index.js` (`activate(host)`) and the
+  API runs `server/index.js` (`register(app)`, routes under `/ext/<extension-id>/`) only from
+  bytes that match that hash. Native code has full trust; it is not sandboxed. The contract
+  (host API v1, request shape, error codes) is in
+  `.cursor/plans/extensions-native-runtime.plan.md` until it moves to its own page here.
+- **Store and sideloaded packages do not run.** Per-machine installs (store or file) are
+  listed and can be uninstalled, but there is no Extension Host and no client sandbox, and the
+  API's V8 isolate pool returns `SANDBOX_UNAVAILABLE` for every sandboxed handler. Native
+  packages are refused on every per-machine path.
+- **What install checks:** the package id and version against the manifest schema, every zip
+  entry (no absolute paths, no `..`, no symlinks, size and entry limits), for store downloads
+  the SHA-256 in the `X-Content-SHA256` response header, and for native packages the
+  `engines.blueplm` range. `SIGNATURE` files are not verified.
 - **Who can install:** organization administrators only (the `admin` role or the
-  Administrators team). Native packages (`"category": "native"`) are refused on every
-  per-machine path.
-- **Coming:** a native runtime for admin-installed, SHA-256-pinned organization extensions
-  (workspaces in the app, routes in the API). Its contract will be documented here when it
-  ships; until then nothing below describes it.
+  Administrators team).
+- **Permissions:** `contributes.permissions` declares team permission resources; the
+  permissions editor lists them while the extension is installed for the organization.
 
 ## What are BluePLM Extensions?
 
@@ -76,7 +82,7 @@ The designed architecture (not running today; see Status above):
 | Category | Description | Trust Level |
 |----------|-------------|-------------|
 | **Sandboxed** (default) | Runs in isolated Extension Host + V8 sandbox | Community or Verified |
-| **Native** | Not available yet; see Status above | Organization admins only |
+| **Native** | Full trust in the app and the API; see Status above | Organization admins only |
 
 ## Documentation Sections
 

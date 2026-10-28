@@ -27,6 +27,7 @@ import {
   storePendingDeepLink,
   setDeepLinkDependencies,
   registerThumbnailScheme,
+  NATIVE_EXTENSION_SCHEME_PRIVILEGE,
   disposeThumbnailStore,
 } from './handlers'
 import { createAppMenu } from './menu'
@@ -499,9 +500,10 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('blueplm')
 }
 
-// Register the thumbnail scheme's privileges. Electron only accepts these
-// before the 'ready' event, so it has to happen at module scope.
-registerThumbnailScheme()
+// Register the thumbnail and native extension schemes' privileges. Electron only
+// accepts these before the 'ready' event, and only once, so it has to happen at
+// module scope in one call.
+registerThumbnailScheme([NATIVE_EXTENSION_SCHEME_PRIVILEGE])
 
 // Initialize deep link dependencies early for logging
 setDeepLinkDependencies({

@@ -10,6 +10,8 @@
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "vite.perf.ts", "electron/**/*.ts"]
+  // api/src/native-extensions/safeExtract.ts is the one package extractor; the API
+  // (built on its own from api/) and the desktop both use it.
+  "include": ["vite.config.ts", "vite.perf.ts", "electron/**/*.ts", "api/src/native-extensions/safeExtract.ts"]
 }
 

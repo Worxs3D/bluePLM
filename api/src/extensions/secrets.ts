@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { log } from '../infrastructure/logging.js'
+import { createSupabaseAdminClient } from '../infrastructure/supabase.js'
 import { encryptSecret, decryptSecret } from '../crypto/secretBox.js'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -71,7 +72,7 @@ function decrypt(ciphertext: string, key: string): string {
  *
  * @example
  * ```typescript
- * const secrets = new ExtensionSecrets(supabase, orgId, extensionId, key, userId);
+ * const secrets = new ExtensionSecrets(orgId, extensionId, key, userId);
  *
  * // Store a secret
  * await secrets.set('API_KEY', 'sk-1234567890');
@@ -84,24 +85,32 @@ function decrypt(ciphertext: string, key: string): string {
  * ```
  */
 export class ExtensionSecrets {
-  private supabase: SupabaseClient
+  private client: SupabaseClient | null = null
   private orgId: string
   private extensionId: string
   private encryptionKey: string
   private accessedBy: string
 
   constructor(
-    supabase: SupabaseClient,
     orgId: string,
     extensionId: string,
     encryptionKey: string,
     accessedBy: string,
   ) {
-    this.supabase = supabase
     this.orgId = orgId
     this.extensionId = extensionId
     this.encryptionKey = encryptionKey
     this.accessedBy = accessedBy
+  }
+
+  /**
+   * The service-role client. The secret tables and `extension_secret_access`
+   * are service-role only under RLS (schema 103); every query below filters by
+   * org_id and extension_id itself instead.
+   */
+  private get supabase(): SupabaseClient {
+    this.client ??= createSupabaseAdminClient()
+    return this.client
   }
 
   /**

@@ -69,6 +69,46 @@ CREATE INDEX IF NOT EXISTS idx_org_installed_extensions_enabled
 COMMENT ON TABLE org_installed_extensions IS 
   'Extensions installed per organization with their handlers and configuration';
 
+-- Native extensions (schema 104). A native extension runs with full trust in the
+-- desktop renderer and in-process in the API, so it runs only from the package an
+-- org admin installed: its bytes live in the org-extensions bucket at package_path,
+-- and both the desktop and the API refuse to run them unless they hash to
+-- package_sha256. See .cursor/plans/extensions-native-runtime.plan.md.
+ALTER TABLE org_installed_extensions ADD COLUMN IF NOT EXISTS package_sha256 TEXT;
+ALTER TABLE org_installed_extensions ADD COLUMN IF NOT EXISTS package_path TEXT;
+ALTER TABLE org_installed_extensions ADD COLUMN IF NOT EXISTS category TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'org_installed_extensions_native_package_check'
+      AND conrelid = 'org_installed_extensions'::regclass
+  ) THEN
+    ALTER TABLE org_installed_extensions
+      ADD CONSTRAINT org_installed_extensions_native_package_check CHECK (
+        category IS NULL
+        OR category = 'sandboxed'
+        OR (
+          category = 'native'
+          AND package_sha256 ~ '^[0-9a-f]{64}$'
+          AND package_path IS NOT NULL
+          -- <org_id>/<extension_id>/<version>-<sha256>.bpx: the object must sit
+          -- under the row's own organization prefix.
+          AND split_part(package_path, '/', 1) = org_id::text
+          AND split_part(package_path, '/', 2) = extension_id
+        )
+      );
+  END IF;
+END $$;
+
+COMMENT ON COLUMN org_installed_extensions.package_sha256 IS
+  'Native extensions: lowercase hex SHA-256 of the .bpx. The desktop and the API refuse to run a package that does not hash to this.';
+COMMENT ON COLUMN org_installed_extensions.package_path IS
+  'Native extensions: object path in the org-extensions bucket, <org_id>/<extension_id>/<version>-<sha256>.bpx.';
+COMMENT ON COLUMN org_installed_extensions.category IS
+  'Manifest category: native or sandboxed (NULL on rows from before schema 104).';
+
 -- ===========================================
 -- EXTENSION CONFIGURATION
 -- ===========================================
@@ -224,9 +264,28 @@ CREATE POLICY "Org members can view installed extensions"
   ON org_installed_extensions FOR SELECT
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
+-- Writes are admin-only, spelled out per command so an INSERT or UPDATE is
+-- checked against the row it writes (WITH CHECK), not only the row it replaces.
+-- Installing a native extension is an admin decision to run code with full trust
+-- for the whole organization.
 DROP POLICY IF EXISTS "Admins can manage installed extensions" ON org_installed_extensions;
-CREATE POLICY "Admins can manage installed extensions"
-  ON org_installed_extensions FOR ALL
+DROP POLICY IF EXISTS "Admins can install extensions" ON org_installed_extensions;
+CREATE POLICY "Admins can install extensions"
+  ON org_installed_extensions FOR INSERT
+  TO authenticated
+  WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
+
+DROP POLICY IF EXISTS "Admins can update installed extensions" ON org_installed_extensions;
+CREATE POLICY "Admins can update installed extensions"
+  ON org_installed_extensions FOR UPDATE
+  TO authenticated
+  USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin())
+  WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
+
+DROP POLICY IF EXISTS "Admins can uninstall extensions" ON org_installed_extensions;
+CREATE POLICY "Admins can uninstall extensions"
+  ON org_installed_extensions FOR DELETE
+  TO authenticated
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
 -- Extension Config: Similar to installed extensions
@@ -476,6 +535,87 @@ $$;
 
 -- Same shape, same reasoning, same measurement - see the comment above.
 REVOKE ALL ON FUNCTION cleanup_extension_secret_access_logs(INTEGER) FROM PUBLIC, anon, authenticated;
+
+-- ===========================================
+-- NATIVE EXTENSION PACKAGES (storage bucket org-extensions)
+-- ===========================================
+-- Private bucket. Objects live under <org_id>/<extension_id>/<version>-<sha256>.bpx.
+-- Members of an organization read their own organization's prefix (the desktop
+-- downloads through a short-lived signed URL); only that organization's admins
+-- write it. The API reads with the service role.
+DO $$
+BEGIN
+  IF to_regclass('storage.buckets') IS NULL OR to_regclass('storage.objects') IS NULL THEN
+    RAISE NOTICE 'storage schema not present - skipping the org-extensions bucket';
+    RETURN;
+  END IF;
+
+  INSERT INTO storage.buckets (id, name, public)
+  VALUES ('org-extensions', 'org-extensions', false)
+  ON CONFLICT (id) DO UPDATE SET public = false;
+
+  EXECUTE 'DROP POLICY IF EXISTS "Org members read their org extension packages" ON storage.objects';
+  EXECUTE $p$
+    CREATE POLICY "Org members read their org extension packages"
+      ON storage.objects FOR SELECT
+      TO authenticated
+      USING (
+        bucket_id = 'org-extensions'
+        AND (storage.foldername(name))[1] IN (
+          SELECT org_id::text FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
+        )
+      )
+  $p$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "Org admins upload extension packages" ON storage.objects';
+  EXECUTE $p$
+    CREATE POLICY "Org admins upload extension packages"
+      ON storage.objects FOR INSERT
+      TO authenticated
+      WITH CHECK (
+        bucket_id = 'org-extensions'
+        AND public.is_org_admin()
+        AND (storage.foldername(name))[1] IN (
+          SELECT org_id::text FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
+        )
+      )
+  $p$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "Org admins update extension packages" ON storage.objects';
+  EXECUTE $p$
+    CREATE POLICY "Org admins update extension packages"
+      ON storage.objects FOR UPDATE
+      TO authenticated
+      USING (
+        bucket_id = 'org-extensions'
+        AND public.is_org_admin()
+        AND (storage.foldername(name))[1] IN (
+          SELECT org_id::text FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
+        )
+      )
+      WITH CHECK (
+        bucket_id = 'org-extensions'
+        AND public.is_org_admin()
+        AND (storage.foldername(name))[1] IN (
+          SELECT org_id::text FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
+        )
+      )
+  $p$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "Org admins delete extension packages" ON storage.objects';
+  EXECUTE $p$
+    CREATE POLICY "Org admins delete extension packages"
+      ON storage.objects FOR DELETE
+      TO authenticated
+      USING (
+        bucket_id = 'org-extensions'
+        AND public.is_org_admin()
+        AND (storage.foldername(name))[1] IN (
+          SELECT org_id::text FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
+        )
+      )
+  $p$;
+END $$;
 
 -- ===========================================
 -- TRIGGERS

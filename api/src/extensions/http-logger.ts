@@ -6,8 +6,12 @@
  * @module extensions/http-logger
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { log } from '../infrastructure/logging.js'
+import { createSupabaseAdminClient } from '../infrastructure/supabase.js'
+
+// `extension_http_log` is service-role only under RLS (schema 103), so every
+// read and write here goes through the service-role client, filtered by
+// org_id and extension_id.
 
 /**
  * HTTP log entry structure.
@@ -30,9 +34,9 @@ export interface HttpLogEntry {
  * This is a fire-and-forget operation - errors are logged but don't
  * affect the extension handler.
  */
-export async function logHttpRequest(supabase: SupabaseClient, entry: HttpLogEntry): Promise<void> {
+export async function logHttpRequest(entry: HttpLogEntry): Promise<void> {
   try {
-    await supabase.from('extension_http_log').insert({
+    await createSupabaseAdminClient().from('extension_http_log').insert({
       ...entry,
       timestamp: new Date().toISOString(),
     })
@@ -45,19 +49,17 @@ export async function logHttpRequest(supabase: SupabaseClient, entry: HttpLogEnt
 /**
  * Get HTTP logs for an extension.
  *
- * @param supabase - Supabase client
  * @param orgId - Organization ID
  * @param extensionId - Extension ID
  * @param limit - Maximum number of entries to return
  * @returns Array of log entries
  */
 export async function getHttpLogs(
-  supabase: SupabaseClient,
   orgId: string,
   extensionId: string,
   limit = 100,
 ): Promise<HttpLogEntry[]> {
-  const { data, error } = await supabase
+  const { data, error } = await createSupabaseAdminClient()
     .from('extension_http_log')
     .select('*')
     .eq('org_id', orgId)
@@ -75,13 +77,11 @@ export async function getHttpLogs(
 /**
  * Delete old HTTP logs for an extension.
  *
- * @param supabase - Supabase client
  * @param orgId - Organization ID
  * @param extensionId - Extension ID
  * @param olderThanDays - Delete logs older than this many days
  */
 export async function cleanupHttpLogs(
-  supabase: SupabaseClient,
   orgId: string,
   extensionId: string,
   olderThanDays = 30,
@@ -89,7 +89,7 @@ export async function cleanupHttpLogs(
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - olderThanDays)
 
-  await supabase
+  await createSupabaseAdminClient()
     .from('extension_http_log')
     .delete()
     .eq('org_id', orgId)

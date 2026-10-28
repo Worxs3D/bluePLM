@@ -931,8 +931,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // EXTENSION SYSTEM API
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  // Per-machine extension packages: store browsing, install, uninstall. There is no
-  // desktop runtime for these packages; see electron/handlers/extensions/handlers.ts.
+  // Per-machine extension packages (store browsing, install, uninstall; never run),
+  // and org-installed native extensions (prepare/prune/inspect; see native.ts).
   extensions: {
     // ----- Queries -----
     getAll: () => ipcRenderer.invoke('extensions:get-all'),
@@ -959,6 +959,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installFromFile: (bpxPath: string, acknowledgeUnsigned?: boolean) =>
       ipcRenderer.invoke('extensions:install-from-file', bpxPath, acknowledgeUnsigned),
     uninstall: (extensionId: string) => ipcRenderer.invoke('extensions:uninstall', extensionId),
+
+    // ----- Native extensions (org-installed, SHA-256 pinned) -----
+    nativePrepare: (request: {
+      extensionId: string
+      version: string
+      sha256: string
+      downloadUrl: string
+    }) => ipcRenderer.invoke('extensions:native-prepare', request),
+    nativePrune: (keepShas: string[]) => ipcRenderer.invoke('extensions:native-prune', keepShas),
+    nativeInspect: () => ipcRenderer.invoke('extensions:native-inspect'),
 
     // ----- Events -----
     // Main sends this after an install ('installed') and an uninstall ('not-installed').

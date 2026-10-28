@@ -119,6 +119,7 @@ export { cleanupFs } from './fs'
 
 // Thumbnail cache: scheme registration runs before app ready, disposal at quit
 export { registerThumbnailScheme, disposeThumbnailStore } from './thumbnails'
+export { NATIVE_EXTENSION_SCHEME_PRIVILEGE } from './extensions/native'
 
 // Re-export getters
 export { getWorkingDirectory } from './fs'

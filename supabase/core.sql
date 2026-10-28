@@ -117,15 +117,26 @@ LANGUAGE sql IMMUTABLE AS $$ SELECT 104 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Extension tables stop trusting every signed-in user. extension_secret_access and '
-  'extension_http_log had INSERT policies with no TO clause and WITH CHECK (TRUE), so any '
-  'authenticated user could append forged audit rows for any organization; both INSERT policies '
-  'are now TO service_role. extension_storage was readable and writable by every member of the '
-  'organization; it is now service_role only, with a DELETE policy for is_org_admin() so '
-  'uninstalling an extension still clears its rows. The five SECURITY DEFINER functions in '
-  '50-extensions (get_extension_config, update_extension_config, get_extension_stats, '
-  'cleanup_extension_http_logs, cleanup_extension_secret_access_logs) now pin SET search_path = '
-  'public. No table or function is added or removed, so schema_release_manifest() is unchanged.'
+  'Native extensions, and Customers leaves core. Extension tables stop trusting every signed-in '
+  'user: the extension_secret_access and extension_http_log INSERT policies had no TO clause '
+  'and WITH CHECK (TRUE), so any authenticated user could append forged audit rows for any '
+  'organization; both are now TO service_role, and extension_storage, which every member could '
+  'read and write, is service_role only with a DELETE policy for is_org_admin(). The five '
+  'SECURITY DEFINER functions in 50-extensions pin SET search_path = public. '
+  'org_installed_extensions gains package_sha256, package_path and category, with a check that '
+  'a native row carries a lowercase hex SHA-256 and a package path under its own organization '
+  'and extension id, and its writes are split into INSERT, UPDATE and DELETE policies for '
+  'is_org_admin() callers with WITH CHECK. A private storage bucket org-extensions holds the '
+  'packages at <org_id>/<extension_id>/<version>-<sha256>.bpx: members read their own '
+  'organization''s prefix and only its admins write it. The desktop and the API run a native '
+  'extension only from a package whose bytes hash to package_sha256. modules/60-customers.sql '
+  'leaves this release for the blueplm.customers extension, whose sql/customers.sql is the same '
+  'file unchanged in behaviour: its rows in schema_release_manifest() and '
+  'withdrawn_execute_manifest() are removed, and the verify and emergency-lockdown tools no '
+  'longer name its objects. Nothing is dropped from an existing database: the customer tables, '
+  'data, RLS and functions stay, seed_customer_categories stays protected by check_org_gates() '
+  'through its ACL, and integration_sync_log keeps the progress columns the extension''s sync '
+  'uses.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.

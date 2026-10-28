@@ -8,7 +8,14 @@ import {
   getChildModules,
   buildCombinedOrderList,
   type ModuleId,
+  type ModuleGroupId,
 } from '@/types/modules'
+import type { ExtensionViewId } from '@/stores/types'
+import type { ExtensionWorkspace } from '@/types/nativeExtensions'
+import {
+  isExtensionWorkspaceVisible,
+  placeExtensionModules,
+} from '@/lib/nativeExtensions/registry'
 
 // Import sub-components
 import { ActivityItem, ExpandedContext, SidebarRectContext } from './ActivityItem'
@@ -26,6 +33,7 @@ import { getModuleIcon } from './utils'
 // Type for sidebar items
 type SidebarItem =
   | { type: 'module'; id: ModuleId; module: (typeof MODULES)[number] }
+  | { type: 'extension'; id: string; workspace: ExtensionWorkspace }
   | {
       type: 'group'
       id: string
@@ -46,6 +54,10 @@ export function ActivityBar() {
   // Use effective module config (considers impersonation)
   const moduleConfig = getEffectiveModuleConfig()
   const deniedModules = useDeniedModules()
+  const extensionWorkspaces = usePDMStore((s) => s.extensionWorkspaces)
+  const hasPermission = usePDMStore((s) => s.hasPermission)
+  // Re-evaluate permission-gated extension entries when permissions load.
+  const userPermissions = usePDMStore((s) => s.userPermissions)
 
   const { t } = useTranslation()
 
@@ -94,8 +106,38 @@ export function ActivityBar() {
         }
       }
     }
-    return items
-  }, [moduleConfig, deniedModules])
+
+    // Native extension workspaces, placed among the core modules by group (or by
+    // where the user's saved order already has them).
+    const extensionItems = extensionWorkspaces.filter((w) =>
+      isExtensionWorkspaceVisible(
+        w,
+        deniedModules as ReadonlySet<string>,
+        moduleConfig.enabledModules as Readonly<Record<string, boolean | undefined>>,
+        hasPermission,
+      ),
+    )
+    if (extensionItems.length === 0) return items
+
+    const keyOf = (item: SidebarItem) => `${item.type}:${item.id}`
+    const byKey = new Map<string, SidebarItem>(items.map((item) => [keyOf(item), item]))
+    for (const w of extensionItems) {
+      byKey.set(`extension:${w.id}`, { type: 'extension', id: w.id, workspace: w })
+    }
+    const order = placeExtensionModules(
+      items.map((item) => ({
+        id: keyOf(item),
+        group: item.type === 'module' ? (item.module.group as ModuleGroupId) : null,
+      })),
+      extensionItems.map((w) => ({ id: `extension:${w.id}`, group: w.group })),
+      (moduleConfig.moduleOrder as readonly string[]).map((id) =>
+        extensionItems.some((w) => w.id === id) ? `extension:${id}` : `module:${id}`,
+      ),
+    )
+    return order.map((key) => byKey.get(key)).filter((item): item is SidebarItem => !!item)
+    // userPermissions: hasPermission reads it through the store
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleConfig, deniedModules, extensionWorkspaces, hasPermission, userPermissions])
 
   // For backward compat - list of just visible module IDs for divider positioning
   const visibleModules = useMemo(() => {
@@ -222,6 +264,17 @@ export function ActivityBar() {
                 {/* Dynamic Modules and Groups */}
                 <div className="flex flex-col pt-[4px]">
                   {visibleSidebarItems.map((item) => {
+                    if (item.type === 'extension') {
+                      const { workspace } = item
+                      return (
+                        <ActivityItem
+                          key={`extension:${workspace.id}`}
+                          icon={getModuleIcon(workspace.icon, 22)}
+                          view={workspace.id as ExtensionViewId}
+                          title={workspace.title}
+                        />
+                      )
+                    }
                     if (item.type === 'group') {
                       // Render custom group
                       const { group } = item

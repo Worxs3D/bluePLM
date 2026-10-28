@@ -36,7 +36,7 @@ import { usePDMStore } from '../stores/pdmStore'
 
 // The API version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_API_VERSION = '2.8.3'
+export const EXPECTED_API_VERSION = '3.0.0'
 
 // Minimum API version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -90,6 +90,8 @@ export const API_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Members of the Administrators team are administrators. Every admin-only route (extensions, webhooks, Odoo integration configuration and sync, supplier deletion, the recovery-code route and forced undo-checkout) tested only users.role, so a team member whose role column said engineer or viewer was refused. The auth middleware now resolves admin once per request through the is_org_admin() SQL function - role = admin OR Administrators team membership, the same answer the row-level security policies give - and exposes it as request.user.isAdmin, and the routes gate on that. A failure to answer is treated as not admin',
   '2.8.3':
     'Found by the route-level test suite (api/routes/authMatrix.test.ts, files.routes.test.ts). A lookup of a row that does not exist answered 500: .single() returns PostgREST PGRST116 and the routes threw it, so their 404 branches never ran; the error handler now answers 404. Administrators-team members whose role column says viewer were refused the five supplier write routes, which tested role alone; they now check isAdmin first. PATCH /files/:id/metadata changed the state of a checked-out file, which /release and /obsolete refuse; it now answers 409, and 404 for a file outside the organization of the caller. POST /files/:id/checkin answered 409 instead of 403 to a caller without the lock, because it matched a message checkin_file does not send. POST /files/:id/checkout and /checkin with no body answered 400 although every field is optional',
+  '3.0.0':
+    "Native extension runtime. At startup the API loads every enabled native extension that has a serverMain: per extension id it takes the install with the latest installed_at, downloads the package from the org-extensions storage bucket with the service-role client, refuses it unless its sha256 matches the install row, extracts it safely and calls register(app) from its server module; a failing extension is logged and skipped. Its routes are served under /ext/<extensionId>/..., authenticated and rate limited like every other route, and answer 404 when the extension is not loaded or not enabled for the caller's org, 409 EXTENSION_VERSION_MISMATCH when the org's installed sha256 differs from the loaded one, and 504 when a handler runs past its timeout. POST /admin/extensions/reload (admin only) reloads them without a restart, and POST /admin/extensions/install now refuses native manifests. The sandbox extension storage, secrets, secret-access log and HTTP log now use the service-role client, filtered by org and extension, because schema 103 makes those tables service-role only",
 }
 
 export interface ApiVersionCheckResult {

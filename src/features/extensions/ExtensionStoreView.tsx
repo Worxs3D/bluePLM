@@ -21,6 +21,7 @@ import { ExtensionList } from './ExtensionList'
 import { ExtensionDetailsDialog } from './ExtensionDetailsDialog'
 import { InstallDialog } from './InstallDialog'
 import { SideloadDialog } from './SideloadDialog'
+import { OrgExtensionsPanel } from '@/features/nativeExtensions/OrgExtensionsPanel'
 
 type TabId = 'store' | 'installed'
 
@@ -181,6 +182,11 @@ export function ExtensionStoreView() {
             </span>
           </button>
         </div>
+      </div>
+
+      {/* Organization-installed native extensions (these do run) */}
+      <div className="px-6 pt-4">
+        <OrgExtensionsPanel />
       </div>
 
       {/* Content */}

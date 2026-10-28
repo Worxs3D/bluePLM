@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import * as LucideIcons from 'lucide-react'
 import {
   X,
@@ -23,6 +23,8 @@ import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
+import { t } from '@/lib/i18n'
+import { extensionPermissionResources } from '@/lib/nativeExtensions/permissions'
 import type { Team, PermissionPreset, PermissionAction } from '@/types/permissions'
 import {
   PERMISSION_ACTIONS,
@@ -122,6 +124,30 @@ const RESOURCE_GROUPS: {
 export function PermissionsEditor({ team, onClose, userId, isAdmin }: PermissionsEditorProps) {
   const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
+  // Resources contributed by the organization's installed native extensions are
+  // listed in their own group next to core's.
+  const orgNativeExtensionRows = usePDMStore((s) => s.orgNativeExtensionRows)
+  const { allResources, resourceGroups } = useMemo(() => {
+    const extra = extensionPermissionResources(
+      orgNativeExtensionRows,
+      new Set(ALL_RESOURCES.map((r) => r.id)),
+    )
+    if (extra.length === 0) return { allResources: ALL_RESOURCES, resourceGroups: RESOURCE_GROUPS }
+    return {
+      allResources: [...ALL_RESOURCES, ...extra],
+      resourceGroups: [
+        ...RESOURCE_GROUPS,
+        {
+          id: 'extensions',
+          name: t('nativeExtensions.permissionsGroup'),
+          icon: 'Puzzle',
+          color: '#a855f7',
+          resources: extra.map((r) => r.id),
+        },
+      ],
+    }
+  }, [orgNativeExtensionRows])
+
   // State
   const [permissions, setPermissions] = useState<Record<string, PermissionAction[]>>({})
   const [originalPermissions, setOriginalPermissions] = useState<
@@ -132,7 +158,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   const [hasChanges, setHasChanges] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(RESOURCE_GROUPS.map((g) => g.id)),
+    new Set(resourceGroups.map((g) => g.id)),
   )
   const [showPresets, setShowPresets] = useState(false)
   const [_presets, setPresets] = useState<PermissionPreset[]>([])
@@ -414,7 +440,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   const toggleAllInGroup = (groupId: string, action: PermissionAction) => {
     if (!isAdmin) return
 
-    const group = RESOURCE_GROUPS.find((g) => g.id === groupId)
+    const group = resourceGroups.find((g) => g.id === groupId)
     if (!group) return
 
     if (groupId === 'source-files') {
@@ -510,7 +536,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
     const globalPerms: Record<string, PermissionAction[]> = {}
     const sfPerms: Record<string, PermissionAction[]> = {}
 
-    for (const resource of ALL_RESOURCES) {
+    for (const resource of allResources) {
       if (sourceFilesResources.includes(resource.id)) {
         sfPerms[resource.id] = [...resource.applicableActions]
       } else {
@@ -527,9 +553,9 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
     if (!isAdmin) return
 
     // Get non-source-files resources
-    const nonSfResources = ALL_RESOURCES.filter((r) => !sourceFilesResources.includes(r.id))
+    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
     // Get source files resources
-    const sfResources = ALL_RESOURCES.filter((r) => sourceFilesResources.includes(r.id))
+    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
     const vaultKey = getSourceFilesVaultKey()
 
     // Check if all applicable resources have the action (both global and source files)
@@ -576,8 +602,8 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   // Check if all applicable resources have a specific action (including source files for current vault)
   const allHaveAction = (action: PermissionAction): boolean => {
     const vaultKey = getSourceFilesVaultKey()
-    const nonSfResources = ALL_RESOURCES.filter((r) => !sourceFilesResources.includes(r.id))
-    const sfResources = ALL_RESOURCES.filter((r) => sourceFilesResources.includes(r.id))
+    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
+    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
 
     const allNonSfHave = nonSfResources
       .filter((r) => r.applicableActions.includes(action))
@@ -592,8 +618,8 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   // Check if some (but not all) applicable resources have a specific action (including source files)
   const someHaveAction = (action: PermissionAction): boolean => {
     const vaultKey = getSourceFilesVaultKey()
-    const nonSfResources = ALL_RESOURCES.filter((r) => !sourceFilesResources.includes(r.id))
-    const sfResources = ALL_RESOURCES.filter((r) => sourceFilesResources.includes(r.id))
+    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
+    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
 
     const applicableNonSf = nonSfResources.filter((r) => r.applicableActions.includes(action))
     const applicableSf = sfResources.filter((r) => r.applicableActions.includes(action))
@@ -615,7 +641,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   const filterResources = (resources: string[]): string[] => {
     if (!searchQuery) return resources
     return resources.filter((resourceId) => {
-      const resource = ALL_RESOURCES.find((r) => r.id === resourceId)
+      const resource = allResources.find((r) => r.id === resourceId)
       if (!resource) return false
       return (
         resource.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -626,7 +652,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
 
   // Count permissions in a group
   const getGroupStats = (groupId: string) => {
-    const group = RESOURCE_GROUPS.find((g) => g.id === groupId)
+    const group = resourceGroups.find((g) => g.id === groupId)
     if (!group) return { total: 0, withPerms: 0 }
 
     let withPerms = 0
@@ -898,7 +924,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
             </div>
           ) : (
             <div className="p-4 space-y-2">
-              {RESOURCE_GROUPS.map((group) => {
+              {resourceGroups.map((group) => {
                 const filteredResources = filterResources(group.resources)
                 if (filteredResources.length === 0) return null
 
@@ -1050,7 +1076,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                         )}
 
                         {filteredResources.map((resourceId, idx) => {
-                          const resource = ALL_RESOURCES.find((r) => r.id === resourceId)
+                          const resource = allResources.find((r) => r.id === resourceId)
                           if (!resource) return null
 
                           const ResourceIcon = (LucideIcons as any)[resource.icon] || Shield // TODO: type this

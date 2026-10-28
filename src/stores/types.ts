@@ -2,6 +2,12 @@
 import type { CheckoutUserProfile, PDMFile, Organization, User, SearchScope } from '../types/pdm'
 import type { ModuleId, ModuleConfig } from '../types/modules'
 import type {
+  ExtensionWorkspace,
+  NativeExtensionRuntimeState,
+  OrgNativeExtensionRow,
+  WorkspaceRegistration,
+} from '../types/nativeExtensions'
+import type {
   KeybindingsConfig,
   KeybindingAction,
   Keybinding,
@@ -36,7 +42,7 @@ import type {
 // PanelPosition, ToastType, ThemeMode, Language) to src/types/ui.ts
 // ============================================================================
 
-export type SidebarView =
+export type CoreSidebarView =
   // Source Files
   | 'explorer'
   | 'pending'
@@ -63,6 +69,16 @@ export type SidebarView =
   // System
   | 'terminal'
   | 'settings'
+
+/**
+ * A native extension workspace, by the id it registered (verbatim, e.g.
+ * 'customers' once that module leaves core). Branded so it is never confused
+ * with a core view: core switches keep their literal cases, and an extension id
+ * enters only through the registry (src/lib/nativeExtensions).
+ */
+export type ExtensionViewId = string & { readonly __extensionView: 'ExtensionViewId' }
+
+export type SidebarView = CoreSidebarView | ExtensionViewId
 
 export type DetailsPanelTab =
   | 'properties'
@@ -1949,6 +1965,42 @@ export interface ExtensionActionResult {
 }
 
 export interface ExtensionsSlice {
+  // ═══════════════════════════════════════════════════════════════
+  // Native extensions (org-installed; never persisted)
+  // ═══════════════════════════════════════════════════════════════
+
+  /** Runtime state of each org-installed native extension on this machine. */
+  nativeExtensions: Record<string, NativeExtensionRuntimeState>
+
+  /** Workspaces registered by active native extensions, in registration order. */
+  extensionWorkspaces: ExtensionWorkspace[]
+
+  /** The extension workspace whose right panel is open, or null. */
+  extensionRightPanel: string | null
+
+  /** The organization's native extension rows (enabled or not), as last loaded. */
+  orgNativeExtensionRows: OrgNativeExtensionRow[]
+
+  setOrgNativeExtensionRows: (rows: OrgNativeExtensionRow[]) => void
+
+  setNativeExtensionState: (state: NativeExtensionRuntimeState) => void
+  removeNativeExtensionState: (extensionId: string) => void
+
+  /**
+   * Validate and add a workspace. Throws WorkspaceRegistrationError on a bad
+   * registration or an id that collides with a core module or another workspace.
+   */
+  registerExtensionWorkspace: (
+    extensionId: string,
+    registration: WorkspaceRegistration,
+  ) => ExtensionWorkspace
+
+  /** Remove one workspace (its Disposable), or every workspace of an extension. */
+  unregisterExtensionWorkspace: (extensionId: string, workspaceId?: string) => void
+
+  /** Open (workspace id) or close (null) an extension's right panel. */
+  setExtensionRightPanel: (workspaceId: string | null) => void
+
   // ═══════════════════════════════════════════════════════════════
   // State
   // ═══════════════════════════════════════════════════════════════

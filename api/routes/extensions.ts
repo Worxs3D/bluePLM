@@ -72,6 +72,7 @@ const installSchema = {
         message: { type: 'string' },
       },
     },
+    400: errorResponseSchema,
     403: errorResponseSchema,
     500: errorResponseSchema,
   },
@@ -210,6 +211,18 @@ const extensionRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const body = request.body as InstallExtensionRequest
+
+      // Native extensions are installed by the desktop app (package upload to
+      // storage plus the install row) and loaded by the native runtime; this
+      // endpoint is the sandbox path only.
+      if ((body.manifest as Partial<ExtensionManifest> | undefined)?.category === 'native') {
+        return sendError(
+          reply,
+          400,
+          'BAD_REQUEST',
+          'Native extensions are installed from the desktop app, not through this endpoint',
+        )
+      }
 
       try {
         await installExtension(

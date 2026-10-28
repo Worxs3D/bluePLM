@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createSupabaseAdminClient } from '../infrastructure/supabase.js'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STORAGE LIMITS
@@ -36,7 +37,7 @@ export const STORAGE_LIMITS = {
  *
  * @example
  * ```typescript
- * const storage = new ExtensionStorage(supabase, orgId, extensionId);
+ * const storage = new ExtensionStorage(orgId, extensionId);
  *
  * // Store data
  * await storage.set('config', { theme: 'dark' });
@@ -52,14 +53,23 @@ export const STORAGE_LIMITS = {
  * ```
  */
 export class ExtensionStorage {
-  private supabase: SupabaseClient
+  private client: SupabaseClient | null = null
   private orgId: string
   private extensionId: string
 
-  constructor(supabase: SupabaseClient, orgId: string, extensionId: string) {
-    this.supabase = supabase
+  constructor(orgId: string, extensionId: string) {
     this.orgId = orgId
     this.extensionId = extensionId
+  }
+
+  /**
+   * The service-role client. `extension_storage` is service-role only under RLS
+   * (schema 103), so a user-scoped client reads nothing; every query below
+   * filters by org_id and extension_id itself instead.
+   */
+  private get supabase(): SupabaseClient {
+    this.client ??= createSupabaseAdminClient()
+    return this.client
   }
 
   /**

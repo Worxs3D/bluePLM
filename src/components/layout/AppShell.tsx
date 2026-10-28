@@ -75,6 +75,9 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       customerPanel: s.customerPanel,
     })),
   )
+  const extensionWorkspaces = usePDMStore((s) => s.extensionWorkspaces)
+  const extensionRightPanel = usePDMStore((s) => s.extensionRightPanel)
+  const activeExtensionWorkspace = extensionWorkspaces.find((w) => w.id === activeView) ?? null
 
   const deniedModules = useDeniedModules()
 
@@ -87,6 +90,10 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     }
   }, [activeView, deniedModules, setActiveView])
 
+  // An extension workspace owns the main area and the right panel, like Items.
+  const extensionPanelOpen =
+    !!activeExtensionWorkspace?.RightPanel && extensionRightPanel === activeExtensionWorkspace.id
+
   /**
    * Views that own the main area also own the right panel: they open it for
    * their own detail context rather than the file-based tabs, so the generic
@@ -94,9 +101,13 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
    */
   const detailOwningViews = ['items', 'customers', 'workflows']
   const rightPanelOpen =
+    extensionPanelOpen ||
     (activeView === 'items' && !!itemPanel) ||
     (activeView === 'customers' && !!customerPanel) ||
-    (!detailOwningViews.includes(activeView) && rightPanelVisible && rightPanelTabs.length > 0)
+    (!activeExtensionWorkspace &&
+      !detailOwningViews.includes(activeView) &&
+      rightPanelVisible &&
+      rightPanelTabs.length > 0)
 
   // Call hooks directly instead of receiving as props
   const { loadFiles } = useLoadFiles()

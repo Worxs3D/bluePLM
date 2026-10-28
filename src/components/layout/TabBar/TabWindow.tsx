@@ -1,6 +1,13 @@
 import { useEffect, useMemo, lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { usePDMStore, type SidebarView } from '@/stores/pdmStore'
+import {
+  ExtensionNavigatorView,
+  ExtensionNotLoaded,
+  ExtensionWorkspaceView,
+  useExtensionWorkspace,
+} from '@/features/nativeExtensions/ExtensionViews'
+import { CORE_VIEW_IDS } from '@/lib/nativeExtensions/registry'
 
 // Lazy loaded views
 const FileTree = lazy(() =>
@@ -85,6 +92,7 @@ interface TabWindowProps {
 
 export function TabWindow({ view, title }: TabWindowProps) {
   const theme = usePDMStore((s) => s.theme)
+  const extensionWorkspace = useExtensionWorkspace(view)
 
   // Apply theme
   useEffect(() => {
@@ -97,6 +105,21 @@ export function TabWindow({ view, title }: TabWindowProps) {
 
   // Render the appropriate view based on the view type
   const renderView = useMemo(() => {
+    // Native extension workspace (only when its extension is loaded in this window)
+    if (extensionWorkspace) {
+      return (
+        <div className="flex-1 flex overflow-hidden">
+          {extensionWorkspace.Navigator && (
+            <div className="w-64 border-r border-plm-border overflow-hidden flex flex-col">
+              <ExtensionNavigatorView workspace={extensionWorkspace} />
+            </div>
+          )}
+          <ExtensionWorkspaceView workspace={extensionWorkspace} />
+        </div>
+      )
+    }
+    if (!CORE_VIEW_IDS.has(view)) return <ExtensionNotLoaded />
+
     // Views that have both sidebar and main content
     const mainContentViews: SidebarView[] = ['explorer', 'google-drive', 'settings', 'customers']
 
@@ -250,7 +273,7 @@ export function TabWindow({ view, title }: TabWindowProps) {
           </div>
         )
     }
-  }, [view])
+  }, [view, extensionWorkspace])
 
   return (
     <div className="h-screen flex flex-col bg-plm-bg overflow-hidden">

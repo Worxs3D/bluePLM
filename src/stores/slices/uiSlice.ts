@@ -95,6 +95,12 @@ export const createUISlice: StateCreator<
     if (prev === 'reviews' && resolvedView !== 'reviews') {
       patch.reviewPreviewFile = null
     }
+    // An extension's right panel belongs to its workspace: switching away closes it,
+    // and host.useRightPanelOpen() tells the extension.
+    const extensionPanel = get().extensionRightPanel
+    if (extensionPanel && extensionPanel !== resolvedView) {
+      patch.extensionRightPanel = null
+    }
     set(patch)
   },
 

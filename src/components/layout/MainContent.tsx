@@ -6,6 +6,10 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { useLoadFiles, useVaultManagement } from '@/hooks'
 import { SettingsContent } from '@/features/settings'
 import { WelcomeScreen } from '@/components/shared/Screens'
+import {
+  ExtensionWorkspaceView,
+  useExtensionWorkspace,
+} from '@/features/nativeExtensions/ExtensionViews'
 
 import { TabBar } from './TabBar'
 import { ResizeHandle } from './ResizeHandle'
@@ -73,6 +77,7 @@ interface MainContentProps {
  * - Google Drive
  * - Workflows
  * - Customers
+ * - Native extension workspaces
  * - File Browser (default)
  */
 export function MainContent({
@@ -87,6 +92,7 @@ export function MainContent({
   // Get settingsTab from store
   const settingsTab = usePDMStore((s) => s.settingsTab)
   const reviewPreviewFile = usePDMStore((s) => s.reviewPreviewFile)
+  const extensionWorkspace = useExtensionWorkspace(activeView)
 
   // Call hooks directly instead of receiving as props
   const { loadFiles, refreshCurrentFolder } = useLoadFiles()
@@ -113,12 +119,16 @@ export function MainContent({
     >
       {/* Tab bar (browser-like tabs) - shown when FilePane is visible (not settings, google-drive, workflows, or reviews) */}
       {!showWelcome &&
+        !extensionWorkspace &&
         !['settings', 'google-drive', 'workflows', 'reviews', 'items', 'customers'].includes(
           activeView,
         ) && <TabBar />}
 
       {showWelcome ? (
         <WelcomeScreen onOpenRecentVault={handleOpenRecentVault} onChangeOrg={handleChangeOrg} />
+      ) : extensionWorkspace ? (
+        /* Native extension workspace - main area, in its own error boundary */
+        <ExtensionWorkspaceView workspace={extensionWorkspace} />
       ) : activeView === 'settings' ? (
         /* Settings View - replaces entire main content area */
         <SettingsContent activeTab={settingsTab} />

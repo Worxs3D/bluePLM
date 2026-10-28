@@ -22,6 +22,21 @@ export const MAX_EXTENSION_VERSION_LENGTH = 64
 
 export type ExtensionCategory = 'sandboxed' | 'native'
 
+/** Team permission actions, the same five core uses. */
+export const PERMISSION_ACTIONS = ['view', 'create', 'edit', 'delete', 'admin'] as const
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number]
+
+/** `contributes.permissions[]`: a team permission resource the extension checks. */
+export interface ContributedPermission {
+  resource: string
+  label: string
+  description?: string
+  actions: PermissionAction[]
+}
+
+/** From the schema's PermissionResourceContribution.resource pattern. */
+export const PERMISSION_RESOURCE_PATTERN = /^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/
+
 /** The manifest fields the main process reads. The rest is carried through untouched. */
 export interface ExtensionManifest {
   id: string
@@ -102,5 +117,49 @@ export function parseExtensionManifest(content: string): ExtensionManifest {
   ) {
     throw new Error(`Invalid manifest: unknown category ${JSON.stringify(manifest.category)}`)
   }
+  // Throws on a malformed contributes.permissions.
+  getContributedPermissions(manifest)
   return manifest as ExtensionManifest
+}
+
+/**
+ * The validated `contributes.permissions` of a manifest (empty when absent).
+ * Throws when the section is present but malformed.
+ */
+export function getContributedPermissions(manifest: unknown): ContributedPermission[] {
+  if (!manifest || typeof manifest !== 'object') return []
+  const contributes = (manifest as { contributes?: unknown }).contributes
+  if (!contributes || typeof contributes !== 'object') return []
+  const list = (contributes as { permissions?: unknown }).permissions
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    throw new Error('Invalid manifest: contributes.permissions must be an array')
+  }
+  return list.map((item, index) => {
+    const where = `contributes.permissions[${index}]`
+    if (!item || typeof item !== 'object') throw new Error(`Invalid manifest: ${where} must be an object`)
+    const p = item as Record<string, unknown>
+    if (typeof p.resource !== 'string' || !PERMISSION_RESOURCE_PATTERN.test(p.resource)) {
+      throw new Error(`Invalid manifest: ${where}.resource must look like 'module:name'`)
+    }
+    if (typeof p.label !== 'string' || p.label.length === 0) {
+      throw new Error(`Invalid manifest: ${where}.label is required`)
+    }
+    if (p.description !== undefined && typeof p.description !== 'string') {
+      throw new Error(`Invalid manifest: ${where}.description must be a string`)
+    }
+    if (
+      !Array.isArray(p.actions) ||
+      p.actions.length === 0 ||
+      !p.actions.every((a) => (PERMISSION_ACTIONS as readonly unknown[]).includes(a))
+    ) {
+      throw new Error(`Invalid manifest: ${where}.actions must list view/create/edit/delete/admin`)
+    }
+    return {
+      resource: p.resource,
+      label: p.label,
+      ...(typeof p.description === 'string' ? { description: p.description } : {}),
+      actions: [...new Set(p.actions as PermissionAction[])],
+    }
+  })
 }

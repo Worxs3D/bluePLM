@@ -1,15 +1,13 @@
 /**
  * Extension IPC handlers (main process).
  *
- * What this does: browse the extension store, install a package from the store or
- * from a file into userData/extensions, list what is installed, and uninstall.
+ * Per-machine packages (store or file): browse the store, install into
+ * userData/extensions, list, uninstall. These are never run: there is no
+ * sandboxed runtime on the desktop.
  *
- * What it does not do: run extension code. There is no sandboxed runtime on the
- * desktop. The hidden "Extension Host" window that used to be created here never
- * executed an extension (its page never loaded host.ts and the bundle reader
- * returned an empty string), so it was removed together with its IPC, rather than
- * keep a window alive for weeks that reported extensions as active. The native
- * runtime is described in .cursor/plans/extensions-native-runtime.plan.md.
+ * Org-installed native extensions (full trust, SHA-256 pinned) are prepared and
+ * served by native.ts, which this module registers. See
+ * .cursor/plans/extensions-native-runtime.plan.md.
  */
 
 import { BrowserWindow, ipcMain, app, type IpcMainInvokeEvent } from 'electron'
@@ -24,6 +22,7 @@ import {
   type ExtensionVerification,
 } from './install'
 import { isValidExtensionId, isValidExtensionVersion, type ExtensionManifest } from './validation'
+import { registerNativeExtensionHandlers, unregisterNativeExtensionHandlers } from './native'
 
 // ============================================
 // Types
@@ -220,6 +219,7 @@ export function registerExtensionHandlers(
   mainWindow = window
 
   loadExtensionsFromDisk()
+  registerNativeExtensionHandlers(window, dependencies)
 
   ipcMain.handle('extensions:get-all', async (): Promise<InstalledExtensionInfo[]> => {
     return Array.from(installedExtensions.values()).map(toInfo)
@@ -502,5 +502,6 @@ export function unregisterExtensionHandlers(): void {
   for (const channel of HANDLED_CHANNELS) {
     ipcMain.removeHandler(channel)
   }
+  unregisterNativeExtensionHandlers()
   mainWindow = null
 }

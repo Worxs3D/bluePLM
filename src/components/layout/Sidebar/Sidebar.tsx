@@ -1,7 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useLoadFiles, useVaultManagement, useDeniedModules } from '@/hooks'
-import { MODULE_LABELS, getModuleTitle } from '@/constants/moduleLabels'
+import { getModuleLabel, getModuleTitle } from '@/constants/moduleLabels'
+import {
+  ExtensionNavigatorView,
+  useExtensionWorkspace,
+} from '@/features/nativeExtensions/ExtensionViews'
 import { isModuleVisible, type ModuleId } from '@/types/modules'
 import { Loader2, List, Lock } from 'lucide-react'
 
@@ -113,6 +117,7 @@ export function Sidebar() {
   const treeRowSize = usePDMStore((s) => s.treeRowSize)
   const setTreeRowSize = usePDMStore((s) => s.setTreeRowSize)
   const deniedModules = useDeniedModules()
+  const extensionWorkspace = useExtensionWorkspace(activeView)
 
   // Call hooks directly instead of receiving as props
   const { loadFiles } = useLoadFiles()
@@ -127,8 +132,16 @@ export function Sidebar() {
       return <SettingsNavigation activeTab={settingsTab} onTabChange={setSettingsTab} />
     }
 
+    // Native extension workspace: its own Navigator, in an error boundary
+    if (extensionWorkspace) {
+      if (deniedModules.has(activeView as ModuleId)) {
+        return <ModuleNoAccess moduleName={extensionWorkspace.title} />
+      }
+      return <ExtensionNavigatorView workspace={extensionWorkspace} />
+    }
+
     // Get the module name from the constants
-    const moduleName = MODULE_LABELS[activeView] || activeView
+    const moduleName = getModuleLabel(activeView)
 
     // AppShell redirects away from restricted modules, but that runs in an
     // effect, so guard the render too rather than flashing the real view.
@@ -341,7 +354,9 @@ export function Sidebar() {
     >
       {/* Sidebar header - compact uppercase style for all views */}
       <div className="sidebar-header h-9 flex items-center justify-between px-4 text-[11px] font-semibold text-plm-fg-dim tracking-wide border-b border-plm-border">
-        <span>{getModuleTitle(activeView)}</span>
+        <span>
+          {extensionWorkspace ? extensionWorkspace.title.toUpperCase() : getModuleTitle(activeView)}
+        </span>
         {activeView === 'explorer' && connectedVaults.length > 0 && (
           <div className="flex items-center gap-1.5">
             <List size={10} className="text-plm-fg-muted" />

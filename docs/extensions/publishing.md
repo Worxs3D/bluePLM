@@ -1,6 +1,6 @@
 # Publishing Guide
 
-> **Status:** this page describes the designed extension API. No extension code runs today, on the desktop or on the API server. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
 
 This guide covers how to publish your extension to the BluePLM Extension Store at [extensions.blueplm.io](https://extensions.blueplm.io).
 

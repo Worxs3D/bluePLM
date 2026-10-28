@@ -4,6 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 import {
+  getContributedPermissions,
   EXTENSION_ID_PATTERN,
   EXTENSION_VERSION_PATTERN,
   extensionFolderName,
@@ -81,6 +82,50 @@ describe('parseExtensionManifest', () => {
     ['bad category', JSON.stringify({ ...valid, category: 'kernel' }), /category/],
   ])('refuses %s', (_label, content, message) => {
     expect(() => parseExtensionManifest(content)).toThrow(message)
+  })
+})
+
+describe('contributes.permissions', () => {
+  const base = { id: 'acme.tool', name: 'Tool', version: '1.0.0', publisher: 'acme' }
+
+  it('accepts and de-duplicates well-formed entries', () => {
+    const manifest = parseExtensionManifest(
+      JSON.stringify({
+        ...base,
+        contributes: {
+          permissions: [
+            { resource: 'module:tool', label: 'Tool', actions: ['view', 'view', 'admin'] },
+          ],
+        },
+      }),
+    )
+    expect(getContributedPermissions(manifest)).toEqual([
+      { resource: 'module:tool', label: 'Tool', actions: ['view', 'admin'] },
+    ])
+  })
+
+  it('is empty without the section', () => {
+    expect(getContributedPermissions(base)).toEqual([])
+  })
+
+  it.each([
+    [{ permissions: {} }, /must be an array/],
+    [{ permissions: [{ resource: 'tool', label: 'T', actions: ['view'] }] }, /resource/],
+    [{ permissions: [{ resource: 'module:tool', label: '', actions: ['view'] }] }, /label/],
+    [{ permissions: [{ resource: 'module:tool', label: 'T', actions: ['fly'] }] }, /actions/],
+  ])('refuses %j', (contributes, message) => {
+    expect(() => parseExtensionManifest(JSON.stringify({ ...base, contributes }))).toThrow(message)
+  })
+
+  it('matches the schema definition', () => {
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8')) as {
+      definitions: { PermissionResourceContribution: { properties: { resource: { pattern: string } } } }
+      properties: { contributes: { properties: { permissions: unknown } } }
+    }
+    expect(schema.properties.contributes.properties.permissions).toBeDefined()
+    expect(schema.definitions.PermissionResourceContribution.properties.resource.pattern).toBe(
+      '^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$',
+    )
   })
 })
 
