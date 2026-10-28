@@ -36,4 +36,8 @@ A metric is flagged only when it is over 25% worse and over its absolute floor; 
 session has fixed ceilings. A flag fails the nightly with a summary table. Nothing blocks a push or
 a release.
 
+Hosted Windows runners differ a lot: on one commit (ae3ec753) two nights measured scroll TBT 134 ms
+and 11,630 ms, and every timing about 2x apart. Each result records the runner's CPU model and core
+count, and once 3 main runs from the current CPU model exist the baseline uses only those.
+
 Run by hand: Actions, "Render performance", Run workflow.

@@ -15,7 +15,7 @@
  */
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { tmpdir } from 'node:os'
+import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { _electron, type CDPSession, type ElectronApplication, type Page } from 'playwright'
@@ -572,6 +572,7 @@ async function main(): Promise<void> {
     reps: options.reps,
     sessionMinutes: options.sessionMinutes,
     metrics,
+    runner: { cpu: cpus()[0]?.model.trim() ?? 'unknown', cores: cpus().length },
     repetitions: reps,
     heap: session?.heap ?? [],
     heapByStep: session?.heapByStep ?? {},

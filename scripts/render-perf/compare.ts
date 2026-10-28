@@ -55,7 +55,12 @@ export interface RenderPerfResult {
   sessionMinutes: number
   /** Medians across repetitions (the long session runs once). */
   metrics: Record<string, number>
+  /** The machine it ran on. Hosted runners vary: one commit measured scroll TBT 134 ms and 11.6 s. */
+  runner?: { cpu: string; cores: number }
 }
+
+/** History runs on the same CPU model needed before the baseline uses only those. */
+export const SAME_RUNNER_MIN = 3
 
 export type Status = 'ok' | 'regressed' | 'improved' | 'over-ceiling' | 'no-history' | 'missing'
 
@@ -71,6 +76,8 @@ export interface Comparison {
   rows: Row[]
   failed: boolean
   historyRuns: number
+  /** The CPU model the baseline was restricted to, or null when it mixes machines. */
+  sameRunner: string | null
 }
 
 function medianOf(values: number[]): number | null {
@@ -88,10 +95,14 @@ export function compare(
 ): Comparison {
   const window = options.window ?? 7
   const ratio = options.ratio ?? 0.25
-  const recent = history
-    .filter((h) => h.ref === 'refs/heads/main' && h.runId !== current.runId && h.fileCount === current.fileCount)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, window)
+  const main = history.filter(
+    (h) => h.ref === 'refs/heads/main' && h.runId !== current.runId && h.fileCount === current.fileCount,
+  )
+  // Compare like with like once there is enough history from this CPU model; until then, all runs.
+  const cpu = current.runner?.cpu
+  const sameCpu = cpu ? main.filter((h) => h.runner?.cpu === cpu) : []
+  const sameRunner = cpu && sameCpu.length >= SAME_RUNNER_MIN ? cpu : null
+  const recent = (sameRunner ? sameCpu : main).sort((a, b) => b.date.localeCompare(a.date)).slice(0, window)
 
   const rows = METRICS.map((spec): Row => {
     const value = current.metrics[spec.key]
@@ -113,6 +124,7 @@ export function compare(
     rows,
     failed: rows.some((r) => r.status === 'regressed' || r.status === 'over-ceiling'),
     historyRuns: recent.length,
+    sameRunner,
   }
 }
 
@@ -131,7 +143,7 @@ export function markdownTable(comparison: Comparison, current: RenderPerfResult)
   const lines = [
     `### Render performance (${current.fileCount.toLocaleString('en-US')} files, median of ${current.reps}, ${current.sessionMinutes}-min session)`,
     '',
-    `Compared with the median of the last ${comparison.historyRuns} main run(s). Flagged: over 25% and over the metric's floor, or over a fixed ceiling.`,
+    `Compared with the median of the last ${comparison.historyRuns} main run(s)${comparison.sameRunner ? ` on ${comparison.sameRunner}` : ` (any runner${current.runner ? `; this one: ${current.runner.cpu}, ${current.runner.cores} cores` : ''})`}. Flagged: over 25% and over the metric's floor, or over a fixed ceiling.`,
     '',
     '| Metric | Now | Baseline | Change | Status |',
     '|---|---:|---:|---:|---|',

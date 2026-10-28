@@ -156,6 +156,24 @@ describe('compare', () => {
     expect(leak.failed).toBe(true)
   })
 
+  it('restricts the baseline to the same CPU model once it has enough runs from it', () => {
+    const on = (r: RenderPerfResult, cpu: string) => ({ ...r, runner: { cpu, cores: 4 } })
+    const fast = [1, 2, 3].map((d) => on(result(`f${d}`, `2026-10-1${d}`, { 'scroll.totalBlockingMs': 150 }), 'Fast CPU'))
+    const slow = [4, 5, 6, 7].map((d) => on(result(`s${d}`, `2026-10-1${d}`, { 'scroll.totalBlockingMs': 9000 }), 'Slow CPU'))
+    const row = (c: ReturnType<typeof compare>) => c.rows.find((r) => r.spec.key === 'scroll.totalBlockingMs')!
+
+    const onSlow = compare(on(result('now', '2026-10-20', { 'scroll.totalBlockingMs': 11000 }), 'Slow CPU'), [...fast, ...slow])
+    expect(onSlow.sameRunner).toBe('Slow CPU')
+    expect(row(onSlow).baseline).toBe(9000)
+    expect(row(onSlow).status).toBe('ok')
+
+    // Two runs from a new machine are not enough: the baseline still mixes every runner.
+    const two = [8, 9].map((d) => on(result(`n${d}`, `2026-10-1${d}`, { 'scroll.totalBlockingMs': 500 }), 'New CPU'))
+    const onNew = compare(on(result('now', '2026-10-20', { 'scroll.totalBlockingMs': 500 }), 'New CPU'), [...slow, ...two])
+    expect(onNew.sameRunner).toBeNull()
+    expect(onNew.historyRuns).toBe(6)
+  })
+
   it('reports improvements without failing', () => {
     const c = compare(result('now', '2026-10-10', { 'coldStart.launchToLoadedMs': 2000 }), history)
     expect(c.rows.find((r) => r.spec.key === 'coldStart.launchToLoadedMs')!.status).toBe('improved')
