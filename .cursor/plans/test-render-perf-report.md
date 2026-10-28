@@ -18,6 +18,17 @@ with the test kit's fakes (no network, signed in as a test admin). On main: 86a4
   Modal: 3,574 passed. Late in the work Modal hit its workspace spend limit, so the last analysis
   test change ran as a local backup (one file, 3 s); main's CI was green on 86683442.
 
+## 2026-10-28: the remaining session heap growth
+
+After the 489 MB leak was fixed, the 30-minute session still grew 38-54 MB, flagged against a
+baseline of ~11 MB. The probe (realtime rows tagged with event and file; a heap snapshot after the
+session) settled whether that was the vault filling or a leak: run 40755262695 had 45,250 tagged
+rows alive over 30,000 files, 15,250 of them superseded by a later event for the same file. The
+holder was VaultTreeItem: its memo comparator skipped handler props, so the vault header kept
+FileTree handlers from an old render, and with them that render's whole file list (the batch
+buttons also acted on that old list). Fixed in 7405c06a. Timings on the same commit varied 2x
+between nights (runner noise); results now record the runner CPU and compare like with like.
+
 ## Baseline (run 40288345978, median of 3; Windows runner, no GPU)
 
 | | |
