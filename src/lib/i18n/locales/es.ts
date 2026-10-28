@@ -582,6 +582,8 @@ export const es: TranslationDict = {
     failureItem: '{{path}}: {{error}}',
     unknownError: 'Error desconocido',
 
+    autoApplied: '{{name}} se movió a {{path}} en la bóveda, siguiendo su movimiento en este equipo.',
+    autoAppliedMany: 'Se movieron {{count}} archivos desprotegidos por usted en la bóveda, siguiendo sus movimientos en este equipo.',
     summaryComplete: '{{count}} rutas del servidor reconciliadas.',
     summaryPartial:
       '{{succeeded}} de {{total}} rutas del servidor reconciliadas — {{leftovers}}. Vuelva a ejecutarlo para terminar.',

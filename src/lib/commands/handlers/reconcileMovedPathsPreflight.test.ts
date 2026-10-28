@@ -252,6 +252,33 @@ describe('hash verification guard', () => {
     expect(classify([target]).eligible).toHaveLength(1)
   })
 
+  it('trusts an edited file this user holds only when the caller knows the move by file index', () => {
+    const edited = moved('new/part.sldprt', { serverHash: 'aaa', localHash: 'bbb', checkedOutBy: ME })
+
+    expect(classify([edited]).skipped[0]).toMatchObject({ reason: 'unverified' })
+    const trusted = classifyMovedFiles({
+      files: [edited],
+      serverFiles: [],
+      userId: ME,
+      trustOwnCheckouts: true,
+    })
+    expect(trusted.eligible).toHaveLength(1)
+  })
+
+  it('does not extend that trust to files nobody holds, or to a destination that is taken', () => {
+    const unheld = moved('new/a.sldprt', { serverHash: 'aaa', localHash: 'bbb' })
+    const taken = moved('new/b.sldprt', { serverHash: 'aaa', localHash: 'bbb', checkedOutBy: ME })
+    const result = classifyMovedFiles({
+      files: [unheld, taken],
+      serverFiles: [serverRow('new/b.sldprt', 'row-sitting')],
+      userId: ME,
+      trustOwnCheckouts: true,
+    })
+
+    expect(result.eligible).toHaveLength(0)
+    expect(result.skipped.map((s) => s.reason)).toEqual(['unverified', 'conflict'])
+  })
+
   it('accepts a file with no hash to compare, since there is nothing to contradict', () => {
     expect(classify([moved('new/part.sldprt', { serverHash: 'aaa' })]).eligible).toHaveLength(1)
     expect(classify([moved('new/other.sldprt', { localHash: 'bbb' })]).eligible).toHaveLength(1)

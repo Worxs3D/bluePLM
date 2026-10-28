@@ -559,6 +559,8 @@ export const zhCN: TranslationDict = {
     failureItem: '{{path}}：{{error}}',
     unknownError: '未知错误',
 
+    autoApplied: '已在库中将 {{name}} 移动到 {{path}}，与本机上的移动一致。',
+    autoAppliedMany: '已在库中移动您签出的 {{count}} 个文件，与本机上的移动一致。',
     summaryComplete: '已校正 {{count}} 个服务器路径。',
     summaryPartial:
       '已校正 {{total}} 个服务器路径中的 {{succeeded}} 个 — {{leftovers}}。请再次运行以完成。',

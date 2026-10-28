@@ -587,6 +587,8 @@ export const de: TranslationDict = {
     failureItem: '{{path}}: {{error}}',
     unknownError: 'Unbekannter Fehler',
 
+    autoApplied: '{{name}} im Tresor nach {{path}} verschoben, wie auf diesem Computer.',
+    autoAppliedMany: '{{count}} von Ihnen ausgecheckte Dateien im Tresor verschoben, wie auf diesem Computer.',
     summaryComplete: '{{count}} Serverpfade abgeglichen.',
     summaryPartial:
       '{{succeeded}} von {{total}} Serverpfaden abgeglichen — {{leftovers}}. Führen Sie den Befehl erneut aus, um ihn abzuschließen.',

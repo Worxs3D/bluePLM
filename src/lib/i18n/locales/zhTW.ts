@@ -559,6 +559,8 @@ export const zhTW: TranslationDict = {
     failureItem: '{{path}}：{{error}}',
     unknownError: '未知錯誤',
 
+    autoApplied: '已在庫中將 {{name}} 移動到 {{path}}，與本機上的移動一致。',
+    autoAppliedMany: '已在庫中移動您簽出的 {{count}} 個檔案，與本機上的移動一致。',
     summaryComplete: '已校正 {{count}} 個伺服器路徑。',
     summaryPartial:
       '已校正 {{total}} 個伺服器路徑中的 {{succeeded}} 個 — {{leftovers}}。請再次執行以完成。',

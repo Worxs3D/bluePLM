@@ -47,6 +47,26 @@ describe('classifyAgainstServerRow', () => {
     expect(result.diffStatus).toBeUndefined()
   })
 
+  it('calls an edit of a held file modified even when a later server write bumped updated_at', () => {
+    const older = at(UPDATED_MS - 60_000)
+    expect(
+      classifyAgainstServerRow({ ...base, localHash: 'mine', modifiedTime: older }).diffStatus,
+    ).toBe('modified')
+    // Behind the server's version is outdated whoever holds it, and so is a file nobody holds.
+    expect(
+      classifyAgainstServerRow({ ...base, localHash: 'mine', modifiedTime: older, localVersion: 1 })
+        .diffStatus,
+    ).toBe('outdated')
+    expect(
+      classifyAgainstServerRow({
+        ...base,
+        row: { ...row, checked_out_by: null },
+        localHash: 'mine',
+        modifiedTime: older,
+      }).diffStatus,
+    ).toBe('outdated')
+  })
+
   it('lets pending metadata win over a matching hash and over a move', () => {
     expect(
       classifyAgainstServerRow({ ...base, localHash: 'h2', hasPendingMetadata: true }).diffStatus,

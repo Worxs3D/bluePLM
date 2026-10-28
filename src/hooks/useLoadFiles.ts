@@ -64,6 +64,7 @@ import {
   mergeLocalFileWithServer,
 } from './useLoadFiles/mergeLocalFile'
 import { detectInodeRenames, hashRenameCandidates } from './useLoadFiles/renameDetection'
+import { rowsSettledAtServerPath, takeOwnInodeMoves } from './useLoadFiles/autoReconcileOwnMoves'
 import { useRefreshCurrentFolder } from './useLoadFiles/useRefreshCurrentFolder'
 
 export {
@@ -258,6 +259,10 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
       let previouslySyncedCountAtMerge = 0
       let serverFoldersErroredAtMerge = false
       let deletedFoldersAtMerge: DeletedFolderRecord[] = []
+
+      // `files.id`s this pass found at a new path by NTFS file index, for autoReconcileOwnMoves.
+      let inodeMatchedFileIds = new Set<string>()
+      let settledBeforeLoad = new Set<string>()
 
       try {
         // Run local file scan and server fetch in PARALLEL for faster boot
@@ -637,6 +642,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             }
             const { inodeRenameMap, inodeMatchedServerPaths, inodeMatchedServerPathToLocalPath } =
               detectInodeRenames(localFiles, pdmMap, localPathSet, savedInodeMap)
+            inodeMatchedFileIds = new Set(
+              Array.from(inodeRenameMap.values(), (serverFile) => serverFile.id),
+            )
+            if (inodeMatchedFileIds.size > 0) {
+              settledBeforeLoad = rowsSettledAtServerPath(currentFiles)
+            }
 
             // Merge PDM data into local files and compute diff status
             const stats = { matched: 0, unmatched: 0, unmatchedSamples: [] as string[] }
@@ -1144,6 +1155,35 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         if (!silent) {
           setIsLoading(false)
           setTimeout(() => setStatusMessage(''), 3000)
+        }
+      }
+
+      // A move this user made of files they hold checked out goes to the server now rather than
+      // waiting as a pending move (autoReconcileOwnMoves.ts says why that is safe). Inside the
+      // load lock for the same reason as the auto-discard below; the command's refresh queues
+      // behind this pass.
+      if (committedMerge && user && !isOfflineMode && !isVaultStale()) {
+        const ownMoveIds = takeOwnInodeMoves(
+          usePDMStore.getState().files,
+          inodeMatchedFileIds,
+          settledBeforeLoad,
+          user.id,
+        )
+        if (ownMoveIds.length > 0) {
+          window.electronAPI?.log('info', '[LoadFiles] Writing own checked-out moves to the server', {
+            count: ownMoveIds.length,
+          })
+          try {
+            await executeCommand(
+              'reconcile-moved-paths',
+              { apply: true, automatic: true, fileIds: ownMoveIds },
+              { onRefresh: () => usePDMStore.getState().requestFilesReload() },
+            )
+          } catch (error) {
+            window.electronAPI?.log('error', '[LoadFiles] Writing own moves failed', {
+              error: String(error),
+            })
+          }
         }
       }
 

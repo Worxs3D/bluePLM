@@ -14,7 +14,9 @@
  *   params, the terminal with no flag — performs the pre-flight and reports.
  * - A target held by another user refuses the whole run and names the holders, unless
  *   `skipCheckedOut` opts into leaving theirs alone.
- * - The write path requires a confirmation dialog. No dialog available means no write.
+ * - The write path requires a confirmation dialog. No dialog available means no write. The one
+ *   exception is `automatic`: a load that recognised, by file index, a move of files this user
+ *   holds checked out writes those rows straight away (`useLoadFiles/autoReconcileOwnMoves.ts`).
  * - Every write is one `move_file`, so a run that stops halfway leaves complete rows behind it and
  *   untouched rows in front of it. Running it again finishes the job.
  * - The summary reports succeeded, failed, skipped and blocked separately, and only reports success
@@ -173,6 +175,9 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       return t('reconcileMovedPaths.noVault')
     }
 
+    // A background follow-up with nothing left to do (another pass got there first) stays quiet.
+    if (params.automatic) return null
+
     const preflight = classifyMovedFiles({
       files: ctx.files,
       serverFiles: ctx.serverFiles,
@@ -187,7 +192,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
     return null
   },
 
-  async execute({ apply, skipCheckedOut, fileIds }, ctx): Promise<CommandResult> {
+  async execute({ apply, skipCheckedOut, fileIds, automatic }, ctx): Promise<CommandResult> {
     const user = ctx.user!
     const startedAt = Date.now()
 
@@ -196,6 +201,7 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       serverFiles: ctx.serverFiles,
       userId: user.id,
       fileIds,
+      trustOwnCheckouts: automatic === true,
     })
 
     logReconcile('info', 'Pre-flight complete', {
@@ -208,6 +214,15 @@ export const reconcileMovedPathsCommand: Command<ReconcileMovedPathsParams> = {
       skipCheckedOut: skipCheckedOut === true,
       fileIds: fileIds?.length,
     })
+
+    // The load found these by file index and this user holds them, so the move is theirs: no dialog.
+    // Rows held by anyone else are left as pending moves, and nothing to write is not news.
+    if (automatic) {
+      if (!apply || !fileIds || preflight.eligible.length === 0) {
+        return reportOnly(preflight, t('reconcileMovedPaths.nothingToReconcile'), true)
+      }
+      return writeReconciledPaths(preflight, ctx, user.id, startedAt, true)
+    }
 
     // The default. A caller that has not asked for the write path in as many words gets the report.
     if (!apply) {
@@ -290,6 +305,7 @@ async function writeReconciledPaths(
   ctx: CommandContext,
   userId: string,
   startedAt: number,
+  automatic = false,
 ): Promise<CommandResult> {
   const eligible = preflight.eligible
   const toastId = `reconcile-moved-paths-${Date.now()}`
@@ -376,7 +392,11 @@ async function writeReconciledPaths(
     durationMs: Date.now() - startedAt,
   })
 
-  ctx.addToast(complete ? 'success' : 'warning', message)
+  if (automatic && failures.length === 0 && notAttempted === 0) {
+    ctx.addToast('info', describeAutomaticMoves(succeeded))
+  } else {
+    ctx.addToast(complete ? 'success' : 'warning', message)
+  }
   ctx.onRefresh?.()
 
   return {
@@ -389,6 +409,17 @@ async function writeReconciledPaths(
     errors: errors.length > 0 ? errors : undefined,
     duration: Date.now() - startedAt,
   }
+}
+
+/** What the automatic follow-up tells the user it did on their behalf. */
+function describeAutomaticMoves(succeeded: ReconcileTarget[]): string {
+  if (succeeded.length === 1) {
+    return t('reconcileMovedPaths.autoApplied', {
+      name: succeeded[0].name,
+      path: succeeded[0].localPath,
+    })
+  }
+  return t('reconcileMovedPaths.autoAppliedMany', { count: succeeded.length })
 }
 
 /**
@@ -410,9 +441,14 @@ function applyReconciledPathsToStore(succeeded: ReconcileTarget[], ctx: CommandC
       path: target.path,
       updates: {
         pdmData: { ...file.pdmData, file_path: target.localPath, file_name: target.name },
-        // Only the path diverged, and it no longer does: the pre-flight skips any file whose
-        // content disagrees with the row, so there is nothing else left for this row to be.
-        diffStatus: undefined,
+        // Only the path diverged, and it no longer does. The pre-flight skips a file whose content
+        // disagrees with the row unless this user holds it, and then the difference is their edit.
+        diffStatus:
+          file.localHash &&
+          file.pdmData.content_hash &&
+          file.localHash !== file.pdmData.content_hash
+            ? 'modified'
+            : undefined,
       },
     })
   }

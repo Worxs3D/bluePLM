@@ -1842,6 +1842,8 @@ export const en: TranslationDict = {
     failureItem: '{{path}}: {{error}}',
     unknownError: 'Unknown error',
 
+    autoApplied: 'Moved {{name}} to {{path}} in the vault, following your move on this computer.',
+    autoAppliedMany: 'Moved {{count}} of your checked-out files in the vault, following your moves on this computer.',
     summaryComplete: 'Reconciled {{count}} server paths.',
     summaryPartial:
       'Reconciled {{succeeded}} of {{total}} server paths — {{leftovers}}. Run it again to finish.',

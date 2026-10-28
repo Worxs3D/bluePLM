@@ -76,7 +76,13 @@ export function classifyAgainstServerRow(
     diffStatus = 'moved'
   } else if (row.content_hash && localHash) {
     if (row.content_hash !== localHash) {
-      diffStatus = newerSide(modifiedTime, row.updated_at)
+      // A file this user holds that the server has not versioned past is their own edit.
+      // `updated_at` cannot say so: a path or metadata write after the edit bumps it, and an
+      // edited checkout that Update the Vault had just moved read as outdated.
+      const heldAndNotBehind =
+        row.checked_out_by === input.userId &&
+        !(localVersion !== undefined && row.version !== undefined && localVersion < row.version)
+      diffStatus = heldAndNotBehind ? 'modified' : newerSide(modifiedTime, row.updated_at)
     }
   } else if (row.content_hash) {
     const localModTime = new Date(modifiedTime).getTime()

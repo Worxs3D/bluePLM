@@ -582,6 +582,8 @@ export const pt: TranslationDict = {
     failureItem: '{{path}}: {{error}}',
     unknownError: 'Erro desconhecido',
 
+    autoApplied: '{{name}} foi movido para {{path}} no cofre, acompanhando sua movimentação neste computador.',
+    autoAppliedMany: '{{count}} arquivos com check-out seu foram movidos no cofre, acompanhando suas movimentações neste computador.',
     summaryComplete: '{{count}} caminhos do servidor reconciliados.',
     summaryPartial:
       '{{succeeded}} de {{total}} caminhos do servidor reconciliados — {{leftovers}}. Execute novamente para concluir.',

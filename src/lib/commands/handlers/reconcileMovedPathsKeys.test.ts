@@ -46,6 +46,7 @@ const COUNTED = [
   'reconcileMovedPaths.summaryNotAttempted',
   'reconcileMovedPaths.summaryBlocked',
   'reconcileMovedPaths.summarySkipped',
+  'reconcileMovedPaths.autoAppliedMany',
 ] as const
 
 /** Keys taking more than one value, each with the full set the command passes. */
@@ -59,6 +60,7 @@ const MULTI: Array<[string, Record<string, string | number>]> = [
     'reconcileMovedPaths.confirmRemainder',
     { count: 18, detail: '15 checked out by others, 3 skipped' },
   ],
+  ['reconcileMovedPaths.autoApplied', { name: 'a.sldasm', path: 'new/a.sldasm' }],
   ['reconcileMovedPaths.failureItem', { path: 'new/a.sldprt', error: 'RPC refused' }],
   [
     'reconcileMovedPaths.summaryPartial',

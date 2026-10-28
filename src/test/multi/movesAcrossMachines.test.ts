@@ -176,6 +176,46 @@ describe('moves and renames across machines', () => {
     await w.expectConverged()
   })
 
+  // 2026-10-26 log (7000aw angular contact bearing): a checked-out assembly moved in Explorer into
+  // a new folder and saved there stayed a pending move whose Update the Vault was refused as
+  // unverified, so check-in was the only way out.
+  it('B moves and edits a file it holds in Explorer: the server follows at once, A sees the new path', async () => {
+    const w = (world = await World.create(['A', 'B']))
+    w.seed({ path: 'dev/bearing.sldasm', checkedOutBy: USERS.B.id })
+    w.seed({ path: 'dev/other.sldprt' })
+    await w.boot()
+    const rowId = w.server.fileAt('dev/bearing.sldasm')!.id
+
+    // Past the watcher's 5 s window after the boot, as a person in Explorer would be.
+    await w.run(new Promise((resolve) => setTimeout(resolve, 6000)))
+    w.B.on(() => w.B.disk.move(w.B.absolute('dev/bearing.sldasm'), w.B.absolute('dev/New folder/bearing.sldasm')))
+    w.B.on(() => w.B.disk.write(w.B.absolute('dev/New folder/bearing.sldasm'), 'edited after the move'))
+    await w.settle()
+
+    expect(w.server.fileAt('dev/New folder/bearing.sldasm')?.id, w.dump()).toBe(rowId)
+    expect(w.server.fileAt('dev/bearing.sldasm'), w.dump()).toBeUndefined()
+    expect(statusOf(w.B, 'dev/New folder/bearing.sldasm'), w.dump()).toBe('modified')
+    expect(w.B.find('dev/bearing.sldasm'), w.dump()).toBeUndefined()
+    expect(w.B.file('dev/New folder/bearing.sldasm').pdmData?.checked_out_by).toBe(USERS.B.id)
+    await w.expectStableAcrossReload(w.B)
+    expect(statusOf(w.B, 'dev/New folder/bearing.sldasm'), w.dump()).toBe('modified')
+    expect(statusOf(w.A, 'dev/New folder/bearing.sldasm'), w.dump()).not.toBe('absent')
+  })
+
+  it('B moves a file nobody holds in Explorer: it stays a pending move', async () => {
+    const w = (world = await World.create(['A', 'B']))
+    w.seed({ path: 'dev/bearing.sldasm' })
+    w.seed({ path: 'dev/other.sldprt' })
+    await w.boot()
+
+    await w.run(new Promise((resolve) => setTimeout(resolve, 6000)))
+    w.B.on(() => w.B.disk.move(w.B.absolute('dev/bearing.sldasm'), w.B.absolute('dev/New folder/bearing.sldasm')))
+    await w.settle()
+
+    expect(w.server.fileAt('dev/bearing.sldasm'), w.dump()).toBeDefined()
+    expectPendingMove(w, w.B, 'dev/New folder/bearing.sldasm', 'dev/bearing.sldasm')
+  })
+
   it('barxt600: B moves a folder in Explorer and uploads from it: one row per file, the move stays pending', async () => {
     const w = (world = await World.create(['A', 'B']))
     w.seed({ path: 'Old/x.sldprt' })

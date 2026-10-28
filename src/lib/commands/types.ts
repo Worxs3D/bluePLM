@@ -587,6 +587,14 @@ export interface ReconcileMovedPathsParams {
    * nothing-to-do rather than falling back to vault-wide.
    */
   fileIds?: string[]
+
+  /**
+   * The load's own follow-up to a move this user made of files they hold checked out
+   * (`autoReconcileOwnMoves`). Only `fileIds` the caller recognised by file index; writes without a
+   * confirmation, leaves rows held by anyone else alone, accepts content edited since the move
+   * (`trustOwnCheckouts`), and says nothing when there is nothing to write.
+   */
+  automatic?: boolean
 }
 
 /**

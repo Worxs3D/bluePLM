@@ -587,6 +587,8 @@ export const fr: TranslationDict = {
     failureItem: '{{path}} : {{error}}',
     unknownError: 'Erreur inconnue',
 
+    autoApplied: '{{name}} déplacé vers {{path}} dans le coffre, comme sur cet ordinateur.',
+    autoAppliedMany: '{{count}} fichiers que vous avez extraits ont été déplacés dans le coffre, comme sur cet ordinateur.',
     summaryComplete: '{{count}} chemins serveur réconciliés.',
     summaryPartial:
       '{{succeeded}} chemins serveur sur {{total}} réconciliés — {{leftovers}}. Relancez la commande pour terminer.',

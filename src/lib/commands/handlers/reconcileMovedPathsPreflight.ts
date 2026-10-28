@@ -76,6 +76,13 @@ export interface PreflightInput {
    * considers none — the caller asked for a selection and named nothing.
    */
   fileIds?: string[]
+  /**
+   * Accept a row this user holds even when its content no longer matches the server's hash. Only
+   * for a caller that knows the move by its file index: the inode match is the identity, the
+   * checkout is why the content differs (the file was edited after the move), and check-in would
+   * otherwise be the only way out. Every other guard still applies.
+   */
+  trustOwnCheckouts?: boolean
 }
 
 /** Windows spells the same path several ways; every comparison here goes through this. */
@@ -139,6 +146,7 @@ export function classifyMovedFiles({
   serverFiles,
   userId,
   fileIds,
+  trustOwnCheckouts,
 }: PreflightInput): ReconcilePreflight {
   const byPath = new Map<string, LocalFile[]>()
   for (const file of files) {
@@ -192,7 +200,8 @@ export function classifyMovedFiles({
     // that was moved *and* edited lands here too, and check-in is the right path for that.
     const serverHash = file.pdmData?.content_hash
     const localHash = file.localHash
-    if (serverHash && localHash && serverHash !== localHash) {
+    const trusted = trustOwnCheckouts === true && holderId === userId
+    if (!trusted && serverHash && localHash && serverHash !== localHash) {
       skipped.push({ ...target, reason: 'unverified' })
       continue
     }

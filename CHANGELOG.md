@@ -62,6 +62,34 @@ the app expects 106.
   header tracks only the files it updates, so every subfolder still offered a clickable Get Latest
   for those same files. Folder buttons in the tree and the file pane now show their spinner while
   that operation runs on anything beneath the folder (`getFolderDescendantOperations`).
+- **A file moved in Explorer while BluePLM runs shows as moved right away.** The watcher's
+  refresh debounce kept only the last batch of changed paths, so an Explorer move that reported
+  the old path in one batch and the new path in the next reached the delta scan as the new path
+  alone. The old path stayed in the scan, inode rename detection saw the file in both places, and
+  every watcher-driven load logged `moved: 0` until a full scan found the move days later
+  (2026-10-26 log, `7000aw angular contact bearing`). Batches inside the debounce are now merged,
+  and the delta scan also drops a cached path whose file index turned up at a new path and that no
+  longer holds that file, so a source path the watcher never reports cannot hide a move.
+- **A move of a file you have checked out is written to the vault without asking.** When a
+  load recognises, by NTFS file index, a file you hold checked out at a new path, it updates the
+  server path through `reconcile-moved-paths` (new `automatic` mode, those `fileIds` only) and
+  says so in a toast. Before, it stayed a pending move, and because a checked-out file is usually
+  edited after the move, Update the Vault refused it as `unverified` (the content no longer
+  matched the server's hash), leaving check-in as the only way out. The hash check is there
+  because NTFS reuses file indexes after a delete; for a file this user holds, the index match is
+  the identity and the edit is the user's own, so the hash difference is expected rather than
+  evidence of a wrong match. Every other guard stays: a destination another row occupies is
+  skipped, rows held by someone else or by nobody stay pending moves, and moves found any other
+  way (content hash, the ghost/orphan folder match, a server-side move) are never written
+  automatically. Each move is tried once per session, so a refused write does not repeat on every
+  load. Only a file that sat at its server path before the move qualifies: a file that was
+  already a pending move (another machine moved its row) is never written back this way.
+- **An edited file you hold shows as modified, not outdated, after a server write.** With
+  differing hashes the status went by which was newer, the file's mtime or the row's
+  `updated_at`, and any write to the row after the edit (a path update, a metadata save) made
+  your own edit read as outdated. A file you hold checked out whose version the server has not
+  moved past is now modified whatever the timestamps say. This also turns the known failure "an
+  edit saved right after a checkout shows as modified" in `src/test/multi` into a pass.
 
 ## [4.8.0] - 2026-10-28
 

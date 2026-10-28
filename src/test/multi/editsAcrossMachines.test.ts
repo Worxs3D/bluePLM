@@ -52,13 +52,12 @@ describe('edits across machines', () => {
     expect(bBase === aVersion || !checkin.success, w.dump()).toBe(true)
   })
 
-  // 2026-10-25, known failure (found by the random runner). For 5 s after an operation the file
-  // watcher treats changes to the paths it touched as the app's own (useVaultWatchers.ts,
-  // expectedFileChanges + SUPPRESSION_WINDOW_MS), so a real save inside that window is not
-  // noticed: the file shows synced over modified bytes until the next load. Telling the app's
-  // own writes from the user's needs the write's identity (size and mtime the app wrote), not a
-  // time window; that is a watcher design change, left for a decision.
-  it.fails('an edit saved right after a checkout shows as modified without a reload', async () => {
+  // 2026-10-25, found by the random runner; passes since 2026-10-28. The watcher does reload the
+  // path, and the background hash pass finds the edit. What called it outdated rather than
+  // modified was `newerSide`: the hashes differ and the checkout's write to the row left
+  // `updated_at` after the file's mtime. A file this user holds that the server has not
+  // versioned past is now their edit whatever the timestamps say (fileClassification.ts).
+  it('an edit saved right after a checkout shows as modified without a reload', async () => {
     const w = (world = await World.create(['A', 'B']))
     w.seed({ path: 'x.sldprt' })
     await w.boot()
