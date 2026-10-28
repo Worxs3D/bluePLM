@@ -149,6 +149,14 @@ export function NameCell({
     }
   }, [isBeingHighlighted, highlightInputRef])
 
+  // The dialog is mounted by the row whose badge opened it: its backdrop covers the list, so the
+  // row cannot scroll out of view while it is open. It is portalled to the body because the
+  // virtualized row is transformed, which would pin a `fixed` overlay to the row; and its events
+  // stop at the portal, since React would otherwise bubble them into the row's click handlers.
+  // Declared above the rename and highlight early returns: a hook after them changes the hook
+  // count when a row enters rename mode.
+  const [isResolvingMoves, setIsResolvingMoves] = useState(false)
+
   // Rename mode
   if (isBeingRenamed) {
     const renameIconSize = Math.max(16, listRowSize - 8)
@@ -245,12 +253,6 @@ export function NameCell({
   const myCheckedOutFilesCount = fm?.myCheckedOutFilesCount || 0
   const totalCheckedOutFilesCount = fm?.totalCheckedOutFilesCount || 0
   const pendingMoveCount = (fm?.movedCount || 0) + (fm?.movedAwayCount || 0)
-  // The dialog is mounted by the row whose badge opened it: its backdrop covers the list, so the
-  // row cannot scroll out of view while it is open. It is portalled to the body because the
-  // virtualized row is transformed, which would pin a `fixed` overlay to the row; and its events
-  // stop at the portal, since React would otherwise bubble them into the row's click handlers.
-  const [isResolvingMoves, setIsResolvingMoves] = useState(false)
-
   // Get checkout users for avatars (for both files and folders)
   const getCheckoutAvatars = (): CheckoutUser[] => {
     if (file.isDirectory) {
