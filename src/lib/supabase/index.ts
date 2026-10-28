@@ -187,17 +187,32 @@ export { getRecentActivity, getFileActivity } from './activity'
 // Review exports
 // ============================================
 export {
-  createReviewRequest,
-  getMyReviews,
-  getPendingReviewsForUser,
-  respondToReview,
+  requestReview,
+  respondToItems,
+  approveAllRemaining,
+  resubmitReview,
   cancelReview,
-  checkReviewTrigger,
+  updateReviewMeta,
+  listReviewQueue,
+  getReviewDetail,
+  getReviewBadgeCount,
+  getVersionDependencyClosure,
+  getDrawingPdf,
+  recordDrawingPdf,
+  recordVersionReferences,
+  ReviewRpcError,
+  getLatestCheckedInVersions,
   getOrgTeamsWithMembers,
   resolveTeamReviewers,
+  expandReviewerSelection,
 } from './reviews'
 
-export type { TeamMember, TeamWithMembers, TeamReviewerConfig } from './reviews'
+export type {
+  TeamMember,
+  TeamWithMembers,
+  TeamReviewerConfig,
+  LatestFileVersion,
+} from './reviews'
 
 // ============================================
 // File Watcher exports

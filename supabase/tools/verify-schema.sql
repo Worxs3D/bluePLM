@@ -51,8 +51,10 @@ DECLARE
     'workflow_history', 'file_state_entries', 'workflow_roles',
     'user_workflow_roles', 'backup_config', 'backup_history', 'backup_machines',
     'backup_locks', 'user_sessions', 'file_metadata_columns',
+    'file_version_references', 'drawing_pdf_renders',
     -- Change control
-    'ecos', 'file_ecos', 'reviews', 'review_responses', 'deviations',
+    'ecos', 'file_ecos', 'reviews', 'review_responses', 'review_items',
+    'review_rounds', 'review_round_items', 'review_decisions', 'deviations',
     'file_deviations', 'process_templates', 'process_template_phases',
     'process_template_items', 'eco_checklist_items', 'eco_gate_approvals',
     -- Supply chain

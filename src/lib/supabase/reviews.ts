@@ -1,336 +1,410 @@
 /**
- * Review helpers: CRUD operations, workflow triggers, and team fetching.
+ * Drawing reviews: typed wrappers over the review RPCs (schema 107), plus the team helpers the
+ * reviewer picker uses.
+ *
+ * Every write is a SECURITY DEFINER RPC that validates on the server, locks the review and writes
+ * notifications in the same transaction; the review tables are SELECT-only to clients. Versions are
+ * pinned on the server from `file_versions` ids - never from a cached `pdmData.version`.
+ *
+ * Wrappers throw `ReviewRpcError` (with the RPC's own `code`) on refusal or failure, and return the
+ * canonical types from `@/types/reviews`. Shape mapping lives in `reviewMapping.ts`, which is pure
+ * and unit-tested.
  */
 
 import { getSupabaseClient } from './client'
-import type { Review, ReviewStatus } from '../../types/database'
+import type { TeamMember, TeamReviewerConfig, TeamWithMembers } from './reviewTeams'
+import { log } from '@/lib/logger'
+import type { Json } from '@/types/supabase'
+import type {
+  CancelResult,
+  DependencyClosureRow,
+  DrawingPdf,
+  ItemDecisionInput,
+  RecordDrawingPdfResult,
+  RecordVersionReferencesResult,
+  RequestReviewInput,
+  RequestReviewResult,
+  ResubmitItemInput,
+  ResubmitResult,
+  RespondResult,
+  ReviewDetail,
+  ReviewMetaPatch,
+  ReviewMetaResult,
+  ReviewQueuePage,
+  ReviewQueueQuery,
+  VersionReferenceInput,
+} from '@/types/reviews'
+import {
+  decisionsArg,
+  mapCancelResult,
+  mapClosureRows,
+  mapDrawingPdf,
+  mapQueuePage,
+  mapRecordDrawingPdfResult,
+  mapRecordVersionReferencesResult,
+  mapRequestReviewResult,
+  mapRespondResult,
+  mapResubmitResult,
+  mapReviewDetail,
+  mapReviewMetaResult,
+  requestReviewArgs,
+  resubmitItemsArg,
+  reviewMetaArgs,
+  reviewQueueArgs,
+  toReviewRpcError,
+  versionReferencesArg,
+  type RpcErrorLike,
+} from './reviewMapping'
+
+export { ReviewRpcError } from './reviewMapping'
+export { resolveTeamReviewers, expandReviewerSelection } from './reviewTeams'
+export type { TeamMember, TeamReviewerConfig, TeamWithMembers } from './reviewTeams'
 
 // ============================================
-// Review CRUD
+// RPC plumbing
 // ============================================
 
 /**
- * Create a review request for a file
+ * The review RPCs are not in the generated `Database` type until `npm run gen:types` runs against
+ * schema 107, so they are called through this narrow untyped view and their results are mapped
+ * from `unknown`.
  */
-export async function createReviewRequest(
-  orgId: string,
-  fileId: string,
-  vaultId: string | null,
-  requestedBy: string,
-  reviewerIds: string[],
-  fileVersion: number,
-  title?: string,
-  message?: string,
-  dueDate?: string,
-  priority?: 'low' | 'normal' | 'high' | 'urgent',
-  teamId?: string,
-): Promise<{ review: Review | null; error?: string }> {
-  const client = getSupabaseClient()
+interface UntypedRpcClient {
+  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<RpcResponse>
+}
 
-  // Create the review
-  const insertData: Record<string, unknown> = {
-    org_id: orgId,
-    file_id: fileId,
-    vault_id: vaultId,
-    requested_by: requestedBy,
-    title: title || null,
-    due_date: dueDate || null,
-    priority: priority || 'normal',
-    message: message || null,
-    file_version: fileVersion,
-    status: 'pending',
-    team_id: teamId || null,
-  }
-  const { data: review, error: reviewError } = await client
-    .from('reviews')
-    .insert(insertData as any) // TODO: type this
-    .select()
-    .single()
-
-  if (reviewError) {
-    return { review: null, error: reviewError.message }
-  }
-
-  // Create review_responses for each reviewer
-  const responses = reviewerIds.map((reviewerId) => ({
-    review_id: review.id,
-    reviewer_id: reviewerId,
-    status: 'pending' as ReviewStatus,
-  }))
-
-  await client.from('review_responses').insert(responses)
-
-  return { review: review as Review }
+interface RpcResponse {
+  data: unknown
+  error: RpcErrorLike | null
 }
 
 /**
- * Get reviews requested by a user
+ * Run one review RPC and unwrap its result. `call` names the function and its argument object
+ * literally (`c.rpc('name', { p_x: ... })`) so `rpcContract.test.ts` can check them against the SQL;
+ * `fn` is the same name, for the log.
  */
-export async function getMyReviews(
-  userId: string,
-  _orgId?: string,
-  options?: {
-    status?: ReviewStatus[]
-    limit?: number
-    asRequester?: boolean
-    asReviewer?: boolean
-  },
-): Promise<{ reviews: any[]; error?: string }> {
-  const client = getSupabaseClient()
-
-  let query = client
-    .from('reviews')
-    .select(
-      `
-      *,
-      file:files(id, file_name, file_path, extension, version, part_number, description, revision),
-      requester:users!requested_by(email, full_name, avatar_url),
-      responses:review_responses(
-        id,
-        reviewer_id,
-        status,
-        comment,
-        responded_at,
-        reviewer:users!reviewer_id(id, email, full_name, avatar_url)
-      )
-    `,
-    )
-    .eq('requested_by', userId)
-    .order('created_at', { ascending: false })
-
-  if (options?.status && options.status.length > 0) {
-    query = query.in('status', options.status)
-  }
-
-  if (options?.limit) {
-    query = query.limit(options.limit)
-  }
-
-  const { data, error } = await query
-
+async function callReviewRpc(
+  fn: string,
+  call: (client: UntypedRpcClient) => PromiseLike<RpcResponse>,
+): Promise<unknown> {
+  const client = getSupabaseClient() as unknown as UntypedRpcClient
+  const { data, error } = await call(client)
   if (error) {
-    return { reviews: [], error: error.message }
-  }
-
-  return { reviews: data || [] }
-}
-
-/**
- * Get pending reviews for a user (reviews they need to respond to)
- */
-export async function getPendingReviewsForUser(
-  userId: string,
-  _orgId?: string,
-): Promise<{ reviews: any[]; error?: string }> {
-  const client = getSupabaseClient()
-
-  const { data, error } = await client
-    .from('review_responses')
-    .select(
-      `
-      id,
-      status,
-      review:reviews!inner(
-        id,
-        title,
-        message,
-        priority,
-        due_date,
-        file_version,
-        created_at,
-        requested_by,
-        status,
-        file:files(id, file_name, file_path, extension, part_number, description, revision),
-        requester:users!requested_by(email, full_name, avatar_url),
-        responses:review_responses(
-          id,
-          reviewer_id,
-          status,
-          comment,
-          responded_at,
-          reviewer:users!reviewer_id(id, email, full_name, avatar_url)
-        )
-      )
-    `,
-    )
-    .eq('reviewer_id', userId)
-    .in('status', ['pending', 'kicked_back'])
-    .eq('reviews.status', 'pending')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    return { reviews: [], error: error.message }
-  }
-
-  return { reviews: data || [] }
-}
-
-/**
- * Respond to a review request
- */
-export async function respondToReview(
-  reviewResponseId: string,
-  reviewerId: string,
-  status: 'approved' | 'rejected' | 'kicked_back',
-  comment?: string,
-): Promise<{ success: boolean; error?: string }> {
-  const client = getSupabaseClient()
-
-  const { data: response, error: updateError } = await client
-    .from('review_responses')
-    .update({
-      status,
-      comment: comment || null,
-      responded_at: new Date().toISOString(),
+    const rpcError = toReviewRpcError(error)
+    log.warn('[Reviews]', `${fn} failed`, {
+      code: rpcError.code,
+      sqlState: rpcError.sqlState,
+      message: rpcError.message,
     })
-    .eq('id', reviewResponseId)
-    .eq('reviewer_id', reviewerId)
-    .select('review_id')
-    .single()
-
-  if (updateError) {
-    return { success: false, error: updateError.message }
+    throw rpcError
   }
+  return data
+}
 
-  if (response?.review_id) {
-    const reviewId = response.review_id
+function trimmedOrNull(v: string | null | undefined): string | null {
+  const t = v?.trim()
+  return t ? t : null
+}
 
-    const { data: allResponses, error: responsesError } = await client
-      .from('review_responses')
-      .select('status')
-      .eq('review_id', reviewId)
+// ============================================
+// Writes
+// ============================================
 
-    if (!responsesError && allResponses) {
-      const allResponded = allResponses.every(
-        (r) => r.status !== 'pending' && r.status !== 'kicked_back',
-      )
+/** Ask for a review of a package of file versions. */
+export async function requestReview(input: RequestReviewInput): Promise<RequestReviewResult> {
+  const a = requestReviewArgs(input)
+  return mapRequestReviewResult(
+    await callReviewRpc('request_review', (c) =>
+      c.rpc('request_review', {
+        p_file_version_ids: a.p_file_version_ids,
+        p_reviewer_ids: a.p_reviewer_ids,
+        p_team_ids: a.p_team_ids,
+        p_title: a.p_title,
+        p_message: a.p_message,
+        p_mode: a.p_mode,
+        p_priority: a.p_priority,
+        p_due_date: a.p_due_date,
+      }),
+    ),
+  )
+}
 
-      if (allResponded) {
-        const anyRejected = allResponses.some((r) => r.status === 'rejected')
+/** Record the caller's decisions on items they owe in the current round. All or nothing. */
+export async function respondToItems(
+  reviewId: string,
+  decisions: ItemDecisionInput[],
+): Promise<RespondResult> {
+  return mapRespondResult(
+    await callReviewRpc('respond_to_review_items', (c) =>
+      c.rpc('respond_to_review_items', {
+        p_review_id: reviewId,
+        p_decisions: decisionsArg(decisions),
+      }),
+    ),
+  )
+}
 
-        await client
-          .from('reviews')
-          .update({
-            status: anyRejected ? 'rejected' : 'approved',
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', reviewId)
-      }
-    }
-  }
-
-  return { success: true }
+/** Approve every item the caller still owes; a comment makes them `approved_with_comments`. */
+export async function approveAllRemaining(
+  reviewId: string,
+  comment?: string | null,
+): Promise<RespondResult> {
+  return mapRespondResult(
+    await callReviewRpc('approve_all_remaining', (c) =>
+      c.rpc('approve_all_remaining', {
+        p_review_id: reviewId,
+        p_comment: trimmedOrNull(comment),
+      }),
+    ),
+  )
 }
 
 /**
- * Cancel a review request
+ * Open the next round. Every item that needs changes or was rejected must be listed at a newer
+ * version; approved items not listed carry forward.
  */
+export async function resubmitReview(
+  reviewId: string,
+  items: ResubmitItemInput[],
+  note?: string | null,
+): Promise<ResubmitResult> {
+  return mapResubmitResult(
+    await callReviewRpc('resubmit_review', (c) =>
+      c.rpc('resubmit_review', {
+        p_review_id: reviewId,
+        p_items: resubmitItemsArg(items),
+        p_note: trimmedOrNull(note),
+      }),
+    ),
+  )
+}
+
+/** Cancel an open review (requester or administrator). */
 export async function cancelReview(
   reviewId: string,
-  userId: string,
-): Promise<{ success: boolean; error?: string }> {
-  const client = getSupabaseClient()
+  reason?: string | null,
+): Promise<CancelResult> {
+  return mapCancelResult(
+    await callReviewRpc('cancel_review', (c) =>
+      c.rpc('cancel_review', {
+        p_review_id: reviewId,
+        p_reason: trimmedOrNull(reason),
+      }),
+    ),
+  )
+}
 
-  const { data: review, error: fetchError } = await client
-    .from('reviews')
-    .select('requested_by')
-    .eq('id', reviewId)
-    .single()
-
-  if (fetchError || !review) {
-    return { success: false, error: 'Review not found' }
-  }
-
-  if (review.requested_by !== userId) {
-    return { success: false, error: 'Only the requester can cancel a review' }
-  }
-
-  const { error } = await client
-    .from('reviews')
-    .update({
-      status: 'cancelled',
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', reviewId)
-
-  if (error) {
-    return { success: false, error: error.message }
-  }
-
-  await client.from('review_responses').update({ status: 'cancelled' }).eq('review_id', reviewId)
-
-  return { success: true }
+/** Change priority and/or due date. `dueDate: null` clears it; omit the key to keep it. */
+export async function updateReviewMeta(
+  reviewId: string,
+  patch: ReviewMetaPatch,
+): Promise<ReviewMetaResult> {
+  const a = reviewMetaArgs(reviewId, patch)
+  return mapReviewMetaResult(
+    await callReviewRpc('update_review_meta', (c) =>
+      c.rpc('update_review_meta', {
+        p_review_id: a.p_review_id,
+        p_priority: a.p_priority,
+        p_due_date: a.p_due_date,
+        p_clear_due_date: a.p_clear_due_date,
+      }),
+    ),
+  )
 }
 
 // ============================================
-// Workflow review trigger
+// Reads
 // ============================================
 
+/** One page of a queue bucket, sorted on the server (overdue, priority, due date, age). */
+export async function listReviewQueue(query: ReviewQueueQuery): Promise<ReviewQueuePage> {
+  const a = reviewQueueArgs(query)
+  return mapQueuePage(
+    await callReviewRpc('list_review_queue', (c) =>
+      c.rpc('list_review_queue', {
+        p_bucket: a.p_bucket,
+        p_team_id: a.p_team_id,
+        p_search: a.p_search,
+        p_limit: a.p_limit,
+        p_cursor: a.p_cursor,
+      }),
+    ),
+  )
+}
+
+export async function getReviewDetail(reviewId: string): Promise<ReviewDetail> {
+  return mapReviewDetail(
+    await callReviewRpc('get_review_detail', (c) =>
+      c.rpc('get_review_detail', { p_review_id: reviewId }),
+    ),
+  )
+}
+
+/** Package items the caller owes plus gate reviews waiting on them. */
+export async function getReviewBadgeCount(): Promise<number> {
+  const data = await callReviewRpc('get_review_badge_count', (c) => c.rpc('get_review_badge_count'))
+  return typeof data === 'number' && Number.isFinite(data) ? data : 0
+}
+
+// ============================================
+// Version references and drawing PDFs
+// ============================================
+
+/** The root version and every reference edge below it, with exact/approximate flags. */
+export async function getVersionDependencyClosure(
+  fileVersionId: string,
+): Promise<DependencyClosureRow[]> {
+  return mapClosureRows(
+    await callReviewRpc('get_version_dependency_closure', (c) =>
+      c.rpc('get_version_dependency_closure', { p_file_version_id: fileVersionId }),
+    ),
+  )
+}
+
+/** The stored PDF of a file version, or null when none has been generated. */
+export async function getDrawingPdf(fileVersionId: string): Promise<DrawingPdf | null> {
+  const data = await callReviewRpc('get_drawing_pdf', (c) =>
+    c.rpc('get_drawing_pdf', { p_file_version_id: fileVersionId }),
+  )
+  const first: unknown = Array.isArray(data) ? data[0] : data
+  return mapDrawingPdf(first)
+}
+
 /**
- * Check if a workflow state has `triggers_review` enabled.
- *
- * @param workflowStateId - UUID of the workflow state to check
- * @returns true when the state should automatically prompt for a review request
+ * Record the PDF generated for a file version, after uploading it content-addressed to the vault
+ * bucket. First write wins; the same hash again is a no-op; a different hash is refused
+ * (`PDF_EXISTS`) unless the caller is an administrator.
  */
-export async function checkReviewTrigger(workflowStateId: string): Promise<boolean> {
-  const client = getSupabaseClient()
-
-  const { data, error } = await client
-    .from('workflow_states')
-    .select('triggers_review')
-    .eq('id', workflowStateId)
-    .single()
-
-  if (error || !data) {
-    return false
-  }
-
-  return data.triggers_review === true
+export async function recordDrawingPdf(
+  fileVersionId: string,
+  storageHash: string,
+  size: number,
+  options?: { closureExact?: boolean | null },
+): Promise<RecordDrawingPdfResult> {
+  return mapRecordDrawingPdfResult(
+    await callReviewRpc('record_drawing_pdf', (c) =>
+      c.rpc('record_drawing_pdf', {
+        p_file_version_id: fileVersionId,
+        p_storage_hash: storageHash,
+        p_file_size: size,
+        p_closure_exact: options?.closureExact ?? null,
+      }),
+    ),
+  )
 }
-
-// ============================================
-// Team member types
-// ============================================
-
-export interface TeamMember {
-  id: string
-  email: string
-  full_name: string | null
-  avatar_url: string | null
-  role?: string | null
-  workflow_role_ids?: string[]
-}
-
-export interface TeamReviewerConfig {
-  id: string
-  reviewer_type: 'user' | 'workflow_role'
-  user_id: string | null
-  workflow_role_id: string | null
-}
-
-export interface TeamWithMembers {
-  id: string
-  name: string
-  color: string
-  icon: string
-  description: string | null
-  members: TeamMember[]
-  reviewerConfigs: TeamReviewerConfig[]
-}
-
-// ============================================
-// Teams with members (for review modal)
-// ============================================
 
 /**
- * Fetch all teams in an organization together with their member details
- * and reviewer configuration.
- *
- * Used by the ReviewRequestModal so users can select teams as reviewers.
- * The reviewerConfigs array determines which members actually get added
- * when a team is selected. If empty, all members are added (fallback).
+ * Record what a just-checked-in version references. The server resolves each child to the version
+ * whose hash matches `childContentHash` (exact) or the child's latest version (approximate), and
+ * replaces anything recorded for the version before. Called from check-in.
+ */
+export async function recordVersionReferences(
+  fileVersionId: string,
+  refs: VersionReferenceInput[],
+): Promise<RecordVersionReferencesResult> {
+  const p_refs: Json = versionReferencesArg(refs)
+  return mapRecordVersionReferencesResult(
+    await callReviewRpc('record_version_references', (c) =>
+      c.rpc('record_version_references', { p_file_version_id: fileVersionId, p_refs }),
+    ),
+  )
+}
+
+// ============================================
+// Versions for the package builder
+// ============================================
+
+/** The latest checked-in version of a file, as the server records it. */
+export interface LatestFileVersion {
+  fileId: string
+  fileVersionId: string
+  version: number
+  revision: string | null
+  state: string | null
+  fileName: string
+  filePath: string
+  extension: string | null
+  vaultId: string | null
+}
+
+const VERSION_LOOKUP_CHUNK = 100
+
+/**
+ * The latest checked-in version of each file, read from the server: `files.version` and the
+ * `file_versions` row with that number. The renderer's cached `pdmData.version` is never used, so
+ * a package always pins what the server holds, not what this machine last saw. Files with no
+ * version row, or deleted, are absent from the result.
+ */
+export async function getLatestCheckedInVersions(
+  fileIds: readonly string[],
+): Promise<LatestFileVersion[]> {
+  const client = getSupabaseClient()
+  const unique = Array.from(new Set(fileIds))
+  const out: LatestFileVersion[] = []
+
+  for (let i = 0; i < unique.length; i += VERSION_LOOKUP_CHUNK) {
+    const chunk = unique.slice(i, i + VERSION_LOOKUP_CHUNK)
+    const { data: files, error: filesError } = await client
+      .from('files')
+      .select('id, version, file_name, file_path, extension, vault_id, deleted_at')
+      .in('id', chunk)
+    if (filesError) throw toReviewRpcError(filesError)
+
+    const live = (files ?? []).filter((f) => !f.deleted_at)
+    if (live.length === 0) continue
+    const { data: versions, error: versionsError } = await client
+      .from('file_versions')
+      .select('id, file_id, version, revision, state')
+      .in(
+        'file_id',
+        live.map((f) => f.id),
+      )
+      .in('version', Array.from(new Set(live.map((f) => f.version))))
+    if (versionsError) throw toReviewRpcError(versionsError)
+
+    const byKey = new Map((versions ?? []).map((v) => [`${v.file_id}:${v.version}`, v]))
+    for (const f of live) {
+      const v = byKey.get(`${f.id}:${f.version}`)
+      if (!v) continue
+      out.push({
+        fileId: f.id,
+        fileVersionId: v.id,
+        version: v.version,
+        revision: v.revision || null,
+        state: v.state || null,
+        fileName: f.file_name,
+        filePath: f.file_path,
+        extension: f.extension || null,
+        vaultId: f.vault_id,
+      })
+    }
+  }
+  return out
+}
+
+// ============================================
+// Teams with members (for the reviewer picker)
+// ============================================
+
+function readTeamMember(raw: unknown): TeamMember | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const user: unknown = (raw as { user?: unknown }).user
+  if (typeof user !== 'object' || user === null) return null
+  const u = user as Record<string, unknown>
+  if (typeof u.id !== 'string') return null
+  return {
+    id: u.id,
+    email: typeof u.email === 'string' ? u.email : '',
+    full_name: typeof u.full_name === 'string' ? u.full_name : null,
+    avatar_url: typeof u.avatar_url === 'string' ? u.avatar_url : null,
+    role: typeof u.role === 'string' ? u.role : null,
+  }
+}
+
+/**
+ * Fetch all teams in an organization together with their member details and reviewer
+ * configuration. The reviewerConfigs array determines which members a team contributes; if it is
+ * empty, all members do - the same rule `request_review` applies on the server.
  */
 export async function getOrgTeamsWithMembers(
   orgId: string,
@@ -355,102 +429,65 @@ export async function getOrgTeamsWithMembers(
     .order('name')
 
   if (error) {
-    console.error(
-      '[getOrgTeamsWithMembers] Supabase query failed:',
-      error.message,
-      error.details,
-      error.hint,
-    )
+    log.error('[Reviews]', 'Loading teams with members failed', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
     return { teams: [], error: error.message }
   }
 
-  // Fetch team_reviewers separately so the main query doesn't break if the
-  // table doesn't exist yet or RLS blocks access.
-  let reviewersByTeam = new Map<string, TeamReviewerConfig[]>()
-  try {
-    const { data: reviewerData } = await (client.from as any)('team_reviewers').select( // TODO: type this
-      'id, team_id, reviewer_type, user_id, workflow_role_id',
-    )
-
-    if (reviewerData) {
-      for (const r of reviewerData as Array<TeamReviewerConfig & { team_id: string }>) {
-        const existing = reviewersByTeam.get(r.team_id) || []
-        existing.push({
-          id: r.id,
-          reviewer_type: r.reviewer_type,
-          user_id: r.user_id,
-          workflow_role_id: r.workflow_role_id,
-        })
-        reviewersByTeam.set(r.team_id, existing)
-      }
-    }
-  } catch {
-    // team_reviewers table may not exist yet -- gracefully ignore
+  // Fetched separately so the main query does not fail if team_reviewers is unreadable.
+  const reviewersByTeam = new Map<string, TeamReviewerConfig[]>()
+  const { data: reviewerData, error: reviewerError } = await client
+    .from('team_reviewers')
+    .select('id, team_id, reviewer_type, user_id, workflow_role_id')
+  if (reviewerError) {
+    log.warn('[Reviews]', 'Loading team reviewer rules failed; teams contribute all members', {
+      message: reviewerError.message,
+    })
+  }
+  for (const r of reviewerData ?? []) {
+    if (r.reviewer_type !== 'user' && r.reviewer_type !== 'workflow_role') continue
+    const existing = reviewersByTeam.get(r.team_id) ?? []
+    existing.push({
+      id: r.id,
+      reviewer_type: r.reviewer_type,
+      user_id: r.user_id,
+      workflow_role_id: r.workflow_role_id,
+    })
+    reviewersByTeam.set(r.team_id, existing)
   }
 
-  // Fetch workflow role assignments for all org users so we can resolve
-  // workflow_role reviewer rules to actual user IDs
+  // Workflow role assignments, to resolve workflow_role reviewer rules to users.
   const { data: wrAssignments } = await client
     .from('user_workflow_roles')
     .select('user_id, workflow_role_id')
-
   const userWorkflowRoles = new Map<string, Set<string>>()
-  for (const a of wrAssignments || []) {
-    if (!userWorkflowRoles.has(a.user_id)) {
-      userWorkflowRoles.set(a.user_id, new Set())
-    }
-    userWorkflowRoles.get(a.user_id)!.add(a.workflow_role_id)
+  for (const a of wrAssignments ?? []) {
+    const set = userWorkflowRoles.get(a.user_id) ?? new Set<string>()
+    set.add(a.workflow_role_id)
+    userWorkflowRoles.set(a.user_id, set)
   }
 
-  const teams: TeamWithMembers[] = (data || []).map((team: any) => {
-    const rawMembers =
-      ((team as Record<string, unknown>).team_members as Array<{ user: TeamMember | null }>) || []
-    const members: TeamMember[] = rawMembers
-      .map((tm) => tm.user)
-      .filter((u): u is TeamMember => u !== null)
-      .map((m) => ({
-        ...m,
-        workflow_role_ids: Array.from(userWorkflowRoles.get(m.id) || []),
-      }))
+  const teams: TeamWithMembers[] = (data ?? []).map((team) => {
+    const teamMembers: unknown = team.team_members
+    const rawMembers: unknown[] = Array.isArray(teamMembers) ? teamMembers : []
+    const members = rawMembers
+      .map(readTeamMember)
+      .filter((m): m is TeamMember => m !== null)
+      .map((m) => ({ ...m, workflow_role_ids: Array.from(userWorkflowRoles.get(m.id) ?? []) }))
 
     return {
-      id: team.id as string,
-      name: team.name as string,
-      color: team.color as string,
-      icon: team.icon as string,
-      description: (team as Record<string, unknown>).description as string | null,
+      id: team.id,
+      name: team.name,
+      color: team.color,
+      icon: team.icon,
+      description: team.description,
       members,
-      reviewerConfigs: reviewersByTeam.get(team.id as string) || [],
+      reviewerConfigs: reviewersByTeam.get(team.id) ?? [],
     }
   })
 
   return { teams }
-}
-
-/**
- * Resolve reviewer configs for a team into actual user IDs.
- * If no configs exist, returns all member IDs (backward compatible).
- */
-export function resolveTeamReviewers(team: TeamWithMembers): string[] {
-  if (team.reviewerConfigs.length === 0) {
-    return team.members.map((m) => m.id)
-  }
-
-  const reviewerIds = new Set<string>()
-
-  for (const config of team.reviewerConfigs) {
-    if (config.reviewer_type === 'user' && config.user_id) {
-      if (team.members.some((m) => m.id === config.user_id)) {
-        reviewerIds.add(config.user_id)
-      }
-    } else if (config.reviewer_type === 'workflow_role' && config.workflow_role_id) {
-      for (const member of team.members) {
-        if (member.workflow_role_ids?.includes(config.workflow_role_id)) {
-          reviewerIds.add(member.id)
-        }
-      }
-    }
-  }
-
-  return Array.from(reviewerIds)
 }

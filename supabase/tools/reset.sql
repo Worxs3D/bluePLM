@@ -92,6 +92,8 @@ DROP TABLE IF EXISTS suppliers CASCADE;
 
 -- File features
 DROP TABLE IF EXISTS file_comments CASCADE;
+DROP TABLE IF EXISTS drawing_pdf_renders CASCADE;
+DROP TABLE IF EXISTS file_version_references CASCADE;
 DROP TABLE IF EXISTS file_share_links CASCADE;
 DROP TABLE IF EXISTS file_watchers CASCADE;
 
@@ -125,6 +127,10 @@ DROP TABLE IF EXISTS workflow_templates CASCADE;
 
 -- Reviews & notifications
 DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS review_decisions CASCADE;
+DROP TABLE IF EXISTS review_round_items CASCADE;
+DROP TABLE IF EXISTS review_rounds CASCADE;
+DROP TABLE IF EXISTS review_items CASCADE;
 DROP TABLE IF EXISTS review_responses CASCADE;
 DROP TABLE IF EXISTS reviews CASCADE;
 

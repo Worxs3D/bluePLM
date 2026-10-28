@@ -604,6 +604,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; 
 END $$;
 
+-- Schema 105: set when record_version_references() has written this version's
+-- reference set (possibly empty). NULL means the version predates per-version
+-- references, and get_version_dependency_closure() falls back to file_references.
+ALTER TABLE file_versions ADD COLUMN IF NOT EXISTS references_recorded_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_file_versions_file_id ON file_versions(file_id);
 CREATE INDEX IF NOT EXISTS idx_file_versions_content_hash ON file_versions(content_hash);
 
@@ -657,6 +662,68 @@ CREATE TABLE IF NOT EXISTS file_references (
 
 CREATE INDEX IF NOT EXISTS idx_file_references_parent ON file_references(parent_file_id);
 CREATE INDEX IF NOT EXISTS idx_file_references_child ON file_references(child_file_id);
+
+-- ===========================================
+-- FILE VERSION REFERENCES (schema 107)
+-- ===========================================
+-- file_references says what a file references *now*. A review pins a drawing at a
+-- version, and "the drawing and its parts at matching versions" needs what that
+-- version referenced when it was checked in. One row per reference of one parent
+-- version, written by record_version_references() at check-in.
+--
+-- child_version_id is the child's version whose content hash matched the local
+-- child at check-in (exact = true), else the child's latest version at that moment
+-- (exact = false), else NULL (the child had no version). child_file_id is NULL for
+-- a reference outside the vault; child_path still names it.
+CREATE TABLE IF NOT EXISTS file_version_references (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  parent_version_id UUID NOT NULL REFERENCES file_versions(id) ON DELETE CASCADE,
+  parent_file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  child_file_id UUID REFERENCES files(id) ON DELETE SET NULL,
+  child_version_id UUID REFERENCES file_versions(id) ON DELETE SET NULL,
+  child_path TEXT NOT NULL CHECK (length(btrim(child_path)) > 0),
+  configuration TEXT,
+  reference_type reference_type NOT NULL DEFAULT 'component',
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+  exact BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_version_references_unique
+  ON file_version_references (parent_version_id, lower(child_path), COALESCE(configuration, ''));
+CREATE INDEX IF NOT EXISTS idx_file_version_references_child ON file_version_references(child_file_id);
+CREATE INDEX IF NOT EXISTS idx_file_version_references_child_version ON file_version_references(child_version_id);
+CREATE INDEX IF NOT EXISTS idx_file_version_references_org ON file_version_references(org_id);
+
+-- ===========================================
+-- DRAWING PDF RENDERS (schema 107)
+-- ===========================================
+-- The PDF a reviewer sees for a drawing version. Generated once (on a machine with
+-- SOLIDWORKS), stored content-addressed in the vault bucket, and reused by every
+-- later request for the same version.
+--
+-- Not release_files: its policy lets any member with module:explorer:edit write
+-- any row of their organization with no uniqueness per version, so a review's PDF
+-- could be silently replaced or duplicated. This table is SELECT-only for clients;
+-- record_drawing_pdf() is the only writer and refuses to replace a render unless
+-- the caller is an administrator.
+CREATE TABLE IF NOT EXISTS drawing_pdf_renders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  file_version_id UUID NOT NULL UNIQUE REFERENCES file_versions(id) ON DELETE CASCADE,
+  storage_hash TEXT NOT NULL CHECK (storage_hash ~ '^[0-9a-f]{64}$'),
+  file_size BIGINT NOT NULL CHECK (file_size > 0),
+  -- Whether the references the drawing was rendered against were all exact
+  -- versions. NULL when the generator did not say.
+  closure_exact BOOLEAN,
+  generated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drawing_pdf_renders_org ON drawing_pdf_renders(org_id);
+CREATE INDEX IF NOT EXISTS idx_drawing_pdf_renders_file ON drawing_pdf_renders(file_id);
 
 -- ===========================================
 -- FOLDERS (Explicit folder records for empty folders)
@@ -1012,6 +1079,39 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
+-- Schema 105: an attempt id scopes a gate's approval count to one run of the
+-- transition. Before this, complete_gate_review() counted every row ever created
+-- for (file, transition, gate), so an 'all' gate could never pass again after one
+-- rejection and an 'any' gate with required_approvals > 1 passed by reusing
+-- approvals from earlier attempts and earlier versions.
+--
+-- Backfill: execute_workflow_transition() inserted every row of one attempt in a
+-- single statement loop, so they share requested_at (NOW() is fixed for the
+-- transaction). One attempt per (file, transition, requested_at) is therefore the
+-- attempt each legacy row actually belonged to. Only NULL rows are touched, so a
+-- second run changes nothing.
+ALTER TABLE pending_reviews ADD COLUMN IF NOT EXISTS attempt_id UUID;
+
+UPDATE pending_reviews pr
+SET attempt_id = g.attempt_id
+FROM (
+  SELECT file_id, transition_id, requested_at, gen_random_uuid() AS attempt_id
+  FROM pending_reviews
+  WHERE attempt_id IS NULL
+  GROUP BY file_id, transition_id, requested_at
+) g
+WHERE pr.attempt_id IS NULL
+  AND pr.file_id = g.file_id
+  AND pr.transition_id = g.transition_id
+  AND pr.requested_at IS NOT DISTINCT FROM g.requested_at;
+
+DO $$ BEGIN
+  ALTER TABLE pending_reviews ALTER COLUMN attempt_id SET NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_pending_reviews_attempt ON pending_reviews(attempt_id, gate_id);
+
 -- ===========================================
 -- WORKFLOW REVIEW HISTORY
 -- ===========================================
@@ -1337,6 +1437,8 @@ ALTER TABLE files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE file_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE release_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE file_references ENABLE ROW LEVEL SECURITY;
+ALTER TABLE file_version_references ENABLE ROW LEVEL SECURITY;
+ALTER TABLE drawing_pdf_renders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workflow_templates ENABLE ROW LEVEL SECURITY;
@@ -1479,6 +1581,22 @@ CREATE POLICY "Engineers can manage references"
   ON file_references FOR ALL
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND user_has_team_permission('module:explorer', 'edit'));
 
+-- Per-version references and drawing PDF renders (schema 107): read-only to
+-- clients. record_version_references() and record_drawing_pdf() are the writers,
+-- because both resolve something the client must not be trusted to supply (which
+-- child version a hash belongs to; whether a render may be replaced).
+DROP POLICY IF EXISTS "Users can view file version references" ON file_version_references;
+CREATE POLICY "Users can view file version references"
+  ON file_version_references FOR SELECT
+  TO authenticated
+  USING (is_org_member(org_id));
+
+DROP POLICY IF EXISTS "Users can view drawing pdf renders" ON drawing_pdf_renders;
+CREATE POLICY "Users can view drawing pdf renders"
+  ON drawing_pdf_renders FOR SELECT
+  TO authenticated
+  USING (is_org_member(org_id));
+
 -- Folders
 DROP POLICY IF EXISTS "Users can view org folders" ON folders;
 CREATE POLICY "Users can view org folders"
@@ -1615,38 +1733,18 @@ CREATE POLICY "Users can view pending reviews"
   ON pending_reviews FOR SELECT
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
+-- Schema 105: no client writes at all. Gate review rows are created by
+-- execute_workflow_transition() and decided by complete_gate_review(), both
+-- SECURITY DEFINER, which do not pass through these policies.
+--
+-- The INSERT policy let a module:reviews:create member insert a row already
+-- 'approved', and the UPDATE policy let a module:reviews:edit member set any
+-- pending row of the organization to 'approved' with reviewed_by = self. Neither
+-- advanced the file directly, but complete_gate_review() counted such rows as
+-- approvals, so both were a way around may_review_gate(), the assignment and the
+-- history row. Dropping the policies leaves RLS denying both.
 DROP POLICY IF EXISTS "Engineers can create pending reviews" ON pending_reviews;
-CREATE POLICY "Engineers can create pending reviews"
-  ON pending_reviews FOR INSERT
-  WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND user_has_team_permission('module:reviews', 'create'));
-
--- Deciding a review is at least as privileged as asking for one.
---
--- The INSERT policy immediately above requires module:reviews:create; this one
--- asked for organization membership and nothing else, so any member could
--- approve any review over PostgREST and write whatever they liked into
--- reviewed_by - including somebody else's id, which is the column
--- workflow_review_history copies as the record of who approved. The permission
--- term matches the reviews table in 20-change-control.sql:480-483, which gates
--- the same act under the same resource.
---
--- reviewed_by may be left unset (a cancellation records no reviewer) or set to
--- the caller, and to nobody else. complete_gate_review() is SECURITY DEFINER
--- and does not pass through this policy; it sets reviewed_by from auth.uid()
--- itself, so the two agree.
 DROP POLICY IF EXISTS "Users can update pending reviews" ON pending_reviews;
-CREATE POLICY "Users can update pending reviews"
-  ON pending_reviews FOR UPDATE
-  TO authenticated
-  USING (
-    org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
-    AND user_has_team_permission('module:reviews', 'edit')
-  )
-  WITH CHECK (
-    org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
-    AND user_has_team_permission('module:reviews', 'edit')
-    AND (reviewed_by IS NULL OR reviewed_by = auth.uid())
-  );
 
 -- Workflow Review History
 DROP POLICY IF EXISTS "Users can view workflow review history" ON workflow_review_history;
@@ -1654,10 +1752,10 @@ CREATE POLICY "Users can view workflow review history"
   ON workflow_review_history FOR SELECT
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
+-- Schema 105: the approval audit trail is written only by complete_gate_review().
+-- The INSERT policy this replaces checked organization membership alone, so any
+-- member could write a row claiming anyone approved anything.
 DROP POLICY IF EXISTS "System can insert workflow review history" ON workflow_review_history;
-CREATE POLICY "System can insert workflow review history"
-  ON workflow_review_history FOR INSERT
-  WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
 -- Workflow History
 -- Append-only audit trail: anyone in the org can read it, the engine writes it,
@@ -1809,17 +1907,67 @@ CREATE POLICY "Users can view file comments in org"
   ON file_comments FOR SELECT
   USING (file_id IN (SELECT id FROM files WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid())));
 
+-- Schema 105: the file must be in the author's organization. The INSERT check
+-- tested only user_id = auth.uid(), so a member could comment on another
+-- organization's file, and UPDATE (no WITH CHECK) let the author re-point
+-- file_id anywhere. file_comments_integrity() below also pins file_id and keeps a
+-- reply on its parent's file.
 DROP POLICY IF EXISTS "Users can create file comments" ON file_comments;
 CREATE POLICY "Users can create file comments"
-  ON file_comments FOR INSERT WITH CHECK (user_id = auth.uid());
+  ON file_comments FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    user_id = auth.uid()
+    AND file_id IN (SELECT id FROM files WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid()))
+  );
 
 DROP POLICY IF EXISTS "Users can update own comments" ON file_comments;
 CREATE POLICY "Users can update own comments"
-  ON file_comments FOR UPDATE USING (user_id = auth.uid());
+  ON file_comments FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (
+    user_id = auth.uid()
+    AND file_id IN (SELECT id FROM files WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid()))
+  );
 
 DROP POLICY IF EXISTS "Users can delete own comments" ON file_comments;
 CREATE POLICY "Users can delete own comments"
   ON file_comments FOR DELETE USING (user_id = auth.uid());
+
+-- What a policy cannot say about file_comments, because it sees only one row:
+-- a reply must sit on its parent's file, and a comment cannot be moved to another
+-- file once written. Review links (review_id / review_round / review_item_id) are
+-- validated by a second trigger in 20-change-control.sql, where reviews live.
+CREATE OR REPLACE FUNCTION file_comments_integrity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.file_id IS DISTINCT FROM OLD.file_id THEN
+    RAISE EXCEPTION 'A comment cannot be moved to another file'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF NEW.parent_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM file_comments p WHERE p.id = NEW.parent_id AND p.file_id = NEW.file_id
+  ) THEN
+    RAISE EXCEPTION 'A reply must be on the same file as the comment it answers'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION file_comments_integrity() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_file_comments_integrity ON file_comments;
+CREATE TRIGGER trg_file_comments_integrity
+  BEFORE INSERT OR UPDATE ON file_comments
+  FOR EACH ROW EXECUTE FUNCTION file_comments_integrity();
 
 -- File Metadata Columns
 DROP POLICY IF EXISTS "Users can view org metadata columns" ON file_metadata_columns;
@@ -2569,6 +2717,49 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION get_user_vault_access(UUID) TO authenticated;
+
+-- Whether a user may see a vault, by the rule the renderer applies to
+-- get_user_vault_access(): an administrator sees every vault, a user with no
+-- vault_access or team_vault_access row is unrestricted, and anyone else sees
+-- exactly the vaults those rows name. A NULL vault is no restriction.
+--
+-- Internal: the review RPCs ask it about other users (a reviewer being added),
+-- which is not a question a client gets to ask. may_access_vault() below is the
+-- caller-only form that row-level security uses.
+CREATE OR REPLACE FUNCTION user_may_access_vault(p_user_id UUID, p_vault_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT p_vault_id IS NULL
+    OR is_org_admin(p_user_id)
+    OR NOT EXISTS (
+      SELECT 1 FROM vault_access va WHERE va.user_id = p_user_id
+      UNION ALL
+      SELECT 1 FROM team_vault_access tva
+      JOIN team_members tm ON tm.team_id = tva.team_id
+      WHERE tm.user_id = p_user_id
+    )
+    OR EXISTS (SELECT 1 FROM vault_access va WHERE va.user_id = p_user_id AND va.vault_id = p_vault_id)
+    OR EXISTS (
+      SELECT 1 FROM team_vault_access tva
+      JOIN team_members tm ON tm.team_id = tva.team_id
+      WHERE tm.user_id = p_user_id AND tva.vault_id = p_vault_id
+    );
+$$;
+
+REVOKE ALL ON FUNCTION user_may_access_vault(UUID, UUID) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION may_access_vault(p_vault_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT auth.uid() IS NOT NULL AND user_may_access_vault(auth.uid(), p_vault_id);
+$$;
+
+REVOKE ALL ON FUNCTION may_access_vault(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION may_access_vault(UUID) TO authenticated;
 
 -- The active file at a path, matched the way idx_files_vault_path_unique_active
 -- matches it: (vault_id, LOWER(file_path)) WHERE deleted_at IS NULL. syncFile's
@@ -4675,6 +4866,8 @@ DECLARE
   v_to_state workflow_states%ROWTYPE;
   v_gate workflow_gates%ROWTYPE;
   v_blocking_count INTEGER := 0;
+  v_attempt_id UUID;
+  v_gate_users UUID[];
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -4747,6 +4940,10 @@ BEGIN
       'error_message', 'Check the file in before moving it to this state');
   END IF;
 
+  -- Serialize transitions of one file, so two concurrent runs cannot both pass the
+  -- duplicate-review test below and open two attempts.
+  PERFORM 1 FROM file_workflow_assignments WHERE file_id = p_file_id FOR UPDATE;
+
   -- Re-running a gated transition must not pile up duplicate reviews.
   IF EXISTS (
     SELECT 1 FROM pending_reviews pr
@@ -4757,13 +4954,33 @@ BEGIN
       'error_message', 'This transition is already waiting on a review');
   END IF;
 
+  -- One attempt id for every row this run creates, so complete_gate_review()
+  -- counts approvals of this attempt only (schema 107).
+  --
+  -- Per-reviewer rows. A gate that names reviewers gets one row assigned to each
+  -- user its rules resolve to, so 'all' and 'majority' have a real denominator and
+  -- "two of three engineers" is expressible. A gate that names nobody (anyone with
+  -- module:reviews:edit), or whose rules resolve to nobody (administrators only,
+  -- through the override), gets GREATEST(1, required_approvals) unassigned slots;
+  -- complete_gate_review() lets one person fill only one slot of a gate per attempt.
+  v_attempt_id := gen_random_uuid();
+
   FOR v_gate IN
     SELECT * FROM workflow_gates
     WHERE transition_id = p_transition_id AND COALESCE(is_blocking, true)
     ORDER BY sort_order
   LOOP
-    INSERT INTO pending_reviews (org_id, file_id, transition_id, gate_id, requested_by, status)
-    VALUES (v_file.org_id, p_file_id, p_transition_id, v_gate.id, v_user_id, 'pending');
+    v_gate_users := ARRAY(SELECT gate_reviewer_user_ids(v_gate.id, v_file.org_id));
+
+    IF cardinality(v_gate_users) > 0 THEN
+      INSERT INTO pending_reviews (org_id, file_id, transition_id, gate_id, requested_by, status, assigned_to, attempt_id)
+      SELECT v_file.org_id, p_file_id, p_transition_id, v_gate.id, v_user_id, 'pending', u, v_attempt_id
+      FROM unnest(v_gate_users) AS u;
+    ELSE
+      INSERT INTO pending_reviews (org_id, file_id, transition_id, gate_id, requested_by, status, attempt_id)
+      SELECT v_file.org_id, p_file_id, p_transition_id, v_gate.id, v_user_id, 'pending', v_attempt_id
+      FROM generate_series(1, GREATEST(1, COALESCE(v_gate.required_approvals, 1)));
+    END IF;
     v_blocking_count := v_blocking_count + 1;
   END LOOP;
 
@@ -4864,6 +5081,50 @@ GRANT EXECUTE ON FUNCTION execute_transition_to_legacy_state(UUID, TEXT, TEXT) T
 -- p_user_id must be the calling user or another member of their organization -
 -- user_has_permission() raises otherwise, which is its documented contract and
 -- not a case either caller here can reach.
+-- The role a gate's reviewer_type = 'role' rule is matched against (schema 107).
+-- There is one definition of admin - users.role = 'admin' OR membership of the
+-- Administrators team, which is is_org_admin() - so a team member whose role
+-- column says engineer is an admin here too, the same answer the renderer's
+-- getEffectiveRole() gives. Comparing the role column alone, as may_review_gate
+-- did, hid admin-gated reviews from Administrators-team members.
+CREATE OR REPLACE FUNCTION effective_user_role(p_user_id UUID)
+RETURNS user_role
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE WHEN is_org_admin(u.id) THEN 'admin'::user_role ELSE u.role END
+  FROM users u WHERE u.id = p_user_id;
+$$;
+
+REVOKE ALL ON FUNCTION effective_user_role(UUID) FROM PUBLIC, anon, authenticated;
+
+-- The users of an organization a gate's reviewer rules name, for the per-reviewer
+-- rows execute_workflow_transition() creates. Same three rules as may_review_gate()
+-- ('group' still matches nothing - there is no group table).
+CREATE OR REPLACE FUNCTION gate_reviewer_user_ids(p_gate_id UUID, p_org_id UUID)
+RETURNS SETOF UUID
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT u.id
+  FROM users u
+  WHERE u.org_id = p_org_id
+    AND EXISTS (
+      SELECT 1 FROM workflow_gate_reviewers gr
+      WHERE gr.gate_id = p_gate_id
+        AND (
+          (gr.reviewer_type = 'user' AND gr.user_id = u.id)
+          OR (gr.reviewer_type = 'role' AND gr.role = effective_user_role(u.id))
+          OR (gr.reviewer_type = 'workflow_role' AND EXISTS (
+                SELECT 1 FROM user_workflow_roles uwr
+                WHERE uwr.user_id = u.id AND uwr.workflow_role_id = gr.workflow_role_id))
+        )
+    )
+  ORDER BY u.id;
+$$;
+
+REVOKE ALL ON FUNCTION gate_reviewer_user_ids(UUID, UUID) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION may_review_gate(p_gate_id UUID, p_user_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -4873,7 +5134,8 @@ BEGIN
     RETURN false;
   END IF;
 
-  SELECT u.role INTO v_role FROM users u WHERE u.id = p_user_id;
+  -- Effective role, not the role column (schema 107): see effective_user_role().
+  v_role := effective_user_role(p_user_id);
 
   IF NOT EXISTS (SELECT 1 FROM workflow_gate_reviewers gr WHERE gr.gate_id = p_gate_id) THEN
     RETURN user_has_permission(p_user_id, 'module:reviews', 'edit');
@@ -4914,6 +5176,42 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- owner and do not need a grant. Nothing calls it over PostgREST.
 REVOKE ALL ON FUNCTION may_review_gate(UUID, UUID) FROM PUBLIC, anon, authenticated;
 
+-- The gate review rows waiting on a user (schema 107), in one place for
+-- get_my_pending_reviews(), list_review_queue() and get_review_badge_count():
+--   * rows assigned to them, and
+--   * one unassigned slot per (attempt, gate) whose rules admit them, unless they
+--     have already decided a row of that gate in that attempt - one person, one
+--     vote per gate per attempt.
+CREATE OR REPLACE FUNCTION gate_review_ids_awaiting(p_user_id UUID)
+RETURNS SETOF UUID
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT pr.id
+  FROM pending_reviews pr
+  JOIN users me ON me.id = p_user_id AND me.org_id = pr.org_id
+  WHERE pr.status = 'pending'
+    AND pr.assigned_to = p_user_id
+  UNION ALL
+  SELECT s.id FROM (
+    SELECT DISTINCT ON (pr.attempt_id, pr.gate_id) pr.id
+    FROM pending_reviews pr
+    JOIN users me ON me.id = p_user_id AND me.org_id = pr.org_id
+    WHERE pr.status = 'pending'
+      AND pr.assigned_to IS NULL
+      AND may_review_gate(pr.gate_id, p_user_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM pending_reviews d
+        WHERE d.attempt_id = pr.attempt_id
+          AND d.gate_id = pr.gate_id
+          AND (d.reviewed_by = p_user_id OR d.assigned_to = p_user_id)
+      )
+    ORDER BY pr.attempt_id, pr.gate_id, pr.id
+  ) s;
+$$;
+
+REVOKE ALL ON FUNCTION gate_review_ids_awaiting(UUID) FROM PUBLIC, anon, authenticated;
+
 -- Record one reviewer's decision on a gate and, when that clears the last
 -- blocking gate, perform the advance the reviews were holding up.
 DROP FUNCTION IF EXISTS complete_gate_review(UUID, review_status, TEXT, JSONB) CASCADE;
@@ -4941,6 +5239,8 @@ DECLARE
   v_needed INTEGER;
   v_requested_by UUID;
   v_still_open INTEGER;
+  v_attempt_id UUID;
+  v_org_id UUID;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -4953,21 +5253,47 @@ BEGIN
       'error_message', 'A review decision must be approved, rejected or kicked_back');
   END IF;
 
-  SELECT * INTO v_review FROM pending_reviews WHERE id = p_pending_review_id FOR UPDATE;
-  IF v_review.id IS NULL THEN
+  -- Read the attempt first, unlocked, then lock every row of the attempt in id
+  -- order (schema 107). Locking only this row let two reviewers approving the last
+  -- two gates of a transition at the same moment each see the other's row still
+  -- pending, so neither applied the transition. Locking this row first and the
+  -- rest afterwards would deadlock two such callers instead.
+  SELECT pr.attempt_id, pr.org_id INTO v_attempt_id, v_org_id
+  FROM pending_reviews pr WHERE pr.id = p_pending_review_id;
+  IF v_org_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error_code', 'REVIEW_NOT_FOUND',
       'error_message', 'Review not found');
   END IF;
+
+  -- NULL-unsafe in the same way as execute_workflow_transition above.
+  IF NOT is_org_member(v_org_id) THEN
+    RETURN jsonb_build_object('success', false, 'error_code', 'FORBIDDEN',
+      'error_message', 'Review belongs to another organization');
+  END IF;
+
+  PERFORM 1 FROM pending_reviews pr
+  WHERE pr.attempt_id = v_attempt_id
+  ORDER BY pr.id
+  FOR UPDATE;
+
+  SELECT * INTO v_review FROM pending_reviews WHERE id = p_pending_review_id;
 
   IF v_review.status <> 'pending' THEN
     RETURN jsonb_build_object('success', false, 'error_code', 'ALREADY_DECIDED',
       'error_message', 'This review has already been decided');
   END IF;
 
-  -- NULL-unsafe in the same way as execute_workflow_transition above.
-  IF NOT is_org_member(v_review.org_id) THEN
-    RETURN jsonb_build_object('success', false, 'error_code', 'FORBIDDEN',
-      'error_message', 'Review belongs to another organization');
+  -- One person, one vote per gate per attempt: a second unassigned slot, or an
+  -- administrator standing in twice, must not count the same reviewer again.
+  IF EXISTS (
+    SELECT 1 FROM pending_reviews d
+    WHERE d.attempt_id = v_review.attempt_id
+      AND d.gate_id = v_review.gate_id
+      AND d.reviewed_by = v_user_id
+      AND d.status IN ('approved', 'rejected', 'kicked_back')
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error_code', 'ALREADY_REVIEWED',
+      'error_message', 'You have already decided this gate');
   END IF;
 
   -- Assigned: the assignee, or an administrator standing in for them.
@@ -5017,33 +5343,37 @@ BEGIN
     p_decision::text, p_comment, COALESCE(p_checklist_responses, '{}'::jsonb)
   );
 
-  -- A rejection ends the attempt: cancel the sibling reviews so the requester
-  -- can resubmit rather than being stuck behind reviews nobody can action.
+  -- A rejection is a veto and ends the attempt: cancel the rest of this attempt's
+  -- rows so the requester can resubmit rather than being stuck behind reviews
+  -- nobody can action. Scoped to the attempt (schema 107) - earlier attempts are
+  -- history and are left as they are.
   IF p_decision IN ('rejected', 'kicked_back') THEN
     UPDATE pending_reviews
     SET status = 'cancelled'
-    WHERE file_id = v_review.file_id
-      AND transition_id = v_review.transition_id
+    WHERE attempt_id = v_review.attempt_id
       AND status = 'pending';
 
     RETURN jsonb_build_object('success', true, 'requires_review', false,
       'rejected', true);
   END IF;
 
-  -- Has this gate collected the approvals its mode calls for?
+  -- Has this gate collected the approvals its mode calls for? Counted over this
+  -- attempt's rows of this gate only, one row per reviewer (or per unassigned slot).
   SELECT count(*) FILTER (WHERE status = 'approved'),
          count(*) FILTER (WHERE status IN ('rejected', 'kicked_back')),
          count(*)
     INTO v_approvals, v_rejections, v_reviewers
   FROM pending_reviews
-  WHERE file_id = v_review.file_id
-    AND transition_id = v_review.transition_id
+  WHERE attempt_id = v_review.attempt_id
     AND gate_id = v_review.gate_id;
 
+  -- 'any' asks for required_approvals, capped at the number of reviewers the gate
+  -- actually has, so a gate asking for three approvals from two named people is
+  -- satisfiable rather than a permanent lock.
   v_needed := CASE COALESCE(v_gate.approval_mode, 'any')
     WHEN 'all' THEN v_reviewers
     WHEN 'majority' THEN (v_reviewers / 2) + 1
-    ELSE GREATEST(1, COALESCE(v_gate.required_approvals, 1))
+    ELSE LEAST(v_reviewers, GREATEST(1, COALESCE(v_gate.required_approvals, 1)))
   END;
 
   IF v_approvals < v_needed THEN
@@ -5051,11 +5381,18 @@ BEGIN
       'approvals', v_approvals, 'approvals_needed', v_needed);
   END IF;
 
-  -- This gate is satisfied; the transition still waits on any other gate.
+  -- This gate is satisfied: the slots nobody needs to fill any more are closed,
+  -- so they stop appearing in queues and stop holding the transition open.
+  UPDATE pending_reviews
+  SET status = 'cancelled'
+  WHERE attempt_id = v_review.attempt_id
+    AND gate_id = v_review.gate_id
+    AND status = 'pending';
+
+  -- The transition still waits on any other gate of this attempt.
   SELECT count(*) INTO v_still_open
   FROM pending_reviews
-  WHERE file_id = v_review.file_id
-    AND transition_id = v_review.transition_id
+  WHERE attempt_id = v_review.attempt_id
     AND status = 'pending';
 
   IF v_still_open > 0 THEN
@@ -5065,7 +5402,7 @@ BEGIN
 
   SELECT requested_by INTO v_requested_by
   FROM pending_reviews
-  WHERE file_id = v_review.file_id AND transition_id = v_review.transition_id
+  WHERE attempt_id = v_review.attempt_id
   ORDER BY requested_at LIMIT 1;
 
   RETURN apply_workflow_transition(
@@ -5152,11 +5489,416 @@ BEGIN
       pr.assigned_to = v_user_id
       OR (pr.assigned_to IS NULL AND may_review_gate(wg.id, v_user_id))
     )
+    -- Schema 105: one unassigned slot per (attempt, gate), and none once the user
+    -- has decided that gate in that attempt. gate_review_ids_awaiting() is the
+    -- single statement of that rule; the test above stays as the reviewer rule.
+    AND pr.id IN (SELECT gate_review_ids_awaiting(v_user_id))
   ORDER BY pr.requested_at;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION get_my_pending_reviews() TO authenticated;
+
+-- ===========================================
+-- VERSION-ACCURATE REFERENCES (schema 107)
+-- ===========================================
+
+-- Record the references of one checked-in version. Called by the client right
+-- after check-in, from the same reference extraction that fills file_references.
+--
+-- p_refs is a JSON array of
+--   { child_file_id?, child_content_hash?, child_path?, configuration?,
+--     reference_type?, quantity? }
+-- The child version is resolved here, not taken from the client: the child's
+-- version whose content hash equals child_content_hash (exact), else the child's
+-- latest version (not exact), else none. A child_file_id outside the caller's
+-- organization is treated as unresolved rather than trusted. Replaces whatever
+-- was recorded for the version before, so a retried check-in is harmless.
+CREATE OR REPLACE FUNCTION record_version_references(p_file_version_id UUID, p_refs JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor UUID;
+  v_file_id UUID;
+  v_created_by UUID;
+  v_org_id UUID;
+  v_written INTEGER := 0;
+  v_exact INTEGER := 0;
+  v_unresolved INTEGER := 0;
+BEGIN
+  v_actor := current_actor_id();
+
+  IF p_refs IS NULL OR jsonb_typeof(p_refs) <> 'array' THEN
+    RAISE EXCEPTION 'References must be a JSON array'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF jsonb_array_length(p_refs) > 10000 THEN
+    RAISE EXCEPTION 'Too many references for one version (%)', jsonb_array_length(p_refs)
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT fv.file_id, fv.created_by INTO v_file_id, v_created_by
+  FROM file_versions fv WHERE fv.id = p_file_version_id;
+  IF v_file_id IS NULL THEN
+    RAISE EXCEPTION 'File version not found'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  v_org_id := require_file_access(v_file_id);
+
+  IF v_created_by IS DISTINCT FROM v_actor
+     AND NOT user_has_team_permission('module:explorer', 'edit') THEN
+    RAISE EXCEPTION 'Not allowed to record references for this version'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- One writer per version at a time.
+  PERFORM 1 FROM file_versions fv WHERE fv.id = p_file_version_id FOR UPDATE;
+
+  DELETE FROM file_version_references r WHERE r.parent_version_id = p_file_version_id;
+
+  WITH refs_in AS (
+    SELECT
+      NULLIF(e->>'child_file_id', '')::uuid AS child_file_id,
+      lower(NULLIF(btrim(e->>'child_content_hash'), '')) AS child_hash,
+      NULLIF(btrim(e->>'child_path'), '') AS child_path,
+      NULLIF(e->>'configuration', '') AS configuration,
+      COALESCE(NULLIF(e->>'reference_type', ''), 'component')::reference_type AS reference_type,
+      GREATEST(1, COALESCE(NULLIF(e->>'quantity', '')::integer, 1)) AS quantity
+    FROM jsonb_array_elements(p_refs) AS e
+  ),
+  resolved AS (
+    SELECT
+      cf.id AS child_file_id,
+      COALESCE(i.child_path, cf.file_path) AS child_path,
+      i.configuration,
+      i.reference_type,
+      i.quantity,
+      (SELECT cv.id FROM file_versions cv
+        WHERE cv.file_id = cf.id AND i.child_hash IS NOT NULL AND cv.content_hash = i.child_hash
+        ORDER BY cv.version DESC LIMIT 1) AS exact_version_id,
+      (SELECT cv.id FROM file_versions cv
+        WHERE cv.file_id = cf.id
+        ORDER BY cv.version DESC LIMIT 1) AS latest_version_id
+    FROM refs_in i
+    LEFT JOIN files cf ON cf.id = i.child_file_id AND cf.org_id = v_org_id
+  )
+  INSERT INTO file_version_references (
+    org_id, parent_version_id, parent_file_id, child_file_id, child_version_id,
+    child_path, configuration, reference_type, quantity, exact
+  )
+  -- One row per (path, configuration), the unique key. Repeated references (several
+  -- instances of one part) add up their quantities; doing it here rather than with
+  -- ON CONFLICT DO UPDATE, which refuses to touch the same row twice in a statement.
+  SELECT v_org_id, p_file_version_id, v_file_id,
+         (array_agg(rs.child_file_id ORDER BY rs.child_file_id NULLS LAST))[1],
+         (array_agg(COALESCE(rs.exact_version_id, rs.latest_version_id)
+                    ORDER BY (rs.exact_version_id IS NULL), rs.child_file_id NULLS LAST))[1],
+         min(rs.child_path),
+         NULLIF(COALESCE(rs.configuration, ''), ''),
+         (array_agg(rs.reference_type))[1],
+         sum(rs.quantity)::integer,
+         bool_or(rs.exact_version_id IS NOT NULL)
+  FROM resolved rs
+  WHERE rs.child_path IS NOT NULL
+    AND rs.child_file_id IS DISTINCT FROM v_file_id
+  GROUP BY lower(rs.child_path), COALESCE(rs.configuration, '');
+
+  UPDATE file_versions SET references_recorded_at = NOW() WHERE id = p_file_version_id;
+
+  SELECT count(*), count(*) FILTER (WHERE r.exact), count(*) FILTER (WHERE r.child_version_id IS NULL)
+    INTO v_written, v_exact, v_unresolved
+  FROM file_version_references r WHERE r.parent_version_id = p_file_version_id;
+
+  RETURN jsonb_build_object(
+    'written', v_written,
+    'exact', v_exact,
+    'approximate', v_written - v_exact - v_unresolved,
+    'unresolved', v_unresolved
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION record_version_references(UUID, JSONB) TO authenticated;
+
+-- One level of the reference graph below a set of parent versions, for
+-- get_version_dependency_closure(). A version with a recorded reference set uses
+-- it. A version from before schema 107 (references_recorded_at IS NULL) falls back
+-- to file_references - what the parent file references now - with each child at
+-- the version that was current when the parent version was created, or the
+-- child's first version if it had none yet. Fallback edges are never exact.
+CREATE OR REPLACE FUNCTION version_reference_edges(p_parent_version_ids UUID[], p_org_id UUID)
+RETURNS TABLE (
+  parent_version_id UUID,
+  child_file_id UUID,
+  child_version_id UUID,
+  child_path TEXT,
+  configuration TEXT,
+  reference_type TEXT,
+  quantity INTEGER,
+  exact BOOLEAN,
+  edge_source TEXT
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT r.parent_version_id, r.child_file_id, r.child_version_id, r.child_path,
+         r.configuration, r.reference_type::text, r.quantity, r.exact, 'recorded'::text
+  FROM file_version_references r
+  WHERE r.parent_version_id = ANY (p_parent_version_ids)
+    AND r.org_id = p_org_id
+  UNION ALL
+  SELECT pv.id, fr.child_file_id,
+         COALESCE(
+           (SELECT cv.id FROM file_versions cv
+             WHERE cv.file_id = fr.child_file_id AND cv.created_at <= pv.created_at
+             ORDER BY cv.version DESC LIMIT 1),
+           (SELECT cv.id FROM file_versions cv
+             WHERE cv.file_id = fr.child_file_id
+             ORDER BY cv.version ASC LIMIT 1)),
+         cf.file_path, fr.configuration, fr.reference_type::text,
+         GREATEST(1, COALESCE(fr.quantity, 1)), false, 'fallback'::text
+  FROM file_versions pv
+  JOIN files pf ON pf.id = pv.file_id AND pf.org_id = p_org_id
+  JOIN file_references fr ON fr.parent_file_id = pv.file_id AND fr.org_id = p_org_id
+  JOIN files cf ON cf.id = fr.child_file_id AND cf.org_id = p_org_id
+  WHERE pv.id = ANY (p_parent_version_ids)
+    AND pv.references_recorded_at IS NULL;
+$$;
+
+REVOKE ALL ON FUNCTION version_reference_edges(UUID[], UUID) FROM PUBLIC, anon, authenticated;
+
+-- Everything a file version needs, at the versions it needs them: the root row
+-- (depth 0) and one row per reference edge reached below it, breadth first. Each
+-- child version is expanded once, so a subassembly used in ten places is walked
+-- once while all ten edges are still returned.
+--
+-- exact is false when the edge was approximate (fallback, or no hash match at
+-- check-in) or when the parent it hangs from was reached only through approximate
+-- edges. missing is true when no child version could be resolved: a reference
+-- outside the vault, or a child with no version. The caller shows exact against
+-- approximate; it never pretends.
+CREATE OR REPLACE FUNCTION get_version_dependency_closure(p_file_version_id UUID)
+RETURNS TABLE (
+  depth INTEGER,
+  parent_version_id UUID,
+  file_id UUID,
+  file_version_id UUID,
+  reference_path TEXT,
+  configuration TEXT,
+  reference_type TEXT,
+  quantity INTEGER,
+  exact BOOLEAN,
+  edge_source TEXT,
+  missing BOOLEAN,
+  version INTEGER,
+  revision TEXT,
+  content_hash TEXT,
+  file_size BIGINT,
+  file_name TEXT,
+  file_path TEXT,
+  extension TEXT,
+  vault_id UUID,
+  deleted BOOLEAN
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_file_id UUID;
+  v_org_id UUID;
+  v_frontier UUID[];
+  v_seen UUID[];
+  v_inexact UUID[] := '{}'::UUID[];
+  v_next UUID[];
+  v_next_inexact UUID[];
+  v_depth INTEGER := 0;
+BEGIN
+  SELECT fv.file_id INTO v_file_id FROM file_versions fv WHERE fv.id = p_file_version_id;
+  IF v_file_id IS NULL THEN
+    RAISE EXCEPTION 'File version not found'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  v_org_id := require_file_access(v_file_id);
+
+  RETURN QUERY
+  SELECT 0, NULL::uuid, f.id, fv.id, f.file_path, NULL::text, NULL::text, 1, true,
+         'root'::text, false, fv.version, fv.revision, fv.content_hash, fv.file_size,
+         f.file_name, f.file_path, f.extension, f.vault_id, f.deleted_at IS NOT NULL
+  FROM file_versions fv
+  JOIN files f ON f.id = fv.file_id
+  WHERE fv.id = p_file_version_id;
+
+  v_frontier := ARRAY[p_file_version_id];
+  v_seen := v_frontier;
+
+  WHILE cardinality(v_frontier) > 0 AND v_depth < 64 LOOP
+    v_depth := v_depth + 1;
+
+    RETURN QUERY
+    SELECT v_depth, e.parent_version_id, COALESCE(cv.file_id, e.child_file_id), e.child_version_id,
+           e.child_path, e.configuration, e.reference_type, e.quantity,
+           (e.exact AND NOT (e.parent_version_id = ANY (v_inexact))),
+           e.edge_source, e.child_version_id IS NULL,
+           cv.version, cv.revision, cv.content_hash, cv.file_size,
+           cf.file_name, cf.file_path, cf.extension, cf.vault_id,
+           COALESCE(cf.deleted_at IS NOT NULL, false)
+    FROM version_reference_edges(v_frontier, v_org_id) e
+    LEFT JOIN file_versions cv ON cv.id = e.child_version_id
+    LEFT JOIN files cf ON cf.id = COALESCE(cv.file_id, e.child_file_id);
+
+    SELECT COALESCE(array_agg(x.child_version_id), '{}'::UUID[]),
+           COALESCE(array_agg(x.child_version_id) FILTER (WHERE NOT x.any_exact), '{}'::UUID[])
+      INTO v_next, v_next_inexact
+    FROM (
+      SELECT e.child_version_id,
+             bool_or(e.exact AND NOT (e.parent_version_id = ANY (v_inexact))) AS any_exact
+      FROM version_reference_edges(v_frontier, v_org_id) e
+      WHERE e.child_version_id IS NOT NULL
+        AND NOT (e.child_version_id = ANY (v_seen))
+      GROUP BY e.child_version_id
+    ) x;
+
+    v_inexact := v_inexact || v_next_inexact;
+    v_seen := v_seen || v_next;
+    v_frontier := v_next;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_version_dependency_closure(UUID) TO authenticated;
+
+-- ===========================================
+-- DRAWING PDF RENDERS (schema 107)
+-- ===========================================
+
+-- The stored PDF of a file version, or no row when none has been generated.
+CREATE OR REPLACE FUNCTION get_drawing_pdf(p_file_version_id UUID)
+RETURNS TABLE (
+  file_version_id UUID,
+  file_id UUID,
+  storage_hash TEXT,
+  file_size BIGINT,
+  closure_exact BOOLEAN,
+  generated_by UUID,
+  generated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_file_id UUID;
+  v_org_id UUID;
+BEGIN
+  SELECT fv.file_id INTO v_file_id FROM file_versions fv WHERE fv.id = p_file_version_id;
+  IF v_file_id IS NULL THEN
+    RAISE EXCEPTION 'File version not found'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  v_org_id := require_file_access(v_file_id);
+
+  RETURN QUERY
+  SELECT d.file_version_id, d.file_id, d.storage_hash, d.file_size, d.closure_exact,
+         d.generated_by, d.generated_at
+  FROM drawing_pdf_renders d
+  WHERE d.file_version_id = p_file_version_id
+    AND d.org_id = v_org_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_drawing_pdf(UUID) TO authenticated;
+
+-- Record the PDF generated for a file version. The PDF itself is uploaded first,
+-- content-addressed, to the vault bucket; this records which hash it is.
+--
+-- First write wins. Recording the same hash again is a no-op (a retry). A
+-- different hash for a version that already has a render is refused unless the
+-- caller is an administrator, because reviewers must not see the drawing they
+-- are approving change under them.
+CREATE OR REPLACE FUNCTION record_drawing_pdf(
+  p_file_version_id UUID,
+  p_storage_hash TEXT,
+  p_file_size BIGINT,
+  p_closure_exact BOOLEAN DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor UUID;
+  v_file_id UUID;
+  v_org_id UUID;
+  v_hash TEXT;
+  v_existing drawing_pdf_renders%ROWTYPE;
+BEGIN
+  v_actor := current_actor_id();
+  v_hash := lower(btrim(COALESCE(p_storage_hash, '')));
+
+  IF v_hash !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'Storage hash must be a SHA-256 hex digest'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF p_file_size IS NULL OR p_file_size <= 0 THEN
+    RAISE EXCEPTION 'File size must be positive'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT fv.file_id INTO v_file_id FROM file_versions fv WHERE fv.id = p_file_version_id;
+  IF v_file_id IS NULL THEN
+    RAISE EXCEPTION 'File version not found'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  v_org_id := require_file_access(v_file_id);
+
+  SELECT * INTO v_existing FROM drawing_pdf_renders d
+  WHERE d.file_version_id = p_file_version_id AND d.org_id = v_org_id
+  FOR UPDATE;
+
+  IF v_existing.id IS NOT NULL THEN
+    IF v_existing.storage_hash = v_hash THEN
+      RETURN jsonb_build_object('recorded', false, 'replaced', false, 'storage_hash', v_hash);
+    END IF;
+    IF NOT is_org_admin() THEN
+      RAISE EXCEPTION 'A PDF is already recorded for this version'
+        USING ERRCODE = 'unique_violation', HINT = 'PDF_EXISTS';
+    END IF;
+    UPDATE drawing_pdf_renders
+    SET storage_hash = v_hash, file_size = p_file_size, closure_exact = p_closure_exact,
+        generated_by = v_actor, generated_at = NOW()
+    WHERE id = v_existing.id;
+    RETURN jsonb_build_object('recorded', true, 'replaced', true, 'storage_hash', v_hash);
+  END IF;
+
+  INSERT INTO drawing_pdf_renders (org_id, file_id, file_version_id, storage_hash, file_size, closure_exact, generated_by)
+  VALUES (v_org_id, v_file_id, p_file_version_id, v_hash, p_file_size, p_closure_exact, v_actor)
+  ON CONFLICT (file_version_id) DO NOTHING;
+
+  -- Lost a race with another first write for this version: report what is
+  -- stored, never "recorded" for a hash that is not the one kept.
+  IF NOT FOUND THEN
+    SELECT * INTO v_existing FROM drawing_pdf_renders d WHERE d.file_version_id = p_file_version_id;
+    IF v_existing.storage_hash = v_hash THEN
+      RETURN jsonb_build_object('recorded', false, 'replaced', false, 'storage_hash', v_hash);
+    END IF;
+    RAISE EXCEPTION 'A PDF is already recorded for this version'
+      USING ERRCODE = 'unique_violation', HINT = 'PDF_EXISTS';
+  END IF;
+
+  RETURN jsonb_build_object('recorded', true, 'replaced', false, 'storage_hash', v_hash);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION record_drawing_pdf(UUID, TEXT, BIGINT, BOOLEAN) TO authenticated;
 
 -- ===========================================
 -- MIGRATIONS FOR EXISTING DATABASES

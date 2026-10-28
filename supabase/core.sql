@@ -115,20 +115,27 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 106 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 107 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'SOLIDWORKS serial numbers are private. An organization admin (is_org_admin()) reads '
-  'every licence and serial; anyone else reads only the licences assigned to them, through '
-  'the new SECURITY DEFINER helper my_solidworks_license_ids(). Licence assignments '
-  'are readable by their own user and by admins, no longer by every member. The policy that '
-  'let a user update any column of their own assignment is withdrawn, because repointing '
-  'license_id exposed another serial; activation still goes through '
-  'activate_solidworks_license() and deactivate_solidworks_license(). Released clients keep '
-  'working: a non-admin licence screen already showed only their own licences. '
-  'check_release_residue() refuses to stamp while a licence or assignment policy without '
-  'is_org_admin() remains.'
+  'Drawing reviews become server-owned packages. A review (20-change-control) is a package of '
+  'files pinned to file_versions rows, reviewed in rounds with per-item, per-reviewer decisions '
+  '(approved, approved_with_comments, changes_requested, rejected; a comment is required for all '
+  'but approved) under mode all or any, with priority low|normal|high|urgent and a calendar due '
+  'date. Every write goes through SECURITY DEFINER RPCs that lock the review and write '
+  'notifications in the same transaction: request_review, respond_to_review_items, '
+  'approve_all_remaining, resubmit_review, cancel_review, update_review_meta; reads through '
+  'list_review_queue, get_review_detail and get_review_badge_count. Client policies on the review '
+  'tables are SELECT-only, which closes the forgeable review_responses policy. Existing reviews are '
+  'migrated in place into one-item packages. Gate reviews (10-source-files) are fixed in place: an '
+  'attempt id scopes approval counts, one row per reviewer, no client writes to pending_reviews or '
+  'workflow_review_history, the whole attempt is locked so concurrent approvals advance once, and '
+  'role rules match the effective role (is_org_admin). New: file_version_references with '
+  'record_version_references and get_version_dependency_closure (exact versus approximate), '
+  'drawing_pdf_renders with get_drawing_pdf and record_drawing_pdf, review links on file_comments. '
+  'Comments and notifications can no longer be written across organizations, and '
+  'notify_overdue_reviews is withdrawn from clients.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -287,7 +294,10 @@ LANGUAGE sql IMMUTABLE AS $$
     -- Closing a hole and revoking what the hole produced.
     ('core', NULL, 'table', 'schema_remediation_log', NULL),
     ('core', NULL, 'function', 'record_remediation(text,integer,jsonb,text)', NULL),
-    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns && sw_licence_policy'),
+    -- review_write_policy since 107: the review migration (policy drops, the
+    -- per-round response key, attempt ids, one-item packages) is checked on the
+    -- database, so a partial apply cannot stamp.
+    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns && sw_licence_policy && review_write_policy'),
     ('core', NULL, 'function', 'set_color_swatch_creator()', 'auth.uid'),
     -- The two org-scoped RPCs core.sql owns that used to hand-write the
     -- membership test out of auth.uid().
@@ -425,7 +435,8 @@ LANGUAGE sql IMMUTABLE AS $$
     -- workflow being applied to it. Pinning only the first is what let the
     -- second go missing in a function this manifest already listed.
     ('10-source-files', NULL, 'function', 'apply_workflow_transition(uuid,uuid,uuid,text,jsonb)', 'require_file_access && wtpl.org_id = v_org_id'),
-    ('10-source-files', NULL, 'function', 'execute_workflow_transition(uuid,uuid,text)', 'is_org_member && wtpl.org_id = v_file.org_id'),
+    -- Schema 105: one row per reviewer under one attempt id.
+    ('10-source-files', NULL, 'function', 'execute_workflow_transition(uuid,uuid,text)', 'is_org_member && wtpl.org_id = v_file.org_id && gate_reviewer_user_ids && v_attempt_id'),
     ('10-source-files', NULL, 'function', 'execute_transition_to_legacy_state(uuid,text,text)', 'require_file_access'),
     ('10-source-files', NULL, 'function', 'get_user_vault_access(uuid)', 'require_same_org_user'),
     -- Who may decide a gate, in one place instead of two. complete_gate_review
@@ -434,11 +445,31 @@ LANGUAGE sql IMMUTABLE AS $$
     -- get_my_pending_reviews - which had the correct rule written out - decided
     -- what to offer them. Both are pinned on the shared helper, so a release
     -- that lets either drift back to its own copy is stale rather than ok.
+    -- effective_user_role since 105: a 'role' rule compared with the role column
+    -- alone hid admin-gated reviews from Administrators-team members.
     ('10-source-files', NULL, 'function', 'may_review_gate(uuid,uuid)',
-      'workflow_gate_reviewers && user_has_permission'),
+      'workflow_gate_reviewers && user_has_permission && effective_user_role'),
+    -- v_attempt_id since 105: approvals counted over every attempt ever made locked
+    -- an 'all' gate for good after one rejection. It is the variable the
+    -- attempt-wide row lock and the scoped count are taken through.
     ('10-source-files', NULL, 'function', 'complete_gate_review(uuid,review_status,text,jsonb)',
-      'is_org_member && may_review_gate'),
-    ('10-source-files', NULL, 'function', 'get_my_pending_reviews()', 'may_review_gate'),
+      'is_org_member && may_review_gate && v_attempt_id'),
+    ('10-source-files', NULL, 'function', 'get_my_pending_reviews()', 'may_review_gate && gate_review_ids_awaiting'),
+    ('10-source-files', NULL, 'function', 'effective_user_role(uuid)', 'is_org_admin'),
+    ('10-source-files', NULL, 'function', 'gate_reviewer_user_ids(uuid,uuid)', 'effective_user_role'),
+    ('10-source-files', NULL, 'function', 'gate_review_ids_awaiting(uuid)', 'may_review_gate'),
+    -- Vault visibility, by the renderer's rule (no rows = unrestricted).
+    ('10-source-files', NULL, 'function', 'user_may_access_vault(uuid,uuid)', 'is_org_admin && team_vault_access'),
+    ('10-source-files', NULL, 'function', 'may_access_vault(uuid)', 'user_may_access_vault'),
+    -- Version-accurate references and the drawing PDF cache (schema 107).
+    ('10-source-files', NULL, 'table', 'file_version_references', NULL),
+    ('10-source-files', NULL, 'table', 'drawing_pdf_renders', NULL),
+    ('10-source-files', NULL, 'function', 'record_version_references(uuid,jsonb)', 'require_file_access && references_recorded_at'),
+    ('10-source-files', NULL, 'function', 'version_reference_edges(uuid[],uuid)', 'references_recorded_at'),
+    ('10-source-files', NULL, 'function', 'get_version_dependency_closure(uuid)', 'require_file_access && version_reference_edges'),
+    ('10-source-files', NULL, 'function', 'get_drawing_pdf(uuid)', 'require_file_access'),
+    ('10-source-files', NULL, 'function', 'record_drawing_pdf(uuid,text,bigint,boolean)', 'require_file_access && is_org_admin'),
+    ('10-source-files', NULL, 'function', 'file_comments_integrity()', 'parent_id'),
 
     -- 15-inspection.sql - REQUIRED, so probe is NULL
     ('15-inspection', NULL, 'table', 'inspection_characteristics', NULL),
@@ -450,6 +481,34 @@ LANGUAGE sql IMMUTABLE AS $$
       'current_actor_id && u.org_id = v_org_id'),
     ('20-change-control', 'ecos', 'function', 'instantiate_process_template(uuid,uuid)', 'require_eco_access'),
     ('20-change-control', 'ecos', 'function', 'check_gate_requirements(uuid,text)', 'require_eco_access'),
+    -- Review packages (schema 107). The probe stays 'ecos': reviews are part of
+    -- this module and installed with it.
+    ('20-change-control', 'ecos', 'table', 'review_items', NULL),
+    ('20-change-control', 'ecos', 'table', 'review_rounds', NULL),
+    ('20-change-control', 'ecos', 'table', 'review_round_items', NULL),
+    ('20-change-control', 'ecos', 'table', 'review_decisions', NULL),
+    ('20-change-control', 'ecos', 'function', 'require_review_access(uuid)',
+      'current_actor_id && u.org_id = v_org_id'),
+    ('20-change-control', 'ecos', 'function', 'review_settle(uuid,uuid,boolean)', 'review_notify'),
+    ('20-change-control', 'ecos', 'function', 'review_owed_item_ids(uuid,uuid)', 'review_decisions'),
+    ('20-change-control', 'ecos', 'function', 'team_reviewer_user_ids(uuid)', 'team_reviewers'),
+    ('20-change-control', 'ecos', 'function', 'review_notify(uuid,uuid[],uuid,text,text,text,uuid,text)', 'u.org_id = p_org_id'),
+    ('20-change-control', 'ecos', 'function', 'request_review(uuid[],uuid[],uuid[],text,text,text,text,date)',
+      'require_org_member && user_may_access_vault && review_notify'),
+    ('20-change-control', 'ecos', 'function', 'respond_to_review_items(uuid,jsonb)',
+      'require_review_access && review_owed_item_ids && review_settle'),
+    ('20-change-control', 'ecos', 'function', 'approve_all_remaining(uuid,text)',
+      'require_review_access && respond_to_review_items'),
+    ('20-change-control', 'ecos', 'function', 'resubmit_review(uuid,jsonb,text)',
+      'require_review_access && is_org_admin'),
+    ('20-change-control', 'ecos', 'function', 'cancel_review(uuid,text)', 'require_review_access && is_org_admin'),
+    ('20-change-control', 'ecos', 'function', 'update_review_meta(uuid,text,date,boolean)', 'require_review_access && is_org_admin'),
+    ('20-change-control', 'ecos', 'function', 'list_review_queue(text,uuid,text,integer,text)',
+      'require_org_member && gate_review_ids_awaiting'),
+    ('20-change-control', 'ecos', 'function', 'get_review_detail(uuid)', 'require_review_access'),
+    ('20-change-control', 'ecos', 'function', 'get_review_badge_count()', 'is_org_member && gate_review_ids_awaiting'),
+    ('20-change-control', 'ecos', 'function', 'file_comments_review_link()', 'review_responses'),
+    ('20-change-control', 'ecos', 'function', 'notify_overdue_reviews()', 'review_responses'),
 
     -- 30-supply-chain.sql
     ('30-supply-chain', 'rfqs', 'table', 'rfq_number_counters', NULL),
@@ -2196,6 +2255,7 @@ DECLARE
   color_swatches_scope_columns BOOLEAN;
   color_swatches_scope_controls BOOLEAN;
   sw_licence_policy RECORD;
+  review_write_policy RECORD;
 BEGIN
   -- ---------------------------------------------------------------------
   -- Share links handing out a file in an organization somebody involved is not
@@ -2489,6 +2549,81 @@ BEGIN
       RETURN NEXT;
     END LOOP;
   END IF;
+
+  -- Review and gate-review tables take no client writes (schema 107). Any
+  -- INSERT, UPDATE, DELETE or ALL policy on them is a leftover such as the
+  -- pre-107 "Reviewers can respond", which let a requester approve on behalf of
+  -- every reviewer, or "Users can update pending reviews", which let a member
+  -- approve a gate around complete_gate_review(). Policies are OR-ed, so one
+  -- stale permissive policy undoes the release.
+  FOR review_write_policy IN
+    SELECT p.tablename, p.policyname, p.cmd
+      FROM pg_policies p
+     WHERE p.schemaname = 'public'
+       AND p.tablename IN ('reviews', 'review_responses', 'review_items', 'review_rounds',
+                           'review_round_items', 'review_decisions', 'pending_reviews',
+                           'workflow_review_history', 'file_version_references',
+                           'drawing_pdf_renders')
+       AND p.cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+  LOOP
+    residue := 'review_client_write_policy';
+    identity := 'public.' || review_write_policy.tablename || ' / ' || review_write_policy.policyname;
+    detail := 'A ' || review_write_policy.cmd || ' policy lets clients write this table, which only '
+           || 'the review RPCs may write. Re-run supabase/modules/10-source-files.sql and '
+           || '20-change-control.sql, which drop it.';
+    RETURN NEXT;
+  END LOOP;
+
+  -- The rest of the review migration (schema 107), checked on its data.
+  IF to_regclass('public.pending_reviews') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'pending_reviews'
+         AND column_name = 'attempt_id' AND is_nullable = 'NO'
+    ) THEN
+      residue := 'pending_reviews_attempt_id_missing';
+      identity := 'public.pending_reviews.attempt_id';
+      detail := 'Gate approvals are counted per attempt and need a NOT NULL attempt_id. '
+             || 'Re-run supabase/modules/10-source-files.sql.';
+      RETURN NEXT;
+    END IF;
+  END IF;
+
+  IF to_regclass('public.review_responses') IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM pg_constraint con
+       WHERE con.conrelid = 'public.review_responses'::regclass
+         AND con.contype = 'u'
+         AND (SELECT array_agg(a.attname::text ORDER BY a.attname)
+                FROM unnest(con.conkey) AS k(attnum)
+                JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum)
+             = ARRAY['review_id', 'reviewer_id']
+    ) THEN
+      residue := 'review_responses_legacy_key';
+      identity := 'public.review_responses';
+      detail := 'A unique key on (review_id, reviewer_id) refuses every second review round. '
+             || 'Re-run supabase/modules/20-change-control.sql.';
+      RETURN NEXT;
+    END IF;
+  END IF;
+
+  IF to_regclass('public.review_items') IS NOT NULL THEN
+    FOR review_write_policy IN
+      SELECT rv.id::text AS tablename, NULL::text AS policyname, NULL::text AS cmd
+        FROM reviews rv
+       WHERE rv.file_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM review_items i WHERE i.review_id = rv.id)
+         AND EXISTS (SELECT 1 FROM file_versions fv WHERE fv.file_id = rv.file_id)
+       ORDER BY rv.created_at
+       LIMIT 20
+    LOOP
+      residue := 'review_not_migrated';
+      identity := 'reviews.id = ' || review_write_policy.tablename;
+      detail := 'A pre-107 review whose file has a version was not migrated into a package. '
+             || 'Re-run supabase/modules/20-change-control.sql.';
+      RETURN NEXT;
+    END LOOP;
+  END IF;
 END;
 $$;
 
@@ -2523,7 +2658,9 @@ LANGUAGE sql IMMUTABLE AS $$
     ('core',          'create_default_job_titles(uuid,uuid)'),
     ('core',          'create_default_permission_teams(uuid,uuid)'),
     ('50-extensions', 'cleanup_extension_http_logs(integer)'),
-    ('50-extensions', 'cleanup_extension_secret_access_logs(integer)')
+    ('50-extensions', 'cleanup_extension_secret_access_logs(integer)'),
+    -- Notifies every organization at once; a scheduled caller only (schema 107).
+    ('20-change-control', 'notify_overdue_reviews()')
 $$;
 
 REVOKE ALL ON FUNCTION withdrawn_execute_manifest() FROM PUBLIC, anon, authenticated;
@@ -3545,15 +3682,27 @@ CREATE POLICY "Users can view their notifications"
   ON notifications FOR SELECT
   USING (user_id = auth.uid());
 
+-- WITH CHECK since 105: without it a user could hand their notification to
+-- somebody else by rewriting user_id.
 DROP POLICY IF EXISTS "Users can update their notifications" ON notifications;
 CREATE POLICY "Users can update their notifications"
   ON notifications FOR UPDATE
-  USING (user_id = auth.uid());
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
 
+-- Schema 105: the recipient must be in the caller's organization and the sender,
+-- when named, must be the caller. The check was org_id alone, so a member could
+-- drop a notification with a spoofed sender into any user's inbox in any
+-- organization. Review notifications are written by the review RPCs, which are
+-- SECURITY DEFINER and do not pass through this policy.
 DROP POLICY IF EXISTS "System can create notifications" ON notifications;
 CREATE POLICY "System can create notifications"
   ON notifications FOR INSERT
-  WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
+  WITH CHECK (
+    org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
+    AND user_id IN (SELECT u.id FROM users u WHERE u.org_id = notifications.org_id)
+    AND (from_user_id IS NULL OR from_user_id = auth.uid())
+  );
 
 -- ===========================================
 -- COLOR SWATCHES (Personal and organization preferences)
