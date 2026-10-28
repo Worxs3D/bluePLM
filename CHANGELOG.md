@@ -6,6 +6,8 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.7.6] - 2026-10-28
+
 Renderer, Electron main, API 2.8.3, schema 103, SolidWorks service 1.23.0. The database must be
 at schema 103 or newer (production was brought to 103 on 2026-10-28). Redeploy the API for the
 API fixes; the app expects 2.8.3 and only shows an "outdated" notice against an older server.
