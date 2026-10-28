@@ -743,7 +743,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   if (!fileId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-pdm-fg/60 p-6 text-center">
+      <div className="flex flex-col items-center justify-center h-full text-plm-fg/60 p-6 text-center">
         <ClipboardList size={28} className="mb-2 opacity-60" />
         <div className="text-sm">{t('source.inspection.notSynced')}</div>
       </div>
@@ -752,9 +752,9 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   if (notInstalled) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-pdm-fg/60 p-6 text-center gap-2">
+      <div className="flex flex-col items-center justify-center h-full text-plm-fg/60 p-6 text-center gap-2">
         <Database size={28} className="opacity-60" />
-        <div className="text-sm font-medium text-pdm-fg/80">
+        <div className="text-sm font-medium text-plm-fg/80">
           {t('source.inspection.notInstalledTitle')}
         </div>
         <div className="text-xs max-w-sm leading-relaxed">
@@ -767,18 +767,18 @@ export function InspectionTab({ file }: InspectionTabProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-pdm-border shrink-0">
-        <div className="flex items-center gap-2 text-sm font-medium text-pdm-fg">
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-plm-border shrink-0">
+        <div className="flex items-center gap-2 text-sm font-medium text-plm-fg">
           <ClipboardList size={15} />
           {t('source.inspection.title')}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-pdm-fg/70">
+        <div className="flex items-center gap-1.5 text-xs text-plm-fg/70">
           <span>{t('source.inspection.version')}</span>
           <select
             value={selectedVersion}
             onChange={(e) => setSelectedVersion(e.target.value)}
-            className="bg-pdm-bg border border-pdm-border rounded px-1.5 py-0.5 text-xs"
+            className="bg-plm-bg border border-plm-border rounded px-1.5 py-0.5 text-xs"
           >
             <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
             {versions.map((v) => (
@@ -792,14 +792,14 @@ export function InspectionTab({ file }: InspectionTabProps) {
         <div className="flex-1" />
 
         {isSaving && (
-          <span className="flex items-center gap-1 text-xs text-pdm-fg/60">
+          <span className="flex items-center gap-1 text-xs text-plm-fg/60">
             <Loader2 size={12} className="animate-spin" />
             {t('source.inspection.saving')}
           </span>
         )}
 
         {viewingCurrent && !isCheckedOutByMe && (
-          <span className="flex items-center gap-1 text-xs text-pdm-fg/60">
+          <span className="flex items-center gap-1 text-xs text-plm-fg/60">
             <Lock size={12} />
             {t('source.inspection.readOnlyCheckout')}
           </span>
@@ -905,14 +905,14 @@ export function InspectionTab({ file }: InspectionTabProps) {
             </button>
 
             {templateMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-20 min-w-56 max-h-72 overflow-auto rounded-md border border-pdm-border bg-pdm-bg shadow-lg py-1">
+              <div className="absolute right-0 top-full mt-1 z-20 min-w-56 max-h-72 overflow-auto rounded-md border border-plm-border bg-plm-bg shadow-lg py-1">
                 {templatesLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-pdm-fg/60">
+                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-plm-fg/60">
                     <Loader2 size={12} className="animate-spin" />
                     {t('source.inspection.templateLoading')}
                   </div>
                 ) : templates.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-pdm-fg/60">
+                  <div className="px-3 py-2 text-xs text-plm-fg/60">
                     {t('source.inspection.templateNone')}
                   </div>
                 ) : (
@@ -921,9 +921,9 @@ export function InspectionTab({ file }: InspectionTabProps) {
                       key={template.id}
                       type="button"
                       onClick={() => void handleGenerateTemplate(template)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-pdm-fg hover:bg-pdm-bg/40"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-plm-fg hover:bg-plm-bg/40"
                     >
-                      <FileSpreadsheet size={12} className="flex-shrink-0 text-pdm-fg/60" />
+                      <FileSpreadsheet size={12} className="flex-shrink-0 text-plm-fg/60" />
                       <span className="truncate">{template.name}</span>
                     </button>
                   ))
@@ -960,11 +960,11 @@ export function InspectionTab({ file }: InspectionTabProps) {
       {/* Body */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center h-32 text-pdm-fg/60">
+          <div className="flex items-center justify-center h-32 text-plm-fg/60">
             <Loader2 size={18} className="animate-spin" />
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-pdm-fg/60 text-center px-6">
+          <div className="flex flex-col items-center justify-center h-32 text-plm-fg/60 text-center px-6">
             <div className="text-sm">{t('source.inspection.empty')}</div>
             {editable && (
               <div className="flex items-center gap-2 mt-3">
@@ -1015,17 +1015,17 @@ export function InspectionTab({ file }: InspectionTabProps) {
           </div>
         ) : (
           <table className="text-xs border-collapse w-max min-w-full">
-            <thead className="sticky top-0 bg-pdm-bg z-10">
-              <tr className="border-b border-pdm-border">
+            <thead className="sticky top-0 bg-plm-bg z-10">
+              <tr className="border-b border-plm-border">
                 {COLUMNS.map((col) => (
                   <th
                     key={col.key}
-                    className={`px-2 py-1.5 text-left font-medium text-pdm-fg/70 ${col.width}`}
+                    className={`px-2 py-1.5 text-left font-medium text-plm-fg/70 ${col.width}`}
                   >
                     <button
                       type="button"
                       onClick={() => handleSort(col.key)}
-                      className="flex items-center gap-1 hover:text-pdm-fg w-full text-left"
+                      className="flex items-center gap-1 hover:text-plm-fg w-full text-left"
                       title={t('source.inspection.sortBy')}
                     >
                       <span className="truncate">{col.label}</span>
@@ -1043,7 +1043,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 ))}
                 {editable && <th className="px-2 py-1.5 w-12" />}
               </tr>
-              <tr className="border-b border-pdm-border">
+              <tr className="border-b border-plm-border">
                 {COLUMNS.map((col) => (
                   <th key={col.key} className="px-1 py-1 align-top">
                     <ColumnFilter
@@ -1061,14 +1061,14 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 <tr>
                   <td
                     colSpan={COLUMNS.length + (editable ? 1 : 0)}
-                    className="px-2 py-6 text-center text-pdm-fg/50"
+                    className="px-2 py-6 text-center text-plm-fg/50"
                   >
                     {t('source.inspection.noMatches')}
                   </td>
                 </tr>
               ) : (
                 displayRows.map((row) => (
-                <tr key={row.id} className="border-b border-pdm-border/50 hover:bg-pdm-bg/40">
+                <tr key={row.id} className="border-b border-plm-border/50 hover:bg-plm-bg/40">
                   {COLUMNS.map((col) => (
                     <td key={col.key} className="px-1 py-0.5">
                       <InspectionCell
@@ -1086,7 +1086,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
                       <button
                         type="button"
                         onClick={() => handleDeleteRow(row.id)}
-                        className="p-1 rounded hover:bg-pdm-error/20 text-pdm-error"
+                        className="p-1 rounded hover:bg-plm-error/20 text-plm-error"
                         title={t('source.inspection.deleteRow')}
                       >
                         <Trash2 size={12} />

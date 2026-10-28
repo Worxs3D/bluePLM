@@ -88,24 +88,24 @@ export function MethodManagerModal({
       onClick={onClose}
     >
       <div
-        className="bg-pdm-bg border border-pdm-border rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col mx-4"
+        className="bg-plm-bg border border-plm-border rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-pdm-border">
-          <div className="flex items-center gap-2 text-sm font-medium text-pdm-fg">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-plm-border">
+          <div className="flex items-center gap-2 text-sm font-medium text-plm-fg">
             <Settings2 size={15} />
             {t('source.inspection.methodsTitle')}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
+            className="p-1 rounded hover:bg-plm-border/50 text-plm-fg/70"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-pdm-border">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-plm-border">
           <input
             type="text"
             value={newName}
@@ -117,7 +117,7 @@ export function MethodManagerModal({
               }
             }}
             placeholder={t('source.inspection.addMethodPlaceholder')}
-            className="flex-1 bg-pdm-bg border border-pdm-border rounded px-2 py-1 text-sm"
+            className="flex-1 bg-plm-bg border border-plm-border rounded px-2 py-1 text-sm"
             autoFocus
           />
           <button
@@ -133,14 +133,14 @@ export function MethodManagerModal({
 
         <div className="flex-1 overflow-auto py-1">
           {rows.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-pdm-fg/50">
+            <div className="px-4 py-6 text-center text-sm text-plm-fg/50">
               {t('source.inspection.noMethods')}
             </div>
           ) : (
             rows.map((row) => (
               <div
                 key={row.id ?? `builtin:${row.name}`}
-                className="flex items-center gap-2 px-4 py-1.5 hover:bg-pdm-bg/40 group"
+                className="flex items-center gap-2 px-4 py-1.5 hover:bg-plm-bg/40 group"
               >
                 {row.id !== null && row.id === editingId ? (
                   <>
@@ -155,14 +155,14 @@ export function MethodManagerModal({
                         }
                         if (e.key === 'Escape') setEditingId(null)
                       }}
-                      className="flex-1 bg-pdm-bg border border-pdm-border rounded px-2 py-1 text-sm"
+                      className="flex-1 bg-plm-bg border border-plm-border rounded px-2 py-1 text-sm"
                       autoFocus
                     />
                     <button
                       type="button"
                       onClick={() => void commitEdit(row.id as string)}
                       disabled={busy}
-                      className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
+                      className="p-1 rounded hover:bg-plm-border/50 text-plm-fg/70"
                       title={t('common.save')}
                     >
                       <Check size={14} />
@@ -170,7 +170,7 @@ export function MethodManagerModal({
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
-                      className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
+                      className="p-1 rounded hover:bg-plm-border/50 text-plm-fg/70"
                       title={t('common.cancel')}
                     >
                       <X size={14} />
@@ -178,7 +178,7 @@ export function MethodManagerModal({
                   </>
                 ) : (
                   <>
-                    <span className="flex-1 text-sm text-pdm-fg/90 truncate">{row.name}</span>
+                    <span className="flex-1 text-sm text-plm-fg/90 truncate">{row.name}</span>
                     {row.id !== null ? (
                       <>
                         <button
@@ -187,7 +187,7 @@ export function MethodManagerModal({
                             setEditingId(row.id)
                             setEditingValue(row.name)
                           }}
-                          className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/60 opacity-0 group-hover:opacity-100"
+                          className="p-1 rounded hover:bg-plm-border/50 text-plm-fg/60 opacity-0 group-hover:opacity-100"
                           title={t('common.edit')}
                         >
                           <Pencil size={13} />
@@ -196,14 +196,14 @@ export function MethodManagerModal({
                           type="button"
                           onClick={() => void handleRemove(row.id as string)}
                           disabled={busy}
-                          className="p-1 rounded hover:bg-pdm-error/20 text-pdm-error opacity-0 group-hover:opacity-100"
+                          className="p-1 rounded hover:bg-plm-error/20 text-plm-error opacity-0 group-hover:opacity-100"
                           title={t('common.delete')}
                         >
                           <Trash2 size={13} />
                         </button>
                       </>
                     ) : (
-                      <span className="text-[10px] uppercase tracking-wide text-pdm-fg/40 px-1">
+                      <span className="text-[10px] uppercase tracking-wide text-plm-fg/40 px-1">
                         {t('source.inspection.builtIn')}
                       </span>
                     )}

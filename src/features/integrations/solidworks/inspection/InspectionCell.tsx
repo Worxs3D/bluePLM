@@ -23,7 +23,7 @@ export function InspectionCell({
     const display = value === null || value === undefined || value === '' ? '—' : String(value)
     return (
       <span
-        className="block px-1 py-0.5 text-pdm-fg/90 truncate"
+        className="block px-1 py-0.5 text-plm-fg/90 truncate"
         style={{ fontFamily: SYMBOL_FONT }}
       >
         {display}
@@ -49,7 +49,7 @@ export function InspectionCell({
           }
           onChange(next === '' ? null : next)
         }}
-        className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
+        className="w-full bg-plm-bg border border-plm-border rounded px-1 py-0.5 text-xs"
       >
         <option value="">—</option>
         {!currentInOptions && current !== '' && <option value={current}>{current}</option>}
@@ -68,7 +68,7 @@ export function InspectionCell({
       <select
         value={value === null || value === undefined ? '' : String(value)}
         onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
-        className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
+        className="w-full bg-plm-bg border border-plm-border rounded px-1 py-0.5 text-xs"
       >
         <option value="">—</option>
         {col.options?.map((opt) => (
@@ -92,7 +92,7 @@ export function InspectionCell({
           onChange(e.target.value === '' ? null : e.target.value)
         }
       }}
-      className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
+      className="w-full bg-plm-bg border border-plm-border rounded px-1 py-0.5 text-xs"
       style={col.type === 'text' ? { fontFamily: SYMBOL_FONT } : undefined}
     />
   )

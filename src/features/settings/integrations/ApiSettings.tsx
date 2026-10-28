@@ -435,12 +435,12 @@ export function ApiSettings() {
                 </div>
                 <div className="text-sm text-plm-fg-muted flex items-center gap-2 flex-wrap">
                   {apiVersion && (
-                    <span className={versionCheck?.status === 'current' ? 'text-pdm-success' : ''}>
+                    <span className={versionCheck?.status === 'current' ? 'text-plm-success' : ''}>
                       v{apiVersion}
                     </span>
                   )}
                   {versionCheck && versionCheck.status !== 'current' && (
-                    <span className="text-pdm-warning text-xs">
+                    <span className="text-plm-warning text-xs">
                       (expected v{EXPECTED_API_VERSION})
                     </span>
                   )}
@@ -458,8 +458,8 @@ export function ApiSettings() {
                     <div
                       className={`mt-2 text-xs p-2 rounded flex items-start gap-2 ${
                         versionCheck.status === 'incompatible'
-                          ? 'bg-pdm-error/10 text-pdm-error border border-pdm-error/20'
-                          : 'bg-pdm-warning/10 text-pdm-warning border border-pdm-warning/20'
+                          ? 'bg-plm-error/10 text-plm-error border border-plm-error/20'
+                          : 'bg-plm-warning/10 text-plm-warning border border-plm-warning/20'
                       }`}
                     >
                       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />

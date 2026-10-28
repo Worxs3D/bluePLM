@@ -10,7 +10,7 @@ interface ColumnFilterProps {
 
 export function ColumnFilter({ col, value, onChange }: ColumnFilterProps) {
   const baseClass =
-    'w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs font-normal text-pdm-fg/90'
+    'w-full bg-plm-bg border border-plm-border rounded px-1 py-0.5 text-xs font-normal text-plm-fg/90'
 
   if (col.type === 'select') {
     return (
