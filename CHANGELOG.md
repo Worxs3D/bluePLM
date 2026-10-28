@@ -6,6 +6,22 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Optional embedded eDrawings 3D preview (Windows, off by default)** (#76, by @Worxs3D). A
+  third CAD preview mode, `edrawings-embedded`, shows an interactive eDrawings viewer inside
+  the details panel. The eDrawings ActiveX control runs in a separate framework-dependent
+  .NET 8 host process (`edrawings-preview-host/`) owned by a kill-on-close job object, driven
+  by an N-API addon (`native/`) whose create, load and destroy never block the main thread.
+  Preview IPC is bound to a session token for the app window, and the main process loads only
+  CAD files inside the active local vault. The option is enabled only when the addon, the host,
+  the eDrawings ActiveX control and the .NET 8 Desktop Runtime are all present; otherwise the
+  thumbnail and external-viewer modes are unchanged. The native window hides while any dialog,
+  menu or full-viewport overlay covers it. "Open in eDrawings" now accepts only CAD files in the
+  configured vault (UNC roots included) and reports failures. Release builds on
+  `windows-2022` must build both payloads (`BLUEPLM_EDRAWINGS_RELEASE_BUILD=1`); development
+  builds without the toolchain warn and skip.
+
 ## [4.7.6] - 2026-10-28
 
 Renderer, Electron main, API 2.8.3, schema 103, SolidWorks service 1.23.0. The database must be
