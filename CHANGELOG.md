@@ -6,8 +6,45 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Renderer and API 2.8.3 - no schema change, SolidWorks service unchanged. Redeploy the API for
-the API fixes; the app expects 2.8.3.
+Renderer, Electron main, API 2.8.3, schema 103, SolidWorks service 1.23.0. The database must be
+at schema 103 or newer (production was brought to 103 on 2026-10-28). Redeploy the API for the
+API fixes; the app expects 2.8.3 and only shows an "outdated" notice against an older server.
+The installer ships the new SolidWorks service.
+
+### Added
+
+- **Inspection tab: Extract from drawing and Balloon drawing, without SOLIDWORKS Inspection.**
+  The SolidWorks service (1.23.0) reads a drawing's dimensions, tolerances and notes through
+  the plain SOLIDWORKS API and writes balloons back. Each row is bound to the annotation it came
+  from (schema 103: `source_key`, `source_sheet`, `source_view`), so a characteristic keeps its
+  balloon number when you extract again. A preview lists what will be added, updated or removed
+  before anything is saved. Available on a drawing you have checked out; an older service says
+  it is too old instead of failing.
+- **A health monitor that recovers a long session without a restart.** Every minute it
+  resubscribes realtime channels that have been down for 3 minutes while online (the files
+  channel then catches up), probes the vault cache every 30 minutes so a broken cache repairs
+  itself, and past a heap high-water mark drops rebuildable caches first and logs what is large.
+
+### Long sessions and performance
+
+People leave BluePLM open for weeks; a nightly soak now runs a compressed month in one app
+process, and a render-performance nightly measures the real app over a 30k-file vault.
+
+- **Memory no longer grows with use.** Explorer rows, the file pane and the vault header kept
+  handlers from old renders, each holding a whole old file list; with folders expanded the heap
+  grew ~165 MB per 10 minutes. Rows and handlers no longer hold old renders, and the vault
+  header's Download / Get latest / Check in / Check out all buttons now act on the current list
+  (they could act on an old one).
+- **Things that grew without limit are capped**: recently-modified marks, message toasts (50),
+  the SolidWorks command queue (500, lowest priority first), unterminated service output, the
+  extension host's crash limit (now per crash loop). Vault watcher starts and stops run one at a
+  time, so quick vault switches no longer leave a watcher sending events for the wrong vault.
+  The SolidWorks service is restarted between jobs when its memory or call latency drifts.
+  IndexedDB recovers from a failed or closed connection more than once per session.
+- **Faster with large vaults.** A burst of realtime updates no longer scans the whole vault per
+  event or re-renders per checkout profile; components re-render only for the store fields they
+  show; scrolling no longer renders synchronously inside each scroll event; a first load writes
+  the sync index in chunks and background hash writes wait for idle time.
 
 ### Fixed
 
@@ -111,6 +148,12 @@ on yes; a save within 5 s of an operation is taken for the app's own write. See
   showed no number and its PDM block was flagged as disagreeing with the file. They now use the
   shared read lists, accept `Number` or `Base Item Number` for the comparison, and a `$PRP`
   reference reads as empty instead of being copied into the database by "Refresh metadata".
+- **RFQ release exports, the release ZIP and the RFQ PDF work again.** Their handlers were lost
+  when the main process was split into modules and failed with "No handler registered".
+- **Restarting the SolidWorks service no longer leaves it unusable.** The old process's late
+  `close` cleared the new process's state, rejecting its startup ping and cancelling its queue.
+- **A move that falls back to copy-and-delete leaves no duplicate** when the source cannot be
+  removed, and a folder renamed through the PowerShell fallback is found by the next delta scan.
 
 ### Tests
 
