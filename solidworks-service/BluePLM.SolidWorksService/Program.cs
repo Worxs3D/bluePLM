@@ -35,7 +35,7 @@ namespace BluePLM.SolidWorksService
         /// Service version - bump this when making changes that affect functionality.
         /// The app checks this version and warns if there's a mismatch.
         /// </summary>
-        private const string SERVICE_VERSION = "1.25.0";
+        private const string SERVICE_VERSION = "1.26.0";
 
         /// <summary>
         /// Error code returned for an action this build does not implement. The app matches on this
@@ -491,6 +491,9 @@ namespace BluePLM.SolidWorksService
                         command["targetModelPath"]?.ToString(),
                         command["sourceDrawingPath"]?.ToString(),
                         command["targetDrawingPath"]?.ToString()),
+                    // Review packages: point every file in a package folder at the copies inside it.
+                    // Document Manager only; never needs a SolidWorks seat.
+                    "retargetReferences" => RetargetReferences(command),
                     "addComponent" => RequiresSolidWorks(() => _swApi!.AddComponent(filePath,
                         command["componentPath"]?.ToString(),
                         command["coordinates"]?.ToObject<double[]>()), "addComponent"),
@@ -845,6 +848,27 @@ namespace BluePLM.SolidWorksService
             Console.Error.WriteLine($"[References] Tier 3 (OpenDoc6) for foreground request: {Path.GetFileName(filePath)}");
             var openedResult = _swApi.GetExternalReferences(filePath);
             return openedResult.Success ? openedResult : documentManagerResult;
+        }
+
+        /// <summary>
+        /// Review packages: point every assembly and drawing in a package folder at the copies inside it.
+        /// </summary>
+        static CommandResult RetargetReferences(JObject command)
+        {
+            if (_dmApi == null)
+            {
+                return new CommandResult
+                {
+                    Success = false,
+                    Error = "Document Manager not available. Configure DM license in Settings -> Integrations -> SOLIDWORKS.",
+                    ErrorCode = "DM_UNAVAILABLE",
+                };
+            }
+
+            return _dmApi.RetargetReferences(
+                command["packageRoot"]?.ToString(),
+                command["files"]?.ToObject<string[]>(),
+                command["vaultRoots"]?.ToObject<string[]>());
         }
 
         /// <summary>
@@ -1348,6 +1372,7 @@ Commands:
   {{""action"": ""setProperties"", ""filePath"": ""..."", ""properties"": {{""PartNumber"": ""BR-12345""}}}}
   {{""action"": ""getConfigurations"", ""filePath"": ""...""}}
   {{""action"": ""getReferences"", ""filePath"": ""...""}}
+  {{""action"": ""retargetReferences"", ""packageRoot"": ""C:\\review\\pkg"", ""vaultRoots"": [""C:\\Vault""]}}
   {{""action"": ""getPreview"", ""filePath"": ""..."", ""configuration"": ""Default""}}
   
   -- Open Document Management (checkout/checkin without closing SW!) --

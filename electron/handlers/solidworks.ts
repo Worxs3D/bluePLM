@@ -3613,6 +3613,36 @@ export function registerSolidWorksHandlers(
     },
   )
 
+  // Review packages: rewrite every assembly/drawing in a package folder to reference the copies
+  // inside it (Document Manager only, service 1.26.0+). One DM open/save per file, so the budget
+  // scales with the file count instead of the default per-command timeout.
+  ipcMain.handle(
+    'solidworks:retarget-references',
+    async (
+      _,
+      args: {
+        packageRoot: string
+        files?: string[]
+        vaultRoots?: string[]
+      },
+    ) => {
+      let fileCount = args.files?.length ?? 0
+      if (fileCount === 0) {
+        try {
+          const entries = await fs.promises.readdir(args.packageRoot, { recursive: true })
+          fileCount = entries.filter((e) => /\.(sldasm|slddrw)$/i.test(String(e))).length
+        } catch {
+          fileCount = 1
+        }
+      }
+      const timeoutMs = Math.min(60 * 60_000, 60_000 + 30_000 * Math.max(1, fileCount))
+      log(
+        `[SolidWorks] IPC: retarget-references - ${args.packageRoot} (${fileCount} file(s), timeout ${timeoutMs}ms)`,
+      )
+      return sendSWCommand({ action: 'retargetReferences', ...args }, { timeoutMs })
+    },
+  )
+
   ipcMain.handle(
     'solidworks:add-component',
     async (
@@ -3846,6 +3876,7 @@ export function unregisterSolidWorksHandlers(): void {
     'solidworks:replace-component',
     'solidworks:pack-and-go',
     'solidworks:duplicate-with-references',
+    'solidworks:retarget-references',
     'solidworks:get-open-documents',
     'solidworks:is-document-open',
     'solidworks:get-document-info',

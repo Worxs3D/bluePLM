@@ -219,6 +219,13 @@
     "resetComConnection": {
       "request": []
     },
+    "retargetReferences": {
+      "request": [
+        "files",
+        "packageRoot",
+        "vaultRoots"
+      ]
+    },
     "saveDocument": {
       "request": []
     },
@@ -265,19 +272,29 @@
       "DM_FILE_IN_USE",
       "DM_FILE_READ_ONLY",
       "DM_FUTURE_VERSION",
+      "DM_NO_LICENSE",
+      "DM_OPEN_FAILED",
+      "DM_REPLACE_FAILED",
+      "DM_SAVE_FAILED",
       "DM_UNAVAILABLE",
       "DOC_HAS_UNSAVED_CHANGES",
       "DOC_MODIFIED_NOT_SAVED",
+      "FILE_NOT_FOUND",
       "FILE_OPEN_IN_SOLIDWORKS",
       "NOT_A_DRAWING",
       "NO_ENGINE_AVAILABLE",
+      "OUTSIDE_PACKAGE",
+      "PACKAGE_ROOT_INVALID",
       "PAG_UNMAPPED_REFERENCES",
       "REFERENCES_UNRESOLVED",
+      "RETARGET_FAILED",
+      "RETARGET_NOT_VERIFIED",
       "SOLIDWORKS_COM_INACCESSIBLE",
       "SOLIDWORKS_NOT_RUNNING",
       "SW_NOT_INSTALLED",
       "SW_WARMUP_FAILED",
-      "UNKNOWN_ACTION"
+      "UNKNOWN_ACTION",
+      "UNSUPPORTED_FILE_TYPE"
     ],
     "comErrorCode": [
       "Success",
@@ -290,6 +307,7 @@
       "Unknown"
     ],
     "client": [
+      "SAME_NAME_OPEN",
       "TIMEOUT"
     ]
   }

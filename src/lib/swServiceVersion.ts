@@ -104,6 +104,10 @@
  *                   render of a drawing - which disables Document Manager on modern formats and
  *                   lands on the shell path - while grid thumbnails stay at 256px instead of being
  *                   fetched at 16x the pixels
+ * - Version 1.26.0: Add retargetReferences (Document Manager only): rewrites the stored references
+ *                   of every assembly and drawing in a review package folder so they point at the
+ *                   copies inside the package, matched by vault-relative path or a unique file name,
+ *                   and reports each file as retargeted, unchanged or failed with missing references
  * - Version 1.21.0: Add getPropertiesDocumentManager, which resolves straight to
  *                   DocumentManagerAPI.GetCustomProperties with no IsFileOpenInSolidWorks probe,
  *                   so a bulk reader cannot route thousands of COM round-trips through the
@@ -135,7 +139,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.25.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.26.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -200,6 +204,8 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Drawings can be bubbled without a SOLIDWORKS Inspection licence: the service reads every dimension, hole callout, chamfer, GTOL and surface finish symbol straight from the drawing, and writes numbered balloons on a dedicated "BluePLM Inspection" layer, replacing the ones it placed before. Each characteristic keeps the same key when a view or feature is renamed, so balloon numbers stay put',
   '1.25.0':
     'Balloons you move by hand in SOLIDWORKS now stay where you put them when BluePLM re-balloons a drawing: a balloon whose number is still in the table goes back to its old spot, and only new numbers are placed automatically. The SOLIDWORKS Inspection add-in import and push are gone; extracting from the drawing needs no Inspection licence',
+  '1.26.0':
+    'Review packages can be opened in SOLIDWORKS: the service rewrites the references of every assembly and drawing in a downloaded package so they point at the pinned copies inside the package instead of the vault, without needing a SOLIDWORKS seat',
 }
 
 /**
@@ -218,6 +224,9 @@ export const SW_SERVICE_VERSION_NATIVE_INSPECTION = '1.25.0'
  * refusing services that have the command perfectly well.
  */
 export const SW_SERVICE_VERSION_DOCUMENT_MANAGER_READ = '1.21.0'
+
+/** First service version that answers `retargetReferences`. */
+export const SW_SERVICE_VERSION_RETARGET_REFERENCES = '1.26.0'
 
 export interface SwServiceVersionCheckResult {
   status: 'current' | 'outdated' | 'ahead' | 'incompatible' | 'unknown'
