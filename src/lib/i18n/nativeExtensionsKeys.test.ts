@@ -16,6 +16,9 @@ const PLAIN = [
   'retry',
   'notLoaded',
   'permissionsGroup',
+  'modulesTitle',
+  'modulesDescription',
+  'moduleRestricted',
   'sectionTitle',
   'sectionDescription',
   'installButton',
@@ -44,6 +47,7 @@ const WITH_PARAMS: Array<[string, Record<string, string>]> = [
   ['nativeExtensions.confirmInstallTitle', { name: 'Tool', version: '1.2.3' }],
   ['nativeExtensions.confirmUninstall', { name: 'Tool' }],
   ['nativeExtensions.error', { message: 'boom' }],
+  ['nativeExtensions.moduleFrom', { extension: 'blueplm.customers' }],
 ]
 
 describe('nativeExtensions.* keys exist in every locale', () => {

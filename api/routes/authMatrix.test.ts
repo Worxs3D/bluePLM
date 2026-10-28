@@ -35,6 +35,7 @@ const ADMIN_ROUTES = new Set([
   'POST /admin/extensions/install',
   'DELETE /admin/extensions/:id',
   'PATCH /admin/extensions/:id',
+  'POST /admin/extensions/reload',
   'DELETE /suppliers/:id',
   'POST /webhooks',
   'DELETE /webhooks/:id',

@@ -908,6 +908,10 @@ export const fr: TranslationDict = {
   },
 
   nativeExtensions: {
+    modulesTitle: "Modules d'extensions",
+    modulesDescription: "Espaces de travail ajoutés par les extensions de votre organisation. Activez-les ou désactivez-les pour les afficher ou les masquer dans la barre latérale ; ils sont placés selon leur propre groupe.",
+    moduleRestricted: "Restreint par votre administrateur",
+    moduleFrom: "de {{extension}}",
     crashedTitle: "Cette extension ne fonctionne plus",
     crashedBody: "L'extension {{id}} a rencontré une erreur dans cette zone. Le reste de BluePLM n'est pas affecté.",
     retry: "Réessayer",

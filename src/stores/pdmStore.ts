@@ -608,10 +608,13 @@ export const usePDMStore = create<PDMStoreState>()(
             const defaults = getDefaultModuleConfig()
             if (!persistedConfig) return defaults
 
-            // Merge enabled modules (keep persisted values, add defaults for new modules)
+            // Merge enabled modules (keep persisted values, add defaults for new modules).
+            // A key that is not a core module is kept too when it is a boolean: native
+            // extension workspaces (e.g. 'customers') are toggled by their own id, and
+            // the extensions load after this runs.
             const enabledModules = { ...defaults.enabledModules }
             for (const [key, value] of Object.entries(persistedConfig.enabledModules || {})) {
-              if (key in enabledModules) {
+              if (key in enabledModules || typeof value === 'boolean') {
                 enabledModules[key as ModuleId] = value as boolean
               }
             }

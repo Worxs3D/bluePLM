@@ -47,11 +47,21 @@ DROP TABLE IF EXISTS color_swatches CASCADE;
 DROP TABLE IF EXISTS webhook_deliveries CASCADE;
 DROP TABLE IF EXISTS webhooks CASCADE;
 
--- Customers is the blueplm.customers native extension since 4.8.0, and its
--- tables (customer_*, customers) are not core's to drop. Enrichment rows
--- represent money already spent; dropping them is a deliberate, separate act.
--- The CASCADEs below remove their foreign keys and policies along with
--- organizations and users, so drop those tables first if a full wipe is meant.
+-- Customers (children first). Since 4.8.0 these tables belong to the
+-- blueplm.customers native extension (its sql/customers.sql), not to core,
+-- but a full reset must still leave a clean database, so they are dropped here
+-- when they exist. Enrichment rows represent money already spent; this is the
+-- only place they are ever dropped.
+DROP TABLE IF EXISTS customer_enrichment_run_items CASCADE;
+DROP TABLE IF EXISTS customer_enrichment_runs CASCADE;
+DROP TABLE IF EXISTS customer_enrichment_sources CASCADE;
+DROP TABLE IF EXISTS customer_enrichments CASCADE;
+DROP TABLE IF EXISTS customer_order_lines CASCADE;
+DROP TABLE IF EXISTS customer_orders CASCADE;
+DROP TABLE IF EXISTS customer_addresses CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS customer_accounts CASCADE;
+DROP TABLE IF EXISTS customer_categories CASCADE;
 
 -- Supplier auth
 DROP TABLE IF EXISTS supplier_invitations CASCADE;
@@ -232,6 +242,11 @@ DROP FUNCTION IF EXISTS get_rfq_summary(UUID) CASCADE;
 DROP FUNCTION IF EXISTS get_org_integration_status(UUID, TEXT) CASCADE;
 DROP FUNCTION IF EXISTS get_org_odoo_configs(UUID) CASCADE;
 DROP FUNCTION IF EXISTS is_supplier_account(TEXT) CASCADE;
+-- The blueplm.customers extension's functions (see the Customers tables above).
+DROP FUNCTION IF EXISTS seed_customer_categories(UUID) CASCADE;
+DROP FUNCTION IF EXISTS seed_customer_categories_for_new_org() CASCADE;
+DROP FUNCTION IF EXISTS update_customers_module_timestamp() CASCADE;
+DROP FUNCTION IF EXISTS customers_extension_schema_version() CASCADE;
 DROP FUNCTION IF EXISTS update_integration_credentials_timestamp() CASCADE;
 DROP FUNCTION IF EXISTS update_org_rfq_settings(UUID, JSONB) CASCADE;
 DROP FUNCTION IF EXISTS update_org_branding(UUID, TEXT, TEXT) CASCADE;

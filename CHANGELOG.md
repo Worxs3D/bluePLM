@@ -27,6 +27,10 @@ BluePLM core**: organizations that use it install the `blueplm.customers` extens
   authenticated, permission-checked and rate limited like core routes, for the organizations
   named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
   without a restart. Schema 104 adds the package columns, the bucket and its policies.
+- **Extension workspaces in module settings.** Your modules, the organization defaults and team
+  defaults list each loaded extension workspace with a show/hide toggle (they are placed by
+  their group and cannot be reordered yet), so a Customers module hidden while it was core,
+  where it was off by default, can be turned back on.
 
 ### Changed
 
@@ -39,7 +43,8 @@ BluePLM core**: organizations that use it install the `blueplm.customers` extens
   which the extension's manifest now declares. Nothing is dropped from existing databases:
   customer tables, data and saved team permissions stay as they are, and a saved sidebar
   position for Customers is kept for the extension's workspace. Schema 104 removes the module
-  from the release manifest and the verify and emergency-lockdown tools; API 3.0.0
+  from the release manifest and the verify and emergency-lockdown tools (`reset.sql` still
+  drops the customer tables when they exist, so a full reset leaves a clean database); API 3.0.0
   because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
   `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
   redeploy, then install `blueplm.customers-<version>.bpx` for the organization.

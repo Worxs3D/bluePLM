@@ -79,13 +79,13 @@ install error:
 
 - **Install-time.** `15`, `20` and `30` declare foreign keys against `files`, so they
   abort immediately with `relation "files" does not exist` if `10-source-files.sql` has
-  not been run. `40`, `50` and `60` have no such link and install on bare `core.sql`.
+  not been run. `40` and `50` have no such link and install on bare `core.sql`.
 - **Run-time.** Function bodies are only parsed for syntax at creation. A function that
   queries a table from a module you skipped installs happily and fails on first call.
   This is the `checkin_file` → `15-inspection.sql` case above, and it is the reason
   "installed without errors" is not the same as "working".
 
-Beyond that, `20`, `30`, `40`, `50` and `60` do not depend on one another and may be
+Beyond that, `20`, `30`, `40` and `50` do not depend on one another and may be
 installed in any relative order — verified by installing them in different orders and
 diffing the resulting schema. The only difference is the physical column order of
 `organizations`, which several modules extend with `ALTER TABLE ... ADD COLUMN`; that is
