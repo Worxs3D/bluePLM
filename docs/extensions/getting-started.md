@@ -1,5 +1,7 @@
 # Getting Started with BluePLM Extensions
 
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 This guide walks you through creating your first BluePLM extension from scratch. By the end, you'll have a working extension that adds a command to sync files with an external service.
 
 ## Prerequisites

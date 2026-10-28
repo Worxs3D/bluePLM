@@ -341,8 +341,6 @@ export const de: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Lieferantendatenbank',
     supplierPortal: 'Lieferantenportal',
-    // Customers
-    customers: 'Kunden',
     // Integrations
     googleDrive: 'Google Drive',
     // System
@@ -944,6 +942,48 @@ export const de: TranslationDict = {
     },
   },
 
+  nativeExtensions: {
+    modulesTitle: "Erweiterungsmodule",
+    modulesDescription: "Arbeitsbereiche aus den Erweiterungen Ihrer Organisation. Umschalten, um sie in der Seitenleiste ein- oder auszublenden; sie werden nach ihrer eigenen Gruppe platziert.",
+    moduleRestricted: "Von Ihrem Administrator eingeschränkt",
+    moduleFrom: "aus {{extension}}",
+    crashedTitle: "Diese Erweiterung funktioniert nicht mehr",
+    crashedBody: "Die Erweiterung {{id}} hat in diesem Bereich einen Fehler ausgelöst. Der Rest von BluePLM ist nicht betroffen.",
+    retry: "Erneut versuchen",
+    notLoaded: "Diese Erweiterung ist nicht geladen.",
+    permissionsGroup: "Erweiterungen",
+    sectionTitle: "Organisationserweiterungen",
+    sectionDescription: "Native Erweiterungen laufen mit vollem Zugriff für alle in der Organisation, auf jedem Computer und auf dem API-Server. Installieren Sie nur Pakete, denen Sie vertrauen. Jede läuft nur aus genau dem hier installierten Paket, geprüft per SHA-256.",
+    installButton: "Für die Organisation installieren",
+    reload: "Neu laden",
+    installed: "{{name}} {{version}} installiert",
+    confirmInstallTitle: "{{name}} {{version}} für die Organisation installieren?",
+    confirmInstallBody: "Sie läuft mit vollem Zugriff in BluePLM für jedes Mitglied und im API-Server, sobald dieser seine Erweiterungen neu lädt.",
+    confirm: "Installieren",
+    cancel: "Abbrechen",
+    sqlTitle: "Diese SQL-Dateien anwenden",
+    sqlBody: "Diese Erweiterung bringt Datenbankänderungen mit. Wenden Sie jede Datei der Reihe nach im Supabase-SQL-Editor an. BluePLM führt selbst nie SQL aus.",
+    copy: "Kopieren",
+    copied: "Kopiert",
+    enable: "Aktivieren",
+    disable: "Deaktivieren",
+    uninstall: "Deinstallieren",
+    confirmUninstall: "{{name}} für alle deinstallieren",
+    statusActive: "Läuft",
+    statusLoading: "Wird geladen",
+    statusError: "Laden fehlgeschlagen",
+    statusDisabled: "Deaktiviert",
+    statusNotLoaded: "Auf diesem Computer nicht geladen",
+    none: "Keine Organisationserweiterungen installiert.",
+    error: "Fehler: {{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "Erweiterungen aus dem Store oder aus einer Datei werden auf diesem Computer gespeichert, aber nicht ausgeführt: Die Sandbox-Laufzeit ist nicht verfügbar. Organisationserweiterungen, die oben von einem Administrator installiert werden, werden ausgeführt.",
+    installedNotRunning: 'Installiert (wird nicht ausgeführt)',
+    adminOnly: 'Nur Administratoren können Erweiterungen installieren oder entfernen.',
+    notAdminError: 'Nur Administratoren können Erweiterungen installieren.',
+  },
   strandedEdits: {
     checkoutLost:
       'Ihr Auschecken von {{name}} wurde aufgehoben, während ungespeicherte Metadatenänderungen offen waren. Sie können nicht mehr eingecheckt werden. Beim erneuten Auschecken werden Sie gefragt, bevor sie verworfen werden - notieren Sie sie, falls Sie sie brauchen.',

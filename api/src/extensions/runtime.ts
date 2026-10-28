@@ -111,15 +111,16 @@ export interface RuntimeOptions {
  * @returns Callable API reference for sandbox
  */
 export function createExtensionRuntime(options: RuntimeOptions): ExtensionServerAPICallable {
-  const { orgId, extensionId, manifest, supabase, request, user, encryptionKey } = options
+  const { orgId, extensionId, manifest, request, user, encryptionKey } = options
 
   // Get allowed domains from manifest permissions
   const allowedDomains = extractAllowedDomains(manifest.permissions.server ?? [])
 
   // Create storage and secrets handlers
-  const storage = new ExtensionStorage(supabase, orgId, extensionId)
+  // Storage, secrets and the HTTP log use the service-role client themselves
+  // (their tables are service-role only), filtered by org and extension.
+  const storage = new ExtensionStorage(orgId, extensionId)
   const secrets = new ExtensionSecrets(
-    supabase,
     orgId,
     extensionId,
     encryptionKey,
@@ -158,7 +159,6 @@ export function createExtensionRuntime(options: RuntimeOptions): ExtensionServer
           allowedDomains,
           orgId,
           extensionId,
-          supabase,
         )
 
       // Context getters
@@ -194,7 +194,6 @@ async function handleHttpFetch(
   allowedDomains: string[],
   orgId: string,
   extensionId: string,
-  supabase: SupabaseClient,
 ): Promise<SerializableResponse> {
   const startTime = Date.now()
   let status = 0
@@ -258,7 +257,7 @@ async function handleHttpFetch(
   } finally {
     // Log the HTTP request
     const duration = Date.now() - startTime
-    await logHttpRequest(supabase, {
+    await logHttpRequest({
       org_id: orgId,
       extension_id: extensionId,
       method: options?.method ?? 'GET',

@@ -102,7 +102,8 @@ expensive than starting them.
 
 Eighteen repairs re-apply a file. Five of those are release modules:
 `10-source-files.sql` (227 KB) twice, for NC2 and NC17, plus `30-supply-chain`,
-`50-extensions` and `60-customers`. Re-running 227 KB of `CREATE OR REPLACE` is
+`50-extensions` (NC18 re-applies `core.sql` since 4.8.0, when `60-customers`
+left core with the Customers extension). Re-running 227 KB of `CREATE OR REPLACE` is
 thousands of catalogue writes. Estimate 10-20 seconds each, so roughly a minute
 across the suite.
 

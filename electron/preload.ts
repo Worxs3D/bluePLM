@@ -938,14 +938,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // EXTENSION SYSTEM API
   // ═══════════════════════════════════════════════════════════════════════════════
 
+  // Per-machine extension packages (store browsing, install, uninstall; never run),
+  // and org-installed native extensions (prepare/prune/inspect; see native.ts).
   extensions: {
     // ----- Queries -----
     getAll: () => ipcRenderer.invoke('extensions:get-all'),
     getExtension: (extensionId: string) =>
       ipcRenderer.invoke('extensions:get-extension', extensionId),
-    getHostStatus: () => ipcRenderer.invoke('extensions:get-host-status'),
-    getExtensionStats: (extensionId: string) =>
-      ipcRenderer.invoke('extensions:get-extension-stats', extensionId),
 
     // ----- Store Operations -----
     fetchStore: () => ipcRenderer.invoke('extensions:fetch-store'),
@@ -968,150 +967,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('extensions:install-from-file', bpxPath, acknowledgeUnsigned),
     uninstall: (extensionId: string) => ipcRenderer.invoke('extensions:uninstall', extensionId),
 
-    // ----- Lifecycle -----
-    enable: (extensionId: string) => ipcRenderer.invoke('extensions:enable', extensionId),
-    disable: (extensionId: string) => ipcRenderer.invoke('extensions:disable', extensionId),
-    activate: (extensionId: string) => ipcRenderer.invoke('extensions:activate', extensionId),
-    deactivate: (extensionId: string) => ipcRenderer.invoke('extensions:deactivate', extensionId),
-    kill: (extensionId: string, reason: string) =>
-      ipcRenderer.invoke('extensions:kill', extensionId, reason),
+    // ----- Native extensions (org-installed, SHA-256 pinned) -----
+    nativePrepare: (request: {
+      extensionId: string
+      version: string
+      sha256: string
+      downloadUrl: string
+    }) => ipcRenderer.invoke('extensions:native-prepare', request),
+    nativePrune: (keepShas: string[]) => ipcRenderer.invoke('extensions:native-prune', keepShas),
+    nativeInspect: () => ipcRenderer.invoke('extensions:native-inspect'),
 
-    // ----- Updates -----
-    checkUpdates: () => ipcRenderer.invoke('extensions:check-updates'),
-    update: (extensionId: string, version?: string) =>
-      ipcRenderer.invoke('extensions:update', extensionId, version),
-    rollback: (extensionId: string) => ipcRenderer.invoke('extensions:rollback', extensionId),
-    pinVersion: (extensionId: string, version: string) =>
-      ipcRenderer.invoke('extensions:pin-version', extensionId, version),
-    unpinVersion: (extensionId: string) =>
-      ipcRenderer.invoke('extensions:unpin-version', extensionId),
-
-    // ----- Event Listeners -----
+    // ----- Events -----
+    // Main sends this after an install ('installed') and an uninstall ('not-installed').
     onStateChange: (
       callback: (event: {
         extensionId: string
-        state: string
-        previousState?: string
-        error?: string
+        state: 'installed' | 'not-installed'
         timestamp: number
       }) => void,
     ) => {
       const handler = (
         _: Electron.IpcRendererEvent,
-        event: {
-          extensionId: string
-          state: string
-          previousState?: string
-          error?: string
-          timestamp: number
-        },
+        event: { extensionId: string; state: 'installed' | 'not-installed'; timestamp: number },
       ) => callback(event)
       ipcRenderer.on('extension:state-change', handler)
       return () => ipcRenderer.removeListener('extension:state-change', handler)
-    },
-
-    onViolation: (
-      callback: (event: {
-        violation: { type: string; extensionId: string; timestamp: number; details: unknown }
-        killed: boolean
-      }) => void,
-    ) => {
-      const handler = (
-        _: Electron.IpcRendererEvent,
-        event: {
-          violation: { type: string; extensionId: string; timestamp: number; details: unknown }
-          killed: boolean
-        },
-      ) => callback(event)
-      ipcRenderer.on('extension:violation', handler)
-      return () => ipcRenderer.removeListener('extension:violation', handler)
-    },
-
-    onUpdateAvailable: (
-      callback: (
-        updates: Array<{
-          extensionId: string
-          currentVersion: string
-          newVersion: string
-          changelog?: string
-          breaking: boolean
-        }>,
-      ) => void,
-    ) => {
-      const handler = (
-        _: Electron.IpcRendererEvent,
-        updates: Array<{
-          extensionId: string
-          currentVersion: string
-          newVersion: string
-          changelog?: string
-          breaking: boolean
-        }>,
-      ) => callback(updates)
-      ipcRenderer.on('extension:update-available', handler)
-      return () => ipcRenderer.removeListener('extension:update-available', handler)
-    },
-
-    onInstallProgress: (
-      callback: (event: {
-        extensionId: string
-        phase: string
-        percent: number
-        message: string
-        error?: string
-      }) => void,
-    ) => {
-      const handler = (
-        _: Electron.IpcRendererEvent,
-        event: {
-          extensionId: string
-          phase: string
-          percent: number
-          message: string
-          error?: string
-        },
-      ) => callback(event)
-      ipcRenderer.on('extension:install-progress', handler)
-      return () => ipcRenderer.removeListener('extension:install-progress', handler)
-    },
-
-    onHostStats: (
-      callback: (
-        stats: Array<{
-          extensionId: string
-          memoryUsageMB: number
-          cpuTimeMs: number
-          lastActivityMs: number
-        }>,
-      ) => void,
-    ) => {
-      const handler = (
-        _: Electron.IpcRendererEvent,
-        stats: Array<{
-          extensionId: string
-          memoryUsageMB: number
-          cpuTimeMs: number
-          lastActivityMs: number
-        }>,
-      ) => callback(stats)
-      ipcRenderer.on('extension-host:stats', handler)
-      return () => ipcRenderer.removeListener('extension-host:stats', handler)
-    },
-
-    onUICall: (
-      callback: (call: {
-        extensionId: string
-        method: string
-        args: unknown[]
-        callId?: string
-      }) => void,
-    ) => {
-      const handler = (
-        _: Electron.IpcRendererEvent,
-        call: { extensionId: string; method: string; args: unknown[]; callId?: string },
-      ) => callback(call)
-      ipcRenderer.on('extension:ui-call', handler)
-      return () => ipcRenderer.removeListener('extension:ui-call', handler)
     },
   },
 })

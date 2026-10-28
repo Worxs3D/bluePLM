@@ -319,8 +319,6 @@ export const zhCN: TranslationDict = {
     // 供应链 - 供应商
     supplierDatabase: '供应商数据库',
     supplierPortal: '供应商门户',
-    // 客户
-    customers: '客户',
     // 集成
     googleDrive: 'Google 云端硬盘',
     // 系统
@@ -892,6 +890,48 @@ export const zhCN: TranslationDict = {
     },
   },
 
+  nativeExtensions: {
+    modulesTitle: "扩展模块",
+    modulesDescription: "由组织扩展添加的工作区。切换以在侧边栏中显示或隐藏它们；它们按各自的分组放置。",
+    moduleRestricted: "已被管理员限制",
+    moduleFrom: "来自 {{extension}}",
+    crashedTitle: "此扩展已停止工作",
+    crashedBody: "扩展 {{id}} 在此区域出错。BluePLM 的其余部分不受影响。",
+    retry: "重试",
+    notLoaded: "此扩展未加载。",
+    permissionsGroup: "扩展",
+    sectionTitle: "组织扩展",
+    sectionDescription: "原生扩展以完全访问权限为组织中的每个人运行，包括每台计算机和 API 服务器。只安装您信任的包。每个扩展只从此处安装的确切包运行，并通过 SHA-256 校验。",
+    installButton: "为组织安装",
+    reload: "重新加载",
+    installed: "已安装 {{name}} {{version}}",
+    confirmInstallTitle: "为组织安装 {{name}} {{version}}？",
+    confirmInstallBody: "它将以完全访问权限在 BluePLM 中为每位成员运行，并在 API 服务器重新加载扩展后在服务器上运行。",
+    confirm: "安装",
+    cancel: "取消",
+    sqlTitle: "应用这些 SQL 文件",
+    sqlBody: "此扩展包含数据库更改。请在 Supabase SQL 编辑器中按顺序应用每个文件。BluePLM 自身从不执行 SQL。",
+    copy: "复制",
+    copied: "已复制",
+    enable: "启用",
+    disable: "停用",
+    uninstall: "卸载",
+    confirmUninstall: "为所有人卸载 {{name}}",
+    statusActive: "运行中",
+    statusLoading: "加载中",
+    statusError: "加载失败",
+    statusDisabled: "已停用",
+    statusNotLoaded: "未在此计算机上加载",
+    none: "尚未安装组织扩展。",
+    error: "错误：{{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "来自商店或文件的扩展保存在此计算机上但不会运行：沙盒运行时不可用。由管理员在上方安装的组织扩展会运行。",
+    installedNotRunning: '已安装（未运行）',
+    adminOnly: '只有管理员可以安装或移除扩展。',
+    notAdminError: '只有管理员可以安装扩展。',
+  },
   strandedEdits: {
     checkoutLost:
       '您对 {{name}} 的检出已被释放，而它仍有未保存的元数据编辑。这些编辑已无法检入。再次检出该文件时，会在丢弃它们之前询问您 - 如有需要请先记下。',

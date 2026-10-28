@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_MODULE_ORDER, mergeModuleOrder, type ModuleId } from './modules'
+import {
+  DEFAULT_MODULE_ORDER,
+  MODULES,
+  MODULES_MOVED_TO_EXTENSIONS,
+  mergeModuleOrder,
+  type ModuleId,
+} from './modules'
 
 describe('mergeModuleOrder', () => {
   it('leaves an order that already has every module untouched', () => {
@@ -47,13 +53,23 @@ describe('mergeModuleOrder', () => {
     expect(mergeModuleOrder(saved, defaults)).toContain('retired')
   })
 
-  it('places Customers above Settings for an order saved before it existed', () => {
-    const saved = DEFAULT_MODULE_ORDER.filter((id) => id !== 'customers')
+  it('keeps Customers where an order saved while it was core had it', () => {
+    // Customers is now the blueplm.customers extension, registered under the
+    // same id; the saved position is what places its workspace.
+    expect(DEFAULT_MODULE_ORDER).not.toContain('customers')
+    expect(MODULES.some((m) => (m.id as string) === 'customers')).toBe(false)
+    expect(MODULES_MOVED_TO_EXTENSIONS).toContain('customers')
+
+    const itemsAt = DEFAULT_MODULE_ORDER.indexOf('items')
+    const saved = [
+      ...DEFAULT_MODULE_ORDER.slice(0, itemsAt + 1),
+      'customers',
+      ...DEFAULT_MODULE_ORDER.slice(itemsAt + 1),
+    ] as ModuleId[]
 
     const merged = mergeModuleOrder(saved)
 
-    expect(merged.indexOf('customers')).toBeGreaterThanOrEqual(0)
-    expect(merged.indexOf('customers')).toBeLessThan(merged.indexOf('settings'))
-    expect(merged).toEqual([...DEFAULT_MODULE_ORDER])
+    expect(merged).toEqual(saved)
+    expect(merged.indexOf('customers' as ModuleId)).toBe(itemsAt + 1)
   })
 })

@@ -1,5 +1,7 @@
 # Server API Reference
 
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 The Extension Server API (`ExtensionServerAPI`) is available to server-side handlers running in V8 isolates on the organization's API server. This sandboxed environment provides secure access to database storage, secrets, and external HTTP requests.
 
 ## Overview

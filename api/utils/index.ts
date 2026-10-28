@@ -14,16 +14,9 @@ export { getFileTypeFromExtension } from './files.js'
 // LIKE pattern escaping (copy of src/lib/utils/likePattern.ts - see that file)
 export { escapeLikePattern, folderPrefixLikePattern } from './likePattern.js'
 
-// Odoo integration.
-// The unguarded transport (odooXmlRpc) is deliberately not re-exported here:
-// reaching it requires importing './odoo.js' directly, so the guarded wrapper
-// is the path of least resistance for new code.
+// Odoo integration (supplier sync). The read-only guarded wrapper
+// (odooReadOnlyCall) left with the Customers extension, its only user.
 export {
-  odooReadOnlyCall,
-  assertOdooReadOnly,
-  ODOO_ALLOWED_ORM_METHODS,
-  ODOO_ALLOWED_MODELS,
-  ODOO_ALLOWED_SERVICE_METHODS,
   normalizeOdooUrl,
   testOdooConnection,
   fetchOdooSuppliers,

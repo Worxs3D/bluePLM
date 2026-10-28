@@ -13,10 +13,10 @@ import trashRoutes from './trash.js'
 import activityRoutes from './activity.js'
 import partsRoutes from './parts.js'
 import supplierRoutes from './suppliers.js'
-import customerRoutes from './customers.js'
 import integrationRoutes from './integrations/index.js'
 import webhookRoutes from './webhooks.js'
 import extensionRoutes from './extensions.js'
+import { getNativeExtensionRuntime, nativeExtensionRoutes } from '../src/native-extensions/index.js'
 
 const routes: FastifyPluginAsync = async (fastify) => {
   // Health & Info (no prefix)
@@ -43,9 +43,6 @@ const routes: FastifyPluginAsync = async (fastify) => {
   // Supplier routes (includes part-supplier linking and costing)
   await fastify.register(supplierRoutes)
 
-  // Customer routes (Odoo customer/order sync)
-  await fastify.register(customerRoutes)
-
   // Integration routes (Odoo)
   await fastify.register(integrationRoutes)
 
@@ -54,6 +51,12 @@ const routes: FastifyPluginAsync = async (fastify) => {
 
   // Extension routes (sandbox handlers + admin endpoints)
   await fastify.register(extensionRoutes)
+
+  // Native extension routes (/ext/<id>/...) and POST /admin/extensions/reload
+  await fastify.register(nativeExtensionRoutes, {
+    runtime: getNativeExtensionRuntime(),
+    autoLoad: true,
+  })
 }
 
 export default routes

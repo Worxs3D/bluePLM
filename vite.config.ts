@@ -61,9 +61,6 @@ export default defineConfig({
           },
         },
       },
-      // Note: extension-host/host.html and preload.ts are handled by
-      // scripts/copy-extension-host.js, which runs from both the predev and build scripts.
-      // It must run after `vite build` so this plugin's outDir cleaning cannot remove them.
     ]),
     renderer(),
   ],

@@ -1,5 +1,7 @@
 # Contributions Reference
 
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 The `contributes` section of your manifest declares what your extension adds to BluePLM. This reference covers all contribution types with detailed examples.
 
 ## Overview

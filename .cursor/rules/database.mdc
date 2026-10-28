@@ -52,7 +52,7 @@ is not optional (see Change Protocol above).
 
 Building a database from nothing means running `core.sql`, then `10-source-files.sql`,
 `15-inspection.sql`, `20-change-control.sql`, `30-supply-chain.sql`,
-`40-integrations.sql`, `50-extensions.sql`, `60-customers.sql`. Modules `10` and `15` are
+`40-integrations.sql`, `50-extensions.sql`. Modules `10` and `15` are
 both required despite `15` being numbered like an optional one — `checkin_file()` in
 module 10 queries tables that module 15 creates. See `supabase/README.md`.
 

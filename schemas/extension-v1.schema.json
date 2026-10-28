@@ -68,7 +68,7 @@
       "type": "string",
       "enum": ["sandboxed", "native"],
       "default": "sandboxed",
-      "description": "Extension category: 'sandboxed' (default) runs in isolated environment, 'native' runs in main process (verified only)"
+      "description": "Extension category: 'sandboxed' (default; no runtime yet) or 'native' (full trust; installed for an organization by an admin and pinned by SHA-256)"
     },
     "native": {
       "type": "object",
@@ -130,11 +130,11 @@
     },
     "main": {
       "type": "string",
-      "description": "Client-side entry point (Extension Host). Must export activate(context, api) function."
+      "description": "Client-side entry point. Native extensions: an ES module exporting activate(host) and optionally deactivate()."
     },
     "serverMain": {
       "type": "string",
-      "description": "Server-side entry point (API sandbox)"
+      "description": "Server-side entry point. Native extensions: an ES module exporting register(app), loaded in-process by the API."
     },
     "activationEvents": {
       "type": "array",
@@ -156,6 +156,13 @@
       "type": "object",
       "description": "What the extension contributes to BluePLM",
       "properties": {
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PermissionResourceContribution"
+          },
+          "description": "Team permission resources the extension checks (listed in the permissions editor while the extension is installed for the organization)"
+        },
         "views": {
           "type": "array",
           "items": {
@@ -242,6 +249,26 @@
     }
   },
   "definitions": {
+    "PermissionResourceContribution": {
+      "type": "object",
+      "required": ["resource", "label", "actions"],
+      "properties": {
+        "resource": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$",
+          "description": "Permission resource id, e.g. 'module:customers'"
+        },
+        "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["view", "create", "edit", "delete", "admin"] }
+        }
+      },
+      "additionalProperties": false
+    },
     "ViewContribution": {
       "type": "object",
       "required": ["id", "name", "location", "component"],

@@ -1,5 +1,7 @@
 # Extension Structure
 
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 This document covers the directory layout, file organization, and project setup for BluePLM extensions.
 
 ## Directory Layout

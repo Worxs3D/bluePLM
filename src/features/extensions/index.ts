@@ -16,5 +16,4 @@ export { VerificationBadge } from './VerificationBadge'
 // Dialogs
 export { ExtensionDetailsDialog } from './ExtensionDetailsDialog'
 export { InstallDialog } from './InstallDialog'
-export { UpdateDialog } from './UpdateDialog'
 export { SideloadDialog } from './SideloadDialog'

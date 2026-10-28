@@ -339,8 +339,6 @@ export const fr: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Base de données fournisseurs',
     supplierPortal: 'Portail fournisseurs',
-    // Customers
-    customers: 'Clients',
     // Integrations
     googleDrive: 'Google Drive',
     // System
@@ -940,6 +938,48 @@ export const fr: TranslationDict = {
     },
   },
 
+  nativeExtensions: {
+    modulesTitle: "Modules d'extensions",
+    modulesDescription: "Espaces de travail ajoutés par les extensions de votre organisation. Activez-les ou désactivez-les pour les afficher ou les masquer dans la barre latérale ; ils sont placés selon leur propre groupe.",
+    moduleRestricted: "Restreint par votre administrateur",
+    moduleFrom: "de {{extension}}",
+    crashedTitle: "Cette extension ne fonctionne plus",
+    crashedBody: "L'extension {{id}} a rencontré une erreur dans cette zone. Le reste de BluePLM n'est pas affecté.",
+    retry: "Réessayer",
+    notLoaded: "Cette extension n'est pas chargée.",
+    permissionsGroup: "Extensions",
+    sectionTitle: "Extensions de l'organisation",
+    sectionDescription: "Les extensions natives s'exécutent avec un accès complet pour tous les membres de l'organisation, sur chaque ordinateur et sur le serveur API. N'installez que des paquets de confiance. Chacune ne s'exécute qu'à partir du paquet exact installé ici, vérifié par SHA-256.",
+    installButton: "Installer pour l'organisation",
+    reload: "Recharger",
+    installed: "{{name}} {{version}} installée",
+    confirmInstallTitle: "Installer {{name}} {{version}} pour l'organisation ?",
+    confirmInstallBody: "Elle s'exécutera avec un accès complet dans BluePLM pour chaque membre, et sur le serveur API dès qu'il rechargera ses extensions.",
+    confirm: "Installer",
+    cancel: "Annuler",
+    sqlTitle: "Appliquez ces fichiers SQL",
+    sqlBody: "Cette extension apporte des modifications de la base de données. Appliquez chaque fichier dans l'éditeur SQL de Supabase, dans l'ordre. BluePLM n'exécute jamais de SQL lui-même.",
+    copy: "Copier",
+    copied: "Copié",
+    enable: "Activer",
+    disable: "Désactiver",
+    uninstall: "Désinstaller",
+    confirmUninstall: "Désinstaller {{name}} pour tous",
+    statusActive: "En cours",
+    statusLoading: "Chargement",
+    statusError: "Échec du chargement",
+    statusDisabled: "Désactivée",
+    statusNotLoaded: "Non chargée sur cet ordinateur",
+    none: "Aucune extension d'organisation installée.",
+    error: "Erreur : {{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "Les extensions de la boutique ou d'un fichier sont conservées sur cet ordinateur mais ne sont pas exécutées : l'environnement isolé n'est pas disponible. Les extensions de l'organisation, installées ci-dessus par un administrateur, sont exécutées.",
+    installedNotRunning: 'Installée (non exécutée)',
+    adminOnly: 'Seuls les administrateurs peuvent installer ou supprimer des extensions.',
+    notAdminError: 'Seuls les administrateurs peuvent installer des extensions.',
+  },
   strandedEdits: {
     checkoutLost:
       'Votre extraction de {{name}} a été libérée alors qu’il avait des modifications de métadonnées non enregistrées. Elles ne peuvent plus être archivées. En extrayant à nouveau le fichier, vous serez averti avant qu’elles soient supprimées - notez-les si vous en avez besoin.',

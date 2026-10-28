@@ -55,6 +55,12 @@ The schema is organized into modular SQL files:
 - `supabase/modules/40-integrations.sql` - External system integrations
 - `supabase/modules/50-extensions.sql` - Extension framework
 
+Customers (Odoo customer sync, the `customer_*` and `customers` tables) is not a core module
+since 4.8.0. Its schema ships with the native extension `blueplm.customers` as
+`sql/customers.sql`; databases that ran the old `60-customers.sql` keep the tables. Its RLS
+depends on core's `user_can_access_module('customers')`, `user_has_team_permission()` and the
+progress columns of `integration_sync_log`.
+
 ### Entity Relationship Diagram
 
 ```mermaid

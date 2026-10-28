@@ -361,8 +361,6 @@ export const en: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Supplier Database',
     supplierPortal: 'Supplier Portal',
-    // Customers
-    customers: 'Customers',
     // Integrations
     googleDrive: 'Google Drive',
     // System
@@ -2195,6 +2193,48 @@ export const en: TranslationDict = {
   },
 
   // Unsaved metadata edits left behind when a checkout went away without a check-in
+  nativeExtensions: {
+    modulesTitle: "Extension modules",
+    modulesDescription: "Workspaces added by your organization's extensions. Toggle to show or hide them in the sidebar; they are placed by their own group.",
+    moduleRestricted: "Restricted by your administrator",
+    moduleFrom: "from {{extension}}",
+    crashedTitle: "This extension stopped working",
+    crashedBody: "The extension {{id}} hit an error in this area. The rest of BluePLM is unaffected.",
+    retry: "Try again",
+    notLoaded: "This extension is not loaded.",
+    permissionsGroup: "Extensions",
+    sectionTitle: "Organization extensions",
+    sectionDescription: "Native extensions run with full access for everyone in the organization, on every computer and on the API server. Install only packages you trust. Each one runs only from the exact package installed here, checked by SHA-256.",
+    installButton: "Install for organization",
+    reload: "Reload",
+    installed: "Installed {{name}} {{version}}",
+    confirmInstallTitle: "Install {{name}} {{version}} for the organization?",
+    confirmInstallBody: "It will run with full access in BluePLM for every member, and in the API server once the server reloads its extensions.",
+    confirm: "Install",
+    cancel: "Cancel",
+    sqlTitle: "Apply these SQL files",
+    sqlBody: "This extension ships database changes. Apply each file in the Supabase SQL editor, in order. BluePLM never runs SQL itself.",
+    copy: "Copy",
+    copied: "Copied",
+    enable: "Enable",
+    disable: "Disable",
+    uninstall: "Uninstall",
+    confirmUninstall: "Uninstall {{name}} for everyone",
+    statusActive: "Running",
+    statusLoading: "Loading",
+    statusError: "Failed to load",
+    statusDisabled: "Disabled",
+    statusNotLoaded: "Not loaded on this computer",
+    none: "No organization extensions installed.",
+    error: "Error: {{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "Extensions from the store or a file are kept on this computer but not run: the sandboxed runtime is not available. Organization extensions, installed by an administrator above, do run.",
+    installedNotRunning: 'Installed (not running)',
+    adminOnly: 'Only administrators can install or remove extensions.',
+    notAdminError: 'Only administrators can install extensions.',
+  },
   strandedEdits: {
     checkoutLost:
       'Your checkout of {{name}} was released while it had unsaved metadata edits. They can no longer be checked in. Checking the file out again will ask before discarding them — note them down if you need them.',

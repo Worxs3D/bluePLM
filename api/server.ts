@@ -184,12 +184,12 @@ const PLUGIN_TIMEOUT_MS = 30 * MS_PER_SECOND
 
 // `connectionTimeout` is deliberately left unlimited. It is an inactivity timer
 // on the socket, and it cannot tell an idle attacker from a request whose
-// handler is working: a customer sync is a single HTTP request that runs for
-// many minutes with nothing on the wire. Setting it to 5 seconds was observed
-// to kill an 8-second handler mid-flight. The case it would cover - a client
-// that connects and sends nothing - is already closed after 60 seconds by
-// Node's headers timeout, which was also observed. So it buys nothing here and
-// would cost long-running syncs.
+// handler is working: a long sync (such as the Customers extension's) is a
+// single HTTP request that runs for many minutes with nothing on the wire.
+// Setting it to 5 seconds was observed to kill an 8-second handler mid-flight.
+// The case it would cover - a client that connects and sends nothing - is
+// already closed after 60 seconds by Node's headers timeout, which was also
+// observed. So it buys nothing here and would cost long-running syncs.
 
 /**
  * The rate limiter throws whatever this builder returns, and the error handler
@@ -285,7 +285,6 @@ export async function buildServer(): Promise<FastifyInstance> {
         { name: 'Files', description: 'File operations' },
         { name: 'ERP', description: 'ERP integration endpoints (Odoo, SAP, etc.)' },
         { name: 'Suppliers', description: 'Supplier/vendor management and costing' },
-        { name: 'Customers', description: 'Customer sync and enrichment' },
         { name: 'Versions', description: 'Version history' },
         { name: 'Trash', description: 'Deleted files' },
         { name: 'Activity', description: 'Activity feed' },

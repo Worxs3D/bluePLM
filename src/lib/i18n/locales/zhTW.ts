@@ -319,8 +319,6 @@ export const zhTW: TranslationDict = {
     // 供應鏈 - 供應商
     supplierDatabase: '供應商資料庫',
     supplierPortal: '供應商入口',
-    // 客戶
-    customers: '客戶',
     // 整合
     googleDrive: 'Google 雲端硬碟',
     // 系統
@@ -892,6 +890,48 @@ export const zhTW: TranslationDict = {
     },
   },
 
+  nativeExtensions: {
+    modulesTitle: "擴充模組",
+    modulesDescription: "由組織擴充功能新增的工作區。切換以在側邊欄中顯示或隱藏它們；它們依各自的群組放置。",
+    moduleRestricted: "已被管理員限制",
+    moduleFrom: "來自 {{extension}}",
+    crashedTitle: "此擴充功能已停止運作",
+    crashedBody: "擴充功能 {{id}} 在此區域發生錯誤。BluePLM 的其餘部分不受影響。",
+    retry: "重試",
+    notLoaded: "此擴充功能未載入。",
+    permissionsGroup: "擴充功能",
+    sectionTitle: "組織擴充功能",
+    sectionDescription: "原生擴充功能以完整存取權限為組織中的每個人執行，包括每台電腦與 API 伺服器。只安裝您信任的套件。每個擴充功能只會從此處安裝的確切套件執行，並以 SHA-256 驗證。",
+    installButton: "為組織安裝",
+    reload: "重新載入",
+    installed: "已安裝 {{name}} {{version}}",
+    confirmInstallTitle: "為組織安裝 {{name}} {{version}}？",
+    confirmInstallBody: "它將以完整存取權限在 BluePLM 中為每位成員執行，並在 API 伺服器重新載入擴充功能後於伺服器上執行。",
+    confirm: "安裝",
+    cancel: "取消",
+    sqlTitle: "套用這些 SQL 檔案",
+    sqlBody: "此擴充功能包含資料庫變更。請在 Supabase SQL 編輯器中依序套用每個檔案。BluePLM 本身從不執行 SQL。",
+    copy: "複製",
+    copied: "已複製",
+    enable: "啟用",
+    disable: "停用",
+    uninstall: "解除安裝",
+    confirmUninstall: "為所有人解除安裝 {{name}}",
+    statusActive: "執行中",
+    statusLoading: "載入中",
+    statusError: "載入失敗",
+    statusDisabled: "已停用",
+    statusNotLoaded: "未在此電腦上載入",
+    none: "尚未安裝組織擴充功能。",
+    error: "錯誤：{{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "來自商店或檔案的擴充功能保存在此電腦上但不會執行：沙箱執行環境無法使用。由管理員在上方安裝的組織擴充功能會執行。",
+    installedNotRunning: '已安裝（未執行）',
+    adminOnly: '只有管理員可以安裝或移除擴充功能。',
+    notAdminError: '只有管理員可以安裝擴充功能。',
+  },
   strandedEdits: {
     checkoutLost:
       '您對 {{name}} 的簽出已被釋放，而它仍有未儲存的中繼資料編輯。這些編輯已無法簽入。再次簽出該檔案時，會在捨棄它們之前詢問您 - 如有需要請先記下。',

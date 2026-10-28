@@ -334,8 +334,6 @@ export const pt: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Base de Dados de Fornecedores',
     supplierPortal: 'Portal de Fornecedores',
-    // Customers
-    customers: 'Clientes',
     // Integrations
     googleDrive: 'Google Drive',
     // System
@@ -934,6 +932,48 @@ export const pt: TranslationDict = {
     },
   },
 
+  nativeExtensions: {
+    modulesTitle: "Módulos de extensões",
+    modulesDescription: "Áreas de trabalho adicionadas pelas extensões da sua organização. Ative ou desative para mostrá-las ou ocultá-las na barra lateral; são posicionadas pelo próprio grupo.",
+    moduleRestricted: "Restrito pelo seu administrador",
+    moduleFrom: "de {{extension}}",
+    crashedTitle: "Esta extensão parou de funcionar",
+    crashedBody: "A extensão {{id}} encontrou um erro nesta área. O restante do BluePLM não foi afetado.",
+    retry: "Tentar novamente",
+    notLoaded: "Esta extensão não está carregada.",
+    permissionsGroup: "Extensões",
+    sectionTitle: "Extensões da organização",
+    sectionDescription: "Extensões nativas são executadas com acesso total para todos na organização, em cada computador e no servidor da API. Instale apenas pacotes confiáveis. Cada uma é executada somente a partir do pacote exato instalado aqui, verificado por SHA-256.",
+    installButton: "Instalar para a organização",
+    reload: "Recarregar",
+    installed: "{{name}} {{version}} instalada",
+    confirmInstallTitle: "Instalar {{name}} {{version}} para a organização?",
+    confirmInstallBody: "Ela será executada com acesso total no BluePLM para cada membro, e no servidor da API quando ele recarregar suas extensões.",
+    confirm: "Instalar",
+    cancel: "Cancelar",
+    sqlTitle: "Aplique estes arquivos SQL",
+    sqlBody: "Esta extensão traz alterações no banco de dados. Aplique cada arquivo no editor SQL do Supabase, em ordem. O BluePLM nunca executa SQL por conta própria.",
+    copy: "Copiar",
+    copied: "Copiado",
+    enable: "Ativar",
+    disable: "Desativar",
+    uninstall: "Desinstalar",
+    confirmUninstall: "Desinstalar {{name}} para todos",
+    statusActive: "Em execução",
+    statusLoading: "Carregando",
+    statusError: "Falha ao carregar",
+    statusDisabled: "Desativada",
+    statusNotLoaded: "Não carregada neste computador",
+    none: "Nenhuma extensão da organização instalada.",
+    error: "Erro: {{message}}",
+  },
+  extensionRuntime: {
+    notice:
+      "Extensões da loja ou de um arquivo ficam neste computador, mas não são executadas: o ambiente isolado não está disponível. As extensões da organização, instaladas acima por um administrador, são executadas.",
+    installedNotRunning: 'Instalada (não executada)',
+    adminOnly: 'Somente administradores podem instalar ou remover extensões.',
+    notAdminError: 'Somente administradores podem instalar extensões.',
+  },
   strandedEdits: {
     checkoutLost:
       'O seu check-out de {{name}} foi libertado enquanto tinha alterações de metadados não guardadas. Já não podem ser enviadas por check-in. Ao fazer check-out do ficheiro novamente, será perguntado antes de as descartar - anote-as se precisar delas.',

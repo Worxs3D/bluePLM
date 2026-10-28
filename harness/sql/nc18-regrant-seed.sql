@@ -1,24 +1,33 @@
 -- NC18: put back the exposure release 95 closed, in the exact way it existed.
 --
--- Not by editing the function and not by removing the REVOKE from the module
--- file, because neither is how it happened. Supabase's bootstrap runs
+-- Not by editing the function and not by removing the REVOKE from core.sql,
+-- because neither is how it happened. Supabase's bootstrap runs
 --
 --   ALTER DEFAULT PRIVILEGES IN SCHEMA public
 --     GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
 --
--- so seed_customer_categories was born with an explicit
--- `authenticated=X/postgres` in its ACL, and the `REVOKE ALL ... FROM PUBLIC`
--- beside it removed a different entry. One GRANT reproduces the state exactly:
--- the function is unchanged, the module file is unchanged, and the only
--- difference is the one ACL entry that made it callable over PostgREST.
+-- so the org seeders were born with an explicit `authenticated=X/postgres` in
+-- their ACL, and a `REVOKE ALL ... FROM PUBLIC` beside them removed a different
+-- entry. One GRANT reproduces the state exactly: the function is unchanged,
+-- core.sql is unchanged, and the only difference is the one ACL entry that
+-- made it callable over PostgREST.
 --
--- What must happen next is that verification refuses. Before this release it
--- did not, because check_org_gates() carried a list of three function names it
--- would not probe and this was on it - so the check that exists to catch this
--- shape had been told not to look at the one instance of it.
+-- The target is create_default_job_titles(p_org_id, p_created_by), a core
+-- SECURITY DEFINER seeder with the same shape as the function this control was
+-- written for (seed_customer_categories, which left core with the Customers
+-- extension in 4.8.0): it takes p_org_id, so check_org_gates() probes it, and
+-- its insert fails on the foreign key for a synthesized organization, so the
+-- verdict is 'unverifiable'. It is also on withdrawn_execute_manifest(), so
+-- check_withdrawn_execute() reports it too; the control's tokens require the
+-- org-gate verdict, which is what this control tests.
+--
+-- What must happen next is that verification refuses. Before release 95 it
+-- did not, because check_org_gates() carried a list of function names it
+-- would not probe - so the check that exists to catch this shape had been told
+-- not to look.
 --
 -- anon is deliberately not granted. enforce_anon_execute_posture() would take
 -- it straight back and the control would be testing that sweep instead of this
 -- check; authenticated is the role that was actually exposed, and no sweep
 -- touches it.
-GRANT EXECUTE ON FUNCTION seed_customer_categories(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION create_default_job_titles(UUID, UUID) TO authenticated;

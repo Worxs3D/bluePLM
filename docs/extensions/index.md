@@ -2,6 +2,41 @@
 
 Welcome to the BluePLM Extension Development documentation. This comprehensive guide covers everything you need to know to create, test, and publish extensions for BluePLM.
 
+## Status: what actually runs (October 2026)
+
+Read this first. Most of these pages describe the sandboxed extension API as designed, not as
+it runs today.
+
+- **Native extensions run.** A `.bpx` with `"category": "native"` is installed for the whole
+  organization by an administrator (Settings > Extensions > Install for organization). The
+  package is stored in the organization's `org-extensions` bucket and pinned by SHA-256 in
+  `org_installed_extensions`. Every desktop runs `client/index.js` (`activate(host)`) and the
+  API runs `server/index.js` (`register(app)`, routes under `/ext/<extension-id>/`) only from
+  bytes that match that hash. Native code has full trust; it is not sandboxed. The contract
+  (host API v1, request shape, error codes) is in
+  `.cursor/plans/extensions-native-runtime.plan.md` until it moves to its own page here.
+- **The API runs native server code only for organizations its operator trusts.** A native
+  extension's `server/index.js` runs in-process with the API's full privileges, including the
+  service-role database client that can read every organization. An org admin installing one
+  is therefore not enough: the API loads native extensions only for the organization ids in
+  `NATIVE_EXTENSIONS_ORG_IDS` (comma-separated UUIDs). Unset means none are loaded and `/ext`
+  answers `503 NATIVE_EXTENSIONS_DISABLED`; an org not in the list gets `403
+  NATIVE_EXTENSIONS_DISABLED`. Each allowed org gets its own copy (keyed by org and extension),
+  extracted into a private 0700 directory under `NATIVE_EXTENSIONS_DIR` (default: the OS temp
+  directory). `POST /admin/extensions/reload` reloads only the calling admin's org.
+- **Store and sideloaded packages do not run.** Per-machine installs (store or file) are
+  listed and can be uninstalled, but there is no Extension Host and no client sandbox, and the
+  API's V8 isolate pool returns `SANDBOX_UNAVAILABLE` for every sandboxed handler. Native
+  packages are refused on every per-machine path.
+- **What install checks:** the package id and version against the manifest schema, every zip
+  entry (no absolute paths, no `..`, no symlinks, size and entry limits), for store downloads
+  the SHA-256 in the `X-Content-SHA256` response header, and for native packages the
+  `engines.blueplm` range. `SIGNATURE` files are not verified.
+- **Who can install:** organization administrators only (the `admin` role or the
+  Administrators team).
+- **Permissions:** `contributes.permissions` declares team permission resources; the
+  permissions editor lists them while the extension is installed for the organization.
+
 ## What are BluePLM Extensions?
 
 BluePLM Extensions are modular packages that add functionality to the BluePLM desktop application. Built on an enterprise-grade architecture inspired by VS Code and Atlassian Forge, extensions can:
@@ -14,7 +49,7 @@ BluePLM Extensions are modular packages that add functionality to the BluePLM de
 
 ## Architecture Overview
 
-Extensions run in isolated environments for security:
+The designed architecture (not running today; see Status above):
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -56,7 +91,7 @@ Extensions run in isolated environments for security:
 | Category | Description | Trust Level |
 |----------|-------------|-------------|
 | **Sandboxed** (default) | Runs in isolated Extension Host + V8 sandbox | Community or Verified |
-| **Native** | Runs in main Electron process (SolidWorks, etc.) | Verified only |
+| **Native** | Full trust in the app and the API; see Status above | Organization admins only |
 
 ## Documentation Sections
 
