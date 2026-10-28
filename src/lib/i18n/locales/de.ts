@@ -1005,4 +1005,16 @@ export const de: TranslationDict = {
       config_descriptions: 'Beschreibungen der Konfigurationen',
     },
   },
+  // Top-bar SOLIDWORKS status: the signed-in user's own license
+  solidworksLicense: {
+    title: 'Ihre SOLIDWORKS-Lizenz',
+    noneAssigned: 'Ihnen ist keine zugewiesen',
+    checking: 'Wird geprüft…',
+    match: 'SOLIDWORKS auf diesem Computer verwendet Ihre Lizenz.',
+    mismatch: 'SOLIDWORKS auf diesem Computer läuft nicht mit der Ihnen zugewiesenen Lizenz.',
+    unassigned: 'SOLIDWORKS auf diesem Computer ist lizenziert, aber BluePLM hat Ihnen keine Lizenz zugewiesen.',
+    unknown: 'Es konnte nicht gelesen werden, welche Lizenz SOLIDWORKS auf diesem Computer verwendet.',
+    askAdmin: 'Bitten Sie einen Administrator, Ihre Lizenzzuweisung zu prüfen.',
+    warningBadge: 'Lizenzwarnung',
+  },
 }

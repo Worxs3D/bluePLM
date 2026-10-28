@@ -1339,6 +1339,8 @@ declare global {
         getLicenseRegistry: () => Promise<{
           success: boolean
           serialNumbers?: string[]
+          /** product = registry value name, serial = value data */
+          entries?: { product: string; serial: string }[]
           error?: string
         }>
         setLicenseRegistry: (

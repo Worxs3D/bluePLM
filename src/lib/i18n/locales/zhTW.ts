@@ -953,4 +953,16 @@ export const zhTW: TranslationDict = {
       config_descriptions: '組態描述',
     },
   },
+  // Top-bar SOLIDWORKS status: the signed-in user's own license
+  solidworksLicense: {
+    title: '您的 SOLIDWORKS 授權',
+    noneAssigned: '未指派給您',
+    checking: '正在檢查…',
+    match: '此電腦上的 SOLIDWORKS 使用的是您的授權。',
+    mismatch: '此電腦上的 SOLIDWORKS 未使用指派給您的授權。',
+    unassigned: '此電腦上的 SOLIDWORKS 已取得授權，但 BluePLM 未指派授權給您。',
+    unknown: '無法讀取此電腦上 SOLIDWORKS 使用的授權。',
+    askAdmin: '請聯絡管理員檢查您的授權指派。',
+    warningBadge: '授權警告',
+  },
 }

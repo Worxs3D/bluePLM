@@ -953,4 +953,16 @@ export const zhCN: TranslationDict = {
       config_descriptions: '配置描述',
     },
   },
+  // Top-bar SOLIDWORKS status: the signed-in user's own license
+  solidworksLicense: {
+    title: '您的 SOLIDWORKS 许可证',
+    noneAssigned: '未为您分配',
+    checking: '正在检查…',
+    match: '此计算机上的 SOLIDWORKS 使用的是您的许可证。',
+    mismatch: '此计算机上的 SOLIDWORKS 未使用分配给您的许可证。',
+    unassigned: '此计算机上的 SOLIDWORKS 已获得许可，但 BluePLM 未为您分配许可证。',
+    unknown: '无法读取此计算机上 SOLIDWORKS 使用的许可证。',
+    askAdmin: '请联系管理员检查您的许可证分配。',
+    warningBadge: '许可证警告',
+  },
 }

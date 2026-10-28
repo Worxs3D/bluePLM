@@ -2256,4 +2256,16 @@ export const en: TranslationDict = {
       config_descriptions: 'Configuration descriptions',
     },
   },
+  // Top-bar SOLIDWORKS status: the signed-in user's own license
+  solidworksLicense: {
+    title: 'Your SOLIDWORKS license',
+    noneAssigned: 'None assigned to you',
+    checking: 'Checking…',
+    match: 'SOLIDWORKS on this computer uses your license.',
+    mismatch: 'SOLIDWORKS on this computer is not running on the license assigned to you.',
+    unassigned: 'SOLIDWORKS on this computer is licensed, but BluePLM has no license assigned to you.',
+    unknown: 'Could not read which license SOLIDWORKS uses on this computer.',
+    askAdmin: 'Ask an administrator to check your license assignment.',
+    warningBadge: 'License warning',
+  },
 }

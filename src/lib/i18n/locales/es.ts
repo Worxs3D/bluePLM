@@ -994,4 +994,16 @@ export const es: TranslationDict = {
       config_descriptions: 'Descripciones de las configuraciones',
     },
   },
+  // Top-bar SOLIDWORKS status: the signed-in user's own license
+  solidworksLicense: {
+    title: 'Su licencia de SOLIDWORKS',
+    noneAssigned: 'No tiene ninguna asignada',
+    checking: 'Comprobando…',
+    match: 'SOLIDWORKS en este equipo usa su licencia.',
+    mismatch: 'SOLIDWORKS en este equipo no se ejecuta con la licencia que tiene asignada.',
+    unassigned: 'SOLIDWORKS en este equipo tiene licencia, pero BluePLM no le tiene asignada ninguna.',
+    unknown: 'No se pudo leer qué licencia usa SOLIDWORKS en este equipo.',
+    askAdmin: 'Pida a un administrador que revise la asignación de su licencia.',
+    warningBadge: 'Aviso de licencia',
+  },
 }

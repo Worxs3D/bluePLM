@@ -58,6 +58,7 @@ import {
   requestSwProcessClose,
 } from './swProcess/query'
 import type { LiveSwProcess, SwProcessQuerySource } from './swProcess/types'
+import { parseSerialNumbersRegistry, type RegistrySerialEntry } from './solidworksSerialRegistry'
 
 // ============================================
 // Configuration Constants
@@ -2711,7 +2712,10 @@ const SW_LICENSE_REGISTRY_PATH =
 
 interface LicenseRegistryResult {
   success: boolean
+  /** The serials (value data), one per licensed product. */
   serialNumbers?: string[]
+  /** Product (value name) and serial (value data) pairs. */
+  entries?: RegistrySerialEntry[]
   error?: string
 }
 
@@ -2731,7 +2735,8 @@ interface LicenseCheckResult {
  * Get all SOLIDWORKS serial numbers from the registry.
  * Reads from HKLM\Software\SolidWorks\Licenses\Serial Numbers
  *
- * Serial numbers are stored as value names under this key.
+ * The installer stores one value per product: name = product, data = serial
+ * (see parseSerialNumbersRegistry).
  */
 function getSolidWorksLicenseFromRegistry(): LicenseRegistryResult {
   if (process.platform !== 'win32') {
@@ -2745,34 +2750,17 @@ function getSolidWorksLicenseFromRegistry(): LicenseRegistryResult {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
-    const serialNumbers: string[] = []
-    const lines = result.split('\n')
-
-    for (const line of lines) {
-      // Skip empty lines and the key path line
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('HKEY_')) continue
-
-      // Value format: "SerialNumber    REG_SZ    (some value or empty)"
-      // We want the value name (serial number), not the data
-      const match = trimmed.match(/^(\S+)\s+REG_/)
-      if (match) {
-        const valueName = match[1]
-        // Filter out default value and other non-serial entries
-        if (valueName && valueName !== '(Default)') {
-          serialNumbers.push(valueName)
-        }
-      }
-    }
+    const entries = parseSerialNumbersRegistry(result)
+    const serialNumbers = entries.map((e) => e.serial)
 
     log(`[SolidWorks License] Found ${serialNumbers.length} serial number(s) in registry`)
-    return { success: true, serialNumbers }
+    return { success: true, serialNumbers, entries }
   } catch (error) {
     const errorStr = String(error)
     // "The system was unable to find the specified registry key" - key doesn't exist
     if (errorStr.includes('unable to find') || errorStr.includes('cannot find')) {
       log('[SolidWorks License] Registry key does not exist (no licenses installed)')
-      return { success: true, serialNumbers: [] }
+      return { success: true, serialNumbers: [], entries: [] }
     }
     logError(`[SolidWorks License] Failed to read registry: ${errorStr}`)
     return { success: false, error: errorStr }

@@ -6,7 +6,27 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expects 105.
+Schema 106. Apply `supabase/core.sql`, then modules 10 to 50 in order (106 changes module 40);
+the app expects 106.
+
+### Security
+
+- **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
+  could read every row of `solidworks_licenses`, serial included, and every assignment. Now an
+  administrator (`is_org_admin()`) reads every licence; anyone else reads only the licences
+  assigned to them, and only their own assignments. The policy that let a user update any column
+  of their own assignment is gone: repointing `license_id` exposed another serial. Activation
+  still works through `activate_solidworks_license()`. Released clients keep working: the licence
+  screen already showed a non-admin only their own licences.
+
+### Added
+
+- **Your SOLIDWORKS licence in the top bar.** The SOLIDWORKS status panel shows the licence
+  BluePLM assigns to you (masked, last 8 characters) and a warning, also on the top-bar glyph,
+  when SOLIDWORKS on this computer runs on a different serial or you have none assigned. The
+  machine's serial is read from `HKLM\Software\SolidWorks\Licenses\Serial Numbers`, where the
+  installer writes one value per product (name = product, data = serial). Serials compare
+  ignoring spaces, dashes and case.
 
 ### Added
 
@@ -26,6 +46,8 @@ Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expect
 
 ### Fixed
 
+- The SOLIDWORKS licence registry reader returned the registry value names ("SolidWorks",
+  "Inspection") as serial numbers; it now returns the serials.
 - **Organization color swatches work on databases built from `core.sql`** (schema 105, #75 by
   @Worxs3D). The client already read and wrote `color_swatches.org_id`, but the table had no such
   column, so the shared palette failed. The table gains `org_id` and `created_by`, each row
