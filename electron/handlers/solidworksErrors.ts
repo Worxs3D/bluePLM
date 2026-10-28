@@ -176,6 +176,8 @@ export const SW_OPERATION_TIMEOUTS: Readonly<{
   packAndGo: number
   replaceComponent: number
   addComponent: number
+  extractDrawingCharacteristics: number
+  applyInspectionBalloons: number
 
   // Service management
   serviceStartup: number
@@ -217,6 +219,8 @@ export const SW_OPERATION_TIMEOUTS: Readonly<{
   packAndGo: 600_000, // 10 minutes (many file copies)
   replaceComponent: 120_000, // 2 minutes (triggers rebuilds)
   addComponent: 60_000, // 1 minute
+  extractDrawingCharacteristics: 300_000, // 5 minutes (opens the drawing in full SOLIDWORKS, walks every view)
+  applyInspectionBalloons: 600_000, // 10 minutes (opens, edits and saves the drawing)
 
   // Service management
   serviceStartup: 30_000, // 30 seconds

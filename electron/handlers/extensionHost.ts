@@ -252,6 +252,9 @@ function createExtensionHostWindow(): BrowserWindow {
 /**
  * Handle Extension Host crash with auto-restart
  */
+const CRASH_COUNT_RESET_MS = 60 * 60_000
+let lastCrashAt = 0
+
 function handleHostCrash(reason: string): void {
   // Don't attempt restart if app is shutting down
   if (isShuttingDown) {
@@ -262,6 +265,10 @@ function handleHostCrash(reason: string): void {
   deps?.logError('Extension Host crashed', { reason, restartCount: hostState.restartCount })
 
   hostState.lastError = reason
+  // The limit is for a crash loop, not a lifetime: a crash a long quiet stretch after the last
+  // one starts the count again, so a month-long session is not left without extensions.
+  if (Date.now() - lastCrashAt > CRASH_COUNT_RESET_MS) hostState.restartCount = 0
+  lastCrashAt = Date.now()
   hostState.restartCount++
 
   // Limit restart attempts

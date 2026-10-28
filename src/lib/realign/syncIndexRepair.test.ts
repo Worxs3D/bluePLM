@@ -99,7 +99,7 @@ describe('repairSyncIndex', () => {
     expect(result.attempted).toBe(1)
   })
 
-  it('re-stamps ino, localVersion and localHash for every server-backed file', async () => {
+  it('re-stamps ino and localVersion for every server-backed file, leaving the stamped hash alone', async () => {
     getSyncIndex.mockResolvedValue(new Map([['part.sldprt', {}]]))
     const target = serverBacked({
       relativePath: 'part.sldprt',
@@ -111,7 +111,7 @@ describe('repairSyncIndex', () => {
     await repairSyncIndex({ vaultId: VAULT_ID, files: [target] })
 
     expect(updateInodes).toHaveBeenCalledWith(VAULT_ID, [
-      { path: 'part.sldprt', ino: 42, localVersion: 7, localHash: 'abc123' },
+      { path: 'part.sldprt', ino: 42, localVersion: 7 },
     ])
   })
 
@@ -149,5 +149,36 @@ describe('repairSyncIndex', () => {
     expect(removeFromSyncIndex).not.toHaveBeenCalled()
     expect(updateInodes).not.toHaveBeenCalled()
     expect(result.outcome).toBe('ok')
+  })
+
+  // Pinned by mutation testing (.cursor/plans/test-mutation-report.md).
+  it('includes a locally modified file: its path is still the server path', async () => {
+    getSyncIndex.mockResolvedValue(new Map())
+    const modified = serverBacked({ relativePath: 'edited.sldprt', diffStatus: 'modified', ino: 9 })
+
+    await repairSyncIndex({ vaultId: VAULT_ID, files: [modified] })
+
+    expect(addToSyncIndex).toHaveBeenCalledWith(VAULT_ID, ['edited.sldprt'])
+    expect(updateInodes).toHaveBeenCalledWith(VAULT_ID, [{ path: 'edited.sldprt', ino: 9, localVersion: undefined }])
+  })
+
+  it('never indexes a folder or a synced-looking file with no server row', async () => {
+    getSyncIndex.mockResolvedValue(new Map())
+    const folder = serverBacked({ relativePath: 'Parts', isDirectory: true, ino: 5 })
+    const unbacked = file({ relativePath: 'loose.sldprt', diffStatus: undefined, ino: 6 })
+
+    const result = await repairSyncIndex({ vaultId: VAULT_ID, files: [folder, unbacked] })
+
+    expect(addToSyncIndex).not.toHaveBeenCalled()
+    expect(updateInodes).not.toHaveBeenCalled()
+    expect(result.outcome).toBe('nothing-to-do')
+  })
+
+  it('does not stamp an inode of 0, which the filesystem reports when it has none', async () => {
+    getSyncIndex.mockResolvedValue(new Map([['part.sldprt', {}]]))
+
+    await repairSyncIndex({ vaultId: VAULT_ID, files: [serverBacked({ relativePath: 'part.sldprt', ino: 0 })] })
+
+    expect(updateInodes).not.toHaveBeenCalled()
   })
 })

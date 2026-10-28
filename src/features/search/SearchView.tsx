@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Search, File, FolderOpen, X, ClipboardList, Tag, Loader2 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { isPathHidden } from '@/lib/hiddenFolders'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
@@ -18,8 +19,16 @@ interface ECOSearchResult {
 }
 
 export function SearchView() {
-  const { files, searchQuery, setSearchQuery, toggleFileSelection, selectedFiles, organization } =
-    usePDMStore()
+  const { files, searchQuery, setSearchQuery, toggleFileSelection, selectedFiles, organization } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      searchQuery: s.searchQuery,
+      setSearchQuery: s.setSearchQuery,
+      toggleFileSelection: s.toggleFileSelection,
+      selectedFiles: s.selectedFiles,
+      organization: s.organization,
+    })),
+  )
 
   const { enforcedHiddenPaths } = useHiddenFolders()
 

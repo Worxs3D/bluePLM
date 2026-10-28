@@ -47,6 +47,12 @@ interface SyncIndexEntry {
   ino?: number // NTFS file index number (survives renames)
   localVersion?: number // last known synced version (survives app restart)
   localHash?: string // last known content hash (survives app restart)
+  // Size and modified time (ms) of the file localHash was computed from. Without them a
+  // restart cannot tell a hash still true of the disk from one the user's edits since made
+  // stale. Absent on entries written before 4.7.5, and whenever localHash was written
+  // without a known stamp.
+  hashSize?: number
+  hashMtimeMs?: number
   // Path the index knows only from local state: the old server path of a file moved
   // on disk, or its new local path before the move reaches the server. Carrying the
   // inode at both paths is what keeps rename detection working across loads, so these
@@ -57,6 +63,19 @@ interface SyncIndexEntry {
   // on disk. Set only for paths that were server-backed, so it means "the server row
   // for a file we hold went away", not "this path is unknown to the server".
   orphanedAt?: number
+}
+
+/** Size and modified time (ms) of the file a stored hash was computed from. */
+export interface HashStamp {
+  size: number
+  mtimeMs: number
+}
+
+/** Version and hash state restored from the sync index on load. */
+export interface SavedVersionData {
+  localVersion?: number
+  localHash?: string
+  hashStamp?: HashStamp
 }
 
 /** What the loader needs about a path the sync index knows. */
@@ -73,16 +92,27 @@ let dbPromise: Promise<IDBDatabase> | null = null
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise
 
-  dbPromise = new Promise((resolve, reject) => {
+  // Neither a failed open nor a connection the browser closed is remembered: the next call opens
+  // again. A rejected promise kept here used to disable the index until the app restarted.
+  const attempt: Promise<IDBDatabase> = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => {
       log.error('[SyncIndex]', 'Failed to open IndexedDB', { error: request.error })
+      if (dbPromise === attempt) dbPromise = null
       reject(request.error)
     }
 
     request.onsuccess = () => {
-      resolve(request.result)
+      const db = request.result
+      db.onclose = () => {
+        if (dbPromise === attempt) dbPromise = null
+      }
+      db.onversionchange = () => {
+        db.close()
+        if (dbPromise === attempt) dbPromise = null
+      }
+      resolve(db)
     }
 
     request.onupgradeneeded = (event) => {
@@ -98,8 +128,140 @@ function openDB(): Promise<IDBDatabase> {
       }
     }
   })
+  dbPromise = attempt
+  return attempt
+}
 
-  return dbPromise
+/** One entry for updateInodes. */
+export interface InodeUpdate {
+  path: string
+  ino: number
+  localVersion?: number
+  localHash?: string
+  hashStamp?: HashStamp
+  localOnly?: boolean
+}
+
+/** At or above this many entries updateInodes reads the vault's entries once instead of one by one. */
+const BULK_READ_MIN_ENTRIES = 256
+
+/**
+ * Puts queued per callback by the bulk writes (putInChunks). Each put clones its entry on the main
+ * thread; a first load writes every entry, and 30k puts in one callback blocked for 1-2 s right
+ * after the vault came up (render-perf nightly).
+ */
+export const SYNC_INDEX_WRITE_CHUNK = 200
+
+/**
+ * Queue `entries` as puts, SYNC_INDEX_WRITE_CHUNK per callback. Each chunk is queued from the last
+ * request of the one before, which keeps the transaction open, so the write stays one atomic
+ * transaction. `done` runs once the last put succeeded, or with the error when one failed (a
+ * failed put aborts the transaction, so nothing more is written).
+ */
+function putInChunks(store: IDBObjectStore, entries: SyncIndexEntry[], done: (error?: unknown) => void): void {
+  let next = 0
+  const chunk = () => {
+    const end = Math.min(next + SYNC_INDEX_WRITE_CHUNK, entries.length)
+    let last: IDBRequest | null = null
+    for (; next < end; next++) last = store.put(entries[next])
+    if (!last) {
+      done()
+      return
+    }
+    const request = last
+    request.onsuccess = next < entries.length ? chunk : () => done()
+    request.onerror = () => done(request.error)
+  }
+  chunk()
+}
+
+/** True when two entries of a server-backed path hold the same data, ignoring lastSyncedAt. */
+function isSameServerBackedEntry(existing: SyncIndexEntry, next: SyncIndexEntry): boolean {
+  return (
+    existing.relativePath === next.relativePath &&
+    !existing.localOnly &&
+    existing.orphanedAt === undefined &&
+    existing.ino === next.ino &&
+    existing.localVersion === next.localVersion &&
+    existing.localHash === next.localHash &&
+    existing.hashSize === next.hashSize &&
+    existing.hashMtimeMs === next.hashMtimeMs
+  )
+}
+
+/**
+ * The entry `update` turns `existing` into, or null when that is what is stored already. A hash
+ * written without a stamp clears the stored stamp, so a stamp never vouches for a hash it was not
+ * taken with.
+ */
+function applyInodeUpdate(
+  key: string,
+  vaultId: string,
+  existing: SyncIndexEntry | undefined,
+  { path, ino, localVersion, localHash, hashStamp, localOnly }: InodeUpdate,
+): SyncIndexEntry | null {
+  if (!existing) {
+    return {
+      key,
+      vaultId,
+      relativePath: path.toLowerCase(),
+      lastSyncedAt: Date.now(),
+      ino,
+      localVersion,
+      localHash,
+      hashSize: localHash !== undefined ? hashStamp?.size : undefined,
+      hashMtimeMs: localHash !== undefined ? hashStamp?.mtimeMs : undefined,
+      localOnly,
+    }
+  }
+
+  const next: SyncIndexEntry = { ...existing, ino }
+  if (localVersion !== undefined) next.localVersion = localVersion
+  if (localHash !== undefined) {
+    next.localHash = localHash
+    next.hashSize = hashStamp?.size
+    next.hashMtimeMs = hashStamp?.mtimeMs
+  }
+  if (localOnly) {
+    next.localOnly = true
+  } else {
+    delete next.localOnly
+  }
+
+  const unchanged =
+    existing.ino === next.ino &&
+    existing.localVersion === next.localVersion &&
+    existing.localHash === next.localHash &&
+    existing.hashSize === next.hashSize &&
+    existing.hashMtimeMs === next.hashMtimeMs &&
+    Boolean(existing.localOnly) === Boolean(next.localOnly)
+  return unchanged ? null : next
+}
+
+/**
+ * The vault's entries, read once for every caller that asks while the read is still running. A
+ * load asks for the sync index, the inode map and the version map at the same moment, and three
+ * separate reads cloned every entry three times. A write starting drops the shared read, so a
+ * caller after it reads afresh.
+ */
+const inFlightVaultReads = new Map<string, Promise<SyncIndexEntry[]>>()
+
+function readVaultEntries(db: IDBDatabase, vaultId: string): Promise<SyncIndexEntry[]> {
+  const shared = inFlightVaultReads.get(vaultId)
+  if (shared) return shared
+
+  const read = new Promise<SyncIndexEntry[]>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly')
+    const request = transaction.objectStore(STORE_NAME).index('vaultId').getAll(IDBKeyRange.only(vaultId))
+    request.onsuccess = () => resolve(request.result as SyncIndexEntry[])
+    request.onerror = () => reject(request.error)
+  })
+  inFlightVaultReads.set(vaultId, read)
+  const forget = () => {
+    if (inFlightVaultReads.get(vaultId) === read) inFlightVaultReads.delete(vaultId)
+  }
+  read.then(forget, forget)
+  return read
 }
 
 /**
@@ -123,14 +285,8 @@ export async function getSyncIndex(vaultId: string): Promise<Map<string, SyncInd
   try {
     const db = await openDB()
 
-    return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly')
-      const store = transaction.objectStore(STORE_NAME)
-      const index = store.index('vaultId')
-      const request = index.getAll(IDBKeyRange.only(vaultId))
-
-      request.onsuccess = () => {
-        const entries = request.result as SyncIndexEntry[]
+    return readVaultEntries(db, vaultId).then(
+      (entries) => {
         const now = Date.now()
         const paths = new Map<string, SyncIndexPathInfo>()
         let tombstoned = 0
@@ -148,14 +304,13 @@ export async function getSyncIndex(vaultId: string): Promise<Map<string, SyncInd
           '[SyncIndex]',
           `Loaded ${paths.size} synced paths (${tombstoned} orphan tombstones) for vault ${vaultId}`,
         )
-        resolve(paths)
-      }
-
-      request.onerror = () => {
-        log.error('[SyncIndex]', 'Failed to read sync index', { error: request.error })
-        resolve(new Map())
-      }
-    })
+        return paths
+      },
+      (error: unknown) => {
+        log.error('[SyncIndex]', 'Failed to read sync index', { error })
+        return new Map()
+      },
+    )
   } catch (error) {
     log.error('[SyncIndex]', 'Error reading sync index', { error })
     return new Map()
@@ -172,6 +327,7 @@ export async function getSyncIndex(vaultId: string): Promise<Map<string, SyncInd
 export async function addToSyncIndex(vaultId: string, paths: string[]): Promise<void> {
   if (paths.length === 0) return
 
+  inFlightVaultReads.delete(vaultId)
   try {
     const db = await openDB()
     const now = Date.now()
@@ -226,6 +382,7 @@ export async function addToSyncIndex(vaultId: string, paths: string[]): Promise<
 export async function removeFromSyncIndex(vaultId: string, paths: string[]): Promise<void> {
   if (paths.length === 0) return
 
+  inFlightVaultReads.delete(vaultId)
   try {
     const db = await openDB()
 
@@ -270,6 +427,7 @@ export async function removeFromSyncIndex(vaultId: string, paths: string[]): Pro
  * @param vaultId - The vault ID to clear
  */
 export async function clearSyncIndex(vaultId: string): Promise<void> {
+  inFlightVaultReads.delete(vaultId)
   try {
     const db = await openDB()
 
@@ -339,6 +497,7 @@ export async function updateSyncIndexFromServer(
 ): Promise<void> {
   if (serverPaths.length === 0) return
 
+  inFlightVaultReads.delete(vaultId)
   try {
     const db = await openDB()
     const now = Date.now()
@@ -354,19 +513,7 @@ export async function updateSyncIndexFromServer(
       const existingRequest = vaultIndex.getAll(IDBKeyRange.only(vaultId))
       existingRequest.onsuccess = () => {
         const existingEntries = existingRequest.result as SyncIndexEntry[]
-        const existingDataMap = new Map<
-          string,
-          { ino?: number; localVersion?: number; localHash?: string }
-        >()
-        for (const e of existingEntries) {
-          if (e.ino || e.localVersion !== undefined || e.localHash) {
-            existingDataMap.set(e.key, {
-              ino: e.ino,
-              localVersion: e.localVersion,
-              localHash: e.localHash,
-            })
-          }
-        }
+        const existingByKey = new Map(existingEntries.map((e) => [e.key, e]))
 
         // Resolve entries whose paths are no longer on the server. Stale paths
         // accumulate from renames and prevent correct inode detection, so most are
@@ -401,46 +548,54 @@ export async function updateSyncIndexFromServer(
           }
         }
 
-        let completed = 0
-
+        // Rebuilt from scratch, so a path back on the server loses both localOnly
+        // and orphanedAt. That is the exit for a reconciled move and for a file
+        // another user restored, and it is why a stored flag is never authoritative.
+        // An entry that would come out the same is not written: this runs after every
+        // committed load, watcher refreshes included, and rewriting all ~27k entries
+        // each time was most of the IndexedDB traffic of a refresh that changed one
+        // file. lastSyncedAt, read only by getSyncIndexStats, then records the last
+        // change rather than the last load.
+        const writes: SyncIndexEntry[] = []
         for (const path of serverPaths) {
           const key = makeKey(vaultId, path)
-          const existingData = existingDataMap.get(key)
-          // Rebuilt from scratch, so a path back on the server loses both localOnly
-          // and orphanedAt. That is the exit for a reconciled move and for a file
-          // another user restored, and it is why a stored flag is never authoritative.
+          const existing = existingByKey.get(key)
           const entry: SyncIndexEntry = {
             key,
             vaultId,
             relativePath: path.toLowerCase(),
             lastSyncedAt: now,
-            ino: existingData?.ino,
-            localVersion: existingData?.localVersion,
-            localHash: existingData?.localHash,
+            ino: existing?.ino,
+            localVersion: existing?.localVersion,
+            localHash: existing?.localHash,
+            hashSize: existing?.hashSize,
+            hashMtimeMs: existing?.hashMtimeMs,
           }
-
-          const request = store.put(entry)
-          request.onsuccess = () => {
-            completed++
-            if (completed === serverPaths.length) {
-              log.info(
-                '[SyncIndex]',
-                `Updated sync index with ${serverPaths.length} server paths`,
-                {
-                  tombstonesCreated,
-                  tombstonesDropped,
-                },
-              )
-              resolve()
-            }
-          }
-          request.onerror = () => {
-            completed++
-            if (completed === serverPaths.length) {
-              resolve()
-            }
-          }
+          if (existing && isSameServerBackedEntry(existing, entry)) continue
+          writes.push(entry)
         }
+
+        const finish = () => {
+          log.info('[SyncIndex]', `Updated sync index with ${serverPaths.length} server paths`, {
+            written: writes.length,
+            tombstonesCreated,
+            tombstonesDropped,
+          })
+          resolve()
+        }
+        if (writes.length === 0) {
+          finish()
+          return
+        }
+
+        putInChunks(store, writes, (error) => {
+          if (error) {
+            log.error('[SyncIndex]', 'Failed to write server paths', { error })
+            resolve()
+            return
+          }
+          finish()
+        })
       }
 
       existingRequest.onerror = () => {
@@ -514,14 +669,8 @@ export async function getInodeMap(vaultId: string): Promise<Map<number, string[]
   try {
     const db = await openDB()
 
-    return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly')
-      const store = transaction.objectStore(STORE_NAME)
-      const index = store.index('vaultId')
-      const request = index.getAll(IDBKeyRange.only(vaultId))
-
-      request.onsuccess = () => {
-        const entries = request.result as SyncIndexEntry[]
+    return readVaultEntries(db, vaultId).then(
+      (entries) => {
         const map = new Map<number, string[]>()
         for (const entry of entries) {
           if (entry.ino && entry.ino > 0) {
@@ -537,14 +686,13 @@ export async function getInodeMap(vaultId: string): Promise<Map<number, string[]
           '[SyncIndex]',
           `Loaded inode map: ${map.size} entries with inodes for vault ${vaultId}`,
         )
-        resolve(map)
-      }
-
-      request.onerror = () => {
-        log.error('[SyncIndex]', 'Failed to read inode map', { error: request.error })
-        resolve(new Map())
-      }
-    })
+        return map
+      },
+      (error: unknown) => {
+        log.error('[SyncIndex]', 'Failed to read inode map', { error })
+        return new Map()
+      },
+    )
   } catch (error) {
     log.error('[SyncIndex]', 'Error reading inode map', { error })
     return new Map()
@@ -560,22 +708,18 @@ export async function getInodeMap(vaultId: string): Promise<Map<number, string[]
  * Creates new entries if none exist (upsert) so files from any entry path
  * (SolidWorks DM API extension, manual copy, etc.) get inode tracking.
  *
+ * `hashStamp` is the size and modified time of the file `localHash` was computed from. A
+ * hash written without one also clears any stored stamp, so a stamp never vouches for a
+ * hash it was not taken with.
+ *
  * `localOnly` must be passed for every entry whose path is not on the server on this
  * load, and left absent otherwise. It is derived per load and written unconditionally
  * so a path that becomes server-backed loses the flag; a stored flag is never trusted.
  */
-export async function updateInodes(
-  vaultId: string,
-  entries: Array<{
-    path: string
-    ino: number
-    localVersion?: number
-    localHash?: string
-    localOnly?: boolean
-  }>,
-): Promise<void> {
+export async function updateInodes(vaultId: string, entries: InodeUpdate[]): Promise<void> {
   if (entries.length === 0) return
 
+  inFlightVaultReads.delete(vaultId)
   try {
     const db = await openDB()
 
@@ -583,38 +727,51 @@ export async function updateInodes(
       const transaction = db.transaction(STORE_NAME, 'readwrite')
       const store = transaction.objectStore(STORE_NAME)
 
-      let completed = 0
+      // A load passes every matched file, and most of them have not changed since the last
+      // load. Writing those back unchanged was most of the IndexedDB traffic of a watcher
+      // refresh, so only an entry that comes out different is put.
+      const write = (key: string, existing: SyncIndexEntry | undefined, update: InodeUpdate) => {
+        const next = applyInodeUpdate(key, vaultId, existing, update)
+        if (next) store.put(next)
+        return next ?? existing
+      }
 
-      for (const { path, ino, localVersion, localHash, localOnly } of entries) {
-        const key = makeKey(vaultId, path)
+      if (entries.length >= BULK_READ_MIN_ENTRIES) {
+        // One read of the vault's entries instead of a get per entry.
+        const request = store.index('vaultId').getAll(IDBKeyRange.only(vaultId))
+        request.onsuccess = () => {
+          const existingByKey = new Map(
+            (request.result as SyncIndexEntry[]).map((entry) => [entry.key, entry]),
+          )
+          const writes: SyncIndexEntry[] = []
+          for (const update of entries) {
+            const key = makeKey(vaultId, update.path)
+            const updated = applyInodeUpdate(key, vaultId, existingByKey.get(key), update)
+            if (updated) {
+              writes.push(updated)
+              existingByKey.set(key, updated)
+            }
+          }
+          putInChunks(store, writes, (error) => {
+            if (error) log.error('[SyncIndex]', 'Failed to write inode updates', { error })
+            resolve()
+          })
+        }
+        request.onerror = () => {
+          log.error('[SyncIndex]', 'Failed to read entries for inode update', { error: request.error })
+          resolve()
+        }
+        return
+      }
+
+      let completed = 0
+      for (const update of entries) {
+        const key = makeKey(vaultId, update.path)
         const getRequest = store.get(key)
 
         getRequest.onsuccess = () => {
           completed++
-          const existing = getRequest.result as SyncIndexEntry | undefined
-          if (existing) {
-            existing.ino = ino
-            if (localVersion !== undefined) existing.localVersion = localVersion
-            if (localHash !== undefined) existing.localHash = localHash
-            if (localOnly) {
-              existing.localOnly = true
-            } else {
-              delete existing.localOnly
-            }
-            store.put(existing)
-          } else {
-            const newEntry: SyncIndexEntry = {
-              key,
-              vaultId,
-              relativePath: path.toLowerCase(),
-              lastSyncedAt: Date.now(),
-              ino,
-              localVersion,
-              localHash,
-              localOnly,
-            }
-            store.put(newEntry)
-          }
+          write(key, getRequest.result as SyncIndexEntry | undefined, update)
           if (completed === entries.length) {
             resolve()
           }
@@ -633,31 +790,101 @@ export async function updateInodes(
   }
 }
 
+/** Idle budget a batch needs. Between the frames of a scroll or an animation there is never this much. */
+const IDLE_BATCH_MIN_MS = 30
+
+/** Idle writes still running, per vault: `hurry` makes the rest go at once, `done` settles after. */
+const idleWrites = new Map<string, Array<{ hurry: () => void; done: Promise<void> }>>()
+
+/**
+ * updateInodes for work nobody waits on (the background hash pass): batches of
+ * SYNC_INDEX_WRITE_CHUNK, each its own small transaction reading its entries fresh, run one at a
+ * time when the main thread is really idle. A first load hashes every file, and writing all of
+ * them as soon as hashing finished put ~1.7 s of IndexedDB work into whatever the user was doing
+ * (the file list's scroll, in the render-perf run); slivers of idle time between frames were not
+ * enough either, so a batch waits for an idle period with room for it. The next load's read of
+ * the saved hashes (getVersionMap) finishes whatever is still waiting first, so nothing is
+ * rehashed for having been deferred.
+ */
+export function updateInodesWhenIdle(vaultId: string, entries: InodeUpdate[]): Promise<void> {
+  let hurried = false
+  let wake: (() => void) | null = null
+  const idle = () =>
+    new Promise<void>((resolve) => {
+      if (hurried || typeof requestIdleCallback !== 'function') {
+        setTimeout(resolve, 0)
+        return
+      }
+      wake = resolve
+      const wait = () =>
+        requestIdleCallback(
+          (deadline) => {
+            if (hurried || deadline.didTimeout || deadline.timeRemaining() >= IDLE_BATCH_MIN_MS) resolve()
+            else wait()
+          },
+          { timeout: 60_000 },
+        )
+      wait()
+    })
+
+  const run = async () => {
+    for (let start = 0; start < entries.length; start += SYNC_INDEX_WRITE_CHUNK) {
+      if (!hurried) await idle()
+      await updateInodes(vaultId, entries.slice(start, start + SYNC_INDEX_WRITE_CHUNK))
+    }
+  }
+  const job = {
+    hurry: () => {
+      hurried = true
+      wake?.()
+    },
+    done: run(),
+  }
+  const pending = idleWrites.get(vaultId) ?? []
+  pending.push(job)
+  idleWrites.set(vaultId, pending)
+  void job.done.finally(() => {
+    const left = (idleWrites.get(vaultId) ?? []).filter((other) => other !== job)
+    if (left.length > 0) idleWrites.set(vaultId, left)
+    else idleWrites.delete(vaultId)
+  })
+  return job.done
+}
+
+/**
+ * Finish idle writes now, for one vault or all of them: what reads the saved hashes must see
+ * them, and a measurement of a load counts them as that load's work.
+ */
+export async function finishIdleSyncIndexWrites(vaultId?: string): Promise<void> {
+  const pending = vaultId ? (idleWrites.get(vaultId) ?? []) : [...idleWrites.values()].flat()
+  for (const job of pending) job.hurry()
+  await Promise.all(pending.map((job) => job.done.catch(() => undefined)))
+}
+
 /**
  * Get a map of relativePath -> { localVersion, localHash } for all entries that have
  * version or hash data. Used during file loading to restore version/hash state after
  * app restart, preventing false-positive "outdated" (purple) highlights.
  */
-export async function getVersionMap(
-  vaultId: string,
-): Promise<Map<string, { localVersion?: number; localHash?: string }>> {
+export async function getVersionMap(vaultId: string): Promise<Map<string, SavedVersionData>> {
   try {
+    // Only when something waits: an await here would miss the vault read already in flight
+    // for the load's other readers, and read the whole vault a second time.
+    if (idleWrites.has(vaultId)) await finishIdleSyncIndexWrites(vaultId)
     const db = await openDB()
 
-    return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly')
-      const store = transaction.objectStore(STORE_NAME)
-      const index = store.index('vaultId')
-      const request = index.getAll(IDBKeyRange.only(vaultId))
-
-      request.onsuccess = () => {
-        const entries = request.result as SyncIndexEntry[]
-        const map = new Map<string, { localVersion?: number; localHash?: string }>()
+    return readVaultEntries(db, vaultId).then(
+      (entries) => {
+        const map = new Map<string, SavedVersionData>()
         for (const entry of entries) {
           if (entry.localVersion !== undefined || entry.localHash) {
             map.set(entry.relativePath, {
               localVersion: entry.localVersion,
               localHash: entry.localHash,
+              hashStamp:
+                entry.localHash && entry.hashSize !== undefined && entry.hashMtimeMs !== undefined
+                  ? { size: entry.hashSize, mtimeMs: entry.hashMtimeMs }
+                  : undefined,
             })
           }
         }
@@ -665,14 +892,13 @@ export async function getVersionMap(
           '[SyncIndex]',
           `Loaded version map: ${map.size} entries with version/hash data for vault ${vaultId}`,
         )
-        resolve(map)
-      }
-
-      request.onerror = () => {
-        log.error('[SyncIndex]', 'Failed to read version map', { error: request.error })
-        resolve(new Map())
-      }
-    })
+        return map
+      },
+      (error: unknown) => {
+        log.error('[SyncIndex]', 'Failed to read version map', { error })
+        return new Map()
+      },
+    )
   } catch (error) {
     log.error('[SyncIndex]', 'Error reading version map', { error })
     return new Map()

@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getInodeMap,
   getSyncIndex,
+  getVersionMap,
   removeFromSyncIndex,
   updateInodes,
+  SYNC_INDEX_WRITE_CHUNK,
   updateSyncIndexFromServer,
 } from './localSyncIndex'
 
@@ -23,9 +25,16 @@ interface StoredRecord {
  * IDBKeyRange.only, and get/put/delete. vitest's environment is 'node', so there is
  * no real indexedDB.
  */
-function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: string[] } {
+function installFakeIndexedDB(): {
+  records: Map<string, StoredRecord>
+  deletes: string[]
+  putBursts: number[]
+} {
   const records = new Map<string, StoredRecord>()
   const deletes: string[] = []
+  // Puts queued between two request callbacks: what one callback did on the main thread.
+  const putBursts: number[] = []
+  let putsSinceCallback = 0
 
   class FakeRequest {
     result: unknown
@@ -36,7 +45,11 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
 
   function succeed(request: FakeRequest, result: unknown) {
     request.result = result
-    queueMicrotask(() => request.onsuccess?.())
+    queueMicrotask(() => {
+      if (putsSinceCallback > 0) putBursts.push(putsSinceCallback)
+      putsSinceCallback = 0
+      request.onsuccess?.()
+    })
   }
 
   class FakeIndex {
@@ -74,6 +87,7 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
     }
     put(value: StoredRecord) {
       const request = new FakeRequest()
+      putsSinceCallback++
       records.set(value.key, { ...value })
       succeed(request, undefined)
       return request
@@ -110,7 +124,7 @@ function installFakeIndexedDB(): { records: Map<string, StoredRecord>; deletes: 
   }
   globals.IDBKeyRange = { only: (value: string) => ({ value }) }
 
-  return { records, deletes }
+  return { records, deletes, putBursts }
 }
 
 /** Flushes the queueMicrotask chains the fake IndexedDB uses. */
@@ -153,7 +167,7 @@ async function runLoadWrites(options: {
 // Installed once: localSyncIndex.ts caches its IDBDatabase in a module-level promise,
 // so a per-test database would be opened and then ignored. Tests get a clean index by
 // emptying the records instead.
-const { records, deletes } = installFakeIndexedDB()
+const { records, deletes, putBursts } = installFakeIndexedDB()
 
 describe('localSyncIndex orphan durability', () => {
   beforeEach(() => {
@@ -388,5 +402,90 @@ describe('localSyncIndex moved-file entries', () => {
     expect(syncIndex.has('designs/new-name.sldprt')).toBe(true)
     // The old path is gone from the server and from disk, so nothing keeps it.
     expect(syncIndex.has('designs/old-name.sldprt')).toBe(false)
+  })
+})
+
+describe('localSyncIndex hash stamps', () => {
+  beforeEach(() => {
+    records.clear()
+    deletes.length = 0
+  })
+
+  const path = 'designs/bracket.sldprt'
+  const stamp = { size: 1200, mtimeMs: 1_761_386_400_000 }
+
+  it('restores a hash with the size and modified time it was computed from', async () => {
+    await updateInodes(VAULT_ID, [
+      { path, ino: 9, localVersion: 3, localHash: 'h1', hashStamp: stamp },
+    ])
+    await flush()
+
+    expect((await getVersionMap(VAULT_ID)).get(path)).toEqual({
+      localVersion: 3,
+      localHash: 'h1',
+      hashStamp: stamp,
+    })
+  })
+
+  it('keeps the stamp through the per-load reconcile against the server list', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await runLoadWrites({ serverPaths: [path], localPaths: [path] })
+
+    expect((await getVersionMap(VAULT_ID)).get(path)?.hashStamp).toEqual(stamp)
+  })
+
+  it('drops the stamp when a hash is written without one, so it never vouches for that hash', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h2' }])
+    await flush()
+
+    const saved = (await getVersionMap(VAULT_ID)).get(path)
+    expect(saved?.localHash).toBe('h2')
+    expect(saved?.hashStamp).toBeUndefined()
+  })
+
+  it('leaves hash and stamp alone when an inode-only write passes no hash', async () => {
+    await updateInodes(VAULT_ID, [{ path, ino: 9, localHash: 'h1', hashStamp: stamp }])
+    await updateInodes(VAULT_ID, [{ path, ino: 10 }])
+    await flush()
+
+    expect((await getVersionMap(VAULT_ID)).get(path)).toMatchObject({
+      localHash: 'h1',
+      hashStamp: stamp,
+    })
+  })
+})
+
+describe('localSyncIndex bulk inode writes', () => {
+  beforeEach(() => {
+    records.clear()
+    deletes.length = 0
+    putBursts.length = 0
+  })
+
+  // A first load writes every entry. All of them in one callback was 1-2 s of main thread right
+  // after the vault came up (render-perf nightly); they go in chunks, in one transaction.
+  it('writes every entry, at most one chunk per callback', async () => {
+    const count = SYNC_INDEX_WRITE_CHUNK * 2 + 37
+    const entries = Array.from({ length: count }, (_, i) => ({ path: `designs/part-${i}.sldprt`, ino: i + 1 }))
+    await updateInodes(VAULT_ID, entries)
+    await flush()
+
+    expect(records.size).toBe(count)
+    expect(Math.max(...putBursts)).toBeLessThanOrEqual(SYNC_INDEX_WRITE_CHUNK)
+    expect(putBursts.reduce((a, b) => a + b, 0)).toBe(count)
+    const inodes = await getInodeMap(VAULT_ID)
+    expect(inodes.get(count)).toEqual([`designs/part-${count - 1}.sldprt`])
+  })
+
+  it('rebuilds a first load from the server list the same way', async () => {
+    const count = SYNC_INDEX_WRITE_CHUNK * 3 + 5
+    const paths = Array.from({ length: count }, (_, i) => `designs/part-${i}.sldprt`)
+    await updateSyncIndexFromServer(VAULT_ID, paths, new Set(paths))
+    await flush()
+
+    expect(records.size).toBe(count)
+    expect(Math.max(...putBursts)).toBeLessThanOrEqual(SYNC_INDEX_WRITE_CHUNK)
+    expect((await getSyncIndex(VAULT_ID)).size).toBe(count)
   })
 })

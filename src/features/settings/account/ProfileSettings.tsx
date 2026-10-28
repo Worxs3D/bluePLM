@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient, useAdminRecoveryCode, supabase } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { ContributionHistory } from '../system/ContributionHistory'
@@ -42,7 +43,15 @@ interface RFQRecord {
 }
 
 export function ProfileSettings() {
-  const { user, userTeams, organization, setUser, addToast } = usePDMStore()
+  const { user, userTeams, organization, setUser, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      userTeams: s.userTeams,
+      organization: s.organization,
+      setUser: s.setUser,
+      addToast: s.addToast,
+    })),
+  )
 
   const [isLoadingECOs, setIsLoadingECOs] = useState(true)
   const [isLoadingRFQs, setIsLoadingRFQs] = useState(true)

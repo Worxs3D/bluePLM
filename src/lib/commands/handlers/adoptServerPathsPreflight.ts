@@ -104,6 +104,9 @@ function holderNameOf(profile: CheckoutUserProfile | null): string | null {
   return profile?.full_name?.trim() || profile?.email?.trim() || null
 }
 
+/** Rows with no file on this disk: a cloud-only row, a `moved_away` stub, a ghost. */
+const NOT_ON_DISK: ReadonlySet<string> = new Set(['cloud', 'moved_away', 'deleted'])
+
 /** A candidate carries its own row: the checkout and the hash are read from it, never looked up. */
 interface Candidate {
   file: LocalFile
@@ -189,7 +192,12 @@ export function classifyAdoptTargets({
     // is no server-side collision to check for the other direction: `files.file_path` is unique,
     // so no second server row can already claim this row's own destination.
     const destination = normalizePath(target.serverPath)
-    const occupant = (byPath.get(destination) ?? []).find((other) => other.path !== file.path)
+    // A row with nothing on disk behind it occupies nothing. The first one found at the
+    // destination is usually this file's own `moved_away` stub, which a load puts exactly
+    // there: counting it skipped every move that had one, so Re-align never moved anything.
+    const occupant = (byPath.get(destination) ?? []).find(
+      (other) => other.path !== file.path && !NOT_ON_DISK.has(other.diffStatus ?? ''),
+    )
 
     if (occupant) {
       skipped.push({

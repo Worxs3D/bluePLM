@@ -5,6 +5,7 @@ import { Shield, X, Loader2, Search, Database, Check, Minus } from 'lucide-react
 import { PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS, ALL_RESOURCES } from '@/types/permissions'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import type { OrgUser, Vault } from '../../types'
 import type { PermissionAction } from '@/types/permissions'
@@ -32,7 +33,12 @@ export function UserPermissionsDialog({
   onClose,
   currentUserId,
 }: UserPermissionsDialogProps) {
-  const { addToast, organization } = usePDMStore()
+  const { addToast, organization } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+    })),
+  )
   const [permissions, setPermissions] = useState<Record<string, PermissionAction[]>>({})
   const [originalPermissions, setOriginalPermissions] = useState<
     Record<string, PermissionAction[]>

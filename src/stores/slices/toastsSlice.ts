@@ -14,6 +14,7 @@ interface PendingProgressUpdate {
   percent: number
   speed?: string
   label?: string
+  status?: string
 }
 
 const pendingProgressUpdates = new Map<string, PendingProgressUpdate>()
@@ -60,12 +61,26 @@ function scheduleProgressFlush(
           percent: update.percent,
           speed: update.speed,
           label: update.label,
+          status: update.status,
         },
       }
     })
 
     progressFlushSetFn({ toasts: updatedToasts })
   })
+}
+
+/**
+ * Most message toasts kept. A toast with no timeout (duration 0) stays until dismissed, and an app
+ * left unattended for days can collect one per failed background job. Past this the oldest go;
+ * progress toasts are never dropped, since their operation still owns them.
+ */
+export const MAX_MESSAGE_TOASTS = 50
+
+export function capToasts(toasts: ToastMessage[]): ToastMessage[] {
+  let excess = toasts.filter((t) => t.type !== 'progress').length - MAX_MESSAGE_TOASTS
+  if (excess <= 0) return toasts
+  return toasts.filter((t) => t.type === 'progress' || excess-- <= 0)
 }
 
 export const createToastsSlice: StateCreator<
@@ -81,7 +96,7 @@ export const createToastsSlice: StateCreator<
   addToast: (type: ToastType, message: string, duration = 5000) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const toast: ToastMessage = { id, type, message, duration }
-    set((state) => ({ toasts: [...state.toasts, toast] }))
+    set((state) => ({ toasts: capToasts([...state.toasts, toast]) }))
   },
 
   addProgressToast: (id: string, message: string, total: number, queued?: boolean) => {
@@ -115,10 +130,11 @@ export const createToastsSlice: StateCreator<
     percent: number,
     speed?: string,
     label?: string,
+    status?: string,
   ) => {
     // Batch updates: store the latest values and schedule a flush
     // This coalesces rapid updates into a single state change per animation frame
-    pendingProgressUpdates.set(id, { current, percent, speed, label })
+    pendingProgressUpdates.set(id, { current, percent, speed, label, status })
     scheduleProgressFlush(get, set)
   },
 

@@ -22,7 +22,8 @@ import {
   Trash2,
 } from 'lucide-react'
 
-import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
+import { usePDMStore, ConnectedVault, discardPersistedStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase, getAccessibleVaults } from '@/lib/supabase'
 import { getBackend, resolveBackend } from '@/lib/backend'
 import type { AuthProviders } from '@/types/backend'
@@ -100,7 +101,33 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
     autoDownloadSizeLimit,
     setAutoDownloadSizeLimit,
     updateConnectedVault,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      recentVaults: s.recentVaults,
+      user: s.user,
+      organization: s.organization,
+      setStatusMessage: s.setStatusMessage,
+      isOfflineMode: s.isOfflineMode,
+      setOfflineMode: s.setOfflineMode,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      addConnectedVault: s.addConnectedVault,
+      removeConnectedVault: s.removeConnectedVault,
+      setConnectedVaults: s.setConnectedVaults,
+      setVaultPath: s.setVaultPath,
+      setVaultConnected: s.setVaultConnected,
+      addToast: s.addToast,
+      vaultsRefreshKey: s.vaultsRefreshKey,
+      isConnecting: s.isConnecting,
+      getEffectiveRole: s.getEffectiveRole,
+      permissionsLastUpdated: s.permissionsLastUpdated,
+      setAutoDownloadCloudFiles: s.setAutoDownloadCloudFiles,
+      setAutoDownloadUpdates: s.setAutoDownloadUpdates,
+      autoDownloadSizeLimit: s.autoDownloadSizeLimit,
+      setAutoDownloadSizeLimit: s.setAutoDownloadSizeLimit,
+      updateConnectedVault: s.updateConnectedVault,
+    })),
+  )
   const { t } = useTranslation()
   const isAdmin = getEffectiveRole() === 'admin'
 
@@ -640,7 +667,7 @@ export function WelcomeScreen({ onOpenRecentVault, onChangeOrg }: WelcomeScreenP
 
     // Also clear the zustand persisted state directly to ensure clean slate
     try {
-      localStorage.removeItem('blue-plm-storage')
+      discardPersistedStore()
       log.info('[WelcomeScreen]', 'Cleared zustand persisted storage')
     } catch (error) {
       log.warn('[WelcomeScreen]', 'Error clearing zustand storage', { error: String(error) })

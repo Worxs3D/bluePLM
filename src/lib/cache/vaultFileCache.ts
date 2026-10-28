@@ -17,6 +17,7 @@ import {
   LightweightFile,
   DeltaFile,
 } from '@/lib/supabase/files/queries'
+import { describeError, isIndexedDbCorruptionError } from '@/lib/errorDetails'
 import { log } from '@/lib/logger'
 import {
   hashCheckoutIdentifier,
@@ -67,6 +68,29 @@ const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const COUNT_RECONCILE_COOLDOWN_MS = 60_000
 const countReconcileForcedAt = new Map<string, number>()
 
+// Rewriting the entry means structured-cloning every cached row (about 27,000 of them), 350-500 ms
+// and a large allocation, and Blake's logs show it after every load with a one-row delta. The
+// watermark is not advanced by a skipped write, so the next load fetches the same few rows again
+// and merges them again: slightly more network, never a stale or wrong cache. A delta this small
+// is therefore only persisted once the entry has gone this long without a write; a bigger delta,
+// or an expired entry, is written at once.
+const SMALL_DELTA_MAX_ROWS = 25
+const SMALL_DELTA_REWRITE_MIN_INTERVAL_MS = 10 * 60 * 1000
+
+/**
+ * Whether a cache-hit load should write the merged rows back. An empty delta never does: nothing
+ * changed, so there is nothing to persist.
+ */
+export function shouldRewriteCacheAfterDelta(
+  deltaCount: number,
+  cachedAt: number,
+  now: number = Date.now(),
+): boolean {
+  if (deltaCount <= 0) return false
+  if (deltaCount > SMALL_DELTA_MAX_ROWS) return true
+  return now - cachedAt >= SMALL_DELTA_REWRITE_MIN_INTERVAL_MS
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null
 const vaultWriteQueues = new Map<string, Promise<void>>()
 
@@ -115,21 +139,46 @@ function isCacheContextCurrent(context?: CacheWriteContext): boolean {
 }
 
 /**
- * Open or create the IndexedDB database
+ * Self-repair for a broken IndexedDB. One Blake session logged `Internal error opening backing
+ * store for indexedDB.open` from 20:07 until the app was closed: every load afterwards was a
+ * full fetch, because the rejected open promise was cached for the life of the page and the
+ * failure was never retried or repaired.
+ *
+ * What happens now, at most once per `REPAIR_COOLDOWN_MS` (sessions last weeks, so "once per
+ * session" would mean never again) and never on the load's critical path (the open that
+ * failed rejects immediately, so that load falls back to a full fetch exactly as before):
+ * 1. `indexedDB.deleteDatabase` for this cache, then reopen.
+ * 2. If that fails too, ask the main process to clear the session's IndexedDB storage.
+ * Every later call opens the database afresh, so a repaired database is picked up by itself.
  */
-function openDB(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise
+const REPAIR_COOLDOWN_MS = 60 * 60_000
+let lastRepairAt = -Infinity
+let repairPromise: Promise<void> | null = null
 
-  dbPromise = new Promise((resolve, reject) => {
+function openRaw(): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => {
-      log.error('[VaultCache]', 'Failed to open IndexedDB', { error: request.error })
-      reject(request.error)
+      reject(request.error ?? new Error('IndexedDB open failed'))
+    }
+
+    request.onblocked = () => {
+      reject(new Error('IndexedDB open blocked by another connection'))
     }
 
     request.onsuccess = () => {
-      resolve(request.result)
+      const db = request.result
+      // A connection the browser closes on its own, or one that must yield to an upgrade, is
+      // no longer usable. Forget it so the next call opens a new one.
+      db.onclose = () => {
+        dbPromise = null
+      }
+      db.onversionchange = () => {
+        db.close()
+        dbPromise = null
+      }
+      resolve(db)
     }
 
     request.onupgradeneeded = (event) => {
@@ -147,8 +196,97 @@ function openDB(): Promise<IDBDatabase> {
       store.createIndex('cachedAt', 'cachedAt', { unique: false })
     }
   })
+}
 
-  return dbPromise
+function deleteDatabase(): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB delete failed'))
+    request.onblocked = () => reject(new Error('IndexedDB delete blocked by another connection'))
+  })
+}
+
+async function repairDatabase(trigger: unknown): Promise<void> {
+  log.warn('[VaultCache]', 'IndexedDB is unusable, trying to repair it', {
+    trigger: describeError(trigger),
+  })
+
+  try {
+    await deleteDatabase()
+    const db = await openRaw()
+    db.close()
+    log.info('[VaultCache]', 'IndexedDB repaired by deleting the cache database')
+    return
+  } catch (error) {
+    log.warn('[VaultCache]', 'Deleting the cache database did not repair IndexedDB', {
+      error: describeError(error),
+    })
+  }
+
+  try {
+    const electronAPI = typeof window === 'undefined' ? undefined : window.electronAPI
+    const result = await electronAPI?.clearIndexedDbStorage?.()
+    if (!result?.success) {
+      log.error('[VaultCache]', 'Main process could not clear IndexedDB storage', {
+        error: result?.error ?? 'clearIndexedDbStorage unavailable',
+      })
+      return
+    }
+    const db = await openRaw()
+    db.close()
+    log.info('[VaultCache]', 'IndexedDB repaired by clearing storage in the main process')
+  } catch (error) {
+    log.error('[VaultCache]', 'IndexedDB is still unusable after clearing storage', {
+      error: describeError(error),
+    })
+  }
+}
+
+/**
+ * Start a repair if `error` looks like a corrupt backing store and none ran within the cooldown.
+ * Fire-and-forget: the caller's failed open is not delayed by it.
+ */
+function maybeStartRepair(error: unknown): void {
+  if (Date.now() - lastRepairAt < REPAIR_COOLDOWN_MS || !isIndexedDbCorruptionError(error)) return
+  lastRepairAt = Date.now()
+  repairPromise = repairDatabase(error).catch(() => undefined)
+}
+
+/**
+ * Open or create the IndexedDB database.
+ *
+ * A failed open is not remembered: `dbPromise` is cleared so the next call tries again.
+ */
+function openDB(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise
+
+  const attempt = openRaw().catch((error: unknown) => {
+    if (dbPromise === attempt) dbPromise = null
+    log.error('[VaultCache]', 'Failed to open IndexedDB', { error: describeError(error) })
+    maybeStartRepair(error)
+    throw error
+  })
+  dbPromise = attempt
+  return attempt
+}
+
+/**
+ * Can the cache database be opened? A failed open starts the repair above by itself, so the health
+ * monitor's periodic probe is also how a cache that broke mid-session gets repaired.
+ */
+export async function probeVaultCache(): Promise<boolean> {
+  try {
+    await openDB()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Resolves when the latest repair attempt (if one started) has finished. For tests. */
+export function waitForVaultCacheRepair(): Promise<void> {
+  return repairPromise ?? Promise.resolve()
 }
 
 /**
@@ -158,7 +296,7 @@ function openDB(): Promise<IDBDatabase> {
 export async function getCachedVaultFiles(
   orgId: string,
   vaultId: string,
-): Promise<{ files: CachedServerFile[]; watermark: string } | null> {
+): Promise<{ files: CachedServerFile[]; watermark: string; cachedAt: number } | null> {
   try {
     const db = await openDB()
 
@@ -203,16 +341,17 @@ export async function getCachedVaultFiles(
         resolve({
           files,
           watermark: entry.watermark,
+          cachedAt: entry.cachedAt,
         })
       }
 
       request.onerror = () => {
-        log.error('[VaultCache]', 'Failed to read cache', { error: request.error })
+        log.error('[VaultCache]', 'Failed to read cache', { error: describeError(request.error) })
         resolve(null)
       }
     })
   } catch (error) {
-    log.error('[VaultCache]', 'Error reading cache', { error })
+    log.error('[VaultCache]', 'Error reading cache', { error: describeError(error) })
     return null
   }
 }
@@ -232,7 +371,9 @@ export async function setCachedVaultFiles(
       const writeStart = performance.now()
       try {
         const db = await openDB()
+        const sanitizeStart = performance.now()
         const validatedFiles = files.map(sanitizeCachedFile)
+        const sanitizeMs = Math.round(performance.now() - sanitizeStart)
 
         // Compute watermark as MAX(updated_at)
         let maxUpdatedAt = ''
@@ -251,6 +392,7 @@ export async function setCachedVaultFiles(
           cachedAt: Date.now(),
         }
 
+        const putStart = performance.now()
         await new Promise<void>((resolve, reject) => {
           const transaction = db.transaction(STORE_NAME, 'readwrite')
           const store = transaction.objectStore(STORE_NAME)
@@ -278,6 +420,8 @@ export async function setCachedVaultFiles(
           vaultId: hashCheckoutIdentifier(vaultId),
           requestId: context?.requestId,
           fileCount: validatedFiles.length,
+          sanitizeMs,
+          putMs: Math.round(performance.now() - putStart),
           latencyMs: Math.round(performance.now() - writeStart),
         })
       } catch (error) {
@@ -285,7 +429,7 @@ export async function setCachedVaultFiles(
           orgId: hashCheckoutIdentifier(orgId),
           vaultId: hashCheckoutIdentifier(vaultId),
           requestId: context?.requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: describeError(error),
         })
       }
     },
@@ -428,7 +572,7 @@ export async function getFilesWithCache(
     timing.fetchMs = Math.round(performance.now() - fetchStart)
 
     if (error) {
-      log.error('[VaultCache]', 'Delta fetch failed, using cache only', { error })
+      log.error('[VaultCache]', 'Delta fetch failed, using cache only', { error: describeError(error) })
       return {
         files: cached.files,
         error: null, // Don't fail - we have cache
@@ -477,9 +621,17 @@ export async function getFilesWithCache(
       }
     }
 
-    if (deltaCount > 0) {
+    if (shouldRewriteCacheAfterDelta(deltaCount, cached.cachedAt)) {
       // Update cache with merged data
       void setCachedVaultFiles(orgId, vaultId, mergedFiles, context)
+    } else if (deltaCount > 0) {
+      log.info('[VaultCache]', 'Skipping cache rewrite for a small delta', {
+        vaultId: hashCheckoutIdentifier(vaultId),
+        requestId: context?.requestId,
+        deltaCount,
+        fileCount: mergedFiles.length,
+        cacheAgeMs: Date.now() - cached.cachedAt,
+      })
     }
 
     return {
@@ -499,6 +651,17 @@ export async function getFilesWithCache(
   })
 
   return fullFetchAndCache()
+}
+
+/** Whether two checkout profiles would display the same. */
+export function isSameCheckoutProfile(
+  a: CheckoutUserProfile | null | undefined,
+  b: CheckoutUserProfile | null | undefined,
+): boolean {
+  if (!a || !b) return a === b
+  return (
+    a.id === b.id && a.email === b.email && a.full_name === b.full_name && a.avatar_url === b.avatar_url
+  )
 }
 
 /**
@@ -528,6 +691,11 @@ export function updateCachedUserInfo(
     typeof second === 'string' ? third : second
 
   if (!userInfoMap) return Promise.resolve()
+
+  // Nothing to merge. Every load used to land here with an empty map, and the call still read the
+  // whole ~27k-row entry back out of IndexedDB (7-20 s in Blake's log, `profileCount: 0`) only to
+  // find that no row changed.
+  if (Object.keys(userInfoMap).length === 0) return Promise.resolve()
 
   return enqueueVaultWrite(
     vaultId,
@@ -572,26 +740,32 @@ export function updateCachedUserInfo(
               return
             }
 
-            let updatedCount = 0
-            const updatedFiles = entry.files.map((file) => {
+            const matchesProfile = (file: CachedServerFile): boolean => {
               const profile = userInfoMap[file.id]
-              if (
+              return Boolean(
                 profile &&
-                file.checked_out_by === profile.id &&
-                isCheckoutProfileForOwner(profile, file.checked_out_by)
-              ) {
-                updatedCount++
-                return { ...file, checked_out_user: profile }
-              }
-              return sanitizeCachedFile(file)
-            })
+                  file.checked_out_by === profile.id &&
+                  isCheckoutProfileForOwner(profile, file.checked_out_by),
+              )
+            }
 
-            if (updatedCount === 0) {
+            // Look before building anything: with no row whose cached profile is missing or
+            // different there is nothing to write, and the replacement array would be 27k
+            // references of garbage. The profiles are re-fetched on every load, so without the
+            // comparison this rewrote the whole entry each time, watcher refreshes included,
+            // undoing the small-delta skip in getFilesWithCache.
+            const needsProfile = (file: CachedServerFile): boolean =>
+              matchesProfile(file) && !isSameCheckoutProfile(file.checked_out_user, userInfoMap[file.id])
+            if (!entry.files.some(needsProfile)) {
               resolve()
               return
             }
 
-            entry.files = updatedFiles
+            entry.files = entry.files.map((file) =>
+              matchesProfile(file)
+                ? { ...file, checked_out_user: userInfoMap[file.id] }
+                : sanitizeCachedFile(file),
+            )
             const putRequest = store.put(entry)
             putRequest.onsuccess = () => resolve()
             putRequest.onerror = () => reject(putRequest.error)
@@ -612,7 +786,7 @@ export function updateCachedUserInfo(
           orgId: hashCheckoutIdentifier(orgId),
           vaultId: hashCheckoutIdentifier(vaultId),
           requestId: context?.requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: describeError(error),
         })
       }
     },
@@ -638,12 +812,12 @@ export async function clearVaultCache(vaultId: string): Promise<void> {
       }
 
       request.onerror = () => {
-        log.error('[VaultCache]', 'Failed to clear cache', { error: request.error })
+        log.error('[VaultCache]', 'Failed to clear cache', { error: describeError(request.error) })
         reject(request.error)
       }
     })
   } catch (error) {
-    log.error('[VaultCache]', 'Error clearing cache', { error })
+    log.error('[VaultCache]', 'Error clearing cache', { error: describeError(error) })
   }
 }
 
@@ -665,12 +839,12 @@ export async function clearAllVaultCaches(): Promise<void> {
       }
 
       request.onerror = () => {
-        log.error('[VaultCache]', 'Failed to clear all caches', { error: request.error })
+        log.error('[VaultCache]', 'Failed to clear all caches', { error: describeError(request.error) })
         reject(request.error)
       }
     })
   } catch (error) {
-    log.error('[VaultCache]', 'Error clearing all caches', { error })
+    log.error('[VaultCache]', 'Error clearing all caches', { error: describeError(error) })
   }
 }
 

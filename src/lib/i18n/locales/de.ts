@@ -383,6 +383,8 @@ export const de: TranslationDict = {
       'Einige Umbenennungen haben den Server nicht erreicht, der weiterhin die alten Pfade speichert. Betroffene Dateien werden als verschoben angezeigt; führen Sie reconcile-moved-paths aus, um sie zu aktualisieren.',
     cloudRenameFailed: 'Umbenennen auf dem Server nicht möglich',
     movedAwayBlocked: 'Datei wurde verschoben - zuerst die ausstehende Verschiebung auflösen',
+    moveTargetExists: '"{{name}}" ist im Zielordner bereits vorhanden und wurde nicht verschoben',
+    mergeKeptConflicts: '{{count}} Dateien sind in beiden Ordnern vorhanden und wurden in {{folder}} belassen',
     checkIn: 'Einchecken',
     checkOut: 'Auschecken',
     download: 'Herunterladen',

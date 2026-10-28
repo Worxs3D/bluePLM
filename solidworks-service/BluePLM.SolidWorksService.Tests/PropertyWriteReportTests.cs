@@ -11,6 +11,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// Save3 all say whether the write landed, and all four answers were discarded. These tests
     /// cover the decision logic that now reads them, none of which needs a live SolidWorks.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class PropertyWriteReportTests
     {
         private const string Scope = "-265";

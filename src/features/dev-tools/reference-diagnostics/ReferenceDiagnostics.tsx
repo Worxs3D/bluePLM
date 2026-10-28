@@ -18,6 +18,7 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   getFileReferenceDiagnostics,
   getVaultFilesForDiagnostics,
@@ -124,7 +125,15 @@ interface ReferenceDiagnosticsProps {
 }
 
 export function ReferenceDiagnostics({ onClose }: ReferenceDiagnosticsProps) {
-  const { files, organization, activeVaultId, vaultPath, addToast } = usePDMStore()
+  const { files, organization, activeVaultId, vaultPath, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      organization: s.organization,
+      activeVaultId: s.activeVaultId,
+      vaultPath: s.vaultPath,
+      addToast: s.addToast,
+    })),
+  )
   const { status: swStatus, startService, isStarting } = useSolidWorksService()
 
   // State

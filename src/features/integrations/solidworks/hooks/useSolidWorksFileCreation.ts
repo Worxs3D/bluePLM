@@ -12,6 +12,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { LocalFile } from '@/stores/types'
 import { log } from '@/lib/logger'
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
@@ -92,7 +93,14 @@ export interface UseSolidWorksFileCreationReturn {
  * template files, and provides methods to create new files.
  */
 export function useSolidWorksFileCreation(): UseSolidWorksFileCreationReturn {
-  const { organization, vaultPath, solidworksIntegrationEnabled, addToast } = usePDMStore()
+  const { organization, vaultPath, solidworksIntegrationEnabled, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      vaultPath: s.vaultPath,
+      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
+      addToast: s.addToast,
+    })),
+  )
 
   const [availableTemplates, setAvailableTemplates] = useState<AvailableTemplates>({
     parts: [],

@@ -12,6 +12,7 @@ import { Shield, Plus, Pencil, Trash2 } from 'lucide-react'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { useState } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useMembers, useWorkflowRoles, useWorkflowRoleDialogs } from '../hooks'
 import { WorkflowRoleFormDialog, DeleteWorkflowRoleDialog } from '../components/dialogs'
 
@@ -24,7 +25,13 @@ export interface RolesTabProps {
 
 export function RolesTab({ searchQuery = '', onShowCreateRoleDialog }: RolesTabProps) {
   // Get user/org info from store
-  const { organization, getEffectiveRole, addToast } = usePDMStore()
+  const { organization, getEffectiveRole, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+      addToast: s.addToast,
+    })),
+  )
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
 

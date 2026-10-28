@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 
@@ -171,7 +172,7 @@ function getMonthLabels(grid: { date: Date }[]): { month: string; weekIndex: num
 }
 
 export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
 
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)

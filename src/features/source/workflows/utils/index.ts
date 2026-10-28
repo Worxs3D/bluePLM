@@ -49,5 +49,5 @@ export type {
   ExportedGate,
   ParseResult,
 } from './workflowExport'
-export { useStableCallback } from './useStableCallback'
+export { useStableCallback } from '@/hooks/useStableCallback'
 export { useRafThrottle } from './useRafThrottle'

@@ -80,9 +80,12 @@ export {
   addInspectionMethod,
   updateInspectionMethod,
   deleteInspectionMethod,
+  getHighestUsedBalloonNumber,
+  maxNumericBalloonNumber,
 } from './inspection'
 
 export type { InspectionRowValues, InspectionRowInput, InspectionMethodOption } from './inspection'
+export { emptyRowValues, toRowInput } from './inspectionRows'
 
 // Move functions - atomic file move operations
 export { moveFileOnServer, moveFilesOnServer } from './move'

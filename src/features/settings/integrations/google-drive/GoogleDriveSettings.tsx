@@ -2,10 +2,17 @@ import { useState, useEffect, useRef } from 'react'
 import { HardDrive, Loader2, Check, Eye, EyeOff, Puzzle } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 
 export function GoogleDriveSettings() {
-  const { organization, addToast, getEffectiveRole } = usePDMStore()
+  const { organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const [clientId, setClientId] = useState('')

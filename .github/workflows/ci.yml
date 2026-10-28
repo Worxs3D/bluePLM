@@ -25,32 +25,9 @@ jobs:
   # See the comment at the top of that file.
   verify:
     uses: ./.github/workflows/verify.yml
+    secrets:
+      SOLIDWORKS_DM_LICENSE_KEY: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY }}
+      CI_ASSETS_TOKEN: ${{ secrets.CI_ASSETS_TOKEN }}
 
-  # Non-blocking on purpose. `npm run lint` is red with a backlog of pre-existing errors, and a
-  # blocking lint job would fail on its first run and be switched off before anyone fixed them.
-  # This reports the count so it can be driven down, and starts blocking once it reaches zero.
-  #
-  # No count is quoted here deliberately. The figures this comment used to carry had gone stale —
-  # the warning total by 7, measured against a clean checkout — and a comment nobody can trust is
-  # worse than no comment. The job's own output is the current number; a ratchet is the thing that
-  # should hold it, not a sentence.
-  lint:
-    name: Lint (non-blocking)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
+  # Lint used to be a separate non-blocking job here. It is a blocking ratchet in verify.yml now
+  # (scripts/lint-ratchet.mjs), so tags are held to it as well.

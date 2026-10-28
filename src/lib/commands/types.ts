@@ -60,6 +60,8 @@ export interface CommandContext {
     percent: number,
     speed?: string,
     label?: string,
+    /** A phase in words ("Removing the moved files..."), shown on its own line under the bar. */
+    status?: string,
   ) => void
   removeToast: (id: string) => void
   isProgressToastCancelled: (id: string) => boolean

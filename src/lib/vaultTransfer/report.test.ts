@@ -150,11 +150,33 @@ describe('buildTransferReport', () => {
     expect(report).toMatchObject({ placedOnDisk: 0, severity: 'success' })
   })
 
+  it('does not call a move clean when an emptied folder stayed on disk', () => {
+    const removal: RemoveSourcesOutcome = {
+      removed: [a, b],
+      kept: [],
+      foldersRemoved: [],
+      foldersKept: ['T3000/development'],
+    }
+
+    const report = buildTransferReport(
+      planned,
+      run([
+        { planned: a, status: 'transferred', localCopy: 'copied' },
+        { planned: b, status: 'transferred', localCopy: 'copied' },
+      ]),
+      removal,
+    )
+
+    expect(report).toMatchObject({ removed: 2, severity: 'warning' })
+    expect(report.foldersKept).toEqual(['T3000/development'])
+  })
+
   it('carries a move that left sources behind as a warning', () => {
     const removal: RemoveSourcesOutcome = {
       removed: [a],
       kept: [{ planned: b, reason: 'local-delete-failed' }],
       foldersRemoved: [],
+      foldersKept: [],
     }
 
     const report = buildTransferReport(

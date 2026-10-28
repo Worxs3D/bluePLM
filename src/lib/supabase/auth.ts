@@ -255,67 +255,6 @@ export async function verifyPhoneOTP(phone: string, token: string) {
 }
 
 // ============================================
-// Supplier Account Check
-// ============================================
-
-export async function checkIfSupplierAccount(identifier: string): Promise<{
-  isSupplier: boolean
-  isInvitation?: boolean
-  contactId?: string
-  invitationId?: string
-  supplierId?: string
-  supplierName?: string
-  fullName?: string
-  contactName?: string
-  authMethod?: 'email' | 'phone' | 'wechat'
-  orgId?: string
-}> {
-  authLog('info', 'checkIfSupplierAccount called', {
-    identifier: identifier.substring(0, 5) + '...',
-  })
-
-  try {
-    const config = getCurrentConfigValues()
-    const url = config?.url || import.meta.env.VITE_SUPABASE_URL
-    const key = config?.anonKey || import.meta.env.VITE_SUPABASE_ANON_KEY
-
-    // Call the database function
-    const response = await fetch(`${url}/rest/v1/rpc/is_supplier_account`, {
-      method: 'POST',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ p_identifier: identifier }),
-    })
-
-    const result = await response.json()
-    authLog('debug', 'Supplier account check result', result)
-
-    if (result && result.is_supplier) {
-      return {
-        isSupplier: true,
-        isInvitation: result.is_invitation || false,
-        contactId: result.contact_id,
-        invitationId: result.invitation_id,
-        supplierId: result.supplier_id,
-        supplierName: result.supplier_name,
-        fullName: result.full_name,
-        contactName: result.contact_name,
-        authMethod: result.auth_method,
-        orgId: result.org_id,
-      }
-    }
-
-    return { isSupplier: false }
-  } catch (error) {
-    authLog('error', 'checkIfSupplierAccount failed', { error: String(error) })
-    return { isSupplier: false }
-  }
-}
-
-// ============================================
 // Supplier Contact Profile
 // ============================================
 

@@ -249,6 +249,41 @@ export const createSettingsSlice: StateCreator<
         },
       }
     }),
+  // One set() for the whole batch. The load pass used to call addAutoDownloadExclusion once per
+  // externally deleted file - thousands of times - and each call ran `includes` over the list,
+  // copied it, and ran persist and every subscriber.
+  addAutoDownloadExclusions: (vaultId, relativePaths) =>
+    set((state) => {
+      if (relativePaths.length === 0) return state
+      const currentExclusions = state.autoDownloadExcludedFiles[vaultId] || []
+      const known = new Set(currentExclusions)
+      const additions: string[] = []
+      for (const relativePath of relativePaths) {
+        if (known.has(relativePath)) continue
+        known.add(relativePath)
+        additions.push(relativePath)
+      }
+      if (additions.length === 0) return state
+      return {
+        autoDownloadExcludedFiles: {
+          ...state.autoDownloadExcludedFiles,
+          [vaultId]: currentExclusions.concat(additions),
+        },
+      }
+    }),
+  removeAutoDownloadExclusions: (vaultId, relativePaths) =>
+    set((state) => {
+      const currentExclusions = state.autoDownloadExcludedFiles[vaultId] || []
+      if (relativePaths.size === 0 || currentExclusions.length === 0) return state
+      const remaining = currentExclusions.filter((path) => !relativePaths.has(path))
+      if (remaining.length === currentExclusions.length) return state
+      return {
+        autoDownloadExcludedFiles: {
+          ...state.autoDownloadExcludedFiles,
+          [vaultId]: remaining,
+        },
+      }
+    }),
   removeAutoDownloadExclusion: (vaultId, relativePath) =>
     set((state) => {
       const currentExclusions = state.autoDownloadExcludedFiles[vaultId] || []

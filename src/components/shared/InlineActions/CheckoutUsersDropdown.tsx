@@ -8,6 +8,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Bell, Loader2, Users, Lock } from 'lucide-react'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 export interface CheckoutUser {
@@ -48,7 +49,13 @@ export function CheckoutUsersDropdown({
   const [sendingTo, setSendingTo] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const { user: currentUser, organization, addToast } = usePDMStore()
+  const { user: currentUser, organization, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+    })),
+  )
 
   // Filter to only other users (not me)
   const otherUsers = users.filter((u) => !u.isMe)

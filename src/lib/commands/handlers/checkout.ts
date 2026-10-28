@@ -10,7 +10,7 @@
 import type { Command, CheckoutParams, CommandResult } from '../types'
 import { getSyncedFilesFromSelection } from '../types'
 import { ProgressTracker } from '../executor'
-import { checkoutFile } from '../../supabase'
+import { checkoutFile, getFile } from '../../supabase'
 import {
   processWithConcurrency,
   CONCURRENT_OPERATIONS,
@@ -18,6 +18,7 @@ import {
 } from '../../concurrency'
 import { updateInodes } from '../../cache/localSyncIndex'
 import type { LocalFile } from '../../../stores/pdmStore'
+import type { PDMFile } from '@/types/pdm'
 import { usePDMStore } from '../../../stores/pdmStore'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -116,6 +117,26 @@ function getFileContext(file: LocalFile): Record<string, unknown> {
     version: file.pdmData?.version,
     state: file.pdmData?.workflow_state?.name,
   }
+}
+
+/**
+ * Read back the rows of files the server refused to check out, so the store shows who holds
+ * them. A refusal means this machine missed the other checkout (a realtime event lost or still
+ * in flight); without this the file kept showing as free after the error toast.
+ */
+async function refreshRefusedRows(files: LocalFile[], operationId: string): Promise<void> {
+  const updates: Array<{ fileId: string; pdmData: Partial<PDMFile> }> = []
+  for (const file of files) {
+    const fileId = file.pdmData?.id
+    if (!fileId) continue
+    const { file: row, error } = await getFile(fileId)
+    if (error || !row) {
+      logCheckout('warn', 'Could not re-read a refused file', { operationId, fileName: file.name })
+      continue
+    }
+    updates.push({ fileId, pdmData: row as unknown as Partial<PDMFile> })
+  }
+  if (updates.length > 0) usePDMStore.getState().updateFilesPdmData(updates)
 }
 
 export const checkoutCommand: Command<CheckoutParams> = {
@@ -445,6 +466,10 @@ export const checkoutCommand: Command<CheckoutParams> = {
      * Process a single file for checkout
      * Extracted to avoid code duplication between phases
      */
+    // Files the server refused (someone else holds them). This machine's row said they were
+    // free, so it was stale: those rows are read back from the server after the batch.
+    const refusedByServer: LocalFile[] = []
+
     const processFile = async (file: LocalFile): Promise<{ success: boolean; error?: string }> => {
       const fileCtx = getFileContext(file)
       const isSolidWorksFile = SW_EXTENSIONS.includes(file.extension.toLowerCase())
@@ -525,11 +550,16 @@ export const checkoutCommand: Command<CheckoutParams> = {
           // IMPORTANT: Explicitly clear pendingMetadata on checkout
           // pendingMetadata should only be set when user edits the datacard
           // The UI falls back to pdmData for display when pendingMetadata is undefined
+          // Onto the row as the store holds it now, not as it was when the command started:
+          // realtime may have updated it meanwhile (another machine moved the file), and the
+          // older copy put the old server path back.
+          const currentPdmData =
+            usePDMStore.getState().files?.find((f) => f.path === file.path)?.pdmData ?? file.pdmData!
           pendingUpdates.push({
             path: file.path,
             updates: {
               pdmData: {
-                ...file.pdmData!,
+                ...currentPdmData,
                 checked_out_by: user.id,
                 checked_out_user: {
                   id: user.id,
@@ -545,9 +575,9 @@ export const checkoutCommand: Command<CheckoutParams> = {
                 // The fallback is the same value the RPC snapshots - the server row's
                 // own file_path/file_name - not the local path.
                 checked_out_file_path:
-                  result.file?.checked_out_file_path ?? file.pdmData!.file_path,
+                  result.file?.checked_out_file_path ?? currentPdmData.file_path,
                 checked_out_file_name:
-                  result.file?.checked_out_file_name ?? file.pdmData!.file_name,
+                  result.file?.checked_out_file_name ?? currentPdmData.file_name,
               },
               pendingMetadata: undefined, // Clear any existing pending metadata
             },
@@ -577,6 +607,7 @@ export const checkoutCommand: Command<CheckoutParams> = {
             ...fileCtx,
             error: result.error,
           })
+          refusedByServer.push(file)
           progress.update()
           return { success: false, error: `${file.name}: ${result.error || 'Unknown error'}` }
         }
@@ -820,6 +851,8 @@ export const checkoutCommand: Command<CheckoutParams> = {
         })
       }
     }
+
+    if (refusedByServer.length > 0) await refreshRefusedRows(refusedByServer, operationId)
 
     // Count results. A server checkout whose file stayed read-only is not a success.
     let serverFailed = 0

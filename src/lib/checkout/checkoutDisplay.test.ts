@@ -5,6 +5,7 @@ import { getInitials } from '@/lib/utils'
 import {
   deriveCheckoutDisplay,
   getCheckoutDisplayUser,
+  getCheckoutOwnerLabel,
   getCheckoutSignature,
 } from './checkoutDisplay'
 
@@ -72,6 +73,28 @@ describe('checkout display derivation', () => {
     expect(displayUser?.name).toBe(display.displayName)
     expect(JSON.stringify(file)).toBe(before)
     expect(file.pdmData.checked_out_user).toBeUndefined()
+  })
+
+  it('still yields a display user for another owner whose profile failed to load', () => {
+    const displayUser = getCheckoutDisplayUser(checkedOutFile(), currentUser, 'error')
+
+    expect(displayUser).not.toBeNull()
+    expect(displayUser?.isMe).toBe(false)
+    expect(displayUser?.displayState).toBe('unavailable')
+    expect(displayUser?.id).toBe(OWNER_ID)
+    expect(displayUser?.name).toBeTruthy()
+  })
+
+  it('names the owner in the label once known and falls back to the placeholder otherwise', () => {
+    const resolved = getCheckoutOwnerLabel(checkedOutFile(profile), currentUser)
+    const unavailable = getCheckoutOwnerLabel(checkedOutFile(), currentUser, 'error')
+    const loading = getCheckoutOwnerLabel(checkedOutFile(), currentUser, 'pending')
+
+    expect(resolved).toContain('Owner One')
+    expect(unavailable).toBe(deriveCheckoutDisplay(checkedOutFile(), currentUser, 'error').displayName)
+    expect(loading).toBe(deriveCheckoutDisplay(checkedOutFile(), currentUser, 'pending').displayName)
+    expect(unavailable).not.toBe(loading)
+    expect(getCheckoutOwnerLabel({ pdmData: { checked_out_by: null } }, currentUser)).toBeNull()
   })
 
   it('rejects enrichment attached to a different owner', () => {

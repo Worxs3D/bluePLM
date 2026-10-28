@@ -172,6 +172,15 @@ export function createRemovalDeps(input: RemovalDepsInput): RemoveSourcesDeps {
       return new Set(batch.results.filter(removedFromDisk).map((result) => result.path))
     },
 
+    recycleStaleLocks: async (absolutePaths) => {
+      const present: string[] = []
+      for (const lockPath of absolutePaths) {
+        if (await electron.fileExists(lockPath)) present.push(lockPath)
+      }
+      // Automatic like the files themselves: Recycle Bin or left where it is, never a hard delete.
+      if (present.length > 0) await electron.deleteBatch(present, true, true)
+    },
+
     softDeleteRows: async (ids) => {
       const deleted = new Set<string>()
       const errors = new Map<string, string>()

@@ -3,6 +3,7 @@ import { X, Terminal as TerminalIcon, Minus, ChevronUp, ChevronDown } from 'luci
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 // Force reimport of parser with all new commands (v3 - reload command)
 import {
   executeTerminalCommand,
@@ -27,7 +28,19 @@ export function Terminal({ onRefresh }: TerminalProps) {
     files,
     currentFolder,
     pendingCommandConfirm,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      terminalVisible: s.terminalVisible,
+      terminalHeight: s.terminalHeight,
+      terminalHistory: s.terminalHistory,
+      toggleTerminal: s.toggleTerminal,
+      setTerminalHeight: s.setTerminalHeight,
+      addTerminalHistory: s.addTerminalHistory,
+      files: s.files,
+      currentFolder: s.currentFolder,
+      pendingCommandConfirm: s.pendingCommandConfirm,
+    })),
+  )
 
   const [input, setInput] = useState('')
   const [outputs, setOutputs] = useState<TerminalOutput[]>([

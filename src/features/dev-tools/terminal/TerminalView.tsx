@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   executeTerminalCommand,
   getAutocompleteSuggestions,
@@ -12,7 +13,14 @@ interface TerminalViewProps {
 }
 
 export function TerminalView({ onRefresh }: TerminalViewProps) {
-  const { terminalHistory, addTerminalHistory, files, currentFolder } = usePDMStore()
+  const { terminalHistory, addTerminalHistory, files, currentFolder } = usePDMStore(
+    useShallow((s) => ({
+      terminalHistory: s.terminalHistory,
+      addTerminalHistory: s.addTerminalHistory,
+      files: s.files,
+      currentFolder: s.currentFolder,
+    })),
+  )
 
   const [input, setInput] = useState('')
   const [outputs, setOutputs] = useState<TerminalOutput[]>([

@@ -26,6 +26,7 @@ import {
   Box,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
 import { getActiveSessions, endRemoteSession, UserSession, supabase } from '@/lib/supabase'
@@ -110,7 +111,32 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     tabsEnabled,
     setTabsEnabled,
     getEffectiveVaultIds,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      setUser: s.setUser,
+      setOrganization: s.setOrganization,
+      addToast: s.addToast,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      switchVault: s.switchVault,
+      setActiveView: s.setActiveView,
+      isOfflineMode: s.isOfflineMode,
+      setOfflineMode: s.setOfflineMode,
+      sidebarVisible: s.sidebarVisible,
+      toggleSidebar: s.toggleSidebar,
+      detailsPanelVisible: s.detailsPanelVisible,
+      toggleDetailsPanel: s.toggleDetailsPanel,
+      rightPanelVisible: s.rightPanelVisible,
+      toggleRightPanel: s.toggleRightPanel,
+      topbarConfig: s.topbarConfig,
+      setTopbarConfig: s.setTopbarConfig,
+      tabsEnabled: s.tabsEnabled,
+      setTabsEnabled: s.setTabsEnabled,
+      getEffectiveVaultIds: s.getEffectiveVaultIds,
+    })),
+  )
 
   // Filter vaults based on impersonated user's access
   const effectiveVaultIds = getEffectiveVaultIds()

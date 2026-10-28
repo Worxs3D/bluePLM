@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { usePDMStore, getHasHydrated } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { resolveBackend } from '@/lib/backend'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -78,7 +79,13 @@ export function useAppStartup(): StartupState {
   // Track if startup has already run to prevent re-running on re-renders
   const startupRunRef = useRef(false)
 
-  const { loadInstalledExtensions, handleExtensionStateChange, addToast } = usePDMStore()
+  const { loadInstalledExtensions, handleExtensionStateChange, addToast } = usePDMStore(
+    useShallow((s) => ({
+      loadInstalledExtensions: s.loadInstalledExtensions,
+      handleExtensionStateChange: s.handleExtensionStateChange,
+      addToast: s.addToast,
+    })),
+  )
 
   useEffect(() => {
     // Only run startup once

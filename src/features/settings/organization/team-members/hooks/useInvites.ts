@@ -13,6 +13,7 @@ import { useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { PendingMember, PendingMemberFormData } from '../types'
 import { castQueryResult, updatePendingOrgMember } from './supabaseHelpers'
 
@@ -28,7 +29,19 @@ export function useInvites(orgId: string | null) {
     setPendingMembers,
     setPendingMembersLoading,
     removePendingMember: removePendingMemberFromStore,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      addToast: s.addToast,
+      apiServerUrl: s.apiServerUrl,
+      pendingMembers: s.pendingMembers,
+      pendingMembersLoading: s.pendingMembersLoading,
+      pendingMembersLoaded: s.pendingMembersLoaded,
+      setPendingMembers: s.setPendingMembers,
+      setPendingMembersLoading: s.setPendingMembersLoading,
+      removePendingMember: s.removePendingMember,
+    })),
+  )
 
   const loadPendingMembers = useCallback(async () => {
     if (!orgId) return

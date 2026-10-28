@@ -13,7 +13,10 @@
  *      removed; it stays, and so does its row, so the vault never says "deleted" about a file that
  *      is still on someone's disk and in use.
  *   4. The row is soft-deleted, which is the trash the vault already has, so it can be restored.
- *   5. A folder is removed only when everything under it went.
+ *   5. A folder is removed only when everything under it went. The SOLIDWORKS lock file
+ *      (`~$name`) of a file this move recycled is stale by construction, since its file is gone,
+ *      so it goes to the Recycle Bin too; otherwise a lock left behind by a crash months ago
+ *      keeps the folder. Any other leftover keeps the folder, and the report names it.
  */
 
 import { isPathWithinDirectory } from '@/lib/utils/path'
@@ -46,6 +49,8 @@ export interface RemoveSourcesDeps {
   ) => Promise<{ ok: true; rows: Map<string, SourceRowState> } | { ok: false; error: string }>
   /** Recycle local files. Returns the absolute paths that were removed. */
   deleteLocalFiles: (absolutePaths: string[]) => Promise<Set<string>>
+  /** Recycle whichever of these lock files exist. Missing ones are not an error. */
+  recycleStaleLocks: (absolutePaths: string[]) => Promise<void>
   /** Soft-delete rows. Returns the ids that were deleted and a message per id that was not. */
   softDeleteRows: (ids: string[]) => Promise<{ deleted: Set<string>; errors: Map<string, string> }>
   directoryState: (absolutePath: string) => Promise<'empty' | 'not-empty' | 'missing'>
@@ -65,6 +70,8 @@ export interface RemoveSourcesOutcome {
   kept: KeptSource[]
   /** Source folders (vault-relative) that were removed. */
   foldersRemoved: string[]
+  /** Source folders (vault-relative) that everything left but that are still on disk. */
+  foldersKept: string[]
 }
 
 function isStub(file: LocalFile): boolean {
@@ -73,6 +80,12 @@ function isStub(file: LocalFile): boolean {
 
 function hasLocalFile(planned: PlannedTransferFile): boolean {
   return planned.strategy !== 'cloud'
+}
+
+/** The SOLIDWORKS lock file a file gets while it is open: `~$` before its name, beside it. */
+export function lockFilePathFor(absolutePath: string): string {
+  const cut = Math.max(absolutePath.lastIndexOf('/'), absolutePath.lastIndexOf('\\'))
+  return `${absolutePath.slice(0, cut + 1)}~$${absolutePath.slice(cut + 1)}`
 }
 
 function depth(relativePath: string): number {
@@ -133,6 +146,11 @@ export async function removeMovedSources(
   }
   candidates = candidates.filter((planned) => !stuckLocal.has(planned))
 
+  const recycledLocal = localPlanned.filter((planned) => !stuckLocal.has(planned))
+  if (recycledLocal.length > 0) {
+    await deps.recycleStaleLocks(recycledLocal.map((planned) => lockFilePathFor(planned.source.path)))
+  }
+
   // 4. Rows.
   const removed: PlannedTransferFile[] = []
   const rowIds = candidates.flatMap((planned) =>
@@ -158,6 +176,7 @@ export async function removeMovedSources(
   // 5. Folders: only those with nothing left in them.
   const goneByPath = new Set(removed.map((planned) => planned.sourceRelativePath.toLowerCase()))
   const foldersRemoved: string[] = []
+  const foldersKept: string[] = []
 
   const foldersDeepestFirst = [...input.sourceFolders].sort((a, b) => depth(b) - depth(a))
   for (const folder of foldersDeepestFirst) {
@@ -175,12 +194,14 @@ export async function removeMovedSources(
     // anything the file list did not show (hidden files, lock files). A folder that is not on
     // disk at all is cloud-only and loses just its server row.
     const state = await deps.directoryState(absolutePath)
-    if (state === 'not-empty') continue
-    if (state === 'empty' && !(await deps.trashDirectory(absolutePath))) continue
+    if (state === 'not-empty' || (state === 'empty' && !(await deps.trashDirectory(absolutePath)))) {
+      foldersKept.push(folder)
+      continue
+    }
 
     await deps.deleteServerFolder(folder)
     foldersRemoved.push(folder)
   }
 
-  return { removed, kept, foldersRemoved }
+  return { removed, kept, foldersRemoved, foldersKept }
 }

@@ -8,8 +8,19 @@ name: Verify
 # repository was cut without a single test, typecheck or API build having run on it. A second copy
 # of these steps would drift again the first time only one of them was updated. One definition
 # cannot.
+#
+# Every job here gates a release: release.yml's build jobs `need` the whole of this workflow. The
+# jobs below the first were added on 2026-10-25 (.cursor/plans/test-audit-2026-10-25.md,
+# workstream D) because CI saw only TypeScript on Linux while the regressions users reported lived
+# in the SolidWorks service, the SQL schema and Windows paths.
 on:
   workflow_call:
+    # Passed by name, not `secrets: inherit`, so this workflow sees only what sw-service-dm needs.
+    secrets:
+      SOLIDWORKS_DM_LICENSE_KEY:
+        required: false
+      CI_ASSETS_TOKEN:
+        required: false
 
 # Read-only. Nothing here publishes, comments or writes to the repository — it installs
 # dependencies and runs checks. `npm ci` executes arbitrary postinstall scripts, so the token this
@@ -19,7 +30,7 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck and Test
+    name: Typecheck and Build API
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -68,5 +79,352 @@ jobs:
       - name: Build API
         run: npm run api:build
 
+  # vitest on both platforms. The app ships on Windows and ~70 test files carry Windows path
+  # literals, but until 2026-10-25 the suite only ever ran on Linux, so a test that passes there
+  # and fails on the platform users run could not be seen.
+  #
+  # Coverage is measured on the Linux leg only (one report is enough, and v8 coverage slows the
+  # run). It is reported, not gated: there is no threshold yet.
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # api/ tests import the API's own dependencies; see the verify job.
+      - name: Install API dependencies
+        run: npm ci --prefix api
+
+      - name: Test with coverage
+        if: runner.os == 'Linux'
+        run: npm run test:coverage
+
       - name: Test
+        if: runner.os != 'Linux'
         run: npm test
+
+      - name: Publish coverage summary
+        if: runner.os == 'Linux' && always()
+        shell: bash
+        run: |
+          [ -f coverage/coverage-summary.json ] || { echo "no coverage summary"; exit 0; }
+          node -e '
+            const t = require("./coverage/coverage-summary.json").total;
+            const row = (k) => `| ${k} | ${t[k].pct}% | ${t[k].covered} / ${t[k].total} |`;
+            console.log(["## Coverage (not gated)", "", "| Metric | % | Covered |", "|---|---|---|",
+              ...["lines", "statements", "functions", "branches"].map(row),
+              "", "Per-file lcov report: the `coverage-lcov` artifact."].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage
+        if: runner.os == 'Linux' && always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-lcov
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Blocking, as a ratchet. `npm run lint` has a backlog of pre-existing errors, so `eslint .` as a
+  # gate would fail on its first run; non-blocking (what ci.yml had) let the count grow unseen.
+  # scripts/lint-ratchet.mjs fails when the error count rises above scripts/lint-baseline.json
+  # and asks for the baseline to be lowered when it falls.
+  lint:
+    name: Lint (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint ratchet
+        run: npm run lint:ratchet
+
+  # The SolidWorks service. Nothing built or tested it before release.yml's build-windows, which
+  # runs after this workflow has already passed - so a net48 API break (Math.Clamp, 20b74f3b) was
+  # first seen at packaging time, and the C# suite never ran in CI at all.
+  #
+  # Only tests tagged [Trait("Category", "Headless")] run: they need no SolidWorks, no Document
+  # Manager licence and no vault fixtures. The rest open real documents through Document Manager,
+  # which needs a licence key and the Document Manager interop installed; sw-service-dm below runs
+  # those with both supplied from secrets and the private assets repo.
+  #
+  # A skipped headless test fails this job unless headless-skip-allowlist.txt names it, and so does
+  # a run that executed nothing: both are a suite proving nothing while reporting green.
+  sw-service:
+    name: SolidWorks service (build + headless tests)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The same SDK release.yml packages the service with.
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        run: dotnet build solidworks-service/BluePLM.SolidWorksService.sln -c Release
+
+      - name: Headless tests
+        run: >
+          dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release --no-build
+          --filter "Category=Headless"
+          --logger "trx;LogFileName=headless.trx"
+          --results-directory TestResults
+
+      - name: Check skipped tests against the allowlist
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem TestResults -Recurse -Filter headless.trx | Select-Object -First 1
+          if (-not $trx) { throw "No TRX file - the headless tests did not run." }
+          [xml]$doc = Get-Content $trx.FullName
+          $results = @($doc.TestRun.Results.UnitTestResult)
+          $allow = Get-Content solidworks-service/BluePLM.SolidWorksService.Tests/headless-skip-allowlist.txt |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+          $executed = @($results | Where-Object { $_.outcome -ne 'NotExecuted' })
+          $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
+          $unexpected = @($skipped | Where-Object {
+            $name = $_.testName -replace '\(.*$', ''
+            $allow -notcontains $name
+          })
+          "## SolidWorks service headless tests" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "$($executed.Count) executed, $($skipped.Count) skipped ($($unexpected.Count) not on the allowlist)." |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          foreach ($s in $skipped) { Write-Host "skipped: $($s.testName)" }
+          if ($executed.Count -eq 0) { throw "No headless test executed." }
+          if ($unexpected.Count -gt 0) {
+            $unexpected | ForEach-Object { Write-Host "::error::Skipped outside the allowlist: $($_.testName)" }
+            throw "$($unexpected.Count) headless test(s) skipped outside headless-skip-allowlist.txt."
+          }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sw-service-headless-trx
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The Document Manager tests: the C# tests that open real SOLIDWORKS documents (the 22 fixture
+  # facts and theories, and the interop-backed ones). Metadata write bugs that shipped - wrong
+  # vendor constants, writes reporting success either way, a cleared property dropped - live here.
+  #
+  # Document Manager is not on a hosted runner and must not be in this public repository, so the
+  # private bluerobotics/bluePLM-ci-assets repo holds the engine DLL, its interop and the two small
+  # regression fixtures (its README lists versions and hashes). The job checks the hashes, installs
+  # the DLLs where the service looks for them and registers the COM server, and puts the fixtures at
+  # RegressionFixtureGuard.DefaultFixtureRoot, the one path the fixture guard reads from.
+  #
+  # Secrets: SOLIDWORKS_DM_LICENSE_KEY (passed as BLUEPLM_DM_LICENSE_KEY, the name
+  # DocumentManagerLicense.cs reads) and CI_ASSETS_TOKEN (read-only contents on the assets repo).
+  # Without them - pull requests from forks never get secrets - the job says so in a warning and
+  # stops green; with them, any skip other than the T500X fixture fails the job, because a
+  # skipped Document Manager test proves nothing.
+  sw-service-dm:
+    name: SolidWorks service (Document Manager tests)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      HAS_SECRETS: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY != '' && secrets.CI_ASSETS_TOKEN != '' }}
+    steps:
+      - name: Check secrets
+        shell: pwsh
+        run: |
+          if ($env:HAS_SECRETS -ne 'true') {
+            Write-Host "::warning::Document Manager tests not run: SOLIDWORKS_DM_LICENSE_KEY or CI_ASSETS_TOKEN is not available to this run."
+            "## Document Manager tests`nNot run: secrets unavailable." | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          }
+
+      - name: Checkout
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/checkout@v5
+
+      - name: Checkout CI assets
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: bluerobotics/bluePLM-ci-assets
+          token: ${{ secrets.CI_ASSETS_TOKEN }}
+          path: ci-assets
+          persist-credentials: false
+
+      - name: Install Document Manager and fixtures
+        if: env.HAS_SECRETS == 'true'
+        shell: pwsh
+        run: |
+          $expected = @{
+            'swdocumentmgr.dll'                    = 'dfd78bdc6f5bfb146ae7268521abb457f3e9d29a24c32c66b76d57a116f0e98a'
+            'SolidWorks.Interop.swdocumentmgr.dll' = '8ad5014d651a177577663ffbddf467a8aadd735fb0cc6e42116639988aa17651'
+          }
+          $shared = 'C:\Program Files\Common Files\SOLIDWORKS Shared'
+          New-Item -ItemType Directory -Force $shared | Out-Null
+          foreach ($name in $expected.Keys) {
+            $source = Join-Path ci-assets/document-manager $name
+            $hash = (Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $expected[$name]) { throw "$name hash $hash does not match the pinned $($expected[$name])" }
+            Copy-Item $source $shared
+          }
+          $reg = Start-Process regsvr32.exe -ArgumentList '/s', "`"$shared\swdocumentmgr.dll`"" -Wait -PassThru
+          if ($reg.ExitCode -ne 0) { throw "regsvr32 swdocumentmgr.dll exited $($reg.ExitCode)" }
+          $fixtureRoot = 'C:\BluePLM\br-vault\0 - SHARED\00 - REGRESSION TESTS'
+          New-Item -ItemType Directory -Force $fixtureRoot | Out-Null
+          Copy-Item ci-assets/fixtures/* $fixtureRoot -Recurse
+          # Git does not keep the read-only attribute, and every fixture file is read-only in the vault
+          # (as every file not checked out is); FixtureSandboxTests and DrawingReferenceTests rely on it.
+          Get-ChildItem $fixtureRoot -Recurse -File | ForEach-Object { $_.IsReadOnly = $true }
+          Get-ChildItem $fixtureRoot -Recurse -File | ForEach-Object { Write-Host "fixture: $($_.FullName)" }
+
+      - name: Setup .NET SDK
+        if: env.HAS_SECRETS == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        if: env.HAS_SECRETS == 'true'
+        run: dotnet build solidworks-service/BluePLM.SolidWorksService.sln -c Release
+
+      - name: Document Manager tests
+        if: env.HAS_SECRETS == 'true'
+        env:
+          BLUEPLM_DM_LICENSE_KEY: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY }}
+        run: >
+          dotnet test solidworks-service/BluePLM.SolidWorksService.sln -c Release --no-build
+          --filter "Category!=Headless"
+          --logger "trx;LogFileName=dm.trx"
+          --results-directory TestResults
+
+      - name: Check skipped tests
+        if: always() && env.HAS_SECRETS == 'true'
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem TestResults -Recurse -Filter dm.trx | Select-Object -First 1
+          if (-not $trx) { throw "No TRX file - the Document Manager tests did not run." }
+          [xml]$doc = Get-Content $trx.FullName
+          $results = @($doc.TestRun.Results.UnitTestResult)
+          $executed = @($results | Where-Object { $_.outcome -ne 'NotExecuted' })
+          $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
+          # Allowed: the 297 MB T500X fixture, which the assets repo leaves out, and the symlink test on a
+          # runner that refuses links.
+          $allowed = "REGRESSION-TEST-T500X' is (not present|large)|will not create a symbolic link"
+          $unexpected = @($skipped | Where-Object { "$($_.Output.ErrorInfo.Message)$($_.Output.StdOut)" -notmatch $allowed })
+          "## Document Manager tests" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "$($executed.Count) executed, $($skipped.Count) skipped ($($unexpected.Count) unexpected)." |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          foreach ($s in $skipped) { Write-Host "skipped: $($s.testName): $($s.Output.ErrorInfo.Message)" }
+          if ($executed.Count -eq 0) { throw "No Document Manager test executed." }
+          if ($unexpected.Count -gt 0) {
+            $unexpected | ForEach-Object { Write-Host "::error::Unexpected skip: $($_.testName): $($_.Output.ErrorInfo.Message)" }
+            throw "$($unexpected.Count) Document Manager test(s) skipped for a reason other than the opt-in fixture."
+          }
+
+      - name: Upload test results
+        if: always() && env.HAS_SECRETS == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: sw-service-dm-trx
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The SQL schema, installed the way the owner installs it, on the harness's Supabase-faithful
+  # Postgres (harness/docker-compose.yml: supabase_admin as bootstrap superuser, postgres demoted,
+  # Supabase's own role bootstrap; initdb/90-assert-harness.sql refuses to start otherwise). It is
+  # the harness itself rather than a bare Postgres service container with roles stubbed by hand,
+  # because two earlier security efforts passed against a container where postgres was still a
+  # superuser, which makes every grant check meaningless.
+  #
+  # Order: core.sql, then core.sql again with every module (core idempotency), then every module
+  # again (module idempotency); then tools/verify-schema.sql, which withholds the stamp and errors
+  # when an object schema_release_manifest() names is missing; then the fast negative controls,
+  # which break the schema on purpose and require the verifier to notice.
+  sql:
+    name: SQL schema (install, idempotency, verifier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: harness
+    env:
+      # Every compose call in the harness scripts picks up the throwaway-durability override.
+      COMPOSE_FILE: docker-compose.yml:docker-compose.fast.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Start harness and install core.sql
+        run: ./reset.ps1 -CoreOnly
+
+      - name: Re-apply core.sql and install every module
+        run: ./install.ps1
+
+      - name: Re-apply core.sql and every module again
+        run: ./install.ps1
+
+      - name: Verify schema against the release manifest
+        run: |
+          docker compose exec -T -e PGPASSWORD=postgres db `
+            psql -v ON_ERROR_STOP=1 --no-psqlrc -U postgres -d postgres -h 127.0.0.1 `
+            -f /blueplm/tools/verify-schema.sql
+          if ($LASTEXITCODE -ne 0) { throw "verify-schema.sql failed (exit $LASTEXITCODE)" }
+
+      # The controls write rows that reference seeded organizations and files (NC12, NX1, NX2,
+      # POSTURE), so they need the same seed reset.ps1 loads after a full install.
+      - name: Seed
+        run: |
+          docker compose exec -T -e PGPASSWORD=postgres db `
+            psql -v ON_ERROR_STOP=1 --no-psqlrc -U postgres -d postgres -h 127.0.0.1 -f /sql/seed.sql
+          if ($LASTEXITCODE -ne 0) { throw "seed.sql failed (exit $LASTEXITCODE)" }
+
+      # Smoke tier (one verification run) on pushes and pull requests; standard tier (each control
+      # isolated, ~25 minutes of psql on the first run) on tags and manual runs, so a release is
+      # held to the stronger answer. See the TIERS comment in negative-controls-fast.ps1.
+      - name: Negative controls
+        run: |
+          $tier = if ('${{ github.ref_type }}' -eq 'tag' -or '${{ github.event_name }}' -eq 'workflow_dispatch') { 'standard' } else { 'smoke' }
+          ./negative-controls-fast.ps1 -Tier $tier -Skip CENSUS
+
+      # Non-blocking, 2026-10-25. The census fails until harness/sql/fast/census-baseline.txt is
+      # committed, and committing it is a security review: each SECURITY DEFINER routine
+      # `authenticated` can reach must be read and either kept or withdrawn, not accepted wholesale.
+      # The job log carries the proposed list. Make this step blocking once the baseline is in.
+      - name: Endpoint census (non-blocking until the baseline is reviewed)
+        continue-on-error: true
+        run: ./negative-controls-fast.ps1 -Tier smoke -Only CENSUS
+
+      - name: Database log on failure
+        if: failure()
+        run: docker compose logs db | Select-Object -Last 200

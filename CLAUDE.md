@@ -9,6 +9,8 @@ API. The renderer lives in `src/`, the Electron main process in `electron/`, the
 
 Administrators team = admin (4.7.1; API 2.8.2, schema 102). There is one definition of admin: `users.role = 'admin'` OR membership of the team named `Administrators`. Never test the role column alone. Renderer: `isAdminUser(role, teams)` in `src/lib/isAdminUser.ts`; `getEffectiveRole()` returns `'admin'` for team members once `userTeams` has loaded, so `getEffectiveRole() === 'admin'` gates are correct as written, but a direct `user.role === 'admin'` is a bug. API: gate on `request.user.isAdmin` (set by `api/middleware/auth.ts` from `is_org_admin()`, fails closed), not `request.user.role`. SQL: call `is_org_admin()`, never `SELECT 1 FROM users WHERE role = 'admin'`. `users.role` is never written to keep it in step with the team. The user must apply `core.sql` + modules 40/50 and redeploy the API; the renderer works on app update alone.
 
+Native inspection ballooning (schema 103, service 1.23.0, renderer): the Inspection tab's "Extract from drawing" and "Balloon drawing" need only SOLIDWORKS, not a SOLIDWORKS Inspection license. The service (`SolidWorksAPI.InspectionNative.cs`) keys each characteristic by a hash of the annotation's persist reference (`#n` sub-keys for hole callout values and GTOL frames), and rows store it in `source_key`. The merge planner (`src/lib/inspection/characteristicMerge.ts`) must keep these rules: balloon numbers and user metadata survive re-extraction, new numbers go above every number the file has ever used (live rows and snapshots), rows that could not be read are never offered for removal, and `inspection_hash` leaves out the source columns. Balloons live on the `BluePLM Inspection` layer and are the only annotations the service deletes. Runtime behaviour in real SOLIDWORKS (R1-R11 in the service file header) was unverified at release. Plan and reports: `.cursor/plans/native-inspection-balloons-*`.
+
 Copy to Vault / Move to Vault: 4.5.0 adds both to the file context menus (renderer only - no schema change, no API change). The menu only picks a mode, a destination vault and keep-path; `VaultTransferDialog` (mounted once in `AppShell` through `pendingVaultTransfer`) previews and confirms, then the `copy-to-vault` / `move-to-vault` commands run. The planner, engine, removal and report are in `src/lib/vaultTransfer/`; the command is `src/lib/commands/handlers/vaultTransfer.ts`. Rules that must not loosen: skip-only conflicts (`syncFile` with `insertOnly`, never an overwrite), a Move verifies the destination and re-checks the source row before the Recycle Bin and soft delete, cloud-only files transfer as a row only, workflow state / reviews / ECO tags are not carried. Not yet covered by tests: the Supabase/Electron wrappers in `deps.ts` and `serverOps.ts`.
 
 4.4.5 shipped (renderer and preload only — no schema change, no API change,
@@ -162,9 +164,13 @@ Plans and agent reports live in `.cursor/plans/`. Never create a plan outside th
 
 ## Commands
 
+Test suites and typechecks run on the Modal cloud test runner, not on this machine: see
+`.cursor/rules/testing.mdc` for the commands. The npm scripts below are what those runs execute.
+
 ```bash
 npm run typecheck      # renderer + electron; must pass before any tag
 npm run typecheck:api  # api/ only
+npm run check:all      # typecheck (the cloud runner's `check` gate)
 npm run test           # vitest run
 npm run lint           # eslint
 npm run dev            # vite dev server
@@ -185,6 +191,7 @@ automatically:
 @.cursor/rules/electron.mdc
 @.cursor/rules/solidworks-service.mdc
 @.cursor/rules/plans.mdc
+@.cursor/rules/testing.mdc
 
 The points that most often get violated:
 
@@ -194,6 +201,11 @@ The points that most often get violated:
   `supabase/modules/*.sql` are edited in place and must stay idempotent. Never write
   `schema_version` directly and never push SQL from a terminal command; the user applies it in
   the Supabase SQL editor.
+  Apply order is always `core.sql` first, then modules `10` through `60` in order: applying core after
+  module 40 once left production with core's drifted `claim_pending_membership`
+  (`.cursor/plans/schema-103-production-apply.md`). A nightly cloud routine (08:00 UTC) may apply a
+  finished schema release from `main` behind an independent review, so land a schema bump on `main`
+  only when it is ready for production.
 - **API changes require two files.** Bump `version` in `api/package.json` and
   `EXPECTED_API_VERSION` in `src/lib/apiVersion.ts`, with an `API_VERSION_DESCRIPTIONS` entry.
 - **State goes in `usePDMStore` slices.** Never create a new Zustand store.

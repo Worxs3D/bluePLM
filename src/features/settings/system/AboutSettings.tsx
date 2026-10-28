@@ -15,6 +15,7 @@ import {
 import { log } from '@/lib/logger'
 import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 interface GitHubRelease {
   tag_name: string
@@ -27,7 +28,7 @@ interface GitHubRelease {
 
 export function AboutSettings() {
   const { t } = useTranslation()
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const [appVersion, setAppVersion] = useState<string>('')
   const [platform, setPlatform] = useState<string>('win32')
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)

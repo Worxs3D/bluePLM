@@ -30,6 +30,7 @@ import { log } from '@/lib/logger'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 import { isPathHidden, readHiddenFolderPaths } from '@/lib/hiddenFolders'
 import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
+import { isRecentlyModified, markRecentlyModified } from '@/lib/recentlyModified'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
 import { applyPendingEdit, noPendingEdit } from '@/lib/metadata/pendingEdits'
 import { unwritableFieldGroups } from '@/lib/metadata/writeOwnership'
@@ -47,6 +48,8 @@ import {
 import { logExplorer } from '@/lib/userActionLogger'
 import { bumpFileMutationEpoch } from '@/lib/fileMutationEpoch'
 import { applyFileUpdates, mergeWrittenFile } from '../fileUpdates'
+import { applyServerPdmUpdate, applyServerPdmUpdates } from '../serverPdmUpdate'
+import { applyServerLocationUpdates } from '../serverLocationUpdate'
 import { migratePersistedPathKeys, type PathRename } from '../persistedPathKeys'
 
 // ============================================================================
@@ -476,6 +479,32 @@ export const createFilesSlice: StateCreator<
       const checkoutHydration = { ...state.checkoutHydration }
       delete checkoutHydration[fileId]
       return { checkoutHydration }
+    })
+  },
+
+  // Batch forms of the two actions above. A load with 753 checked-out files made 753 `set`
+  // calls to mark them pending and another 753 to clear them, each copying the whole map and
+  // waking every subscriber (useVaultTree depends on `checkoutHydration`, so each wake could
+  // mean a folder-metrics pass); `Slow store mutation` showed 250-400 ms for single ones.
+  setCheckoutHydrationStatuses: (entries) => {
+    if (entries.length === 0) return
+    set((state) => {
+      const checkoutHydration = { ...state.checkoutHydration }
+      for (const [fileId, status] of entries) checkoutHydration[fileId] = status
+      return { checkoutHydration }
+    })
+  },
+
+  clearCheckoutHydrationStatuses: (fileIds) => {
+    if (fileIds.length === 0) return
+    set((state) => {
+      let checkoutHydration: typeof state.checkoutHydration | null = null
+      for (const fileId of fileIds) {
+        if (!(fileId in state.checkoutHydration)) continue
+        checkoutHydration ??= { ...state.checkoutHydration }
+        delete checkoutHydration[fileId]
+      }
+      return checkoutHydration ? { checkoutHydration } : state
     })
   },
 
@@ -1661,75 +1690,13 @@ export const createFilesSlice: StateCreator<
 
   updateFilePdmData: (fileId, pdmData) => {
     set((state) => ({
-      files: state.files.map((f) => {
-        if (f.pdmData?.id === fileId) {
-          // This used to hold back the server's value for any field with a pending edit, to stop a
-          // realtime event reverting what the user had typed. That defence belonged to the era when
-          // the edit was copied into pdmData and the two were indistinguishable. Now the edit lives
-          // only in pendingMetadata and every reader overlays it, so the row can hold what the server
-          // actually says - which it must, because dropCommittedPendingMetadata decides whether an
-          // edit is still owed by comparing it against this row. Holding an older true value there
-          // kept edits pending after the database had already accepted them.
-
-          // Realtime rows omit joined profiles. The merge helper preserves one only when
-          // its ID still matches the incoming authoritative owner.
-          const updatedPdmData = mergePdmFileData(f.pdmData, pdmData)
-
-          // Recompute diff status using best available information
-          let newDiffStatus = f.diffStatus
-          if (pdmData.content_hash && f.localHash && f.localHash.length > 0) {
-            // Hash comparison is most accurate
-            if (pdmData.content_hash !== f.localHash) {
-              newDiffStatus = 'outdated'
-            } else if (f.diffStatus === 'outdated') {
-              newDiffStatus = undefined
-            }
-          } else if (f.localVersion !== undefined && pdmData.version !== undefined) {
-            // Use tracked local version as fallback when hash unavailable
-            if (f.localVersion === pdmData.version) {
-              // Versions match - file is synced
-              if (f.diffStatus === 'outdated') {
-                newDiffStatus = undefined
-              }
-            } else if (f.localVersion < pdmData.version) {
-              // Local is older than server
-              newDiffStatus = 'outdated'
-            }
-            // If local > server, preserve existing status (likely 'modified')
-          } else if (f.diffStatus === 'outdated') {
-            // No way to verify 'outdated' status - clear it rather than preserve potentially wrong status
-            // Background hash computation will determine correct status
-            newDiffStatus = undefined
-          }
-          // Otherwise preserve existing diffStatus (e.g. 'modified', 'added')
-
-          // Handle checkout status changes for files marked as 'deleted'
-          if (
-            f.diffStatus === 'deleted' &&
-            'checked_out_by' in pdmData &&
-            pdmData.checked_out_by === null
-          ) {
-            newDiffStatus = 'cloud'
-          }
-
-          // An edit the row now agrees with is no longer owed to anyone. With the row holding the
-          // server's own value again this comparison is finally meaningful: while the fresh value was
-          // withheld, a pending edit that had already been accepted stayed pending forever, keeping
-          // the file marked modified with nothing to check in.
-          const stillPending = f.pendingMetadata
-            ? dropCommittedPendingMetadata(f.pendingMetadata, updatedPdmData)
-            : undefined
-
-          return {
-            ...f,
-            pdmData: updatedPdmData,
-            pendingMetadata: stillPending,
-            diffStatus: newDiffStatus,
-          }
-        }
-        return f
-      }),
+      files: state.files.map((f) => (f.pdmData?.id === fileId ? applyServerPdmUpdate(f, pdmData) : f)),
     }))
+  },
+
+  updateFilesPdmData: (updates) => {
+    if (updates.length === 0) return
+    set((state) => ({ files: applyServerPdmUpdates(state.files, updates) }))
   },
 
   /**
@@ -1850,139 +1817,48 @@ export const createFilesSlice: StateCreator<
       fileIds: scopedUpdates.map((u) => u.fileId).slice(0, 5),
     })
 
-    set((state) => {
-      // Build a map of fileId -> update for O(1) lookups
-      const updateMap = new Map(scopedUpdates.map((u) => [u.fileId, u]))
-
-      // Collect all new folders that need to be created
-      const newFolders: LocalFile[] = []
-
-      // Build a comprehensive set of existing paths (case-insensitive) to prevent duplicates
-      // Include ALL files/folders, not just directories, to catch edge cases where
-      // an entry might exist with wrong isDirectory flag or from concurrent updates
-      const existingPaths = new Set(state.files.map((f) => f.relativePath.toLowerCase()))
-      // Also track by full path for extra safety
-      const existingFullPaths = new Set(state.files.map((f) => f.path.toLowerCase()))
-
-      // Track old paths for selectedFiles update
-      const oldPathToNewPath = new Map<string, string>()
-
-      // Pre-create all parent folders needed (only if they truly don't exist)
-      for (const update of scopedUpdates) {
-        const pathParts = update.newRelativePath.split('/')
-        let currentPath = ''
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentPath = currentPath ? `${currentPath}/${pathParts[i]}` : pathParts[i]
-          const lowerPath = currentPath.toLowerCase()
-          const fullPath = buildFullPath(vaultPath, currentPath)
-          const lowerFullPath = fullPath.toLowerCase()
-
-          // Skip if folder already exists in state OR was already queued for creation
-          // Check both relativePath and full path for robustness
-          if (
-            existingPaths.has(lowerPath) ||
-            existingFullPaths.has(lowerFullPath) ||
-            newFolders.some((f) => f.relativePath.toLowerCase() === lowerPath)
-          ) {
-            continue
-          }
-
-          newFolders.push({
-            name: pathParts[i],
-            path: fullPath,
-            relativePath: currentPath,
-            isDirectory: true,
-            extension: '',
-            size: 0,
-            modifiedTime: '',
-            diffStatus: 'cloud',
-          })
-          // Add to tracking sets to prevent duplicates within this batch
-          existingPaths.add(lowerPath)
-          existingFullPaths.add(lowerFullPath)
-        }
-      }
-
-      if (newFolders.length > 0) {
-        log.debug('[filesSlice]', 'batchUpdateFileLocationsFromServer creating folders', {
-          folderCount: newFolders.length,
-          paths: newFolders.map((f) => f.relativePath),
-        })
-      }
-
-      // Update all files in a single pass
-      const updatedFiles = state.files.map((f) => {
-        const update = f.pdmData?.id ? updateMap.get(f.pdmData.id) : undefined
-        if (!update || !f.pdmData) return f
-
-        const newFullPath = buildFullPath(vaultPath, update.newRelativePath)
-        oldPathToNewPath.set(f.path, newFullPath)
-
-        return {
-          ...f,
-          path: newFullPath,
-          relativePath: update.newRelativePath,
-          name: update.newFileName,
-          extension: update.newFileName.includes('.')
-            ? '.' + (update.newFileName.split('.').pop()?.toLowerCase() || '')
-            : '',
-          pdmData: mergePdmFileData(f.pdmData, update.pdmData),
-        }
-      })
-
-      // Mirror the same path changes onto state.serverFiles. Without this,
-      // refreshCurrentFolder iterates a stale serverFiles list and resurrects
-      // a ghost cloud-only entry at the old path.
-      const updatedServerFiles = state.serverFiles.map((sf) => {
-        const update = updateMap.get(sf.id)
-        if (!update) return sf
-        return {
-          ...sf,
-          file_path: update.newRelativePath,
-          name: update.newFileName,
-          extension: update.newFileName.includes('.')
-            ? '.' + (update.newFileName.split('.').pop()?.toLowerCase() || '')
-            : '',
-        }
-      })
-
-      // Update selectedFiles if any were moved
-      const updatedSelectedFiles = state.selectedFiles.map((p) => oldPathToNewPath.get(p) || p)
-
-      return {
-        files: [...updatedFiles, ...newFolders],
-        serverFiles: updatedServerFiles,
-        selectedFiles: updatedSelectedFiles,
-      }
-    })
+    set((state) => applyServerLocationUpdates(state, scopedUpdates, vaultPath))
   },
 
   removeCloudFile: (fileId) => {
-    set((state) => ({
-      files: state.files
-        .filter((f) => {
-          // Only remove cloud-only files
-          if (f.pdmData?.id === fileId && f.diffStatus === 'cloud') {
-            return false
-          }
-          return true
+    get().removeCloudFiles([fileId])
+  },
+
+  // The realtime handler collects a burst of soft deletes and applies them here in one pass:
+  // one `set`, so one tree rebuild and one folder re-sort for the burst instead of one each
+  // per event (about half a second of main-thread work per event on a 29k-row vault).
+  removeCloudFiles: (fileIds) => {
+    if (fileIds.length === 0) return
+    const ids = new Set(fileIds)
+
+    set((state) => {
+      let changed = false
+      const files: typeof state.files = []
+      for (const f of state.files) {
+        const id = f.pdmData?.id
+        if (id === undefined || !ids.has(id)) {
+          files.push(f)
+          continue
+        }
+        changed = true
+        // Only remove cloud-only files
+        if (f.diffStatus === 'cloud') continue
+        // Mark locally existing files as 'deleted_remote'
+        files.push({
+          ...f,
+          pdmData: undefined,
+          isSynced: false,
+          diffStatus: 'deleted_remote' as const,
         })
-        .map((f) => {
-          // Mark locally existing files as 'deleted_remote'
-          if (f.pdmData?.id === fileId && f.diffStatus !== 'cloud') {
-            return {
-              ...f,
-              pdmData: undefined,
-              isSynced: false,
-              diffStatus: 'deleted_remote' as const,
-            }
-          }
-          return f
-        }),
-      // Drop the matching serverFiles entry so refreshCurrentFolder does not
+      }
+
+      // Drop the matching serverFiles entries so refreshCurrentFolder does not
       // resurrect a ghost cloud-only entry from a stale server list.
-      serverFiles: state.serverFiles.filter((sf) => sf.id !== fileId),
-    }))
+      const serverFiles = state.serverFiles.filter((sf) => !ids.has(sf.id))
+      if (!changed && serverFiles.length === state.serverFiles.length) return state
+
+      return { files: changed ? files : state.files, serverFiles }
+    })
   },
 
   // Actions - Search
@@ -2452,10 +2328,7 @@ export const createFilesSlice: StateCreator<
 
   // Actions - Realtime update debouncing
   markFileAsRecentlyModified: (fileId: string) => {
-    const { recentlyModifiedFiles } = get()
-    const newMap = new Map(recentlyModifiedFiles)
-    newMap.set(fileId, Date.now())
-    set({ recentlyModifiedFiles: newMap })
+    set({ recentlyModifiedFiles: markRecentlyModified(get().recentlyModifiedFiles, fileId, Date.now()) })
   },
 
   clearRecentlyModified: (fileId: string) => {
@@ -2465,14 +2338,8 @@ export const createFilesSlice: StateCreator<
     set({ recentlyModifiedFiles: newMap })
   },
 
-  isFileRecentlyModified: (fileId: string) => {
-    const { recentlyModifiedFiles } = get()
-    const timestamp = recentlyModifiedFiles.get(fileId)
-    if (!timestamp) return false
-    // 15 second window - after this, realtime updates are allowed again
-    const DEBOUNCE_WINDOW_MS = 15000
-    return Date.now() - timestamp < DEBOUNCE_WINDOW_MS
-  },
+  isFileRecentlyModified: (fileId: string) =>
+    isRecentlyModified(get().recentlyModifiedFiles, fileId, Date.now()),
 
   // Actions - Pending pane sections
   togglePendingSection: (sectionId: string) => {

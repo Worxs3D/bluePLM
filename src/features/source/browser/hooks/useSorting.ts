@@ -4,9 +4,9 @@ import type { LocalFile } from '@/stores/pdmStore'
 import type { SearchScope } from '@/types/pdm'
 import type { SortColumn, SortDirection } from '../types'
 import { sortFiles, sortByRelevance } from '../utils/sorting'
+import { getFolderChildren } from '../utils/folderIndex'
 import {
   filterValidFiles,
-  getFilesInFolder,
   filterBySearch,
   getSearchScore,
 } from '../utils/filtering'
@@ -75,13 +75,14 @@ export function useSorting({
       sortDirection,
     })
 
-    // First filter out invalid files and optionally hide SolidWorks temp files
-    const validFiles = filterValidFiles(files, { hideSolidworksTempFiles, hiddenFolderPaths })
+    const validityOptions = { hideSolidworksTempFiles, hiddenFolderPaths }
     const t1 = performance.now()
 
     let resultFiles: LocalFile[]
 
     if (isSearching) {
+      // First filter out invalid files and optionally hide SolidWorks temp files
+      const validFiles = filterValidFiles(files, validityOptions)
       // Search mode: filter by search query, then order by relevance unless the user has
       // picked a column to sort by, in which case sort the matches like the folder view.
       // When scope is 'current-folder', restrict the pool to the current folder (recursive)
@@ -100,7 +101,13 @@ export function useSorting({
         : sortByRelevance(searchResults, (file) => getSearchScore(file, searchQuery!))
     } else {
       // Normal mode: filter to current folder and sort by column
-      const folderFiles = getFilesInFolder(validFiles, currentPath)
+      // Children come from an index built once per `files` array, then only that folder's
+      // rows are validity-filtered: the same rows in the same order as filtering the whole
+      // vault first (the checks are per row), without a pass over every row on each call.
+      const folderFiles = filterValidFiles(
+        getFolderChildren(files, currentPath) as LocalFile[],
+        validityOptions,
+      )
       const t2 = performance.now()
       resultFiles = sortFiles(folderFiles, sortColumn, sortDirection, true)
       const t3 = performance.now()
@@ -109,7 +116,7 @@ export function useSorting({
         getFilesInFolderMs: Math.round(t2 - t1),
         sortFilesMs: Math.round(t3 - t2),
         totalMs: Math.round(t3 - t0),
-        validFilesCount: validFiles.length,
+        filesCount: files.length,
         folderFilesCount: folderFiles.length,
         resultCount: resultFiles.length,
       })

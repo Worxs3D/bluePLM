@@ -100,12 +100,14 @@ function context(): { ctx: CommandContext; toasts: Array<[string, string]> } {
 }
 
 const renameItem = vi.fn()
+// The move refuses a target that already exists; nothing exists in these tests.
+const fileExists = vi.fn().mockResolvedValue(false)
 
 describe('renameCommand when the background server path update fails', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal('localStorage', memoryStorage())
-    vi.stubGlobal('window', { electronAPI: { renameItem } })
+    vi.stubGlobal('window', { electronAPI: { renameItem, fileExists } })
     renameItem.mockReset().mockResolvedValue({ success: true })
     updateFilePath.mockReset()
     updateFolderPath.mockReset()
@@ -240,7 +242,7 @@ describe('renameCommand when the background server path update fails', () => {
 describe('renameCommand on a cloud-only file whose server update fails', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage())
-    vi.stubGlobal('window', { electronAPI: { renameItem } })
+    vi.stubGlobal('window', { electronAPI: { renameItem, fileExists } })
     renameItem.mockReset()
     updateFilePath.mockReset()
   })
@@ -338,7 +340,7 @@ describe('renameCommand refuses a moved_away stub, independently of the UI gate'
 
 describe('moveCommand refuses a moved_away stub directly, and folder moves skip stubs correctly', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', { electronAPI: { renameItem } })
+    vi.stubGlobal('window', { electronAPI: { renameItem, fileExists } })
     renameItem.mockReset().mockResolvedValue({ success: true, fileCount: 1 })
     updateFilePath.mockReset().mockResolvedValue({ success: true })
     updateFolderPath
@@ -436,7 +438,7 @@ describe('moveCommand refuses a moved_away stub directly, and folder moves skip 
  */
 describe('renameCommand does not patch a nested moved_away stub\u2019s pdmData.file_path on folder rename', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', { electronAPI: { renameItem } })
+    vi.stubGlobal('window', { electronAPI: { renameItem, fileExists } })
     renameItem.mockReset().mockResolvedValue({ success: true })
     updateFolderPath
       .mockReset()

@@ -1,9 +1,15 @@
 import { X, Shield, User, Database, Users } from 'lucide-react'
 import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 export function ImpersonationBanner() {
-  const { impersonatedUser, stopUserImpersonation } = usePDMStore()
+  const { impersonatedUser, stopUserImpersonation } = usePDMStore(
+    useShallow((s) => ({
+      impersonatedUser: s.impersonatedUser,
+      stopUserImpersonation: s.stopUserImpersonation,
+    })),
+  )
 
   if (!impersonatedUser) return null
 

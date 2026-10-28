@@ -53,10 +53,30 @@ interface VaultTreeItemProps {
 }
 
 /**
- * Custom comparison function for VaultTreeItem memoization.
- * Compares props that affect rendering, skipping callback functions.
+ * Handlers are compared too. FileTree builds them in its render and they close over that render's
+ * file list; a header that skipped renders kept its last handlers, so the batch buttons acted on an
+ * old list and the header held a whole old vault generation alive (render-perf retainer probe,
+ * 15,250 superseded rows over a 30-minute session). It is one row per vault, so re-rendering it
+ * with fresh handlers costs nothing that matters.
  */
-function areVaultTreeItemPropsEqual(
+const HANDLER_KEYS = [
+  'onClick',
+  'onContextMenu',
+  'onDragOver',
+  'onDragLeave',
+  'onDrop',
+  'onDownloadAllCloud',
+  'onUpdateAllOutdated',
+  'onFirstCheckinAllLocal',
+  'onCheckInMyCheckouts',
+  'onCheckoutAllSynced',
+] as const satisfies readonly (keyof VaultTreeItemProps)[]
+
+/**
+ * Custom comparison function for VaultTreeItem memoization.
+ * Compares props that affect rendering, and the handlers (see HANDLER_KEYS).
+ */
+export function areVaultTreeItemPropsEqual(
   prevProps: VaultTreeItemProps,
   nextProps: VaultTreeItemProps,
 ): boolean {
@@ -86,6 +106,8 @@ function areVaultTreeItemPropsEqual(
 
   // Compare all owner/profile fields through the shared stable signature
   if (prevProps.checkoutUsersSignature !== nextProps.checkoutUsersSignature) return false
+
+  if (HANDLER_KEYS.some((key) => prevProps[key] !== nextProps[key])) return false
 
   return true
 }

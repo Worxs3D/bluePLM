@@ -276,6 +276,39 @@ describe('a file the server has never seen, or one that was edited', () => {
 
     expect(results[0]).toMatchObject({ status: 'failed', failure: 'source-unreadable' })
   })
+
+  // A read that claims success but hands back no bytes or no hash must not become a row whose
+  // stored content is empty or unverifiable.
+  it.each([
+    ['no data', { success: true, hash: 'disk-hash' }],
+    ['no hash', { success: true, data: 'bytes' }],
+    ['a failure with data attached', { success: false, data: 'bytes', hash: 'disk-hash' }],
+  ])('treats a read with %s as unreadable and writes nothing', async (_label, read) => {
+    const added = file('a.SLDPRT', { diffStatus: 'added' }, false)
+    const world = new World()
+    const deps = { ...world.deps(), readSource: async () => read }
+
+    const { results } = await runVaultTransfer(planFor([added]), deps, 1)
+
+    expect(results[0]).toMatchObject({ status: 'failed', failure: 'source-unreadable' })
+    expect(world.calls.filter((call) => call.startsWith('insert:'))).toEqual([])
+    expect(world.destDisk.size).toBe(0)
+  })
+})
+
+describe('a planned file with no stored content', () => {
+  it('fails as a server error instead of creating a row with no content behind it', async () => {
+    const source = file('a.SLDPRT')
+    const world = new World()
+    world.seed(source)
+    const plan = planFor([source])
+    const hashless = { ...plan, files: [{ ...plan.files[0], serverHash: null }] }
+
+    const { results } = await run(world, hashless)
+
+    expect(results[0]).toMatchObject({ status: 'failed', failure: 'server-error' })
+    expect(world.destServer.size).toBe(0)
+  })
 })
 
 describe('a path that is taken', () => {
@@ -407,6 +440,8 @@ describe('isSourceRowUnchanged', () => {
     ['already deleted', { ...row, deleted_at: '2026-10-06T00:00:00Z' }],
     ['checked out since', { ...row, checked_out_by: 'someone' }],
     ['checked in again', { ...row, version: 5, content_hash: 'newer' }],
+    // A check-in of identical bytes still means someone else's version is now the latest.
+    ['checked in again with the same content', { ...row, version: 5 }],
     ['same version, other content', { ...row, content_hash: 'newer' }],
   ])('refuses a row that is %s', (_label, changed) => {
     expect(isSourceRowUnchanged(planned, changed)).toBe(false)

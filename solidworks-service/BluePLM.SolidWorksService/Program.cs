@@ -35,7 +35,7 @@ namespace BluePLM.SolidWorksService
         /// Service version - bump this when making changes that affect functionality.
         /// The app checks this version and warns if there's a mismatch.
         /// </summary>
-        private const string SERVICE_VERSION = "1.22.0";
+        private const string SERVICE_VERSION = "1.23.0";
 
         /// <summary>
         /// Error code returned for an action this build does not implement. The app matches on this
@@ -440,6 +440,15 @@ namespace BluePLM.SolidWorksService
                         () => _swApi!.SetInspectionCharacteristics(filePath,
                             command["characteristics"]?.ToObject<System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>>()),
                         "setInspectionCharacteristics"),
+
+                    // Native inspection (plain SOLIDWORKS API, no Inspection add-in): read a drawing's
+                    // dimensions / GTOLs / surface finish symbols, and write BluePLM's balloons.
+                    "extractDrawingCharacteristics" => RequiresSolidWorks(
+                        () => _swApi!.ExtractDrawingCharacteristics(filePath), "extractDrawingCharacteristics"),
+                    "applyInspectionBalloons" => RequiresSolidWorks(
+                        () => _swApi!.ApplyInspectionBalloons(filePath,
+                            command["balloons"]?.ToObject<System.Collections.Generic.List<InspectionBalloonRequest>>()),
+                        "applyInspectionBalloons"),
                     
                     // Exports (require full SW)
                     "exportPdf" => RequiresSolidWorks(() => _swApi!.ExportToPdf(filePath, 

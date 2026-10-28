@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Plus, Pin, Copy, FolderOpen } from 'lucide-react'
 import { usePDMStore, type Tab } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 type DropPosition = 'before' | 'after' | null
 
@@ -25,7 +26,12 @@ function TabItem({
   onDragStart,
   showDropIndicator,
 }: TabItemProps) {
-  const { setActiveTab, closeTab } = usePDMStore()
+  const { setActiveTab, closeTab } = usePDMStore(
+    useShallow((s) => ({
+      setActiveTab: s.setActiveTab,
+      closeTab: s.closeTab,
+    })),
+  )
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -105,7 +111,15 @@ interface TabContextMenuProps {
 }
 
 function TabContextMenu({ tab, position, onClose, tabCount }: TabContextMenuProps) {
-  const { closeTab, closeOtherTabs, pinTab, unpinTab, duplicateTab } = usePDMStore()
+  const { closeTab, closeOtherTabs, pinTab, unpinTab, duplicateTab } = usePDMStore(
+    useShallow((s) => ({
+      closeTab: s.closeTab,
+      closeOtherTabs: s.closeOtherTabs,
+      pinTab: s.pinTab,
+      unpinTab: s.unpinTab,
+      duplicateTab: s.duplicateTab,
+    })),
+  )
 
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -191,7 +205,15 @@ function TabContextMenu({ tab, position, onClose, tabCount }: TabContextMenuProp
 }
 
 export function TabBar() {
-  const { tabs, activeTabId, tabsEnabled, addTab, moveTab } = usePDMStore()
+  const { tabs, activeTabId, tabsEnabled, addTab, moveTab } = usePDMStore(
+    useShallow((s) => ({
+      tabs: s.tabs,
+      activeTabId: s.activeTabId,
+      tabsEnabled: s.tabsEnabled,
+      addTab: s.addTab,
+      moveTab: s.moveTab,
+    })),
+  )
 
   const tabContainerRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { t } from '@/lib/i18n'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { PartSupplier } from '@/stores/types'
 import {
   getPartSuppliers,
@@ -48,7 +49,18 @@ export function VendorsTab({ file }: VendorsTabProps) {
     addSupplier,
     suppliersLoaded,
     setSuppliersLoading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+      suppliers: s.suppliers,
+      setSuppliers: s.setSuppliers,
+      addSupplier: s.addSupplier,
+      suppliersLoaded: s.suppliersLoaded,
+      setSuppliersLoading: s.setSuppliersLoading,
+    })),
+  )
 
   const [partSuppliers, setPartSuppliers] = useState<PartSupplier[]>([])
   const [isLoading, setIsLoading] = useState(false)

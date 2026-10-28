@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react'
 import { BadgeCheck, CheckCircle } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import type { TransitionLineStyle } from '@/types/workflow'
 
 import type { EditTransitionDialogProps, WorkflowRoleBasic } from '../types'
 
 export function EditTransitionDialog({ transition, onClose, onSave }: EditTransitionDialogProps) {
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
   const [name, setName] = useState(transition.name || '')
   const [description, setDescription] = useState(transition.description || '')
   const [lineStyle, setLineStyle] = useState<TransitionLineStyle>(transition.line_style)

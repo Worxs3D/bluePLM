@@ -4,6 +4,7 @@
 import { useState, useRef } from 'react'
 import { Loader2, Table } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSerializationSettings, combineBaseAndTab } from '@/lib/serialization'
 import {
@@ -68,7 +69,12 @@ async function getBrNumberForFile(
 }
 
 export function ExportMetadataTableActions({ contextFiles, onClose }: ActionComponentProps) {
-  const { addToast, organization } = usePDMStore()
+  const { addToast, organization } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+    })),
+  )
   const [isSaving, setIsSaving] = useState(false)
   const [submenuOpen, setSubmenuOpen] = useState(false)
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)

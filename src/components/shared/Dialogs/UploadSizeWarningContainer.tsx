@@ -6,11 +6,16 @@
  */
 
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { UploadSizeWarningDialog } from './UploadSizeWarningDialog'
 import { useUploadSizeWarning } from '@/hooks/useUploadSizeWarning'
 
 export function UploadSizeWarningContainer() {
-  const { pendingLargeUpload } = usePDMStore()
+  const { pendingLargeUpload } = usePDMStore(
+    useShallow((s) => ({
+      pendingLargeUpload: s.pendingLargeUpload,
+    })),
+  )
   const { handleUploadAll, handleSkipLarge, handleCancel, thresholdMB } = useUploadSizeWarning()
 
   if (!pendingLargeUpload) return null

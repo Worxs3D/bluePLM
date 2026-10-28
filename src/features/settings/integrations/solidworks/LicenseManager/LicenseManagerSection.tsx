@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Key, Plus, Loader2, AlertCircle, Info } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useLicenseManager } from './useLicenseManager'
 import { LicenseTable } from './LicenseTable'
 import { AddLicenseModal } from './AddLicenseModal'
@@ -9,7 +10,12 @@ import { AssignLicenseModal } from './AssignLicenseModal'
 import type { LicenseWithAssignment } from './types'
 
 export function LicenseManagerSection() {
-  const { getEffectiveRole, user } = usePDMStore()
+  const { getEffectiveRole, user } = usePDMStore(
+    useShallow((s) => ({
+      getEffectiveRole: s.getEffectiveRole,
+      user: s.user,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const {

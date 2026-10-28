@@ -163,3 +163,26 @@ describe('delete-server keep-local, folder selection with a moved child', () => 
     expect(ctx.updateFilesInStore).not.toHaveBeenCalled()
   })
 })
+
+describe('delete-server, a folder the model calls cloud-only', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    softDeleteFile.mockResolvedValue({ success: true })
+    vi.stubGlobal('requestAnimationFrame', (cb: () => void) => setTimeout(cb, 0))
+  })
+
+  // T3000/development: emptied by a move, still on disk, marked cloud. The delete removed its
+  // row and skipped the disk, and the next load brought it back.
+  it('recycles the folder if it is still on disk and empty', async () => {
+    const trashEmptyDirs = vi.fn().mockResolvedValue({ success: true, results: [], summary: {} })
+    const deleteBatch = vi.fn()
+    vi.stubGlobal('window', { electronAPI: { trashEmptyDirs, deleteBatch } })
+    const cloudFolder = { ...folder('T3000/development'), diffStatus: 'cloud' as const }
+
+    const ctx = makeContext([cloudFolder], [serverFile('T3000/development/a.sldprt', ROOT_ID)])
+    await deleteServerCommand.execute({ files: [cloudFolder], deleteLocal: true }, ctx)
+
+    expect(deleteBatch).not.toHaveBeenCalled()
+    expect(trashEmptyDirs).toHaveBeenCalledWith([cloudFolder.path])
+  })
+})

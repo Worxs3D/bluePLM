@@ -1,0 +1,214 @@
+name: Nightly mutation testing
+
+# Measures how many regressions the test suite would actually catch (StrykerJS, stryker.config.mjs).
+# Coverage says a line ran; a mutation score says a test noticed when the line changed.
+#
+# Reporting only: nothing here gates a release (.cursor/plans/test-mutation-report.md proposes a
+# per-target ratchet). One matrix job per shard, the shard list read from stryker.config.mjs so
+# the two cannot drift. Incremental: each shard restores the previous night's results and re-tests
+# only mutants whose code or covering tests changed.
+#
+# And the multi-machine simulator (src/test/multi/) from a fresh random seed: CI runs it from a
+# fixed seed on every push; here it looks for new failing sequences. A failure prints its seed
+# and shrunk sequence; save it in src/test/multi/savedSequences.test.ts with the fix.
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Ignore the incremental cache and test every mutant
+        type: boolean
+        default: false
+      shards:
+        description: Comma-separated shard names (blank = all)
+        type: string
+        default: ''
+      suite:
+        description: Which nightly suite to run
+        type: choice
+        options: [all, mutation, multi-machine]
+        default: all
+      multi_runs:
+        description: Multi-machine simulator, random sequences to run
+        type: number
+        default: 1000
+
+# `npm ci` runs arbitrary postinstall scripts; nothing here writes to the repository.
+permissions:
+  contents: read
+
+# One group per suite: GitHub keeps a single pending run per group, so a shared group let a
+# render-perf dispatch cancel a queued mutation run (and the other way round).
+concurrency:
+  group: nightly-${{ inputs.suite || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan shards
+    if: ${{ inputs.suite != 'render-perf' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: shards
+        env:
+          ONLY: ${{ inputs.shards }}
+        run: |
+          node --input-type=module -e '
+            const { shards } = await import("./stryker.config.mjs");
+            const only = (process.env.ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+            const unknown = only.filter((s) => !(s in shards));
+            if (unknown.length) { console.error("Unknown shards: " + unknown.join(", ")); process.exit(1); }
+            const list = only.length ? only : Object.keys(shards);
+            console.log("shards=" + JSON.stringify(list));
+          ' >> "$GITHUB_OUTPUT"
+
+  mutate:
+    name: Mutate (${{ matrix.shard }})
+    needs: plan
+    runs-on: ubuntu-latest
+    # Under the 6 h hosted-runner limit, with room for the cache save.
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      STRYKER_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+
+      - run: npm ci
+
+      # api/ tests import the API's own dependencies (see verify.yml).
+      - run: npm ci --prefix api
+
+      - name: Restore incremental results
+        if: ${{ !inputs.force }}
+        uses: actions/cache/restore@v4
+        with:
+          path: reports/mutation/${{ matrix.shard }}/stryker-incremental.json
+          key: stryker-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: stryker-${{ matrix.shard }}-
+
+      - name: Stryker
+        run: npx stryker run ${{ inputs.force && '--force' || '' }}
+
+      - name: Save incremental results
+        if: always() && hashFiles(format('reports/mutation/{0}/stryker-incremental.json', matrix.shard)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: reports/mutation/${{ matrix.shard }}/stryker-incremental.json
+          key: stryker-${{ matrix.shard }}-${{ github.run_id }}
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mutation-${{ matrix.shard }}
+          path: |
+            reports/mutation/${{ matrix.shard }}/mutation.json
+            reports/mutation/${{ matrix.shard }}/mutation.html
+          if-no-files-found: ignore
+          retention-days: 30
+
+  summary:
+    name: Summary
+    needs: [plan, mutate]
+    if: ${{ always() && inputs.suite != 'render-perf' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SHARDS: ${{ needs.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Only for mutation-testing-elements, which the merged HTML page inlines.
+      - run: npm ci --ignore-scripts
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mutation-*
+          path: reports/mutation/shards
+
+      # download-artifact puts each artifact in a directory named after it, except when the
+      # pattern matches exactly one: then it extracts the files straight into `path`.
+      - name: Merge and summarise
+        run: |
+          cd reports/mutation/shards
+          for d in mutation-*; do [ -d "$d" ] && mv "$d" "${d#mutation-}"; done
+          if [ -f mutation.json ]; then
+            only=$(node -p 'JSON.parse(process.env.SHARDS)[0]')
+            mkdir -p "$only" && mv mutation.json "$only/" && { mv mutation.html "$only/" 2>/dev/null || true; }
+          fi
+          cd ../../..
+          node scripts/mutation-summary.mjs reports/mutation/shards
+          cat reports/mutation/shards/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mutation-report
+          path: |
+            reports/mutation/shards/index.html
+            reports/mutation/shards/mutation.json
+            reports/mutation/shards/survivors.json
+            reports/mutation/shards/summary.md
+          retention-days: 30
+
+  multi-machine:
+    name: Multi-machine simulator (random seed)
+    if: ${{ inputs.suite != 'mutation' && inputs.suite != 'render-perf' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Random two-machine sequences
+        env:
+          MULTI_SIM_SEED: random
+          MULTI_SIM_RUNS: ${{ inputs.multi_runs || 1000 }}
+          MULTI_SIM_STEPS: '24'
+        run: npx vitest run src/test/multi/randomInterleavings.test.ts 2>&1 | tee multi-machine.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Multi-machine simulator'
+            echo
+            if grep -q 'Property failed' multi-machine.log; then
+              echo 'A sequence failed. Seed and shrunk counterexample:'
+              echo
+              echo '```'
+              grep -A3 'Property failed' multi-machine.log | head -20
+              echo '```'
+            else
+              echo "${MULTI_SIM_RUNS:-1000} random sequences converged."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MULTI_SIM_RUNS: ${{ inputs.multi_runs || 1000 }}

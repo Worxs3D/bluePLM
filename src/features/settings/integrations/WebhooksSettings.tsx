@@ -22,6 +22,7 @@ import {
   Send,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { Webhook, WebhookDelivery, WebhookEvent, WebhookTriggerFilter } from '@/types/database'
@@ -95,7 +96,14 @@ const USER_ROLES = [
 ]
 
 export function WebhooksSettings() {
-  const { user, organization, addToast, getEffectiveRole } = usePDMStore()
+  const { user, organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const [webhooks, setWebhooks] = useState<Webhook[]>([])

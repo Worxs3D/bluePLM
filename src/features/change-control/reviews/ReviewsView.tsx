@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   getMyReviews,
   getPendingReviewsForUser,
@@ -100,7 +101,22 @@ export function ReviewsView() {
     setCurrentFolder,
     setSelectedFiles,
     files,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      pendingReviewCount: s.pendingReviewCount,
+      setPendingReviewCount: s.setPendingReviewCount,
+      vaultPath: s.vaultPath,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      setActiveView: s.setActiveView,
+      setCurrentFolder: s.setCurrentFolder,
+      setSelectedFiles: s.setSelectedFiles,
+      files: s.files,
+    })),
+  )
 
   // Get the vault path for a review (by vault_id or fall back to active vault)
   const getVaultPathForReview = useCallback(

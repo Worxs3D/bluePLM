@@ -18,6 +18,7 @@
 import { useRef } from 'react'
 import { GitBranch } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
 
@@ -63,7 +64,7 @@ import type {
 export function WorkflowsView() {
   // Workflow data hook - manages Supabase data fetching
   const workflowData = useWorkflowData({})
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const reportLayoutError = useStableCallback((message: string) => {
     log.error('[Workflow]', 'Failed to save canvas layout', { message })
@@ -153,7 +154,7 @@ function WorkflowsViewContent({
   const canvas = useWorkflowCanvasContext()
 
   // Toast from global store
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   // Import input ref
   const importInputRef = useRef<HTMLInputElement>(null)

@@ -34,6 +34,7 @@ import { getCurrentConfig, supabase } from '@/lib/supabase'
 import { generateOrgCode } from '@/lib/supabaseConfig'
 import { subscribeToMemberChanges } from '@/lib/realtime'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Import components and hooks from team-members
 import {
@@ -68,7 +69,15 @@ type TabType = 'users' | 'teams' | 'roles' | 'titles'
  */
 export function TeamMembersSettings() {
   // ===== STORE STATE =====
-  const { user, organization, getEffectiveRole, apiServerUrl, addToast } = usePDMStore()
+  const { user, organization, getEffectiveRole, apiServerUrl, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+      apiServerUrl: s.apiServerUrl,
+      addToast: s.addToast,
+    })),
+  )
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
 

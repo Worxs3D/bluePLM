@@ -1,3 +1,4 @@
+import { pruneVacatedCloudFolders } from './serverLocationUpdate'
 import type { LocalFile } from './types'
 
 /**
@@ -53,6 +54,9 @@ export function applyFileUpdates(
   let matchCount = 0
   let changed = false
 
+  // Files whose pending move an update just settled: the server path is now the local path (a
+  // check-in that updated the server path, say). Their `moved_away` stub is a leftover.
+  const settled = new Set<string>()
   const newFiles = files.map((file) => {
     const fileUpdates = updateMap.get(file.path.toLowerCase())
     if (!fileUpdates) return file
@@ -61,10 +65,24 @@ export function applyFileUpdates(
     if (!hasActualChange(file, fileUpdates)) return file
 
     changed = true
-    return { ...file, ...fileUpdates }
+    const next = { ...file, ...fileUpdates }
+    const serverPath = next.pdmData?.file_path
+    if (next.pdmData?.id && next.diffStatus !== 'moved_away' && serverPath?.toLowerCase() === next.relativePath.toLowerCase()) {
+      settled.add(next.pdmData.id)
+    }
+    return next
   })
+  if (!changed) return { files, matchCount, changed }
 
-  return { files: changed ? newFiles : files, matchCount, changed }
+  const stubPaths: string[] = []
+  const kept = settled.size === 0
+    ? newFiles
+    : newFiles.filter((f) => {
+        const stale = f.diffStatus === 'moved_away' && !!f.pdmData?.id && settled.has(f.pdmData.id)
+        if (stale) stubPaths.push(f.relativePath)
+        return !stale
+      })
+  return { files: pruneVacatedCloudFolders(kept, stubPaths), matchCount, changed }
 }
 
 /**

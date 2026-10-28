@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Globe, FileText, Check, ChevronRight, Shield } from 'lucide-react'
 import { usePDMStore, Language } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Only show languages that have actual translations in i18n.ts
 const LANGUAGES: { code: Language; name: string; nativeName: string; flag: string }[] = [
@@ -148,7 +149,14 @@ function getTranslations(lang: Language) {
 type OnboardingStep = 'language' | 'permissions'
 
 export function OnboardingScreen() {
-  const { language, setLanguage, setLogSharingEnabled, completeOnboarding } = usePDMStore()
+  const { language, setLanguage, setLogSharingEnabled, completeOnboarding } = usePDMStore(
+    useShallow((s) => ({
+      language: s.language,
+      setLanguage: s.setLanguage,
+      setLogSharingEnabled: s.setLogSharingEnabled,
+      completeOnboarding: s.completeOnboarding,
+    })),
+  )
   const [step, setStep] = useState<OnboardingStep>('language')
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(language)
   const [logsEnabled, setLogsEnabled] = useState(true)

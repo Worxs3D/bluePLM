@@ -113,6 +113,13 @@
  *                   rather than open them by either route. An unrecognised action now carries
  *                   errorCode UNKNOWN_ACTION alongside the prose, so a caller can tell a
  *                   command this service does not have from a command that failed
+ * - Version 1.23.0: Add extractDrawingCharacteristics and applyInspectionBalloons, which read a
+ *                   drawing's dimensions (hole callouts and chamfers included), GTOLs and surface
+ *                   finish symbols, and write numbered balloons on the "BluePLM Inspection" layer,
+ *                   through the plain SOLIDWORKS API with no Inspection add-in. Each characteristic
+ *                   is keyed by a SHA-1 of its persist reference, not by view or annotation name, so
+ *                   renames keep the key. New error codes DOC_HAS_UNSAVED_CHANGES, NOT_A_DRAWING and
+ *                   DOC_MODIFIED_NOT_SAVED (a failed write whose edits could not be discarded)
  *
  * When making service changes:
  * 1. Increment SERVICE_VERSION in Program.cs
@@ -122,7 +129,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.22.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.23.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -183,7 +190,15 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Writing metadata into a read-only file now fails straight away. The service used to try again through SOLIDWORKS, which opened the file read-only as well and refused to save it - once for the file and once per configuration, over a minute on a four-configuration assembly - before reporting the same failure',
   '1.22.0':
     'Drawing previews are sharper: when a file has no Document Manager preview (common for modern formats) the caller now chooses the Windows thumbnail size, so the details panel asks for a 1024px render while file-browser grid icons stay at 256px instead of being fetched at many times the pixels they need',
+  '1.23.0':
+    'Drawings can be bubbled without a SOLIDWORKS Inspection licence: the service reads every dimension, hole callout, chamfer, GTOL and surface finish symbol straight from the drawing, and writes numbered balloons on a dedicated "BluePLM Inspection" layer, replacing the ones it placed before. Each characteristic keeps the same key when a view or feature is renamed, so balloon numbers stay put',
 }
+
+/**
+ * First service version that answers `extractDrawingCharacteristics` and `applyInspectionBalloons`.
+ * Gate the native inspection buttons on this, not on `EXPECTED_SW_SERVICE_VERSION`.
+ */
+export const SW_SERVICE_VERSION_NATIVE_INSPECTION = '1.23.0'
 
 /**
  * First service version that answers `getPropertiesDocumentManager`.

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { syncSolidWorksFileMetadata, getWhereUsed } from '@/lib/supabase'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -7,6 +8,13 @@ import { syncMetadata } from '@/lib/commands'
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
 import { refreshLocalFileFacts } from '@/lib/refreshLocalFileFacts'
 import { resolvedPropertyView } from '@/lib/metadata/divergence'
+import {
+  FILE_FIELD_READ_KEYS,
+  PART_NUMBER_ACCEPT_KEYS,
+  normalizeValue,
+  readAllProperties,
+  readProperty,
+} from '@/lib/metadata/documentProperties'
 import { lockedDrawingFields } from '@/lib/metadata/drawingLockouts'
 import { resolveFileMetadata } from '@/lib/metadata/overlay'
 import { canHaveConfigurations } from '@/lib/solidworks/configurationSupport'
@@ -51,7 +59,12 @@ export function useSolidWorksService() {
     running: false,
   })
   const [isStarting, setIsStarting] = useState(false)
-  const { addToast, organization } = usePDMStore()
+  const { addToast, organization } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+    })),
+  )
 
   // Get DM license key from organization settings
   const dmLicenseKey = organization?.settings?.solidworks_dm_license_key
@@ -73,6 +86,11 @@ export function useSolidWorksService() {
       // Pass the DM license key from org settings to enable direct file access
       const result = await window.electronAPI?.solidworks?.startService(dmLicenseKey || undefined)
       if (result?.success) {
+        // A manual start is an explicit opt-in; see useSolidWorksServiceControl.
+        const store = usePDMStore.getState()
+        if (!store.solidworksIntegrationEnabled) {
+          store.setSolidworksIntegrationEnabled(true)
+        }
         const directAccessEnabled = (result.data as any)?.fastModeEnabled // TODO: type this
         setStatus({
           running: true,
@@ -139,7 +157,13 @@ export function WhereUsedTab({ file }: { file: LocalFile }) {
   const [isLoading, setIsLoading] = useState(false)
   const [usedIn, setUsedIn] = useState<WhereUsedResult[]>([])
   const [error, setError] = useState<string | null>(null)
-  const { files, setSelectedFiles, addToast } = usePDMStore()
+  const { files, setSelectedFiles, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      setSelectedFiles: s.setSelectedFiles,
+      addToast: s.addToast,
+    })),
+  )
 
   const ext = file.extension?.toLowerCase() || ''
   const isSolidWorks = ['.sldprt', '.sldasm'].includes(ext)
@@ -428,7 +452,7 @@ function SWDatacardMock({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['identification', 'physical']),
   )
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
 
   const ext = file.extension?.toLowerCase() || ''
   const fileType = ext === '.sldprt' ? 'Part' : ext === '.sldasm' ? 'Assembly' : 'Drawing'
@@ -843,7 +867,16 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
     lockDrawingItemNumber,
     lockDrawingDescription,
     lockDrawingRevision,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      user: s.user,
+      updateFileInStore: s.updateFileInStore,
+      lockDrawingItemNumber: s.lockDrawingItemNumber,
+      lockDrawingDescription: s.lockDrawingDescription,
+      lockDrawingRevision: s.lockDrawingRevision,
+    })),
+  )
 
   const ext = file.extension?.toLowerCase() || ''
   const isSolidWorks = ['.sldprt', '.sldasm', '.slddrw'].includes(ext)
@@ -1028,40 +1061,11 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
         }
       }
 
-      // Extract part number from common property names
-      // IMPORTANT: "Number" must be first - it's the property written by "Save to File" in the UI
-      // and represents the user's current/intended part number. "Base Item Number" may contain
-      // legacy or template values that would incorrectly override user edits.
-      const partNumberKeys = [
-        // Blue Robotics primary - this is what gets written by "Save to File"
-        'Number',
-        'No',
-        'No.',
-        // SolidWorks Document Manager standard property (may be stale)
-        'Base Item Number',
-        'PartNumber',
-        'Part Number',
-        'Part No',
-        'Part No.',
-        'PartNo',
-        'ItemNumber',
-        'Item Number',
-        'Item No',
-        'Item No.',
-        'ItemNo',
-        'PN',
-        'P/N',
-      ]
-      let partNumber: string | null = null
-      for (const key of partNumberKeys) {
-        if (allProps[key] && allProps[key].trim()) {
-          partNumber = allProps[key].trim()
-          break
-        }
-      }
-
-      // Extract description
-      const description = allProps['Description'] || allProps['description'] || null
+      // The shared read priority: `Number` first (what BluePLM writes; `Base Item Number` may hold
+      // a legacy or template value), and a $PRP reference reads as absent rather than being
+      // copied into the database as text.
+      const partNumber = readProperty(allProps, FILE_FIELD_READ_KEYS.partNumber)
+      const description = readProperty(allProps, FILE_FIELD_READ_KEYS.description)
 
       // Check if anything changed.
       //
@@ -1072,8 +1076,8 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
       // divergence this button exists to surface.
       const currentPn = file.pdmData?.part_number || null
       const currentDesc = file.pdmData?.description || null
-      const newPn = partNumber || null
-      const newDesc = description?.trim() || null
+      const newPn = partNumber
+      const newDesc = description
 
       if (currentPn === newPn && currentDesc === newDesc) {
         addToast('info', 'Metadata already up to date')
@@ -1254,12 +1258,26 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
         }))
 
   // Key properties to always show at top
+  // The three BluePLM fields read with the shared priority lists, so `Number` (what BluePLM writes)
+  // is seen and a $PRP reference reads as absent.
+  const viewProps = resolvedPropertyView(fileProperties, configProperties)
+  const documentPartNumber = readProperty(viewProps, FILE_FIELD_READ_KEYS.partNumber)
+  const documentDescription = readProperty(viewProps, FILE_FIELD_READ_KEYS.description)
   const keyProps = [
-    { key: 'PartNumber', label: 'P/N', aliases: ['PartNo', 'Part Number', 'Item Number'] },
-    { key: 'Description', label: 'Desc', aliases: ['DESCRIPTION'] },
-    { key: 'Revision', label: 'Rev', aliases: ['REV'] },
-    { key: 'Material', label: 'Mat', aliases: ['MATERIAL'] },
+    { key: 'PartNumber', label: 'P/N', value: documentPartNumber },
+    { key: 'Description', label: 'Desc', value: documentDescription },
+    { key: 'Revision', label: 'Rev', value: readProperty(viewProps, FILE_FIELD_READ_KEYS.revision) },
+    { key: 'Material', label: 'Mat', value: getPropertyValue('Material', ['MATERIAL']) },
   ]
+  // The row's part number agrees with the document when any key BluePLM accepts holds it: `Number`
+  // carries the composite with a tab, `Base Item Number` the base.
+  const partNumberDiffers =
+    !!normalizeValue(file.pdmData?.part_number) &&
+    !readAllProperties(viewProps, PART_NUMBER_ACCEPT_KEYS).includes(
+      normalizeValue(file.pdmData?.part_number) ?? '',
+    )
+  const descriptionDiffers =
+    normalizeValue(file.pdmData?.description) !== documentDescription
 
   // All properties for expanded view
   const allProps = resolvedPropertyView(fileProperties, configProperties)
@@ -1302,7 +1320,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
             <CompactProp
               key={prop.key}
               label={prop.label}
-              value={hasData ? getPropertyValue(prop.key, prop.aliases) : null}
+              value={hasData ? prop.value : null}
             />
           ))}
         </div>
@@ -1356,7 +1374,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
               <div className="flex items-baseline gap-1">
                 <span className="text-plm-fg-muted">P/N:</span>
                 <span
-                  className={`truncate ${file.pdmData.part_number !== getPropertyValue('PartNumber', ['PartNo', 'Part Number', 'Item Number', 'Base Item Number']) ? 'text-plm-warning' : 'text-plm-fg'}`}
+                  className={`truncate ${partNumberDiffers ? 'text-plm-warning' : 'text-plm-fg'}`}
                 >
                   {file.pdmData.part_number || '—'}
                 </span>
@@ -1364,7 +1382,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
               <div className="flex items-baseline gap-1">
                 <span className="text-plm-fg-muted">Desc:</span>
                 <span
-                  className={`truncate ${file.pdmData.description !== getPropertyValue('Description', ['DESCRIPTION']) ? 'text-plm-warning' : 'text-plm-fg'}`}
+                  className={`truncate ${descriptionDiffers ? 'text-plm-warning' : 'text-plm-fg'}`}
                 >
                   {file.pdmData.description || '—'}
                 </span>
@@ -1604,7 +1622,7 @@ export const SWDatacardTab = SWPropertiesTab
 export function SWExportActions({ file }: { file: LocalFile }) {
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const { status } = useSolidWorksService()
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   const ext = file.extension?.toLowerCase() || ''
   const isDrawing = ext === '.slddrw'

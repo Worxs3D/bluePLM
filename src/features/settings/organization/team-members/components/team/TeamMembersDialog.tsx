@@ -6,6 +6,7 @@ import { Users, UserPlus, Search, Plus, X, Loader2 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { insertTeamMember } from '../../hooks/supabaseHelpers'
 import type { TeamMembersDialogProps, OrgUser } from '../../types'
@@ -30,7 +31,7 @@ interface TeamMemberQueryResult {
 }
 
 export function TeamMembersDialog({ team, orgUsers, onClose, userId }: TeamMembersDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const [members, setMembers] = useState<TeamMember[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')

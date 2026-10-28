@@ -38,6 +38,7 @@ import {
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { copyToClipboard } from '@/lib/clipboard'
 import { formatFileSize } from '@/lib/utils'
 
@@ -808,7 +809,7 @@ interface LogViewerContentProps {
 }
 
 function LogViewerContent({ onClose }: LogViewerContentProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   // State
   const [logFiles, setLogFiles] = useState<LogFile[]>([])

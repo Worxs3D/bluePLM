@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 
 /**
@@ -10,7 +11,14 @@ import { executeCommand } from '@/lib/commands'
  * - Running the download logic immediately when settings change
  */
 export function useAutoDownload() {
-  const { organization, isOfflineMode, activeVaultId, connectedVaults } = usePDMStore()
+  const { organization, isOfflineMode, activeVaultId, connectedVaults } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      isOfflineMode: s.isOfflineMode,
+      activeVaultId: s.activeVaultId,
+      connectedVaults: s.connectedVaults,
+    })),
+  )
 
   // Get current vault ID (from activeVaultId or first connected vault)
   const currentVaultId = activeVaultId || connectedVaults[0]?.id

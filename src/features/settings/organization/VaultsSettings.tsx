@@ -23,6 +23,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { usePDMStore, ConnectedVault } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase, getAccessibleVaults } from '@/lib/supabase'
 import { subscribeToVaults } from '@/lib/realtime'
 import { log } from '@/lib/logger'
@@ -81,7 +82,37 @@ export function VaultsSettings() {
     setUploadSizeWarningEnabled,
     uploadSizeWarningThreshold,
     setUploadSizeWarningThreshold,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      addConnectedVault: s.addConnectedVault,
+      removeConnectedVault: s.removeConnectedVault,
+      updateConnectedVault: s.updateConnectedVault,
+      setFiles: s.setFiles,
+      setServerFiles: s.setServerFiles,
+      setFilesLoaded: s.setFilesLoaded,
+      setVaultPath: s.setVaultPath,
+      setVaultConnected: s.setVaultConnected,
+      addToast: s.addToast,
+      triggerVaultsRefresh: s.triggerVaultsRefresh,
+      getEffectiveRole: s.getEffectiveRole,
+      autoDownloadCloudFiles: s.autoDownloadCloudFiles,
+      setAutoDownloadCloudFiles: s.setAutoDownloadCloudFiles,
+      autoDownloadUpdates: s.autoDownloadUpdates,
+      setAutoDownloadUpdates: s.setAutoDownloadUpdates,
+      autoDownloadSizeLimit: s.autoDownloadSizeLimit,
+      setAutoDownloadSizeLimit: s.setAutoDownloadSizeLimit,
+      autoDiscardOrphanedFiles: s.autoDiscardOrphanedFiles,
+      setAutoDiscardOrphanedFiles: s.setAutoDiscardOrphanedFiles,
+      uploadSizeWarningEnabled: s.uploadSizeWarningEnabled,
+      setUploadSizeWarningEnabled: s.setUploadSizeWarningEnabled,
+      uploadSizeWarningThreshold: s.uploadSizeWarningThreshold,
+      setUploadSizeWarningThreshold: s.setUploadSizeWarningThreshold,
+    })),
+  )
 
   const isAdmin = getEffectiveRole() === 'admin'
 

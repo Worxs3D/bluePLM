@@ -366,6 +366,8 @@ export const zhTW: TranslationDict = {
       '部分重新命名未同步到伺服器，伺服器仍記錄舊路徑。受影響的檔案顯示為已移動；請執行 reconcile-moved-paths 進行更新。',
     cloudRenameFailed: '無法在伺服器上重新命名',
     movedAwayBlocked: '檔案已移動 - 請先解決待處理的移動',
+    moveTargetExists: '目標資料夾中已存在「{{name}}」，因此未移動',
+    mergeKeptConflicts: '{{count}} 個檔案在兩個資料夾中都存在，因此保留在 {{folder}} 中',
     checkIn: '簽入',
     checkOut: '簽出',
     download: '下載',

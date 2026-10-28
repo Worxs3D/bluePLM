@@ -2,6 +2,7 @@
 import { ArrowDown, ArrowUp, Undo2, RefreshCw, Network, FileSearch, Package2 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import {
   executeCommand,
@@ -11,6 +12,7 @@ import {
 } from '@/lib/commands'
 import { getOutdatedFilesFromSelection } from '@/lib/commands/handlers/getLatest'
 import { checkOperationPermission, getPermissionRequirement } from '@/lib/permissions'
+import { getCheckoutOwnerLabel } from '@/lib/checkout/checkoutDisplay'
 import { SW_EXTENSIONS, ASSEMBLY_EXTENSIONS } from '../constants'
 import type { DialogName } from '../types'
 
@@ -67,7 +69,16 @@ export function PDMItems({
   onClose,
   onRefresh,
 }: PDMItemsProps) {
-  const { hasPermission, addToast } = usePDMStore()
+  const { hasPermission, addToast } = usePDMStore(
+    useShallow((s) => ({
+      hasPermission: s.hasPermission,
+      addToast: s.addToast,
+    })),
+  )
+  const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null
+  const heldFileHydration = usePDMStore((s) =>
+    heldFile?.pdmData?.id ? s.checkoutHydration[heldFile.pdmData.id]?.state : undefined,
+  )
 
   // Permission checks for operations
   const canCheckout = checkOperationPermission('checkout', hasPermission)
@@ -200,24 +211,39 @@ export function PDMItems({
     ASSEMBLY_EXTENSIONS.includes(contextFiles[0].extension?.toLowerCase()) &&
     !!contextFiles[0].pdmData?.id
 
+  const allCheckedOutByOthers =
+    !allFolders &&
+    syncedFilesInSelection.length > 0 &&
+    syncedFilesInSelection.every(
+      (f) => f.pdmData?.checked_out_by && f.pdmData.checked_out_by !== userId,
+    )
+  const heldByOthersReason =
+    (heldFile &&
+      getCheckoutOwnerLabel(heldFile, userId ? { id: userId } : null, heldFileHydration)) ||
+    'Checked out by someone else'
+
   // Determine disabled state and reason for each operation
   const checkoutDisabled = !canCheckout.allowed || !anySynced || allCheckedOut
   const checkoutReason = !canCheckout.allowed
     ? `Requires ${getPermissionRequirement('checkout')}`
     : !anySynced
       ? 'Download files first to enable checkout'
-      : allCheckedOut
-        ? 'Already checked out'
-        : ''
+      : allCheckedOutByOthers
+        ? heldByOthersReason
+        : allCheckedOut
+          ? 'Already checked out'
+          : ''
 
   const checkinDisabled = !canCheckin.allowed || allCheckedIn || checkinableCount === 0
   const checkinReason = !canCheckin.allowed
     ? `Requires ${getPermissionRequirement('checkin')}`
     : allCheckedIn
       ? 'Already checked in'
-      : checkinableCount === 0
-        ? 'No files checked out by you'
-        : ''
+      : allCheckedOutByOthers
+        ? heldByOthersReason
+        : checkinableCount === 0
+          ? 'No files checked out by you'
+          : ''
 
   const syncDisabled = !canSync.allowed
   const syncReason = !canSync.allowed ? `Requires ${getPermissionRequirement('sync')}` : ''
@@ -354,7 +380,9 @@ export function PDMItems({
           <span className="text-xs text-plm-fg-muted ml-auto">(download first)</span>
         )}
         {canCheckout.allowed && anySynced && allCheckedOut && (
-          <span className="text-xs text-plm-fg-muted ml-auto">(already out)</span>
+          <span className="text-xs text-plm-fg-muted ml-auto">
+            {allCheckedOutByOthers ? '(by others)' : '(already out)'}
+          </span>
         )}
       </div>
 
@@ -381,6 +409,9 @@ export function PDMItems({
           )}
           {canCheckin.allowed && allCheckedIn && (
             <span className="text-xs text-plm-fg-muted ml-auto">(already in)</span>
+          )}
+          {canCheckin.allowed && !allCheckedIn && allCheckedOutByOthers && (
+            <span className="text-xs text-plm-fg-muted ml-auto">(by others)</span>
           )}
         </div>
       )}

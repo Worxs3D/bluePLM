@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Shield, RefreshCw, Loader2 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Hooks
 import { useBackupStatus } from './hooks/useBackupStatus'
@@ -29,7 +30,16 @@ import type { BackupPanelProps, BackupStatus } from './types'
  * 2. Snapshots load in background (slow) - history section updates when ready
  */
 export function BackupPanel({ isAdmin }: BackupPanelProps) {
-  const { organization, user, addToast, activeVaultId, connectedVaults, vaultPath } = usePDMStore()
+  const { organization, user, addToast, activeVaultId, connectedVaults, vaultPath } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+      activeVaultId: s.activeVaultId,
+      connectedVaults: s.connectedVaults,
+      vaultPath: s.vaultPath,
+    })),
+  )
   const currentVaultId = activeVaultId || connectedVaults[0]?.id
 
   // Config section visibility

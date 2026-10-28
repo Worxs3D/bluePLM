@@ -379,6 +379,8 @@ export const es: TranslationDict = {
       'Algunos cambios de nombre no llegaron al servidor, que sigue registrando las rutas anteriores. Los archivos afectados aparecen como movidos; ejecute reconcile-moved-paths para actualizarlos.',
     cloudRenameFailed: 'No se pudo cambiar el nombre en el servidor',
     movedAwayBlocked: 'El archivo se ha movido - resuelva primero el movimiento pendiente',
+    moveTargetExists: '"{{name}}" ya existe en la carpeta de destino, por lo que no se movió',
+    mergeKeptConflicts: '{{count}} archivos existen en ambas carpetas, por lo que se dejaron en {{folder}}',
     checkIn: 'Registrar',
     checkOut: 'Extraer',
     download: 'Descargar',

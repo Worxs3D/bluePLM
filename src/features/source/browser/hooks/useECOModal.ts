@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ECO } from '@/stores/types'
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -35,7 +36,12 @@ export interface UseECOModalReturn {
  */
 export function useECOModal(): UseECOModalReturn {
   // ECO data from store
-  const { getActiveECOs, ecosLoading } = usePDMStore()
+  const { getActiveECOs, ecosLoading } = usePDMStore(
+    useShallow((s) => ({
+      getActiveECOs: s.getActiveECOs,
+      ecosLoading: s.ecosLoading,
+    })),
+  )
   const activeECOs = getActiveECOs()
 
   // Local UI state

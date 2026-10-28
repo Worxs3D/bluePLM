@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { isPathHidden } from '@/lib/hiddenFolders'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
@@ -14,7 +15,7 @@ export function useLocalFileSearch(
   currentFolder: string,
   searchScope: SearchScope,
 ) {
-  const { files } = usePDMStore()
+  const { files } = usePDMStore(useShallow((s) => ({ files: s.files })))
   const { enforcedHiddenPaths } = useHiddenFolders()
 
   // Filter files based on current query and filter

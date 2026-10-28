@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 import type {
   SolidWorksLicense,
@@ -23,7 +24,13 @@ function maskSerialForLog(serial: string): string {
 }
 
 export function useLicenseManager() {
-  const { organization, user, addToast } = usePDMStore()
+  const { organization, user, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+    })),
+  )
 
   const [licenses, setLicenses] = useState<LicenseWithAssignment[]>([])
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])

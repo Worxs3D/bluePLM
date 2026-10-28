@@ -1,0 +1,13 @@
+# Headless tests (Category=Headless) that CI may report as skipped. Any other skipped test fails the
+# SolidWorks service job in .github/workflows/verify.yml: a skip is a test that proved nothing, and
+# one that starts skipping silently is how a suite goes dead while staying green.
+#
+# One fully qualified test name per line. Each entry says why the CI runner cannot run it.
+
+# Needs the regression fixtures under RegressionFixtureGuard.DefaultFixtureRoot (the vault copy),
+# which are not in the repository.
+BluePLM.SolidWorksService.Tests.FixtureRestoreTests.A_real_read_only_fixture_survives_a_write_that_throws
+
+# Needs a symbolic link, which Windows refuses without elevation or developer mode. The hosted runner
+# is normally elevated, so this usually runs; the entry keeps a runner image change from failing CI.
+BluePLM.SolidWorksService.Tests.RegressionFixtureGuardTests.A_symbolic_link_inside_the_root_is_refused
