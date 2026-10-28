@@ -33,7 +33,6 @@ import { DeleteConfirmDialog } from './dialogs'
 import { DeleteLocalConfirmDialog } from './dialogs'
 import { ForceCheckinDialog } from './dialogs'
 import { PropertiesDialog } from './dialogs'
-import { ReviewRequestDialog } from './dialogs'
 import { CheckoutRequestDialog } from './dialogs'
 import { MentionDialog } from './dialogs'
 import { ShareLinkDialog } from './dialogs'
@@ -395,6 +394,7 @@ export function FileContextMenu({
 
         {/* Collaboration Items */}
         <CollaborationItems
+          contextFiles={contextFiles}
           firstFile={firstFile}
           multiSelect={multiSelect}
           isFolder={isFolder}
@@ -520,16 +520,6 @@ export function FileContextMenu({
         userId={user?.id}
         folderSize={state.folderSize}
         isCalculatingSize={state.isCalculatingSize}
-      />
-
-      <ReviewRequestDialog
-        isOpen={state.dialogs.reviewRequest}
-        onClose={() => state.closeDialog('reviewRequest')}
-        file={firstFile}
-        organizationId={organization?.id}
-        userId={user?.id}
-        vaultId={activeVaultId}
-        onSuccess={onClose}
       />
 
       <CheckoutRequestDialog

@@ -56,9 +56,6 @@ export const createUISlice: StateCreator<
   // Initial state - SOLIDWORKS version picker
   showSolidworksVersionModal: false,
 
-  // Initial state - Review preview
-  reviewPreviewFile: null,
-
   // Actions - Clipboard
   setClipboard: (clipboard: Clipboard | null) => set({ clipboard }),
   clearClipboard: () => set({ clipboard: null }),
@@ -93,7 +90,8 @@ export const createUISlice: StateCreator<
     const prev = get().activeView
     const patch: Partial<PDMStoreState> = { activeView: resolvedView, sidebarVisible: true }
     if (prev === 'reviews' && resolvedView !== 'reviews') {
-      patch.reviewPreviewFile = null
+      patch.activeReviewId = null
+      patch.activeReviewItemId = null
     }
     // An extension's right panel belongs to its workspace: switching away closes it,
     // and host.useRightPanelOpen() tells the extension.
@@ -256,6 +254,4 @@ export const createUISlice: StateCreator<
   setShowSolidworksVersionModal: (show) => set({ showSolidworksVersionModal: show }),
 
   // Actions - Review preview
-  setReviewPreviewFile: (file) => set({ reviewPreviewFile: file }),
-  clearReviewPreviewFile: () => set({ reviewPreviewFile: null }),
 })

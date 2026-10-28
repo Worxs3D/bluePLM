@@ -6,10 +6,11 @@ import { logExplorer } from '@/lib/userActionLogger'
 // getEffectiveExportSettings is now used in useConfigHandlers hook
 // Note: FileIcon is now used inside file-pane/ListRowIcon.tsx
 import { supabase, updateFileMetadata, isWatchingFile } from '@/lib/supabase'
-import type { FileMetadataColumn } from '@/types/database'
+import type { FileMetadataColumn, OrgUser } from '@/types/database'
 // Shared inline action button components now used in CellRenderer
 // Use command system for PDM operations
 import { executeCommand } from '@/lib/commands'
+import { addFilesToReviewPackage } from '@/features/source/reviewPackage/addToPackage'
 // CrumbBar is now used inside FileToolbar
 import { useTranslation } from '@/lib/i18n'
 import { buildFullPath, getRelativePath } from '@/lib/utils/path'
@@ -44,7 +45,6 @@ import {
   EmptyContextMenu,
   FileContextMenu,
   RefRowContextMenu,
-  ReviewRequestModal,
   CheckoutRequestModal,
   NotifyModal,
   ShareLinkModal,
@@ -86,7 +86,6 @@ import {
   useFileOperations,
   useKeyboardNav,
   useFileSelection,
-  useReviewModal,
   useCheckoutRequestModal,
   useMentionModal,
   useShareModal,
@@ -149,7 +148,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   const vaultPath = usePDMStore((s) => s.vaultPath)
   const currentFolder = usePDMStore((s) => s.currentFolder)
   const vaultName = usePDMStore((s) => s.vaultName)
-  const activeVaultId = usePDMStore((s) => s.activeVaultId)
   const searchQuery = usePDMStore((s) => s.searchQuery)
   const searchType = usePDMStore((s) => s.searchType)
   const searchScope = usePDMStore((s) => s.searchScope)
@@ -719,27 +717,9 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
   const tableRef = useRef<HTMLDivElement>(null)
 
-  // Review request modal state
-  const {
-    showReviewModal,
-    setShowReviewModal,
-    reviewModalFile,
-    setReviewModalFile,
-    orgUsers,
-    setOrgUsers,
-    loadingUsers,
-    setLoadingUsers,
-    selectedReviewers,
-    setSelectedReviewers,
-    reviewMessage,
-    setReviewMessage,
-    reviewDueDate,
-    setReviewDueDate,
-    reviewPriority,
-    setReviewPriority,
-    isSubmittingReview,
-    setIsSubmittingReview,
-  } = useReviewModal()
+  // Organization users for the mention picker
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
 
   // Checkout request modal state
   const {
@@ -818,9 +798,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
   // Modal handlers (review, checkout request, mention, share, ECO)
   const {
-    handleOpenReviewModal,
-    handleToggleReviewer,
-    handleSubmitReviewRequest,
     handleOpenCheckoutRequestModal,
     handleSubmitCheckoutRequest,
     handleOpenMentionModal,
@@ -834,21 +811,8 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   } = useModalHandlers({
     user,
     organization,
-    activeVaultId,
-    setShowReviewModal,
-    setReviewModalFile,
     setOrgUsers,
     setLoadingUsers,
-    selectedReviewers,
-    setSelectedReviewers,
-    reviewMessage,
-    setReviewMessage,
-    reviewDueDate,
-    setReviewDueDate,
-    reviewPriority,
-    setReviewPriority,
-    setIsSubmittingReview,
-    reviewModalFile,
     setShowCheckoutRequestModal,
     setCheckoutRequestFile,
     checkoutRequestFile,
@@ -1225,13 +1189,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
       addToast('success', `Changed ${succeeded} file${succeeded > 1 ? 's' : ''} to ${newState}`)
     }
 
-    // Ad-hoc peer review: a file that moved into "in_review" without workflow
-    // gates has no reviewers yet, so offer the review modal for the first one.
+    // Ad-hoc peer review: files that moved into "in_review" without workflow
+    // gates have no reviewers yet, so put them in the review package pane.
     if (newState === 'in_review' && succeeded > 0 && awaitingReview === 0) {
-      const firstSuccessfulFile = syncedFiles[0]
-      if (firstSuccessfulFile?.pdmData?.id) {
-        handleOpenReviewModal(firstSuccessfulFile)
-      }
+      void addFilesToReviewPackage(syncedFiles)
     }
   }
 
@@ -1924,7 +1885,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
               handleBulkStateChange={handleBulkStateChange}
               setDetailsPanelTab={setDetailsPanelTab}
               setDetailsPanelVisible={setDetailsPanelVisible}
-              handleOpenReviewModal={handleOpenReviewModal}
               handleOpenCheckoutRequestModal={handleOpenCheckoutRequestModal}
               handleOpenMentionModal={handleOpenMentionModal}
               handleOpenECOModal={handleOpenECOModal}
@@ -2082,35 +2042,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
               onCheckOutAndUpdate={configDrawingCheckoutConfirm.onCheckOutAndUpdate}
               onForceModelOnly={configDrawingCheckoutConfirm.onForceModelOnly}
               onCancel={() => setConfigDrawingCheckoutConfirm(null)}
-            />
-          )}
-
-          {/* Review Request Modal (enhanced with team selection) */}
-          {showReviewModal && reviewModalFile && (
-            <ReviewRequestModal
-              file={reviewModalFile}
-              orgUsers={orgUsers}
-              loadingUsers={loadingUsers}
-              selectedReviewers={selectedReviewers}
-              reviewDueDate={reviewDueDate}
-              reviewPriority={reviewPriority}
-              reviewMessage={reviewMessage}
-              isSubmitting={isSubmittingReview}
-              organizationId={organization?.id}
-              onToggleReviewer={handleToggleReviewer}
-              onDueDateChange={setReviewDueDate}
-              onPriorityChange={(priority) =>
-                setReviewPriority(priority as 'low' | 'normal' | 'high' | 'urgent')
-              }
-              onMessageChange={setReviewMessage}
-              onSubmit={handleSubmitReviewRequest}
-              onClose={() => {
-                setShowReviewModal(false)
-                setSelectedReviewers([])
-                setReviewMessage('')
-                setReviewDueDate('')
-                setReviewPriority('normal')
-              }}
             />
           )}
 

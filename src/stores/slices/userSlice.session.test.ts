@@ -32,7 +32,7 @@ describe('user session reset', () => {
     const clearOrganizationMetadata = vi.fn()
     const clearRecentSearches = vi.fn()
     const clearClipboard = vi.fn()
-    const clearReviewPreviewFile = vi.fn()
+    const setActiveReviewId = vi.fn()
     const setItemPanel = vi.fn()
     const clearProcessingFolders = vi.fn()
     const clearOrphanedCheckouts = vi.fn()
@@ -48,7 +48,7 @@ describe('user session reset', () => {
       clearOrganizationMetadata,
       clearRecentSearches,
       clearClipboard,
-      clearReviewPreviewFile,
+      setActiveReviewId,
       setItemPanel,
       clearProcessingFolders,
       clearOrphanedCheckouts,
@@ -125,6 +125,10 @@ describe('user session reset', () => {
     expect(store.activeVaultId).toBe('vault-a')
     expect(store.recentVaults).toEqual(['C:\\vault-a'])
     expect(store.autoConnect).toBe(true)
+    // The open review belongs to the session; review package drafts are kept per user.
+    expect(store.setActiveReviewId).toHaveBeenCalledWith(null)
+    expect(store.activeReviewId).toBeNull()
+    expect(store.reviewPackagePaneOpen).toBe(false)
   })
 
   it('can keep the vault connected across an account switch', () => {

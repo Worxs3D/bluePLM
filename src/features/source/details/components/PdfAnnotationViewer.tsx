@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, memo } from 'react'
 import { getDocument, GlobalWorkerOptions, TextLayer } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
@@ -23,7 +24,9 @@ import {
   MousePointerSquareDashed,
 } from 'lucide-react'
 
-GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs'
+// The worker ships with the app (Vite emits it as an asset) so PDFs render offline and behind
+// firewalls; it used to load from unpkg at runtime (audit M7). Same pdfjs-dist version by construction.
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 // ============================================================================
 // Types (public API — unchanged from previous implementation)
@@ -72,7 +75,15 @@ export interface PdfAnnotationViewerProps {
   hoveredAnnotationId?: string | null
   activeAnnotationId?: string | null
   initialScale?: PdfScaleValue
+  /**
+   * Read the bytes (base64) from somewhere other than the vault. The default, `readFile`, is
+   * confined to the vault working folder; the review viewer passes the review PDF cache reader.
+   */
+  readData?: (filePath: string) => Promise<{ success: boolean; data?: string } | undefined>
 }
+
+const readVaultFile: NonNullable<PdfAnnotationViewerProps['readData']> = (filePath) =>
+  window.electronAPI ? window.electronAPI.readFile(filePath) : Promise.resolve(undefined)
 
 // ============================================================================
 // Constants
@@ -523,6 +534,7 @@ function ZoomToolbar({
 // ============================================================================
 
 export function PdfAnnotationViewer({
+  readData = readVaultFile,
   filePath,
   fileName: _fileName,
   fileVersion,
@@ -561,7 +573,7 @@ export function PdfAnnotationViewer({
     setPages([])
 
     const load = async () => {
-      const result = await window.electronAPI?.readFile(filePath)
+      const result = await readData(filePath)
       if (cancelled) return
 
       if (!result?.success || !result.data) {
@@ -604,7 +616,7 @@ export function PdfAnnotationViewer({
       cancelled = true
       task?.destroy()
     }
-  }, [filePath, fileVersion])
+  }, [filePath, fileVersion, readData])
 
   // Cleanup document on unmount
   useEffect(

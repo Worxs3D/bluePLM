@@ -1,4 +1,6 @@
 import type { TranslationDict } from '../types'
+import { reviewsUiStrings } from './reviewsUi'
+import { reviewPackageStrings } from './reviewPackage'
 
 // Traditional Chinese translations (繁體中文)
 export const zhTW: TranslationDict = {
@@ -27,6 +29,8 @@ export const zhTW: TranslationDict = {
     openInEDrawings: '在 eDrawings 中開啟',
     openInEDrawingsFailed: '無法在 eDrawings 中開啟此檔案。',
   },
+  ...reviewsUiStrings.zhTW,
+  reviewPackage: reviewPackageStrings.zhTW,
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在載入簽出者',

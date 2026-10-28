@@ -29,6 +29,7 @@ import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/sup
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
 import { describeVersion } from '@/lib/files/versionDisplay'
+import { AddVersionToPackageButton } from '@/features/source/reviewPackage/components/AddVersionToPackageButton'
 
 interface VersionEntry {
   id: string
@@ -542,6 +543,11 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
 
                           {/* Actions */}
                           <div className="ml-auto flex items-center gap-1">
+                            <AddVersionToPackageButton
+                              file={file}
+                              version={version}
+                              latestVersion={serverVersion}
+                            />
                             {canSwitch && (
                               <button
                                 onClick={() => handleRollback(version.version)}

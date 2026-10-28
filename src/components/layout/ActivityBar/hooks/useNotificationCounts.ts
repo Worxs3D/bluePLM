@@ -1,34 +1,47 @@
 import { useEffect } from 'react'
-import { usePDMStore } from '@/stores/pdmStore'
-import { getPendingReviewsForUser } from '@/lib/supabase'
+
+import { useReviewNotifications } from '@/features/source/reviews/hooks/useReviewNotifications'
 import { log } from '@/lib/logger'
+import { getReviewBadgeCount } from '@/lib/supabase/reviews'
+import { usePDMStore } from '@/stores/pdmStore'
+
+/** A fallback poll; Realtime notifications and the app's own review writes refresh it at once. */
+const BADGE_POLL_MS = 5 * 60_000
 
 /**
- * Hook to load and periodically refresh pending review counts for the badge
+ * The Reviews badge: what is awaiting me, package items and workflow gates alike
+ * (`get_review_badge_count`). Reloads whenever a review write or a Realtime review notification
+ * bumps `reviewQueueRefreshTick`.
  */
 export function useNotificationCounts() {
-  const user = usePDMStore((s) => s.user)
-  const organization = usePDMStore((s) => s.organization)
+  const userId = usePDMStore((s) => s.user?.id ?? null)
+  const organizationId = usePDMStore((s) => s.organization?.id ?? null)
   const pendingReviewCount = usePDMStore((s) => s.pendingReviewCount)
   const setPendingReviewCount = usePDMStore((s) => s.setPendingReviewCount)
+  const refreshTick = usePDMStore((s) => s.reviewQueueRefreshTick)
+
+  useReviewNotifications(organizationId ? userId : null)
 
   useEffect(() => {
-    if (!user?.id || !organization?.id) return
+    if (!userId || !organizationId) return
+    let cancelled = false
 
-    const loadCounts = async () => {
+    const loadCount = async () => {
       try {
-        const { reviews } = await getPendingReviewsForUser(user.id, organization.id)
-        setPendingReviewCount(reviews.length)
+        const count = await getReviewBadgeCount()
+        if (!cancelled) setPendingReviewCount(count)
       } catch (error) {
-        log.error('[Reviews]', 'Error loading review counts:', { error: error })
+        log.warn('[Reviews]', 'Loading the review badge failed', { error })
       }
     }
 
-    loadCounts()
-
-    const interval = setInterval(loadCounts, 60000)
-    return () => clearInterval(interval)
-  }, [user?.id, organization?.id, setPendingReviewCount])
+    void loadCount()
+    const interval = setInterval(loadCount, BADGE_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [userId, organizationId, refreshTick, setPendingReviewCount])
 
   return { pendingReviewCount, totalBadge: pendingReviewCount }
 }

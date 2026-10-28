@@ -13,6 +13,7 @@ import { CadFilePreview } from '@/features/source/details/components/CadFilePrev
 import { VendorsTab } from '@/features/source/details/VendorsTab'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
+import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { FileBox, Layers, File, Loader2, FilePen, ArrowLeft } from 'lucide-react'
 
 // Component to load OS icon for files
@@ -79,6 +80,7 @@ export function RightPanel() {
       setItemPanel: s.setItemPanel,
     })),
   )
+  const reviewPackagePaneOpen = usePDMStore((s) => s.reviewPackagePaneOpen)
   const extensionPanelWorkspace = usePDMStore((s) =>
     s.extensionRightPanel && s.extensionRightPanel === s.activeView
       ? (s.extensionWorkspaces.find((w) => w.id === s.extensionRightPanel && w.RightPanel) ?? null)
@@ -156,6 +158,19 @@ export function RightPanel() {
     if (!file) return <File size={24} className="text-plm-fg-muted" />
     // Use OS icons for files
     return <RightPanelIcon file={file} size={24} />
+  }
+
+  // The review package builder, opened from a file or version context menu, wins over the
+  // view's own panel until it is closed: the user asked for it explicitly.
+  if (reviewPackagePaneOpen) {
+    return (
+      <div
+        className="bg-plm-panel border-l border-plm-border flex flex-col"
+        style={{ width: rightPanelWidth }}
+      >
+        <ReviewPackagePane />
+      </div>
+    )
   }
 
   // A native extension workspace's own right panel, in its error boundary.

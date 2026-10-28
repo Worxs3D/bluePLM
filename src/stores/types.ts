@@ -28,6 +28,7 @@ import type {
 } from '../features/settings/organization/team-members/types'
 import type { OperationLogSlice } from './slices/operationLogSlice'
 import type { VaultAuditSlice } from './slices/vaultAuditSlice'
+import type { ReviewsSlice } from './slices/reviewsSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -635,15 +636,6 @@ export interface UISlice {
   // First-run picker shown when several SOLIDWORKS releases are installed
   showSolidworksVersionModal: boolean
 
-  // Review preview (full-screen PDF in reviews view)
-  reviewPreviewFile: {
-    filePath: string // local filesystem path for PDF rendering
-    fileId: string | null // database ID for comments
-    fileName: string
-    fileVersion?: number | null
-    reviewId: string
-  } | null
-
   // Actions
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
@@ -691,10 +683,6 @@ export interface UISlice {
 
   // SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show: boolean) => void
-
-  // Review preview
-  setReviewPreviewFile: (file: UISlice['reviewPreviewFile']) => void
-  clearReviewPreviewFile: () => void
 }
 
 export interface SettingsSlice {
@@ -2099,8 +2087,11 @@ export interface AnnotationsSlice {
   activeAnnotationId: string | null
   /** The annotation currently being hovered (on either PDF box or sidebar comment) */
   hoveredAnnotationId: string | null
-  /** Which file's annotations are currently loaded (avoids stale data) */
-  annotationFileId: string | null
+  /**
+   * Which annotation set is loaded: file, version and (for a review) review/round/item. Keyed by
+   * all of them so a v6 review never shows v5's markups for the same file.
+   */
+  annotationScopeKey: string | null
   /** Whether the new-comment input panel is visible */
   showCommentInput: boolean
   /** Pending annotation data created by area/text selection before the user types a comment */
@@ -2113,7 +2104,8 @@ export interface AnnotationsSlice {
   removeAnnotation: (id: string) => void
   setActiveAnnotationId: (id: string | null) => void
   setHoveredAnnotationId: (id: string | null) => void
-  setAnnotationFileId: (fileId: string | null) => void
+  setAnnotationScopeKey: (key: string | null) => void
+  setAnnotationsLoading: (loading: boolean) => void
   setShowCommentInput: (show: boolean) => void
   setPendingAnnotation: (data: NewAnnotationData | null) => void
   clearAnnotations: () => void
@@ -2182,7 +2174,8 @@ export type PDMStoreState = ToastsSlice &
   OperationLogSlice &
   AnnotationsSlice &
   ItemBrowserSlice &
-  VaultAuditSlice
+  VaultAuditSlice &
+  ReviewsSlice
 
 // ============================================================================
 // Store Versioning

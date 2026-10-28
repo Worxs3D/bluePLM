@@ -87,7 +87,6 @@ const initialDialogState: DialogState = {
   deleteLocalConfirm: false,
   forceCheckin: false,
   properties: false,
-  reviewRequest: false,
   checkoutRequest: false,
   mention: false,
   shareLink: false,

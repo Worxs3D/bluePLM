@@ -6,6 +6,7 @@
  */
 import type { LocalFile } from '@/stores/pdmStore'
 import { getOutdatedFilesFromSelection } from '@/lib/commands/handlers/getLatest'
+import { reviewableFiles } from '@/features/source/reviewPackage/lib/localCopy'
 import type { SelectionCounts, SelectionState } from '../actions/types'
 
 /**
@@ -279,8 +280,8 @@ export function countCollaborationActions(props: MenuItemCountProps): number {
   // Extract References - for folders containing assemblies
   if (isFolder && !multiSelect && assemblyFilesInFolder.length > 0) count++
 
-  // Request Review - for synced files
-  if (!multiSelect && !isFolder && state.isSynced && firstFile.pdmData?.id) count++
+  // Request review - any synced file in the selection (ReviewPackageMenuItems)
+  if (reviewableFiles(contextFiles).length > 0) count++
 
   // View Reviews - for synced files (same condition as Request Review)
   if (!multiSelect && !isFolder && state.isSynced && firstFile.pdmData?.id) count++

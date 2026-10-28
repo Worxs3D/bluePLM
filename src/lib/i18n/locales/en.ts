@@ -1,4 +1,6 @@
 import type { TranslationDict } from '../types'
+import { reviewsUiStrings } from './reviewsUi'
+import { reviewPackageStrings } from './reviewPackage'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
@@ -30,6 +32,8 @@ export const en: TranslationDict = {
     openInEDrawings: 'Open in eDrawings',
     openInEDrawingsFailed: 'The file could not be opened in eDrawings.',
   },
+  ...reviewsUiStrings.en,
+  reviewPackage: reviewPackageStrings.en,
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',
   },
@@ -954,43 +958,6 @@ export const en: TranslationDict = {
     emptying: 'Emptying...',
   },
 
-  // Reviews dashboard
-  reviews: {
-    gates: {
-      title: 'Workflow gates',
-      subtitle: 'Approvals blocking a state change',
-      empty: 'No gate approvals are waiting on you',
-      approve: 'Approve',
-      reject: 'Reject',
-      kickBack: 'Kick back',
-      approved: 'Approval recorded',
-      rejected: 'Decision recorded',
-      advanced: 'Approved; the file moved to {{state}}',
-      failed: 'Could not record the decision',
-      requestedBy: 'Requested by {{email}}',
-    },
-    myReviews: 'My Reviews',
-    allReviews: 'All Reviews',
-    pending: 'Pending',
-    approved: 'Approved',
-    rejected: 'Rejected',
-    overdue: 'Overdue',
-    noMatchingReviews: 'No matching reviews',
-    noReviewsFound: 'No reviews found',
-    tryAdjustingFilters: 'Try adjusting your filters or search query',
-    rightClickToRequestReview: 'Right-click a file in the Explorer to request a review',
-    loadingReviews: 'Loading reviews...',
-    failedToLoadReviews: 'Failed to load reviews',
-    retry: 'Retry',
-    signInToViewReviews: 'Sign in to view reviews',
-    connectToOrgToSeeReviews: 'Connect to your organization to see file review status',
-    refreshReviews: 'Refresh reviews',
-    allTeams: 'All Teams',
-    configureVisibleTeams: 'Configure visible teams',
-    visibleTeams: 'Visible Teams',
-    searchPlaceholder: 'Search by file name, title, or user...',
-  },
-
   // Workflows
   workflows: {
     layoutSaveFailed: 'Could not save the diagram layout',
@@ -1320,6 +1287,12 @@ export const en: TranslationDict = {
   // Context menu translations
   contextMenu: {
     goToFolder: 'Go to Folder',
+    review: {
+      request: 'Request review…',
+      requestMany: 'Request review of {{count}} files…',
+      addToPackage: 'Add to review package',
+      addToPackageHint: 'Add to the review package being built (files in it: {{count}})',
+    },
     assembly: {
       title: 'Assembly',
       resolving: 'Resolving references...',

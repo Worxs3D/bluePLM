@@ -18,8 +18,10 @@ import { useEffect, useCallback, useRef, useMemo, useState } from 'react'
 import { MessageSquare, Loader2, MessageCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import type { FileAnnotation } from '@/types/database'
 import {
+  type AnnotationReviewScope,
   getFileAnnotations,
   createAnnotation,
   updateAnnotation,
@@ -42,6 +44,20 @@ export interface CommentSidebarProps {
   fileName: string
   /** Current file version (for version-scoped comments) */
   fileVersion?: number
+  /** A review's markups: only this review round's comments on this item, and new ones linked to it */
+  review?: AnnotationReviewScope
+  /** List the comments only (an earlier review round, or a closed review) */
+  readOnly?: boolean
+}
+
+/** Which annotation set is loaded: file + version + review scope. */
+export function annotationScopeKey(
+  fileId: string,
+  fileVersion: number | undefined,
+  review: AnnotationReviewScope | undefined,
+): string {
+  const scope = review ? `${review.reviewId}:${review.round}:${review.itemId}` : ''
+  return `${fileId}|${fileVersion ?? ''}|${scope}`
 }
 
 // ============================================================================
@@ -64,12 +80,31 @@ function sortAnnotations(annotations: FileAnnotation[]): FileAnnotation[] {
 // Component
 // ============================================================================
 
-export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: CommentSidebarProps) {
+export function CommentSidebar({
+  fileId,
+  fileName: _fileName,
+  fileVersion,
+  review,
+  readOnly = false,
+}: CommentSidebarProps) {
+  // Primitive parts of the review scope, so effects key on values rather than object identity.
+  const reviewId = review?.reviewId
+  const reviewRound = review?.round
+  const reviewItemId = review?.itemId
+  const scope = useMemo<AnnotationReviewScope | undefined>(
+    () =>
+      reviewId && reviewRound !== undefined && reviewItemId
+        ? { reviewId, round: reviewRound, itemId: reviewItemId }
+        : undefined,
+    [reviewId, reviewRound, reviewItemId],
+  )
+  const scopeKey = annotationScopeKey(fileId, fileVersion, scope)
+
   // ── Store ────────────────────────────────────────────────────────────────
   const annotations = usePDMStore((s) => s.annotations)
   const annotationsLoading = usePDMStore((s) => s.annotationsLoading)
   const activeAnnotationId = usePDMStore((s) => s.activeAnnotationId)
-  const annotationFileId = usePDMStore((s) => s.annotationFileId)
+  const loadedScopeKey = usePDMStore((s) => s.annotationScopeKey)
   const showCommentInput = usePDMStore((s) => s.showCommentInput)
   const pendingAnnotation = usePDMStore((s) => s.pendingAnnotation)
   const user = usePDMStore((s) => s.user)
@@ -82,7 +117,8 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
   const setActiveAnnotationId = usePDMStore((s) => s.setActiveAnnotationId)
   const hoveredAnnotationId = usePDMStore((s) => s.hoveredAnnotationId)
   const setHoveredAnnotationId = usePDMStore((s) => s.setHoveredAnnotationId)
-  const setAnnotationFileId = usePDMStore((s) => s.setAnnotationFileId)
+  const setAnnotationScopeKey = usePDMStore((s) => s.setAnnotationScopeKey)
+  const setAnnotationsLoading = usePDMStore((s) => s.setAnnotationsLoading)
   const setShowCommentInput = usePDMStore((s) => s.setShowCommentInput)
   const setPendingAnnotation = usePDMStore((s) => s.setPendingAnnotation)
 
@@ -103,36 +139,49 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
     }
   }, [annotations])
 
-  // ── Load annotations when file changes ───────────────────────────────────
+  // ── Load annotations when the file, version or review scope changes ─────
+  // Keyed on all three: keying on the file alone kept v5's markups on screen when the same
+  // drawing's v6 review opened next (audit H6).
   useEffect(() => {
     if (!fileId) return
 
-    // Skip if already loaded for this file
-    if (annotationFileId === fileId) return
+    // Skip if already loaded for this scope
+    if (loadedScopeKey === scopeKey) return
 
     let cancelled = false
 
     const load = async () => {
-      usePDMStore.setState({ annotationsLoading: true })
-      const result = await getFileAnnotations(fileId, fileVersion)
+      setAnnotations([])
+      setAnnotationsLoading(true)
+      const result = await getFileAnnotations(fileId, fileVersion, scope)
 
       if (cancelled) return
 
       if (result.error) {
         log.error('[CommentSidebar]', 'Failed to load annotations', { error: result.error, fileId })
-        addToast('error', `Failed to load comments: ${result.error}`)
+        addToast('error', t('markups.loadFailed', { message: result.error }))
       }
 
       setAnnotations(result.annotations)
-      setAnnotationFileId(fileId)
-      usePDMStore.setState({ annotationsLoading: false })
+      setAnnotationScopeKey(scopeKey)
+      setAnnotationsLoading(false)
     }
 
     load()
     return () => {
       cancelled = true
     }
-  }, [fileId, fileVersion, annotationFileId, setAnnotations, setAnnotationFileId, addToast])
+  }, [
+    fileId,
+    fileVersion,
+    scope,
+    scopeKey,
+    loadedScopeKey,
+    setAnnotations,
+    setAnnotationScopeKey,
+    setAnnotationsLoading,
+    addToast,
+  ])
 
   // ── Supabase Realtime subscription ──────────────────────────────────────
   useEffect(() => {
@@ -143,7 +192,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
     try {
       const client = getSupabaseClient()
       channel = client
-        .channel(`file_comments:${fileId}`)
+        .channel(`file_comments:${scopeKey}`)
         .on(
           'postgres_changes',
           {
@@ -161,14 +210,14 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
               if (newRow.user_id === user?.id) return
 
               // Reload to get full data with user join
-              getFileAnnotations(fileId, fileVersion).then((result) => {
+              getFileAnnotations(fileId, fileVersion, scope).then((result) => {
                 if (!result.error) {
                   setAnnotations(result.annotations)
                 }
               })
             } else if (eventType === 'UPDATE') {
               // Reload to get fresh data
-              getFileAnnotations(fileId, fileVersion).then((result) => {
+              getFileAnnotations(fileId, fileVersion, scope).then((result) => {
                 if (!result.error) {
                   setAnnotations(result.annotations)
                 }
@@ -197,7 +246,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
         }
       }
     }
-  }, [fileId, fileVersion, user?.id, setAnnotations, removeAnnotation])
+  }, [fileId, fileVersion, scope, scopeKey, user?.id, setAnnotations, removeAnnotation])
 
   // ── Scroll to active annotation thread ──────────────────────────────────
   useEffect(() => {
@@ -266,12 +315,13 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
           },
           annotationType: pendingAnnotation.annotationType,
           fileVersion: fileVersion ?? null,
+          review: scope ?? null,
         })
 
         if (result.error || !result.annotation) {
           // Rollback optimistic insert
           removeAnnotation(tempId)
-          addToast('error', `Failed to save comment: ${result.error}`)
+          addToast('error', t('markups.saveFailed', { message: result.error ?? '' }))
           return
         }
 
@@ -283,7 +333,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
         // Notification system removed
       } catch (error) {
         removeAnnotation(tempId)
-        addToast('error', 'Failed to save comment')
+        addToast('error', t('markups.saveFailed', { message: '' }))
         log.error('[CommentSidebar]', 'Create annotation failed', { error: error })
       } finally {
         setIsCreating(false)
@@ -294,6 +344,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
       pendingAnnotation,
       fileId,
       fileVersion,
+      scope,
       addAnnotation,
       removeAnnotation,
       setShowCommentInput,
@@ -315,23 +366,24 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
         annotationType: 'text',
         parentId,
         fileVersion: fileVersion ?? null,
+        review: scope ?? null,
       })
 
       if (result.error || !result.annotation) {
-        addToast('error', `Failed to save reply: ${result.error}`)
+        addToast('error', t('markups.replyFailed', { message: result.error ?? '' }))
         // Throw so the reply input stays open and the typed text is preserved
         throw new Error(result.error ?? 'Failed to save reply')
       }
 
       // Reload to get the updated threaded structure
-      const refreshed = await getFileAnnotations(fileId, fileVersion)
+      const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
       if (!refreshed.error) {
         setAnnotations(refreshed.annotations)
       }
 
       // Notification system removed
     },
-    [user, fileId, fileVersion, addToast, setAnnotations],
+    [user, fileId, fileVersion, scope, addToast, setAnnotations],
   )
 
   /** Edit a comment's text */
@@ -345,13 +397,13 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
 
       const result = await updateAnnotation(annotationId, newText)
       if (result.error) {
-        addToast('error', `Failed to edit comment: ${result.error}`)
+        addToast('error', t('markups.editFailed', { message: result.error }))
         // Reload to restore correct state
-        const refreshed = await getFileAnnotations(fileId, fileVersion)
+        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
         if (!refreshed.error) setAnnotations(refreshed.annotations)
       }
     },
-    [fileId, fileVersion, updateAnnotationInStore, addToast, setAnnotations],
+    [fileId, fileVersion, scope, updateAnnotationInStore, addToast, setAnnotations],
   )
 
   /** Delete a comment (with cascade on server side) */
@@ -362,13 +414,13 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
 
       const result = await deleteAnnotation(annotationId)
       if (result.error) {
-        addToast('error', `Failed to delete comment: ${result.error}`)
+        addToast('error', t('markups.deleteFailed', { message: result.error }))
         // Reload to restore
-        const refreshed = await getFileAnnotations(fileId, fileVersion)
+        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
         if (!refreshed.error) setAnnotations(refreshed.annotations)
       }
     },
-    [fileId, fileVersion, removeAnnotation, addToast, setAnnotations],
+    [fileId, fileVersion, scope, removeAnnotation, addToast, setAnnotations],
   )
 
   /** Resolve a thread */
@@ -384,7 +436,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
 
       const result = await resolveAnnotation(annotationId, user.id)
       if (result.error) {
-        addToast('error', `Failed to resolve: ${result.error}`)
+        addToast('error', t('markups.resolveFailed', { message: result.error }))
         updateAnnotationInStore(annotationId, {
           resolved: false,
           resolved_by: null,
@@ -406,13 +458,13 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
 
       const result = await unresolveAnnotation(annotationId)
       if (result.error) {
-        addToast('error', `Failed to unresolve: ${result.error}`)
+        addToast('error', t('markups.unresolveFailed', { message: result.error }))
         // Reload fresh data
-        const refreshed = await getFileAnnotations(fileId, fileVersion)
+        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
         if (!refreshed.error) setAnnotations(refreshed.annotations)
       }
     },
-    [fileId, fileVersion, updateAnnotationInStore, addToast, setAnnotations],
+    [fileId, fileVersion, scope, updateAnnotationInStore, addToast, setAnnotations],
   )
 
   /** Cancel the pending annotation input */
@@ -429,7 +481,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
       <div className="flex items-center justify-between px-3 py-2 border-b border-plm-border flex-shrink-0">
         <div className="flex items-center gap-2">
           <MessageSquare size={14} className="text-plm-fg-muted" />
-          <span className="text-xs font-medium text-plm-fg">Comments</span>
+          <span className="text-xs font-medium text-plm-fg">{t('markups.title')}</span>
           {unresolvedCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-plm-accent/20 text-plm-accent text-[10px] font-semibold tabular-nums">
               {unresolvedCount}
@@ -444,16 +496,22 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
         {annotationsLoading && (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={16} className="animate-spin text-plm-fg-muted" />
-            <span className="ml-2 text-xs text-plm-fg-muted">Loading comments...</span>
+            <span className="ml-2 text-xs text-plm-fg-muted">{t('markups.loading')}</span>
           </div>
         )}
 
         {/* New comment input (from PDF area selection) */}
-        {showCommentInput && pendingAnnotation && (
+        {readOnly && (
+          <div className="px-3 py-1.5 text-[10px] text-plm-fg-muted border-b border-plm-border">
+            {t('markups.readOnly')}
+          </div>
+        )}
+
+        {showCommentInput && pendingAnnotation && !readOnly && (
           <div className="px-3 py-2 border-b border-plm-border bg-plm-accent/5">
             <CommentInput
               pageNumber={pendingAnnotation.pageNumber}
-              placeholder="Describe your comment..."
+              placeholder={t('markups.placeholder')}
               onSubmit={handleCreateComment}
               onCancel={handleCancelCreate}
               isLoading={isCreating}
@@ -465,10 +523,10 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
         {!annotationsLoading && annotations.length === 0 && !showCommentInput && (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <MessageCircle size={32} className="text-plm-fg-muted/30 mb-3" />
-            <div className="text-xs text-plm-fg-muted mb-1">No comments yet</div>
-            <div className="text-[10px] text-plm-fg-muted/60">
-              Click and drag on the PDF to add a comment
-            </div>
+            <div className="text-xs text-plm-fg-muted mb-1">{t('markups.empty')}</div>
+            {!readOnly && (
+              <div className="text-[10px] text-plm-fg-muted/60">{t('markups.emptyHint')}</div>
+            )}
           </div>
         )}
 
@@ -489,6 +547,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
                   onResolve={handleResolve}
                   onUnresolve={handleUnresolve}
                   onHoverChange={(hovered) => setHoveredAnnotationId(hovered ? ann.id : null)}
+                  readOnly={readOnly}
                 />
               </div>
             ))}
@@ -502,12 +561,12 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
               onClick={() => setShowResolved((prev) => !prev)}
               className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors"
               aria-expanded={showResolved}
-              aria-label={`${showResolved ? 'Hide' : 'Show'} ${resolvedCount} resolved comments`}
+              aria-label={t(showResolved ? 'markups.hideResolved' : 'markups.showResolved', {
+                count: resolvedCount,
+              })}
             >
               {showResolved ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <span>
-                {resolvedCount} resolved {resolvedCount === 1 ? 'comment' : 'comments'}
-              </span>
+              <span>{t('markups.resolvedCount', { count: resolvedCount })}</span>
             </button>
 
             {showResolved && (
@@ -526,6 +585,7 @@ export function CommentSidebar({ fileId, fileName: _fileName, fileVersion }: Com
                       onResolve={handleResolve}
                       onUnresolve={handleUnresolve}
                       onHoverChange={(hovered) => setHoveredAnnotationId(hovered ? ann.id : null)}
+                  readOnly={readOnly}
                     />
                   </div>
                 ))}

@@ -82,6 +82,10 @@ const NOT_JOURNEYED: Record<string, string> = {
   'reconcile-moved-paths':
     'Re-align / pending-move repair, reached from a vault already holding pending moves. Covered by reconcileMovedPaths*.test.ts; the journeys assert no pending move is ever left behind.',
   'adopt-server-paths': 'See reconcile-moved-paths. Covered by adoptServerPaths*.test.ts.',
+  'download-review-package':
+    'Writes a pinned-version copy outside the vault and changes no vault file, row or path; retargeting needs the SOLIDWORKS service. Pipeline covered by src/lib/reviewPackage/*.test.ts; the command glue has no test yet.',
+  'generate-review-pdfs':
+    'Renders in a temp folder with full SOLIDWORKS and stores a PDF by hash; changes no vault file, row or path. No journey harness can drive the export.',
 }
 
 function commandIds(): string[] {

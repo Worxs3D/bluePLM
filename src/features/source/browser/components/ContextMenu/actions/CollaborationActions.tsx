@@ -10,7 +10,6 @@ import {
   Link,
   Loader2,
   Network,
-  Send,
   Users,
   ListChecks,
 } from 'lucide-react'
@@ -18,13 +17,13 @@ import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
+import { ReviewPackageMenuItems } from '@/features/source/reviewPackage/components/ReviewPackageMenuItems'
 import type { RefreshableActionProps, SelectionState } from './types'
 
 interface CollaborationActionsProps extends RefreshableActionProps {
   state: SelectionState
   setDetailsPanelTab: (tab: 'properties' | 'whereused') => void
   setDetailsPanelVisible: (visible: boolean) => void
-  handleOpenReviewModal: (file: LocalFile) => void
   handleOpenCheckoutRequestModal: (file: LocalFile) => void
   handleOpenMentionModal: (file: LocalFile) => void
   handleOpenECOModal: (file: LocalFile) => void
@@ -44,7 +43,6 @@ export function CollaborationActions({
   state,
   setDetailsPanelTab,
   setDetailsPanelVisible,
-  handleOpenReviewModal,
   handleOpenCheckoutRequestModal,
   handleOpenMentionModal,
   handleOpenECOModal,
@@ -168,13 +166,8 @@ export function CollaborationActions({
         </div>
       )}
 
-      {/* Request Review - for synced files */}
-      {!multiSelect && !isFolder && state.isSynced && firstFile.pdmData?.id && (
-        <div className="context-menu-item" onClick={() => handleOpenReviewModal(firstFile)}>
-          <Send size={14} className="text-plm-accent" />
-          Request Review
-        </div>
-      )}
+      {/* Request review / add to the review package - one file or a selection */}
+      <ReviewPackageMenuItems contextFiles={contextFiles} onClose={onClose} />
 
       {/* View Reviews - navigate to Reviews Dashboard */}
       {!multiSelect && !isFolder && state.isSynced && firstFile.pdmData?.id && (

@@ -1,10 +1,10 @@
 /**
- * Source Files Reviews Dashboard - barrel exports
+ * Drawing reviews: the review queue (Reviews sidebar) and the open review (main area).
  *
- * This module provides a sidebar view for tracking file reviews
- * under the Source Files group. It is separate from the change-control
- * ReviewsView (which handles notifications/pending/my-requests tabs).
+ * Package reviews and the workflow gates waiting on the user share one queue; see
+ * `ReviewsDashboard.tsx`. The package builder that creates reviews is `features/source/reviewPackage`.
  */
 
 export { ReviewsDashboard } from './ReviewsDashboard'
-export { ReviewPreviewPane } from './components/ReviewPreviewPane'
+export { ReviewDetailPane } from './detail/ReviewDetailPane'
+export { useReviewNotifications } from './hooks/useReviewNotifications'

@@ -70,8 +70,8 @@ export const createAnnotationsSlice: StateCreator<
   /** The annotation currently being hovered (on either PDF box or sidebar comment) */
   hoveredAnnotationId: null,
 
-  /** Which file's annotations are currently loaded (avoids stale data) */
-  annotationFileId: null,
+  /** Which annotation set (file, version, review scope) is loaded - avoids stale data */
+  annotationScopeKey: null,
 
   /** Whether the new-comment input panel is visible */
   showCommentInput: false,
@@ -101,7 +101,9 @@ export const createAnnotationsSlice: StateCreator<
 
   setHoveredAnnotationId: (id) => set({ hoveredAnnotationId: id }),
 
-  setAnnotationFileId: (fileId) => set({ annotationFileId: fileId }),
+  setAnnotationScopeKey: (annotationScopeKey) => set({ annotationScopeKey }),
+
+  setAnnotationsLoading: (annotationsLoading) => set({ annotationsLoading }),
 
   setShowCommentInput: (show) => set({ showCommentInput: show }),
 
@@ -113,7 +115,7 @@ export const createAnnotationsSlice: StateCreator<
       annotationsLoading: false,
       activeAnnotationId: null,
       hoveredAnnotationId: null,
-      annotationFileId: null,
+      annotationScopeKey: null,
       showCommentInput: false,
       pendingAnnotation: null,
     }),

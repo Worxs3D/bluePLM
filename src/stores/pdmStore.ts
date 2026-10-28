@@ -44,6 +44,7 @@ import {
 } from './persistStorage'
 import { getStoreActionName } from './storeActionName'
 import { CURRENT_STORE_VERSION, runMigrations, getPersistedVersion } from './migrations'
+import { sanitizeReviewPackageDrafts } from './slices/reviewsDraft'
 
 /**
  * Hydration state - tracks whether the store has finished loading from localStorage.
@@ -78,6 +79,7 @@ import {
   createAnnotationsSlice,
   createItemBrowserSlice,
   createVaultAuditSlice,
+  createReviewsSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
 
@@ -194,6 +196,7 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createAnnotationsSlice(...a),
       ...createItemBrowserSlice(...a),
       ...createVaultAuditSlice(...a),
+      ...createReviewsSlice(...a),
     })),
     {
       name: PERSIST_STORAGE_NAME,
@@ -355,6 +358,11 @@ export const usePDMStore = create<PDMStoreState>()(
         // ═══════════════════════════════════════════════════════════════
         vaultAuditScope: state.vaultAuditScope,
         vaultAuditExpectRevisionOnModels: state.vaultAuditExpectRevisionOnModels,
+
+        // ═══════════════════════════════════════════════════════════════
+        // Review package drafts, keyed by user id (see slices/reviewsSlice.ts)
+        // ═══════════════════════════════════════════════════════════════
+        reviewPackageDrafts: state.reviewPackageDrafts,
       }),
       /**
        * Called when hydration starts and finishes.
@@ -434,6 +442,8 @@ export const usePDMStore = create<PDMStoreState>()(
           vaultPath: validVaultPath,
           // Use validated activeView (prevents group IDs like 'group-source-files' from persisting)
           activeView: validActiveView,
+          // Persisted drafts are read defensively; a malformed one is dropped
+          reviewPackageDrafts: sanitizeReviewPackageDrafts(persisted.reviewPackageDrafts),
           // Convert expandedFolders back to Set
           expandedFolders: new Set((persisted.expandedFolders as string[]) || []),
           // Convert expandedPendingSections back to Set

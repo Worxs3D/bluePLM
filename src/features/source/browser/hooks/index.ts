@@ -35,7 +35,6 @@
  *
  * ## Modal State Hooks
  * State for collaboration modals:
- * - `useReviewModal` - Review request modal state
  * - `useCheckoutRequestModal` - Checkout request modal state
  * - `useMentionModal` - Mention/notify modal state
  * - `useShareModal` - Share link modal state
@@ -107,9 +106,6 @@ export type { UseKeyboardNavOptions } from './useKeyboardNav'
 export { useFileSelection } from './useFileSelection'
 export type { UseFileSelectionOptions, UseFileSelectionReturn } from './useFileSelection'
 
-// Review request modal
-export { useReviewModal } from './useReviewModal'
-export type { UseReviewModalReturn, OrgUser } from './useReviewModal'
 
 // Checkout request modal
 export { useCheckoutRequestModal } from './useCheckoutRequestModal'

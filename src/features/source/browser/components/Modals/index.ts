@@ -1,5 +1,4 @@
-export { ReviewRequestModal } from './ReviewRequestModal'
-export type { ReviewRequestModalProps, OrgUser } from './ReviewRequestModal'
+export type { OrgUser } from '@/types/database'
 
 export { CheckoutRequestModal } from './CheckoutRequestModal'
 export type { CheckoutRequestModalProps } from './CheckoutRequestModal'

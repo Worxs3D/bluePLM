@@ -90,6 +90,21 @@ function buildThreadTree(flat: FileAnnotation[]): FileAnnotation[] {
 }
 
 // ============================================
+// Review scope
+// ============================================
+
+/**
+ * A drawing review's markups belong to one review, round and item (schema 107 link columns on
+ * `file_comments`). The server trigger checks the link: the commenter is the requester, a reviewer
+ * or an admin, the round is the current one, and the item belongs to the review.
+ */
+export interface AnnotationReviewScope {
+  reviewId: string
+  round: number
+  itemId: string
+}
+
+// ============================================
 // Read Operations
 // ============================================
 
@@ -101,11 +116,13 @@ function buildThreadTree(flat: FileAnnotation[]): FileAnnotation[] {
  *
  * @param fileId - The file ID to fetch annotations for
  * @param version - Optional file version filter (only annotations from this version)
+ * @param review - Optional review scope: only that review round's markups on that item
  * @returns Object with `annotations` array (threaded) and optional `error`
  */
 export async function getFileAnnotations(
   fileId: string,
   version?: number,
+  review?: AnnotationReviewScope,
 ): Promise<{ annotations: FileAnnotation[]; error: string | null }> {
   const client = getSupabaseClient()
 
@@ -135,6 +152,12 @@ export async function getFileAnnotations(
 
   if (version !== undefined) {
     query = query.eq('file_version', version)
+  }
+  if (review) {
+    query = query
+      .eq('review_id', review.reviewId)
+      .eq('review_round', review.round)
+      .eq('review_item_id', review.itemId)
   }
 
   const { data, error } = await query
@@ -194,6 +217,8 @@ export interface CreateAnnotationParams {
   annotationType: AnnotationType
   parentId?: string | null
   fileVersion?: number | null
+  /** Link the comment to a review round's item (a review markup). */
+  review?: AnnotationReviewScope | null
 }
 
 /**
@@ -220,6 +245,13 @@ export async function createAnnotation(
     annotation_type: params.annotationType,
     parent_id: params.parentId ?? null,
     file_version: params.fileVersion ?? null,
+    ...(params.review
+      ? {
+          review_id: params.review.reviewId,
+          review_round: params.review.round,
+          review_item_id: params.review.itemId,
+        }
+      : {}),
   }
 
   const { data, error } = await (client.from('file_comments') as any) // TODO: type this

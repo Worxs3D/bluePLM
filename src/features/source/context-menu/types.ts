@@ -32,7 +32,6 @@ export interface DialogState {
   deleteLocalConfirm: boolean
   forceCheckin: boolean
   properties: boolean
-  reviewRequest: boolean
   checkoutRequest: boolean
   mention: boolean
   shareLink: boolean
@@ -82,16 +81,6 @@ export interface PropertiesDialogProps {
   userId?: string
   folderSize: { size: number; fileCount: number; folderCount: number } | null
   isCalculatingSize: boolean
-}
-
-export interface ReviewRequestDialogProps {
-  isOpen: boolean
-  onClose: () => void
-  file: LocalFile
-  organizationId: string | undefined
-  userId: string | undefined
-  vaultId: string | null | undefined
-  onSuccess: () => void
 }
 
 export interface CheckoutRequestDialogProps {

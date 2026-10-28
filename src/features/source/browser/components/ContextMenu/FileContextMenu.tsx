@@ -76,7 +76,6 @@ export interface FileContextMenuProps {
   // Modals and panels
   setDetailsPanelTab: (tab: 'properties' | 'whereused') => void
   setDetailsPanelVisible: (visible: boolean) => void
-  handleOpenReviewModal: (file: LocalFile) => void
   handleOpenCheckoutRequestModal: (file: LocalFile) => void
   handleOpenMentionModal: (file: LocalFile) => void
   handleOpenECOModal: (file: LocalFile) => void
@@ -145,7 +144,6 @@ export function FileContextMenu({
   handleBulkStateChange,
   setDetailsPanelTab,
   setDetailsPanelVisible,
-  handleOpenReviewModal,
   handleOpenCheckoutRequestModal,
   handleOpenMentionModal,
   handleOpenECOModal,
@@ -427,7 +425,6 @@ export function FileContextMenu({
               state={state}
               setDetailsPanelTab={setDetailsPanelTab}
               setDetailsPanelVisible={setDetailsPanelVisible}
-              handleOpenReviewModal={handleOpenReviewModal}
               handleOpenCheckoutRequestModal={handleOpenCheckoutRequestModal}
               handleOpenMentionModal={handleOpenMentionModal}
               handleOpenECOModal={handleOpenECOModal}
@@ -451,7 +448,6 @@ export function FileContextMenu({
               state={state}
               setDetailsPanelTab={setDetailsPanelTab}
               setDetailsPanelVisible={setDetailsPanelVisible}
-              handleOpenReviewModal={handleOpenReviewModal}
               handleOpenCheckoutRequestModal={handleOpenCheckoutRequestModal}
               handleOpenMentionModal={handleOpenMentionModal}
               handleOpenECOModal={handleOpenECOModal}

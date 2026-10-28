@@ -70,14 +70,12 @@ export type {
 } from './ContextMenu'
 
 export {
-  ReviewRequestModal,
   CheckoutRequestModal,
   NotifyModal,
   ShareLinkModal,
   ECOModal,
 } from './Modals'
 export type {
-  ReviewRequestModalProps,
   CheckoutRequestModalProps,
   NotifyModalProps,
   ShareLinkModalProps,

@@ -59,6 +59,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     setRightPanelWidth,
     rightPanelTabs,
     itemPanel,
+    reviewPackagePaneOpen,
   } = usePDMStore(
     useShallow((s) => ({
       activeView: s.activeView,
@@ -71,6 +72,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       setRightPanelWidth: s.setRightPanelWidth,
       rightPanelTabs: s.rightPanelTabs,
       itemPanel: s.itemPanel,
+      reviewPackagePaneOpen: s.reviewPackagePaneOpen,
     })),
   )
   const extensionWorkspaces = usePDMStore((s) => s.extensionWorkspaces)
@@ -99,6 +101,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
    */
   const detailOwningViews = ['items', 'workflows']
   const rightPanelOpen =
+    (reviewPackagePaneOpen && activeView !== 'settings') ||
     extensionPanelOpen ||
     (activeView === 'items' && !!itemPanel) ||
     (!activeExtensionWorkspace &&

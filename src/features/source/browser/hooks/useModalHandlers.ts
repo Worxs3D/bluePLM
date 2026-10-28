@@ -2,7 +2,6 @@
  * useModalHandlers - Collaboration modal handlers hook
  *
  * Provides handlers for all collaboration-related modals:
- * - Review request: Request file review from team members
  * - Checkout request: Request access to file checked out by others
  * - Mention/notify: Send notifications about files to team members
  * - Watch: Toggle file watch for change notifications
@@ -10,7 +9,6 @@
  * - ECO: Add files to Engineering Change Orders
  *
  * Key exports:
- * - handleOpenReviewModal, handleSubmitReviewRequest
  * - handleOpenCheckoutRequestModal, handleSubmitCheckoutRequest
  * - handleOpenMentionModal, handleSubmitMention
  * - handleToggleWatch, handleQuickShareLink
@@ -18,21 +16,18 @@
  *
  * @example
  * const {
- *   handleOpenReviewModal,
- *   handleSubmitReviewRequest,
  *   handleToggleWatch
  * } = useModalHandlers({
- *   user, organization, activeVaultId, ...modalStateSetters
+ *   user, organization, ...modalStateSetters
  * })
  */
 import { useCallback } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import type { ContextMenuState } from './useContextMenuState'
-import type { OrgUser } from './useReviewModal'
+import type { OrgUser } from '@/types/database'
 import {
   getOrgUsers,
-  createReviewRequest,
   watchFile,
   unwatchFile,
   createShareLink,
@@ -46,23 +41,10 @@ export interface ModalHandlersDeps {
   // User and org
   user: { id: string } | null
   organization: { id: string } | null
-  activeVaultId: string | null | undefined
 
-  // Review modal state
-  setShowReviewModal: (show: boolean) => void
-  setReviewModalFile: (file: LocalFile | null) => void
+  // Organization users (the mention picker)
   setOrgUsers: (users: OrgUser[]) => void
   setLoadingUsers: (loading: boolean) => void
-  selectedReviewers: string[]
-  setSelectedReviewers: (reviewers: string[]) => void
-  reviewMessage: string
-  setReviewMessage: (message: string) => void
-  reviewDueDate: string
-  setReviewDueDate: (date: string) => void
-  reviewPriority: 'low' | 'normal' | 'high' | 'urgent'
-  setReviewPriority: (priority: 'low' | 'normal' | 'high' | 'urgent') => void
-  setIsSubmittingReview: (submitting: boolean) => void
-  reviewModalFile: LocalFile | null
 
   // Checkout request modal state
   setShowCheckoutRequestModal: (show: boolean) => void
@@ -113,9 +95,6 @@ export interface ModalHandlersDeps {
 }
 
 export interface UseModalHandlersReturn {
-  handleOpenReviewModal: (file: LocalFile) => Promise<void>
-  handleToggleReviewer: (userId: string) => void
-  handleSubmitReviewRequest: (teamId?: string) => Promise<void>
   handleOpenCheckoutRequestModal: (file: LocalFile) => void
   handleSubmitCheckoutRequest: () => Promise<void>
   handleOpenMentionModal: (file: LocalFile) => Promise<void>
@@ -150,21 +129,8 @@ export function useModalHandlers(deps: ModalHandlersDeps): UseModalHandlersRetur
   const {
     user,
     organization,
-    activeVaultId,
-    setShowReviewModal,
-    setReviewModalFile,
     setOrgUsers,
     setLoadingUsers,
-    selectedReviewers,
-    setSelectedReviewers,
-    reviewMessage,
-    setReviewMessage,
-    reviewDueDate,
-    setReviewDueDate,
-    reviewPriority,
-    setReviewPriority,
-    setIsSubmittingReview,
-    reviewModalFile,
     setShowCheckoutRequestModal,
     setCheckoutRequestFile,
     checkoutRequestFile,
@@ -199,109 +165,6 @@ export function useModalHandlers(deps: ModalHandlersDeps): UseModalHandlersRetur
     setContextMenu,
     addToast,
   } = deps
-
-  // === Review Modal Handlers ===
-
-  const handleOpenReviewModal = useCallback(
-    async (file: LocalFile) => {
-      if (!organization?.id) {
-        addToast('error', 'No organization connected')
-        return
-      }
-
-      setReviewModalFile(file)
-      setShowReviewModal(true)
-      setContextMenu(null)
-      setLoadingUsers(true)
-
-      const { users } = await getOrgUsers(organization.id)
-      setOrgUsers(users)
-      setLoadingUsers(false)
-    },
-    [
-      organization?.id,
-      setReviewModalFile,
-      setShowReviewModal,
-      setContextMenu,
-      setLoadingUsers,
-      setOrgUsers,
-      addToast,
-    ],
-  )
-
-  const handleToggleReviewer = useCallback(
-    (userId: string) => {
-      setSelectedReviewers(
-        selectedReviewers.includes(userId)
-          ? selectedReviewers.filter((id) => id !== userId)
-          : [...selectedReviewers, userId],
-      )
-    },
-    [selectedReviewers, setSelectedReviewers],
-  )
-
-  const handleSubmitReviewRequest = useCallback(
-    async (teamId?: string) => {
-      if (!user?.id || !organization?.id || !reviewModalFile?.pdmData?.id) {
-        addToast('error', 'Missing required information')
-        return
-      }
-
-      if (selectedReviewers.length === 0) {
-        addToast('warning', 'Please select at least one reviewer')
-        return
-      }
-
-      setIsSubmittingReview(true)
-
-      const { error } = await createReviewRequest(
-        organization.id,
-        reviewModalFile.pdmData.id,
-        activeVaultId ?? null,
-        user.id,
-        selectedReviewers,
-        reviewModalFile.pdmData.version || 1,
-        undefined,
-        reviewMessage || undefined,
-        reviewDueDate || undefined,
-        reviewPriority,
-        teamId,
-      )
-
-      if (error) {
-        addToast('error', `Failed to create review request: ${error}`)
-      } else {
-        addToast(
-          'success',
-          `Review request sent to ${selectedReviewers.length} reviewer${selectedReviewers.length > 1 ? 's' : ''}`,
-        )
-        setShowReviewModal(false)
-        setSelectedReviewers([])
-        setReviewMessage('')
-        setReviewDueDate('')
-        setReviewPriority('normal')
-      }
-
-      setIsSubmittingReview(false)
-    },
-    [
-      user?.id,
-      organization?.id,
-      reviewModalFile,
-      selectedReviewers,
-      activeVaultId,
-      reviewMessage,
-      reviewDueDate,
-      reviewPriority,
-      setIsSubmittingReview,
-      setShowReviewModal,
-      setSelectedReviewers,
-      setReviewMessage,
-      setReviewDueDate,
-      setReviewPriority,
-      addToast,
-    ],
-  )
 
   // === Checkout Request Modal Handlers ===
 
@@ -609,9 +472,6 @@ export function useModalHandlers(deps: ModalHandlersDeps): UseModalHandlersRetur
   ])
 
   return {
-    handleOpenReviewModal,
-    handleToggleReviewer,
-    handleSubmitReviewRequest,
     handleOpenCheckoutRequestModal,
     handleSubmitCheckoutRequest,
     handleOpenMentionModal,

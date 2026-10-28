@@ -1,4 +1,6 @@
 import type { TranslationDict } from '../types'
+import { reviewsUiStrings } from './reviewsUi'
+import { reviewPackageStrings } from './reviewPackage'
 
 // French translations
 export const fr: TranslationDict = {
@@ -30,6 +32,8 @@ export const fr: TranslationDict = {
     openInEDrawings: 'Ouvrir dans eDrawings',
     openInEDrawingsFailed: 'Le fichier n’a pas pu être ouvert dans eDrawings.',
   },
+  ...reviewsUiStrings.fr,
+  reviewPackage: reviewPackageStrings.fr,
   checkoutDisplay: {
     you: 'Vous',
     loadingOwner: 'Chargement du propriétaire du checkout',

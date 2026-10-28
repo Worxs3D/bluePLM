@@ -80,6 +80,20 @@ let permissionsChannel: RealtimeChannel | null = null
 let vaultsChannel: RealtimeChannel | null = null
 let memberChangesChannel: RealtimeChannel | null = null
 let foldersChannel: RealtimeChannel | null = null
+let notificationsChannel: RealtimeChannel | null = null
+
+/** The `notifications` columns a client toast needs (RLS lets a user read only their own rows). */
+export interface NotificationRealtimeRow {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  message: string | null
+  entity_type: string | null
+  entity_id: string | null
+  priority: string | null
+  created_at: string | null
+}
 
 /**
  * How to subscribe each live channel again with the arguments it was made with. The health
@@ -710,6 +724,44 @@ export function isPermissionsRealtimeConnected(): boolean {
 }
 
 
+/**
+ * Subscribe to the signed-in user's new notifications (review requests, decisions, rounds...).
+ * The review RPCs insert them in the same transaction as the change they announce.
+ */
+export function subscribeToNotifications(
+  userId: string,
+  onNotification: (row: NotificationRealtimeRow) => void,
+): () => void {
+  rebuilders.set('notifications', () => subscribeToNotifications(userId, onNotification))
+  if (notificationsChannel) {
+    notificationsChannel.unsubscribe()
+  }
+
+  notificationsChannel = supabase
+    .channel(`notifications:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        onNotification(payload.new as NotificationRealtimeRow)
+      },
+    )
+    .subscribe()
+
+  return () => {
+    rebuilders.delete('notifications')
+    if (notificationsChannel) {
+      notificationsChannel.unsubscribe()
+      notificationsChannel = null
+    }
+  }
+}
+
 /** The live channels by kind, with realtime-js's state for each ('joined', 'errored', ...). */
 export function realtimeChannelStates(): Array<{ kind: string; state: string }> {
   const channels: Array<[string, RealtimeChannel | null]> = [
@@ -721,6 +773,7 @@ export function realtimeChannelStates(): Array<{ kind: string; state: string }> 
     ['vaults', vaultsChannel],
     ['member_changes', memberChangesChannel],
     ['permissions', permissionsChannel],
+    ['notifications', notificationsChannel],
   ]
   return channels
     .filter((entry): entry is [string, RealtimeChannel] => entry[1] !== null)
@@ -777,6 +830,10 @@ export function unsubscribeAll() {
   if (foldersChannel) {
     foldersChannel.unsubscribe()
     foldersChannel = null
+  }
+  if (notificationsChannel) {
+    notificationsChannel.unsubscribe()
+    notificationsChannel = null
   }
 }
 

@@ -26,6 +26,7 @@ import {
   Loader2,
   MapPin,
 } from 'lucide-react'
+import { t } from '@/lib/i18n'
 import type { FileAnnotation } from '@/types/database'
 import { CommentInput } from './CommentInput'
 
@@ -56,6 +57,8 @@ export interface CommentThreadProps {
   onUnresolve: (annotationId: string) => Promise<void>
   /** Called when mouse enters/leaves this thread (for bidirectional hover) */
   onHoverChange?: (isHovered: boolean) => void
+  /** Show the thread only: no reply, edit, delete or resolve (an earlier review round) */
+  readOnly?: boolean
 }
 
 // ============================================================================
@@ -64,8 +67,8 @@ export interface CommentThreadProps {
 
 /** Get display name from annotation user data */
 function getDisplayName(user?: FileAnnotation['user']): string {
-  if (!user) return 'Unknown'
-  return user.full_name || user.email || 'Unknown'
+  if (!user) return t('markups.unknownUser')
+  return user.full_name || user.email || t('markups.unknownUser')
 }
 
 /** Get initials from a display name (for avatar fallback) */
@@ -207,7 +210,7 @@ function CommentBubble({
             <span className="text-[10px] text-plm-fg-muted flex-shrink-0">{timestamp}</span>
             {annotation.edited_at && (
               <span className="text-[10px] text-plm-fg-muted/60 italic flex-shrink-0">
-                (edited)
+                {t('markups.edited')}
               </span>
             )}
           </div>
@@ -217,7 +220,7 @@ function CommentBubble({
         {isRoot && isResolved && (
           <div className="flex items-center gap-1 text-[10px] text-plm-success flex-shrink-0">
             <CheckCircle2 size={12} />
-            <span>Resolved</span>
+            <span>{t('markups.resolved')}</span>
           </div>
         )}
       </div>
@@ -248,7 +251,7 @@ function CommentBubble({
               disabled={isSaving || editText.trim().length === 0}
               className="px-2 py-0.5 text-[10px] rounded bg-plm-accent text-white hover:bg-plm-accent/90 disabled:opacity-40"
             >
-              {isSaving ? 'Saving...' : 'Save'}
+              {isSaving ? t('markups.saving') : t('markups.save')}
             </button>
             <button
               onClick={() => {
@@ -258,7 +261,7 @@ function CommentBubble({
               disabled={isSaving}
               className="px-2 py-0.5 text-[10px] rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light"
             >
-              Cancel
+              {t('markups.cancel')}
             </button>
           </div>
         </div>
@@ -274,27 +277,27 @@ function CommentBubble({
       {isRoot && annotation.page_number != null && (
         <div className="ml-8 mt-1 flex items-center gap-1 text-[10px] text-plm-fg-muted">
           <MapPin size={10} />
-          <span>Page {annotation.page_number}</span>
+          <span>{t('markups.page', { page: annotation.page_number })}</span>
         </div>
       )}
 
       {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div className="ml-8 mt-1.5 flex items-center gap-2 p-2 bg-plm-error/10 border border-plm-error/30 rounded text-xs">
-          <span className="text-plm-fg">Delete this comment?</span>
+          <span className="text-plm-fg">{t('markups.deleteConfirm')}</span>
           <button
             onClick={handleDelete}
             disabled={isDeleting}
             className="px-2 py-0.5 rounded bg-plm-error text-white text-[10px] hover:bg-plm-error/90 disabled:opacity-50"
           >
-            {isDeleting ? <Loader2 size={10} className="animate-spin" /> : 'Delete'}
+            {isDeleting ? <Loader2 size={10} className="animate-spin" /> : t('markups.delete')}
           </button>
           <button
             onClick={() => setShowDeleteConfirm(false)}
             disabled={isDeleting}
             className="px-2 py-0.5 rounded text-plm-fg-muted hover:text-plm-fg text-[10px]"
           >
-            Cancel
+            {t('markups.cancel')}
           </button>
         </div>
       )}
@@ -307,10 +310,10 @@ function CommentBubble({
             <button
               onClick={onReply}
               className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-accent transition-colors"
-              aria-label="Reply to comment"
+              aria-label={t('markups.replyAria')}
             >
               <CornerDownRight size={10} />
-              Reply
+              {t('markups.reply')}
             </button>
           )}
 
@@ -322,10 +325,10 @@ function CommentBubble({
                 setIsEditing(true)
               }}
               className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-accent transition-colors"
-              aria-label="Edit comment"
+              aria-label={t('markups.editAria')}
             >
               <Pencil size={10} />
-              Edit
+              {t('markups.edit')}
             </button>
           )}
 
@@ -334,10 +337,10 @@ function CommentBubble({
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-error transition-colors"
-              aria-label="Delete comment"
+              aria-label={t('markups.deleteAria')}
             >
               <Trash2 size={10} />
-              Delete
+              {t('markups.delete')}
             </button>
           )}
 
@@ -351,7 +354,7 @@ function CommentBubble({
                   ? 'text-plm-success hover:text-plm-fg-muted'
                   : 'text-plm-fg-muted hover:text-plm-success'
               }`}
-              aria-label={isResolved ? 'Unresolve comment' : 'Resolve comment'}
+              aria-label={isResolved ? t('markups.unresolveAria') : t('markups.resolveAria')}
             >
               {isResolving ? (
                 <Loader2 size={10} className="animate-spin" />
@@ -360,7 +363,7 @@ function CommentBubble({
               ) : (
                 <CheckCircle2 size={10} />
               )}
-              {isResolved ? 'Unresolve' : 'Resolve'}
+              {isResolved ? t('markups.unresolve') : t('markups.resolve')}
             </button>
           )}
         </div>
@@ -385,6 +388,7 @@ export function CommentThread({
   onResolve,
   onUnresolve,
   onHoverChange,
+  readOnly = false,
 }: CommentThreadProps) {
   const [showReplyInput, setShowReplyInput] = useState(false)
   const [isReplying, setIsReplying] = useState(false)
@@ -428,18 +432,20 @@ export function CommentThread({
           onClick?.()
         }
       }}
-      aria-label={`Comment by ${getDisplayName(annotation.user)}${annotation.resolved ? ' (resolved)' : ''}`}
+      aria-label={t(annotation.resolved ? 'markups.commentByResolved' : 'markups.commentBy', {
+        name: getDisplayName(annotation.user),
+      })}
     >
       {/* Root comment */}
       <CommentBubble
         annotation={annotation}
-        currentUserId={currentUserId}
+        currentUserId={readOnly ? null : currentUserId}
         isRoot
-        onReply={() => setShowReplyInput((prev) => !prev)}
+        onReply={readOnly ? undefined : () => setShowReplyInput((prev) => !prev)}
         onEdit={onEdit}
         onDelete={onDelete}
-        onResolve={onResolve}
-        onUnresolve={onUnresolve}
+        onResolve={readOnly ? undefined : onResolve}
+        onUnresolve={readOnly ? undefined : onUnresolve}
       />
 
       {/* Replies */}
@@ -449,7 +455,7 @@ export function CommentThread({
             <CommentBubble
               key={reply.id}
               annotation={reply}
-              currentUserId={currentUserId}
+              currentUserId={readOnly ? null : currentUserId}
               isRoot={false}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -462,18 +468,20 @@ export function CommentThread({
       {replies.length > 0 && !showReplyInput && (
         <div className="ml-8 mt-1.5 text-[10px] text-plm-fg-muted">
           <MessageSquare size={10} className="inline mr-1" />
-          {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+          {replies.length === 1
+            ? t('markups.replyCountOne')
+            : t('markups.replyCount', { count: replies.length })}
         </div>
       )}
 
       {/* Inline reply input */}
-      {showReplyInput && (
+      {showReplyInput && !readOnly && (
         <div
           className="ml-4 mt-2 pl-3 border-l-2 border-plm-accent/40"
           onClick={(e) => e.stopPropagation()}
         >
           <CommentInput
-            placeholder="Write a reply..."
+            placeholder={t('markups.replyPlaceholder')}
             onSubmit={handleReplySubmit}
             onCancel={() => setShowReplyInput(false)}
             isLoading={isReplying}

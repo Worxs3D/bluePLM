@@ -1,4 +1,6 @@
 import type { TranslationDict } from '../types'
+import { reviewsUiStrings } from './reviewsUi'
+import { reviewPackageStrings } from './reviewPackage'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
@@ -27,6 +29,8 @@ export const zhCN: TranslationDict = {
     openInEDrawings: '在 eDrawings 中打开',
     openInEDrawingsFailed: '无法在 eDrawings 中打开此文件。',
   },
+  ...reviewsUiStrings.zhCN,
+  reviewPackage: reviewPackageStrings.zhCN,
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在加载签出者',

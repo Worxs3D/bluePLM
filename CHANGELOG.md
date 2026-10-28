@@ -6,10 +6,52 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 106. Apply `supabase/core.sql`, then modules 10 to 50 in order (106 changes module 40);
-the app expects 106.
+Schema 107 and SolidWorks service 1.26.0. Apply `supabase/core.sql`, then modules 10 to 50 in
+order (106 changes module 40; 107 changes modules 10 and 20); the app expects 107. Install
+service 1.26.0 for review package downloads; everything else works on 1.25.0.
+
+### Drawing reviews, rebuilt for org-wide use (schema 107, service 1.26.0)
+
+- **A review is a package of drawings pinned to versions.** Right-click any file, a selection,
+  or a version in version history and choose Request review or Add to review package. A
+  package builder opens in the right panel: each item is pinned to its latest checked-in
+  version (never your local copy), shows how many files it depends on (exact, or approximate
+  for versions checked in before this release), and whether its PDF exists. Pick people or
+  teams, all-must-sign or first-one-decides, priority, a due date, title and message.
+- **Reviewers see the pinned version, as a PDF.** A drawing's PDF is generated once per version
+  on a machine with SOLIDWORKS (Generate PDFs in the builder, or later by anyone with
+  SOLIDWORKS) and stored; every reviewer views that stored PDF, with markups per review, round
+  and item. Before, the preview opened the reviewer's own local copy, at whatever version it
+  was, and could not open a drawing at all.
+- **Download for SOLIDWORKS.** A reviewer can download a review's drawings with every part and
+  assembly they reference, at the versions the drawing used, into a folder that mirrors the
+  vault. Service 1.26.0's `retargetReferences` (Document Manager only, no SOLIDWORKS seat)
+  points every file at its neighbours inside the package, and `manifest.json` / `.csv` list
+  versions, hashes and anything that could not be packaged (Toolbox, out-of-vault, unresolved).
+  Check-in now records which version of each referenced file a version used
+  (`file_version_references`), so this is exact from now on.
+- **A queue for manufacturing.** Reviews opens on Awaiting me, then Requested by me, My teams
+  and Done, sorted overdue first, then priority, due date and age. Decide per item: Approve,
+  Approve with comments, Request changes or Reject (a comment is required except for Approve),
+  with A / C / R and J / K and auto-advance, or Approve all remaining. Bulk approve, re-prioritize
+  and cancel from the list. Workflow gate approvals show in the same queue.
+- **Rounds.** When changes are requested the requester resubmits only the items that need them,
+  at newer versions; approved items carry forward and earlier rounds stay readable. Review
+  notifications arrive live and drive the badge.
 
 ### Security
+
+- **Review decisions can no longer be forged** (schema 107). The `review_responses` policy let a
+  requester mark every reviewer's response approved, and anyone add themselves as a reviewer on
+  any review, in any organization. Every review write now goes through server functions that
+  check who is calling; client access to the review tables is read-only and follows vault
+  access. Comments and notifications can no longer be written into another organization.
+- **Workflow gate approvals count the current attempt only** (schema 107). Approvals from earlier
+  rounds counted toward a gate, so an all-must-approve gate could never pass after one
+  rejection, and a gate could pass on approvals of an older version. Gate rows take no direct
+  client writes, and two last approvals arriving together advance the file once.
+- Existing reviews are migrated in place into one-item packages; released 4.8 clients' review
+  writes fail without changing data.
 
 - **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
   could read every row of `solidworks_licenses`, serial included, and every assignment. Now an

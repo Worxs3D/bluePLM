@@ -1,6 +1,7 @@
 import { Profiler, Suspense, lazy, useEffect, useRef, type ProfilerOnRenderCallback } from 'react'
 import { Loader2, FileSearch } from 'lucide-react'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { REACT_COMMIT_THRESHOLD_MS } from '@/lib/performanceThresholds'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useLoadFiles, useVaultManagement } from '@/hooks'
@@ -27,8 +28,8 @@ const GoogleDrivePanel = lazy(() =>
 const WorkflowsView = lazy(() =>
   import('@/features/source/workflows/WorkflowsView').then((m) => ({ default: m.WorkflowsView })),
 )
-const ReviewPreviewPane = lazy(() =>
-  import('@/features/source/reviews').then((m) => ({ default: m.ReviewPreviewPane })),
+const ReviewDetailPane = lazy(() =>
+  import('@/features/source/reviews').then((m) => ({ default: m.ReviewDetailPane })),
 )
 const ItemBrowserView = lazy(() =>
   import('@/features/items/itemBrowser').then((m) => ({ default: m.ItemBrowserView })),
@@ -84,7 +85,7 @@ export function MainContent({
 }: MainContentProps) {
   // Get settingsTab from store
   const settingsTab = usePDMStore((s) => s.settingsTab)
-  const reviewPreviewFile = usePDMStore((s) => s.reviewPreviewFile)
+  const activeReviewId = usePDMStore((s) => s.activeReviewId)
   const extensionWorkspace = useExtensionWorkspace(activeView)
 
   // Call hooks directly instead of receiving as props
@@ -141,10 +142,10 @@ export function MainContent({
           <ItemBrowserView />
         </Suspense>
       ) : activeView === 'reviews' ? (
-        /* Reviews View - full-screen PDF preview or empty state */
-        reviewPreviewFile ? (
+        /* Reviews View - the open review, or an empty state */
+        activeReviewId ? (
           <Suspense fallback={<ContentLoading />}>
-            <ReviewPreviewPane />
+            <ReviewDetailPane />
           </Suspense>
         ) : (
           <ReviewEmptyState />
@@ -182,9 +183,9 @@ function ReviewEmptyState() {
       <div className="w-16 h-16 rounded-full bg-plm-accent/10 flex items-center justify-center mb-4">
         <FileSearch size={28} className="text-plm-accent" />
       </div>
-      <p className="text-sm font-medium text-plm-fg">Select a review item to view</p>
+      <p className="text-sm font-medium text-plm-fg">{t('reviewQueue.emptyMain.title')}</p>
       <p className="text-xs text-plm-fg-muted mt-1.5 max-w-[260px]">
-        Click a file in the reviews panel to preview it here with annotations and comments
+        {t('reviewQueue.emptyMain.hint')}
       </p>
     </div>
   )

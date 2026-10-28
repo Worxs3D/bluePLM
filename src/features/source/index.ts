@@ -53,7 +53,6 @@ export {
   DeleteLocalConfirmDialog,
   ForceCheckinDialog,
   PropertiesDialog,
-  ReviewRequestDialog,
   CheckoutRequestDialog,
   MentionDialog,
   ShareLinkDialog,

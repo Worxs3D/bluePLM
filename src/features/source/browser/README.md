@@ -36,11 +36,10 @@ browser/
 │   ├── useContextMenuHandlers.ts # File and empty area context menus
 │   ├── useFileEditHandlers.ts    # Create folder, rename, inline editing
 │   ├── useConfigHandlers.ts      # SolidWorks configuration management
-│   ├── useModalHandlers.ts       # Review, notify, share, ECO modals
+│   ├── useModalHandlers.ts       # Notify, share, ECO modals
 │   ├── useKeyboardNav.ts         # Keyboard shortcuts and navigation
 │   │
 │   │ Modal State Hooks
-│   ├── useReviewModal.ts         # Review request modal state
 │   ├── useCheckoutRequestModal.ts # Checkout request modal state
 │   ├── useMentionModal.ts        # Mention/notify modal state
 │   ├── useShareModal.ts          # Share link modal state
@@ -122,7 +121,6 @@ browser/
 │   │   └── index.ts
 │   │
 │   ├── Modals/               # Modal dialogs for collaboration
-│   │   ├── ReviewRequestModal.tsx
 │   │   ├── CheckoutRequestModal.tsx
 │   │   ├── NotifyModal.tsx
 │   │   ├── ShareLinkModal.tsx
@@ -209,7 +207,7 @@ These hooks provide event handlers:
 | `useContextMenuHandlers` | Context menu triggers | `handleContextMenu`, `handleEmptyContextMenu` |
 | `useFileEditHandlers` | Edit operations | `handleCreateFolder`, `handleRename`, `handleSaveCellEdit` |
 | `useConfigHandlers` | SW configurations | `handleConfigTabChange`, `handleExportConfigs` |
-| `useModalHandlers` | Modal operations | `handleOpenReviewModal`, `handleSubmitReviewRequest` |
+| `useModalHandlers` | Modal operations | `handleOpenMentionModal`, `handleToggleWatch` |
 | `useKeyboardNav` | Keyboard shortcuts | Attaches global keyboard listeners |
 
 #### 4. Modal State Hooks
@@ -218,7 +216,6 @@ These hooks manage modal dialog state:
 
 | Hook | Purpose |
 |------|---------|
-| `useReviewModal` | Review request modal state and form data |
 | `useCheckoutRequestModal` | Checkout request modal state |
 | `useMentionModal` | Mention/notify modal state |
 | `useShareModal` | Share link modal state |

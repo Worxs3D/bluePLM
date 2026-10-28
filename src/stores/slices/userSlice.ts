@@ -52,7 +52,7 @@ export const createUserSlice: StateCreator<
     state.clearAnnotations()
     state.clearRecentSearches()
     state.clearClipboard()
-    state.clearReviewPreviewFile()
+    state.setActiveReviewId(null)
     state.setItemPanel(null)
     state.clearProcessingFolders()
     state.clearOrphanedCheckouts()
@@ -141,6 +141,10 @@ export const createUserSlice: StateCreator<
       deniedModules: [],
       apiServerUrl: null,
       orgColorSwatches: [],
+      // Drafts stay (they are keyed by user); what is open belongs to the session.
+      reviewPackagePaneOpen: false,
+      activeReviewId: null,
+      activeReviewItemId: null,
     })
   },
   signOut: () => get().resetSessionState(),

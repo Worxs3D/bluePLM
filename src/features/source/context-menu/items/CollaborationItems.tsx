@@ -1,10 +1,12 @@
 // src/features/source/context-menu/items/CollaborationItems.tsx
-import { Send, ArrowDown, Users, Eye, EyeOff, Link, ClipboardList, Loader2 } from 'lucide-react'
+import { ArrowDown, Users, Eye, EyeOff, Link, ClipboardList, Loader2 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import type { DialogName } from '../types'
 import type { ToastType } from '@/stores/types'
+import { ReviewPackageMenuItems } from '@/features/source/reviewPackage/components/ReviewPackageMenuItems'
 
 interface CollaborationItemsProps {
+  contextFiles: LocalFile[]
   firstFile: LocalFile
   multiSelect: boolean
   isFolder: boolean
@@ -21,6 +23,7 @@ interface CollaborationItemsProps {
 }
 
 export function CollaborationItems({
+  contextFiles,
   firstFile,
   multiSelect,
   isFolder,
@@ -41,13 +44,8 @@ export function CollaborationItems({
 
   return (
     <>
-      {/* Request Review - only for synced files (not folders) */}
-      {!multiSelect && !isFolder && anySynced && hasPdmData && (
-        <div className="context-menu-item" onClick={() => openDialog('reviewRequest')}>
-          <Send size={14} className="text-plm-accent" />
-          Request Review
-        </div>
-      )}
+      {/* Request review / add to the review package - one file or a selection */}
+      <ReviewPackageMenuItems contextFiles={contextFiles} onClose={onClose} />
 
       {/* Request Checkout - for files checked out by others */}
       {!multiSelect && !isFolder && anySynced && isCheckedOutByOther && (

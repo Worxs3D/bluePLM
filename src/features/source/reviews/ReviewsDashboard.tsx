@@ -1,471 +1,211 @@
 /**
- * ReviewsDashboard - Source Files group sidebar view for tracking file reviews.
+ * Reviews sidebar: the review queue.
  *
- * Provides a comprehensive dashboard showing files out for review with:
- * - Filter bar: "My Reviews" / "All Reviews" toggle, status filter, search
- * - Stats row: Pending, Approved, Rejected, Overdue counts
- * - File list with expandable reviewer details and action buttons
- * - Empty and loading states
- *
- * This is a NEW view under Source Files, distinct from the existing
- * `ReviewsView` in change-control (which has Notifications/Pending/My Requests tabs).
+ * Buckets come from the server (`list_review_queue`): Awaiting me (the default; package items I
+ * owe and workflow gates I may decide), Requested by me, My teams and Done. The server filters,
+ * sorts (overdue first, then priority, due date, age) and pages; the list keeps its order. A row
+ * opens in the main area; checkboxes drive the bulk actions.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import {
-  RefreshCw,
-  Search,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  MessageSquare,
-  Loader2,
-  Inbox,
-  Settings2,
-} from 'lucide-react'
-import { usePDMStore } from '@/stores/pdmStore'
+import { useCallback, useMemo, useState } from 'react'
+import { Inbox, Loader2, RefreshCw, Search } from 'lucide-react'
+
 import { t } from '@/lib/i18n'
-import { useReviewsDashboard } from './hooks/useReviewsDashboard'
-import { useGateReviews } from './hooks/useGateReviews'
-import { ReviewFileRow } from './components/ReviewFileRow'
-import { GateReviewRow } from './components/GateReviewRow'
-import type { StatusFilter, ReviewScope } from './hooks/useReviewsDashboard'
+import { usePDMStore } from '@/stores/pdmStore'
+import type { ReviewQueueBucket } from '@/types/reviews'
 
-// ============================================================================
-// Subcomponents
-// ============================================================================
+import { BulkActionBar } from './components/BulkActionBar'
+import { GateQueueRow } from './components/GateQueueRow'
+import { QueueRow } from './components/QueueRow'
+import { useReviewQueue } from './hooks/useReviewQueue'
+import { pruneSelection } from './lib/bulk'
+import { localDateString } from './lib/queueChips'
 
-/** Stat card for the stats row */
-function StatCard({
-  label,
-  count,
-  icon,
-  color,
-}: {
-  label: string
-  count: number
-  icon: React.ReactNode
-  color: string
-}) {
-  return (
-    <div
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md bg-plm-bg-light border border-plm-border`}
-    >
-      <span className={color}>{icon}</span>
-      <div className="text-left">
-        <span className="text-xs font-semibold text-plm-fg leading-none">{count}</span>
-        <span className="text-[9px] text-plm-fg-muted ml-1">{label}</span>
-      </div>
-    </div>
-  )
-}
-
-/** Scope toggle button pair */
-function ScopeToggle({
-  scope,
-  onScopeChange,
-}: {
-  scope: ReviewScope
-  onScopeChange: (scope: ReviewScope) => void
-}) {
-  return (
-    <div className="flex rounded-md border border-plm-border overflow-hidden">
-      <button
-        onClick={() => onScopeChange('mine')}
-        className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-          scope === 'mine'
-            ? 'bg-plm-accent text-white'
-            : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg'
-        }`}
-      >
-        {t('reviews.myReviews')}
-      </button>
-      <button
-        onClick={() => onScopeChange('all')}
-        className={`px-2 py-1 text-[10px] font-medium transition-colors border-l border-plm-border ${
-          scope === 'all'
-            ? 'bg-plm-accent text-white'
-            : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg'
-        }`}
-      >
-        {t('reviews.allReviews')}
-      </button>
-    </div>
-  )
-}
-
-/** Status filter pills */
-function StatusFilterPills({
-  current,
-  onChange,
-}: {
-  current: StatusFilter
-  onChange: (filter: StatusFilter) => void
-}) {
-  const filters: Array<{ value: StatusFilter; label: string }> = [
-    { value: 'all', label: t('common.all') },
-    { value: 'pending', label: t('reviews.pending') },
-    { value: 'approved', label: t('reviews.approved') },
-    { value: 'rejected', label: t('reviews.rejected') },
-  ]
-
-  return (
-    <div className="flex gap-1">
-      {filters.map((f) => (
-        <button
-          key={f.value}
-          onClick={() => onChange(f.value)}
-          className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
-            current === f.value
-              ? 'bg-plm-accent/20 text-plm-accent border border-plm-accent/40'
-              : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg border border-plm-border'
-          }`}
-        >
-          {f.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** Empty state */
-function EmptyState({ hasFilters }: { hasFilters: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="w-14 h-14 rounded-full bg-plm-accent/10 flex items-center justify-center mb-3">
-        {hasFilters ? (
-          <Search size={24} className="text-plm-accent" />
-        ) : (
-          <Inbox size={24} className="text-plm-accent" />
-        )}
-      </div>
-      <p className="text-sm font-medium text-plm-fg">
-        {hasFilters ? t('reviews.noMatchingReviews') : t('reviews.noReviewsFound')}
-      </p>
-      <p className="text-xs text-plm-fg-muted mt-1">
-        {hasFilters
-          ? t('reviews.tryAdjustingFilters')
-          : t('reviews.rightClickToRequestReview')}
-      </p>
-    </div>
-  )
-}
-
-/** Loading skeleton */
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12">
-      <Loader2 size={24} className="animate-spin text-plm-accent" />
-      <p className="text-xs text-plm-fg-muted mt-2">{t('reviews.loadingReviews')}</p>
-    </div>
-  )
-}
-
-/** Error state */
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="w-14 h-14 rounded-full bg-plm-error/10 flex items-center justify-center mb-3">
-        <AlertTriangle size={24} className="text-plm-error" />
-      </div>
-      <p className="text-sm font-medium text-plm-fg">{t('reviews.failedToLoadReviews')}</p>
-      <p className="text-xs text-plm-fg-muted mt-1 max-w-[200px]">{message}</p>
-      <button
-        onClick={onRetry}
-        className="mt-3 px-3 py-1.5 text-xs font-medium text-plm-accent hover:text-plm-accent/80 flex items-center gap-1"
-      >
-        <RefreshCw size={12} />
-        {t('reviews.retry')}
-      </button>
-    </div>
-  )
-}
-
-/** Not authenticated state */
-function NotAuthenticatedState() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="w-14 h-14 rounded-full bg-plm-fg-muted/10 flex items-center justify-center mb-3">
-        <MessageSquare size={24} className="text-plm-fg-muted" />
-      </div>
-      <p className="text-sm font-medium text-plm-fg">{t('reviews.signInToViewReviews')}</p>
-      <p className="text-xs text-plm-fg-muted mt-1">
-        {t('reviews.connectToOrgToSeeReviews')}
-      </p>
-    </div>
-  )
-}
-
-// ============================================================================
-// Main Component
-// ============================================================================
+const BUCKETS: ReviewQueueBucket[] = ['awaiting_me', 'requested_by_me', 'my_teams', 'done']
 
 export function ReviewsDashboard() {
   const user = usePDMStore((s) => s.user)
-  const activeReviewId = usePDMStore((s) => s.reviewPreviewFile?.reviewId ?? null)
+  const organization = usePDMStore((s) => s.organization)
+  const userTeams = usePDMStore((s) => s.userTeams)
+  const badge = usePDMStore((s) => s.pendingReviewCount)
+  const activeReviewId = usePDMStore((s) => s.activeReviewId)
+  const setActiveReviewId = usePDMStore((s) => s.setActiveReviewId)
 
-  const {
-    filteredReviews,
-    stats,
-    isLoading,
-    error,
-    scope,
-    setScope,
-    statusFilter,
-    setStatusFilter,
-    searchQuery,
-    setSearchQuery,
-    refresh,
-    handleRespond,
-    handleCancel,
-    previewFile,
-    navigateToFile,
-    openFileExternally,
-    orgTeams,
-    visibleTeamIds,
-    setVisibleTeamIds,
-    activeTeamFilter,
-    setActiveTeamFilter,
-  } = useReviewsDashboard()
+  const [bucket, setBucket] = useState<ReviewQueueBucket>('awaiting_me')
+  const [teamId, setTeamId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const gateReviews = useGateReviews()
+  const queue = useReviewQueue(bucket, bucket === 'my_teams' ? teamId : null, search)
+  const today = localDateString()
 
-  const [showTeamConfig, setShowTeamConfig] = useState(false)
-  const teamConfigRef = useRef<HTMLDivElement>(null)
+  const liveSelection = useMemo(() => pruneSelection(selected, queue.rows), [selected, queue.rows])
+  const selectedRows = useMemo(
+    () => queue.rows.filter((r) => liveSelection.has(r.id)),
+    [queue.rows, liveSelection],
+  )
 
-  useEffect(() => {
-    if (!showTeamConfig) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (teamConfigRef.current && !teamConfigRef.current.contains(e.target as Node)) {
-        setShowTeamConfig(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showTeamConfig])
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const openReview = useCallback((id: string) => setActiveReviewId(id), [setActiveReviewId])
 
-  // Whether any filter is actively reducing results
-  const hasActiveFilters =
-    statusFilter !== 'all' || searchQuery.trim() !== '' || activeTeamFilter !== null
+  const chooseBucket = (next: ReviewQueueBucket) => {
+    setBucket(next)
+    setSelected(new Set())
+  }
 
-  const handleRefresh = useCallback(() => {
-    refresh()
-    void gateReviews.refresh()
-  }, [refresh, gateReviews])
-
-  if (!user) {
-    return <NotAuthenticatedState />
+  if (!user || !organization) {
+    return (
+      <div className="p-4 text-xs text-plm-fg-muted text-center">{t('reviewQueue.signIn')}</div>
+    )
   }
 
   return (
-    <div className="flex flex-col h-full text-left">
-      {/* ------------------------------------------------------------------ */}
-      {/* Filter bar */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="px-3 py-2 space-y-2 border-b border-plm-border bg-plm-sidebar">
-        {/* Top row: scope toggle + refresh */}
-        <div className="flex items-center justify-between gap-2">
-          <ScopeToggle scope={scope} onScopeChange={setScope} />
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="p-1.5 text-plm-fg-muted hover:text-plm-fg rounded transition-colors"
-            title={t('reviews.refreshReviews')}
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-
-        {/* Status filter pills */}
-        <StatusFilterPills current={statusFilter} onChange={setStatusFilter} />
-
-        {/* Team filter pills */}
-        {orgTeams.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Buckets */}
+      <div className="px-2 pt-2 pb-1.5 border-b border-plm-border space-y-1.5">
+        <div className="grid grid-cols-2 gap-1">
+          {BUCKETS.map((b) => (
             <button
-              onClick={() => setActiveTeamFilter(null)}
-              className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors whitespace-nowrap ${
-                activeTeamFilter === null
-                  ? 'bg-plm-accent/20 text-plm-accent border border-plm-accent/40'
-                  : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg border border-plm-border'
+              key={b}
+              type="button"
+              onClick={() => chooseBucket(b)}
+              className={`flex items-center justify-between px-2 py-1 text-[11px] rounded text-left ${
+                bucket === b
+                  ? 'bg-plm-accent/20 text-plm-accent'
+                  : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
               }`}
             >
-              {t('reviews.allTeams')}
-            </button>
-            {orgTeams
-              .filter((team) => visibleTeamIds.has(team.id))
-              .map((team) => (
-                <button
-                  key={team.id}
-                  onClick={() => setActiveTeamFilter(activeTeamFilter === team.id ? null : team.id)}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors whitespace-nowrap flex items-center gap-1 ${
-                    activeTeamFilter === team.id
-                      ? 'border'
-                      : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg border border-plm-border'
-                  }`}
-                  style={
-                    activeTeamFilter === team.id
-                      ? {
-                          backgroundColor: `${team.color}20`,
-                          color: team.color,
-                          borderColor: `${team.color}60`,
-                        }
-                      : undefined
-                  }
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: team.color }}
-                  />
-                  {team.name}
-                </button>
-              ))}
-            <div className="relative" ref={teamConfigRef}>
-              <button
-                onClick={() => setShowTeamConfig(!showTeamConfig)}
-                className="p-0.5 text-plm-fg-muted hover:text-plm-fg rounded transition-colors"
-                title={t('reviews.configureVisibleTeams')}
-              >
-                <Settings2 size={12} />
-              </button>
-              {showTeamConfig && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-plm-bg-light border border-plm-border rounded-lg shadow-xl p-2 min-w-[160px]">
-                  <p className="text-[10px] text-plm-fg-muted uppercase tracking-wide mb-1 px-1">
-                    {t('reviews.visibleTeams')}
-                  </p>
-                  {orgTeams.map((team) => (
-                    <label
-                      key={team.id}
-                      className="flex items-center gap-2 px-1 py-1 text-xs text-plm-fg hover:bg-plm-highlight rounded cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleTeamIds.has(team.id)}
-                        onChange={() => {
-                          const next = new Set(visibleTeamIds)
-                          if (next.has(team.id)) {
-                            next.delete(team.id)
-                            if (activeTeamFilter === team.id) setActiveTeamFilter(null)
-                          } else {
-                            next.add(team.id)
-                          }
-                          setVisibleTeamIds(next)
-                        }}
-                        className="w-3 h-3 rounded border-plm-border text-plm-accent"
-                      />
-                      <span
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: team.color }}
-                      />
-                      {team.name}
-                    </label>
-                  ))}
-                </div>
+              <span className="truncate">{t(`reviewQueue.bucket.${b}`)}</span>
+              {b === 'awaiting_me' && badge > 0 && (
+                <span className="ml-1 px-1.5 rounded-full bg-plm-accent text-white text-[10px] tabular-nums">
+                  {badge}
+                </span>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Search box */}
-        <div className="relative">
-          <Search
-            size={12}
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-plm-fg-muted"
-          />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('reviews.searchPlaceholder')}
-            className="w-full pl-6 pr-2 py-1.5 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent placeholder:text-plm-fg-muted/60"
-          />
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Stats row */}
-      {/* ------------------------------------------------------------------ */}
-      {!isLoading && !error && (
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-plm-border overflow-x-auto">
-          <StatCard
-            label={t('reviews.pending')}
-            count={stats.pending}
-            icon={<Clock size={12} />}
-            color="text-plm-warning"
-          />
-          <StatCard
-            label={t('reviews.approved')}
-            count={stats.approved}
-            icon={<CheckCircle2 size={12} />}
-            color="text-plm-success"
-          />
-          <StatCard
-            label={t('reviews.rejected')}
-            count={stats.rejected}
-            icon={<XCircle size={12} />}
-            color="text-plm-error"
-          />
-          {stats.overdue > 0 && (
-            <StatCard
-              label={t('reviews.overdue')}
-              count={stats.overdue}
-              icon={<AlertTriangle size={12} />}
-              color="text-plm-error"
-            />
-          )}
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Review list */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Workflow gates block a state change, so they come before peer reviews */}
-        {gateReviews.reviews.length > 0 && (
-          <div className="p-2 border-b border-plm-border">
-            <div className="px-1 pb-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-plm-fg-muted">
-                {t('reviews.gates.title')}
-              </p>
-              <p className="text-[10px] text-plm-fg-muted/70">{t('reviews.gates.subtitle')}</p>
-            </div>
-            <div className="space-y-1.5">
-              {gateReviews.reviews.map((review) => (
-                <GateReviewRow
-                  key={review.review_id}
-                  review={review}
-                  isDeciding={gateReviews.decidingId === review.review_id}
-                  onDecide={gateReviews.decide}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {isLoading ? (
-          <LoadingSkeleton />
-        ) : error ? (
-          <ErrorState message={error} onRetry={handleRefresh} />
-        ) : filteredReviews.length === 0 ? (
-          <EmptyState hasFilters={hasActiveFilters} />
-        ) : (
-          <div className="space-y-1.5 p-2">
-            {filteredReviews.map((review) => (
-              <ReviewFileRow
-                key={review.id}
-                review={review}
-                onPreview={previewFile}
-                onNavigate={navigateToFile}
-                onOpenExternal={openFileExternally}
-                onRespond={handleRespond}
-                onCancel={handleCancel}
-                isActive={review.id === activeReviewId}
-              />
+        {bucket === 'my_teams' && userTeams && userTeams.length > 0 && (
+          <div className="flex items-center gap-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setTeamId(null)}
+              className={`px-2 py-0.5 text-[10px] rounded-full whitespace-nowrap border ${
+                teamId === null
+                  ? 'bg-plm-accent/20 text-plm-accent border-plm-accent/40'
+                  : 'text-plm-fg-muted border-plm-border hover:text-plm-fg'
+              }`}
+            >
+              {t('reviewQueue.allTeams')}
+            </button>
+            {userTeams.map((team) => (
+              <button
+                key={team.id}
+                type="button"
+                onClick={() => setTeamId(teamId === team.id ? null : team.id)}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full whitespace-nowrap border ${
+                  teamId === team.id
+                    ? 'bg-plm-accent/20 text-plm-accent border-plm-accent/40'
+                    : 'text-plm-fg-muted border-plm-border hover:text-plm-fg'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: team.color }} />
+                {team.name}
+              </button>
             ))}
           </div>
         )}
+
+        <div className="flex items-center gap-1">
+          <div className="relative flex-1">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-plm-fg-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('reviewQueue.search')}
+              className="w-full pl-6 pr-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={queue.refresh}
+            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light"
+            title={t('reviewQueue.refresh')}
+          >
+            <RefreshCw size={12} className={queue.loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {queue.error ? (
+          <div className="p-4 text-center space-y-2">
+            <p className="text-xs text-plm-error">{queue.error}</p>
+            <button
+              type="button"
+              onClick={queue.refresh}
+              className="text-xs text-plm-accent hover:underline"
+            >
+              {t('reviewQueue.retry')}
+            </button>
+          </div>
+        ) : queue.loading && queue.rows.length === 0 ? (
+          <div className="flex justify-center py-8">
+            <Loader2 size={16} className="animate-spin text-plm-fg-muted" />
+          </div>
+        ) : queue.rows.length === 0 ? (
+          <div className="flex flex-col items-center py-10 px-4 text-center">
+            <Inbox size={28} className="text-plm-fg-muted/40 mb-2" />
+            <p className="text-xs text-plm-fg-muted">{t(`reviewQueue.empty.${bucket}`)}</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5 p-2">
+            {queue.rows.map((row) =>
+              row.kind === 'gate' ? (
+                <GateQueueRow
+                  key={`gate-${row.id}`}
+                  row={row}
+                  selected={liveSelection.has(row.id)}
+                  onToggleSelected={toggleSelected}
+                />
+              ) : (
+                <QueueRow
+                  key={row.id}
+                  row={row}
+                  today={today}
+                  active={row.id === activeReviewId}
+                  selected={liveSelection.has(row.id)}
+                  onOpen={openReview}
+                  onToggleSelected={toggleSelected}
+                />
+              ),
+            )}
+            {queue.hasMore && (
+              <button
+                type="button"
+                onClick={queue.loadMore}
+                disabled={queue.loadingMore}
+                className="w-full py-1.5 text-xs text-plm-accent hover:underline disabled:opacity-50"
+              >
+                {queue.loadingMore ? t('reviewQueue.loading') : t('reviewQueue.loadMore')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {selectedRows.length > 0 && (
+        <BulkActionBar selectedRows={selectedRows} onClear={() => setSelected(new Set())} />
+      )}
     </div>
   )
 }
