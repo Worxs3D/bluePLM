@@ -6,6 +6,17 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Schema 105. Apply `supabase/core.sql` in the Supabase SQL editor; the app expects 105.
+
+### Fixed
+
+- **Organization color swatches work on databases built from `core.sql`** (schema 105, #75 by
+  @Worxs3D). The client already read and wrote `color_swatches.org_id`, but the table had no such
+  column, so the shared palette failed. The table gains `org_id` and `created_by`, each row
+  belongs to exactly one scope (personal or organization), every organization member can read
+  the shared colors, and only an administrator (`is_org_admin()`) of that organization can add or
+  remove them. Existing personal swatches are kept; the creator is set by the database.
+
 ## [4.8.0] - 2026-10-28
 
 Schema 104 (one release on top of 4.7.6's 103), API 3.0.0. Apply `supabase/core.sql`, then

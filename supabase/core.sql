@@ -115,30 +115,19 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 104 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 105 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Native extensions, and Customers leaves core. Extension tables stop trusting every signed-in '
-  'user: the extension_secret_access and extension_http_log INSERT policies had no TO clause '
-  'and WITH CHECK (TRUE), so any authenticated user could append forged audit rows for any '
-  'organization; both are now TO service_role, and extension_storage, which every member could '
-  'read and write, is service_role only with a DELETE policy for is_org_admin(). The five '
-  'SECURITY DEFINER functions in 50-extensions pin SET search_path = public. '
-  'org_installed_extensions gains package_sha256, package_path and category, with a check that '
-  'a native row carries a lowercase hex SHA-256 and a package path under its own organization '
-  'and extension id, and its writes are split into INSERT, UPDATE and DELETE policies for '
-  'is_org_admin() callers with WITH CHECK. A private storage bucket org-extensions holds the '
-  'packages at <org_id>/<extension_id>/<version>-<sha256>.bpx: members read their own '
-  'organization''s prefix and only its admins write it. The desktop and the API run a native '
-  'extension only from a package whose bytes hash to package_sha256. modules/60-customers.sql '
-  'leaves this release for the blueplm.customers extension, whose sql/customers.sql is the same '
-  'file unchanged in behaviour: its rows in schema_release_manifest() and '
-  'withdrawn_execute_manifest() are removed, and the verify and emergency-lockdown tools no '
-  'longer name its objects. Nothing is dropped from an existing database: the customer tables, '
-  'data, RLS and functions stay, seed_customer_categories stays protected by check_org_gates() '
-  'through its ACL, and integration_sync_log keeps the progress columns the extension''s sync '
-  'uses.'
+  'Organization color swatches are now stored safely alongside personal swatches. The '
+  'schema adds an organization scope and creator audit field, makes the personal owner '
+  'optional only for organization-owned rows, and enforces that each row belongs to exactly '
+  'one scope. Row-level policies let every organization member read shared colors while '
+  'only an administrator may create, change, or remove them; personal swatches remain '
+  'private to their owner. Existing personal swatches are retained and attributed to their '
+  'existing owner during the idempotent upgrade. check_release_residue() refuses to stamp a '
+  'database that is missing the scope columns or still requires user_id, so the desktop '
+  'client cannot silently call organization color features against an older schema.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -297,7 +286,8 @@ LANGUAGE sql IMMUTABLE AS $$
     -- Closing a hole and revoking what the hole produced.
     ('core', NULL, 'table', 'schema_remediation_log', NULL),
     ('core', NULL, 'function', 'record_remediation(text,integer,jsonb,text)', NULL),
-    ('core', NULL, 'function', 'check_release_residue()', NULL),
+    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns'),
+    ('core', NULL, 'function', 'set_color_swatch_creator()', 'auth.uid'),
     -- The two org-scoped RPCs core.sql owns that used to hand-write the
     -- membership test out of auth.uid().
     ('core', NULL, 'function', 'get_org_module_defaults(uuid)', 'require_org_member'),
@@ -2198,6 +2188,8 @@ RETURNS TABLE (residue TEXT, identity TEXT, detail TEXT)
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
   r RECORD;
+  color_swatches_scope_columns BOOLEAN;
+  color_swatches_scope_controls BOOLEAN;
 BEGIN
   -- ---------------------------------------------------------------------
   -- Share links handing out a file in an organization somebody involved is not
@@ -2402,6 +2394,61 @@ BEGIN
              || 'record on the wire carries only the primary key and a deleted_at '
              || 'null-to-set transition is undetectable. Run: '
              || 'ALTER TABLE folders REPLICA IDENTITY FULL;';
+      RETURN NEXT;
+    END IF;
+  END IF;
+
+  -- Organization color swatches require both scope columns and a nullable
+  -- personal owner. Without them the desktop can render the shared-palette UI
+  -- but every organization query or insert fails at runtime.
+  IF to_regclass('public.color_swatches') IS NOT NULL THEN
+    SELECT
+      COUNT(*) FILTER (WHERE column_name IN ('org_id', 'created_by')) = 2
+      AND BOOL_OR(column_name = 'user_id' AND is_nullable = 'YES')
+      INTO color_swatches_scope_columns
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'color_swatches';
+
+    IF NOT COALESCE(color_swatches_scope_columns, false) THEN
+      residue := 'color_swatches_scope_columns_missing';
+      identity := 'public.color_swatches';
+      detail := 'Organization color swatches require nullable user_id plus org_id and '
+             || 'created_by columns. Re-run supabase/core.sql before verifying this release.';
+      RETURN NEXT;
+    END IF;
+
+    SELECT
+      EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'public.color_swatches'::regclass
+           AND conname = 'color_swatches_scope_check'
+      )
+      AND EXISTS (
+        SELECT 1
+          FROM pg_trigger
+         WHERE tgrelid = 'public.color_swatches'::regclass
+           AND tgname = 'set_color_swatch_creator'
+           AND NOT tgisinternal
+      )
+      AND (
+        SELECT COUNT(*) = 2
+          FROM pg_policies
+         WHERE schemaname = 'public'
+           AND tablename = 'color_swatches'
+           AND policyname IN (
+             'Users can view accessible color swatches',
+             'Users can manage accessible color swatches'
+           )
+      )
+      INTO color_swatches_scope_controls;
+
+    IF NOT COALESCE(color_swatches_scope_controls, false) THEN
+      residue := 'color_swatches_scope_controls_missing';
+      identity := 'public.color_swatches';
+      detail := 'Organization color swatches require the scope constraint, creator trigger, '
+             || 'and both access policies. Re-run supabase/core.sql before verifying this release.';
       RETURN NEXT;
     END IF;
   END IF;
@@ -3472,31 +3519,151 @@ CREATE POLICY "System can create notifications"
   WITH CHECK (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
 -- ===========================================
--- COLOR SWATCHES (Personal preferences)
+-- COLOR SWATCHES (Personal and organization preferences)
 -- ===========================================
 
 CREATE TABLE IF NOT EXISTS color_swatches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  org_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   name TEXT,
   color TEXT NOT NULL,
   sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT color_swatches_scope_check CHECK (
+    (user_id IS NOT NULL AND org_id IS NULL) OR
+    (user_id IS NULL AND org_id IS NOT NULL)
+  )
 );
 
+-- Upgrade installations created before organization swatches existed.
+DO $$ BEGIN
+  ALTER TABLE color_swatches ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+  ALTER TABLE color_swatches ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+  ALTER TABLE color_swatches ALTER COLUMN user_id DROP NOT NULL;
+
+  -- Legacy schema.sql named this duplicate constraint differently.
+  ALTER TABLE color_swatches DROP CONSTRAINT IF EXISTS color_swatch_scope;
+
+  -- ADD COLUMN IF NOT EXISTS leaves the legacy no-action foreign key in
+  -- place. Upgrade it only when it does not already null creators on deletion.
+  IF EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_created_by_fkey'
+       AND contype = 'f'
+       AND confdeltype <> 'n'
+  ) THEN
+    ALTER TABLE color_swatches DROP CONSTRAINT color_swatches_created_by_fkey;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_created_by_fkey'
+       AND contype = 'f'
+  ) THEN
+    ALTER TABLE color_swatches
+      ADD CONSTRAINT color_swatches_created_by_fkey
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+
+  UPDATE color_swatches SET created_by = user_id WHERE created_by IS NULL;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.color_swatches'::regclass
+       AND conname = 'color_swatches_scope_check'
+  ) THEN
+    ALTER TABLE color_swatches ADD CONSTRAINT color_swatches_scope_check CHECK (
+      (user_id IS NOT NULL AND org_id IS NULL) OR
+      (user_id IS NULL AND org_id IS NOT NULL)
+    );
+  END IF;
+END $$;
+
+-- Creator attribution is assigned by the database. Authenticated clients
+-- cannot impersonate another user by supplying or changing created_by. Schema
+-- maintenance without auth.uid() may backfill a legacy NULL or let the FK
+-- clear an attribution when its creator is deleted. PostgreSQL executes that
+-- FK action through a nested trigger, unlike a direct client update.
+CREATE OR REPLACE FUNCTION set_color_swatch_creator()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF auth.uid() IS NOT NULL THEN
+      NEW.created_by := auth.uid();
+    END IF;
+  ELSIF (auth.uid() IS NOT NULL AND pg_trigger_depth() = 1)
+    OR (OLD.created_by IS NOT NULL AND NEW.created_by IS NOT NULL) THEN
+    NEW.created_by := OLD.created_by;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_color_swatch_creator ON color_swatches;
+CREATE TRIGGER set_color_swatch_creator
+  BEFORE INSERT OR UPDATE OF created_by ON color_swatches
+  FOR EACH ROW EXECUTE FUNCTION set_color_swatch_creator();
+
 CREATE INDEX IF NOT EXISTS idx_color_swatches_user_id ON color_swatches(user_id);
+CREATE INDEX IF NOT EXISTS idx_color_swatches_org_id ON color_swatches(org_id);
 
 ALTER TABLE color_swatches ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view their color swatches" ON color_swatches;
-CREATE POLICY "Users can view their color swatches"
+DROP POLICY IF EXISTS "Users can view accessible color swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can view own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can view org swatches" ON color_swatches;
+CREATE POLICY "Users can view accessible color swatches"
   ON color_swatches FOR SELECT
-  USING (user_id = auth.uid());
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM users
+      WHERE users.id = auth.uid()
+        AND users.org_id = color_swatches.org_id
+    )
+  );
 
 DROP POLICY IF EXISTS "Users can manage their color swatches" ON color_swatches;
-CREATE POLICY "Users can manage their color swatches"
+DROP POLICY IF EXISTS "Users can manage accessible color swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can create own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Admins can create org swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Users can delete own swatches" ON color_swatches;
+DROP POLICY IF EXISTS "Admins can delete org swatches" ON color_swatches;
+CREATE POLICY "Users can manage accessible color swatches"
   ON color_swatches FOR ALL
-  USING (user_id = auth.uid());
+  USING (
+    user_id = auth.uid()
+    OR (
+      is_org_admin()
+      AND EXISTS (
+        SELECT 1 FROM users
+        WHERE users.id = auth.uid()
+          AND users.org_id = color_swatches.org_id
+      )
+    )
+  )
+  WITH CHECK (
+    (user_id = auth.uid() AND org_id IS NULL)
+    OR (
+      user_id IS NULL
+      AND org_id IS NOT NULL
+      AND is_org_admin()
+      AND EXISTS (
+        SELECT 1 FROM users
+        WHERE users.id = auth.uid()
+          AND users.org_id = color_swatches.org_id
+      )
+    )
+  );
 
 -- ===========================================
 -- CORE FUNCTIONS
