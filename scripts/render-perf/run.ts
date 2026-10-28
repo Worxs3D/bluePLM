@@ -462,6 +462,8 @@ interface SessionResult {
   heapByStep: Record<string, number>
   /** Live memory at the end of the session by allocation stack (sampling heap profile). */
   retained: Array<{ stack: string; MB: number }>
+  /** Which tagged realtime rows outlived their file's next update, and what holds them. */
+  probes: ProbeReport
 }
 
 async function longSession(minutes: number, out: string): Promise<SessionResult> {
@@ -516,8 +518,10 @@ async function longSession(minutes: number, out: string): Promise<SessionResult>
       heap,
       heapByStep,
       retained,
+      probes,
       metrics: {
         'session.cycles': cycles,
+        'session.supersededRows': probes.superseded,
         'session.heapStartMB': hs.startMB,
         'session.heapEndMB': hs.endMB,
         'session.heapPeakMB': hs.peakMB,
@@ -559,6 +563,7 @@ async function main(): Promise<void> {
     heap: HeapSample[]
     heapByStep: Record<string, number>
     retained: SessionResult['retained']
+    probes: SessionResult['probes'] | null
     topSelfTime: typeof topSelfTime
     topFunctions: typeof topFunctions
     unmodelled: typeof misses
@@ -577,6 +582,9 @@ async function main(): Promise<void> {
     heap: session?.heap ?? [],
     heapByStep: session?.heapByStep ?? {},
     retained: session?.retained ?? [],
+    // Also in result.json so it reaches perf-results: the run's artifacts expire and some readers
+    // (the nightly maintainer routine) cannot download them.
+    probes: session?.probes ?? null,
     topSelfTime,
     topFunctions,
     unmodelled: misses.slice(0, 50),
