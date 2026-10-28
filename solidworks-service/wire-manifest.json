@@ -26,6 +26,17 @@
         "coordinates"
       ]
     },
+    "applyInspectionBalloons": {
+      "request": [
+        "balloons"
+      ],
+      "responseData": [
+        "missing",
+        "placed",
+        "removedPrevious",
+        "saved"
+      ]
+    },
     "createDocumentFromTemplate": {
       "request": [
         "outputPath",
@@ -102,6 +113,22 @@
         "outputPath",
         "pdmMetadata",
         "resolution"
+      ]
+    },
+    "extractDrawingCharacteristics": {
+      "request": [],
+      "responseData": [
+        "characteristics",
+        "incompleteSheets",
+        "sheets",
+        "skipped",
+        "units"
+      ],
+      "skippedFields": [
+        "baseKey",
+        "reason",
+        "sheet",
+        "sourceKey"
       ]
     },
     "findLockingProcesses": {
@@ -246,8 +273,11 @@
       "DM_FILE_READ_ONLY",
       "DM_FUTURE_VERSION",
       "DM_UNAVAILABLE",
+      "DOC_HAS_UNSAVED_CHANGES",
+      "DOC_MODIFIED_NOT_SAVED",
       "FILE_OPEN_IN_SOLIDWORKS",
       "INSPECTION_ADDIN_UNAVAILABLE",
+      "NOT_A_DRAWING",
       "NO_ENGINE_AVAILABLE",
       "PAG_UNMAPPED_REFERENCES",
       "REFERENCES_UNRESOLVED",

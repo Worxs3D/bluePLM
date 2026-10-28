@@ -130,6 +130,42 @@ namespace BluePLM.SolidWorksService.Tests
             Assert.Equal(expected, names);
         }
 
+        static List<string> JsonNames(Type type) => type.GetProperties()
+            .Select(p => p.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName)
+            .Where(n => n != null)
+            .Select(n => n!)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        [Theory]
+        [InlineData("extractDrawingCharacteristics", typeof(ExtractedDrawingCharacteristicsData))]
+        [InlineData("applyInspectionBalloons", typeof(AppliedInspectionBalloonsData))]
+        public void Native_inspection_data_serializes_exactly_the_manifest_responseData(string action, Type dataType)
+        {
+            var expected = Manifest["actions"]![action]!["responseData"]!.Values<string>()!
+                .OrderBy(n => n, StringComparer.Ordinal).ToList();
+
+            Assert.Equal(expected, JsonNames(dataType));
+        }
+
+        [Fact]
+        public void Native_inspection_characteristic_and_balloon_item_carry_the_plan_fields()
+        {
+            Assert.Equal(new[]
+            {
+                "annotationName", "baseKey", "isReference", "kind", "lowerLimit", "minusTolerance", "nominal",
+                "persistRef", "plusTolerance", "sheet", "sourceKey", "subType", "toleranceType", "unit",
+                "upperLimit", "view", "x", "y", "zone",
+            }, JsonNames(typeof(ExtractedCharacteristic)));
+            Assert.Equal(new[] { "heightM", "name", "widthM" }, JsonNames(typeof(ExtractedDrawingSheet)));
+            Assert.Equal(new[] { "baseKey", "reason", "sheet", "sourceKey" }, JsonNames(typeof(ExtractionSkip)));
+            Assert.Equal(
+                Manifest["actions"]!["extractDrawingCharacteristics"]!["skippedFields"]!.Values<string>()!
+                    .OrderBy(n => n, StringComparer.Ordinal).ToList(),
+                JsonNames(typeof(ExtractionSkip)));
+            Assert.Equal(new[] { "label", "persistRef", "sourceKey" }, JsonNames(typeof(InspectionBalloonRequest)));
+        }
+
         [Fact]
         public void Every_ComErrorCode_is_in_the_manifest()
         {
