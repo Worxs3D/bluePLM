@@ -269,9 +269,9 @@ $Controls = @(
      Hole='/sql/nc17-consume-restated.sql'; Tokens=@('stale','consume_share_link')
      Repair=@('/blueplm/modules/10-source-files.sql'); Cleanup=@(); RepairIsRemedy=$true }
 
-  @{ Id='NC18'; What='seed_customer_categories granted back to authenticated, exactly as the default ACL had it'
-     Hole='/sql/nc18-regrant-seed.sql'; Tokens=@('unverifiable','seed_customer_categories')
-     Repair=@('/blueplm/modules/60-customers.sql'); Cleanup=@(); RepairIsRemedy=$true }
+  @{ Id='NC18'; What='create_default_job_titles granted back to authenticated, exactly as the default ACL had it'
+     Hole='/sql/nc18-regrant-seed.sql'; Tokens=@('unverifiable','create_default_job_titles')
+     Repair=@('/blueplm/core.sql'); Cleanup=@(); RepairIsRemedy=$true }
 
   @{ Id='NC19'; What='cleanup_extension_http_logs granted back to authenticated, exactly as the default ACL had it'
      Hole='/sql/nc19-regrant-cleanup-logs.sql'; Tokens=@('execute-not-withdrawn','cleanup_extension_http_logs')

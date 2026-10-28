@@ -2,6 +2,12 @@
 import type { CheckoutUserProfile, PDMFile, Organization, User, SearchScope } from '../types/pdm'
 import type { ModuleId, ModuleConfig } from '../types/modules'
 import type {
+  ExtensionWorkspace,
+  NativeExtensionRuntimeState,
+  OrgNativeExtensionRow,
+  WorkspaceRegistration,
+} from '../types/nativeExtensions'
+import type {
   KeybindingsConfig,
   KeybindingAction,
   Keybinding,
@@ -36,7 +42,7 @@ import type {
 // PanelPosition, ToastType, ThemeMode, Language) to src/types/ui.ts
 // ============================================================================
 
-export type SidebarView =
+export type CoreSidebarView =
   // Source Files
   | 'explorer'
   | 'pending'
@@ -56,13 +62,21 @@ export type SidebarView =
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
-  // Customers
-  | 'customers'
   // Integrations
   | 'google-drive'
   // System
   | 'terminal'
   | 'settings'
+
+/**
+ * A native extension workspace, by the id it registered (verbatim, e.g.
+ * 'customers' for the Customers extension). Branded so it is never confused
+ * with a core view: core switches keep their literal cases, and an extension id
+ * enters only through the registry (src/lib/nativeExtensions).
+ */
+export type ExtensionViewId = string & { readonly __extensionView: 'ExtensionViewId' }
+
+export type SidebarView = CoreSidebarView | ExtensionViewId
 
 export type DetailsPanelTab =
   | 'properties'
@@ -1875,20 +1889,12 @@ export interface IntegrationsSlice {
 // Extensions Slice
 // ============================================================================
 
-// TODO(decompose): Extract to src/types/extensions.ts — ExtensionLifecycleState,
-// ExtensionVerificationStatus, ExtensionCategoryType, ExtensionInstallPhase,
-// InstalledExtension, StoreExtensionListing, ExtensionUpdateAvailable,
-// ExtensionInstallProgress (extension domain models used in extension store,
-// install dialogs, and IPC handlers)
-
-/** Extension lifecycle state */
-export type ExtensionLifecycleState =
-  | 'not-installed'
-  | 'installed'
-  | 'loading'
-  | 'active'
-  | 'error'
-  | 'disabled'
+/**
+ * Extension state as the main process reports it. A package is installed on this
+ * computer or it is not; the desktop has no extension runtime, so there is no
+ * "active", "disabled" or "error" state to report.
+ */
+export type ExtensionLifecycleState = 'not-installed' | 'installed'
 
 /** Extension verification status */
 export type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
@@ -1896,17 +1902,7 @@ export type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded
 /** Extension category */
 export type ExtensionCategoryType = 'sandboxed' | 'native'
 
-/** Install progress phase */
-export type ExtensionInstallPhase =
-  | 'downloading'
-  | 'verifying'
-  | 'extracting'
-  | 'loading'
-  | 'deploying'
-  | 'complete'
-  | 'error'
-
-/** Loaded extension information (from IPC) */
+/** An installed extension package (from IPC) */
 export interface InstalledExtension {
   manifest: {
     id: string
@@ -1916,16 +1912,14 @@ export interface InstalledExtension {
     description?: string
     icon?: string
     repository?: string
-    license: string
+    license?: string
     category?: ExtensionCategoryType
     main?: string
     serverMain?: string
   }
   state: ExtensionLifecycleState
   verification: ExtensionVerificationStatus
-  error?: string
   installedAt?: string
-  activatedAt?: string
 }
 
 /** Store extension listing (from API) */
@@ -1960,26 +1954,51 @@ export interface StoreExtensionListing {
   }
 }
 
-/** Available extension update */
-export interface ExtensionUpdateAvailable {
-  extensionId: string
-  currentVersion: string
-  newVersion: string
-  changelog?: string
-  breaking: boolean
-  minAppVersion?: string
-}
-
-/** Install progress state */
-export interface ExtensionInstallProgress {
-  extensionId: string
-  phase: ExtensionInstallPhase
-  percent: number
-  message: string
+/** Result of an install, sideload or uninstall. */
+export interface ExtensionActionResult {
+  success: boolean
   error?: string
+  /** Refused in the renderer because the user is not an administrator. */
+  adminRequired?: boolean
 }
 
 export interface ExtensionsSlice {
+  // ═══════════════════════════════════════════════════════════════
+  // Native extensions (org-installed; never persisted)
+  // ═══════════════════════════════════════════════════════════════
+
+  /** Runtime state of each org-installed native extension on this machine. */
+  nativeExtensions: Record<string, NativeExtensionRuntimeState>
+
+  /** Workspaces registered by active native extensions, in registration order. */
+  extensionWorkspaces: ExtensionWorkspace[]
+
+  /** The extension workspace whose right panel is open, or null. */
+  extensionRightPanel: string | null
+
+  /** The organization's native extension rows (enabled or not), as last loaded. */
+  orgNativeExtensionRows: OrgNativeExtensionRow[]
+
+  setOrgNativeExtensionRows: (rows: OrgNativeExtensionRow[]) => void
+
+  setNativeExtensionState: (state: NativeExtensionRuntimeState) => void
+  removeNativeExtensionState: (extensionId: string) => void
+
+  /**
+   * Validate and add a workspace. Throws WorkspaceRegistrationError on a bad
+   * registration or an id that collides with a core module or another workspace.
+   */
+  registerExtensionWorkspace: (
+    extensionId: string,
+    registration: WorkspaceRegistration,
+  ) => ExtensionWorkspace
+
+  /** Remove one workspace (its Disposable), or every workspace of an extension. */
+  unregisterExtensionWorkspace: (extensionId: string, workspaceId?: string) => void
+
+  /** Open (workspace id) or close (null) an extension's right panel. */
+  setExtensionRightPanel: (workspaceId: string | null) => void
+
   // ═══════════════════════════════════════════════════════════════
   // State
   // ═══════════════════════════════════════════════════════════════
@@ -1987,38 +2006,17 @@ export interface ExtensionsSlice {
   /** Installed extensions keyed by extension ID */
   installedExtensions: Record<string, InstalledExtension>
 
-  /** Extension states for quick lookup */
-  extensionStates: Record<string, ExtensionLifecycleState>
-
   /** Extensions from the store (marketplace) */
   storeExtensions: StoreExtensionListing[]
 
-  /** Available updates for installed extensions */
-  availableUpdates: ExtensionUpdateAvailable[]
-
   /** Whether store is currently loading */
   storeLoading: boolean
-
-  /** Store search query */
-  storeSearchQuery: string
-
-  /** Store category filter */
-  storeCategoryFilter: string | null
 
   /** Store verification filter */
   storeVerifiedOnly: boolean
 
   /** Store sort order */
   storeSort: 'popular' | 'recent' | 'name'
-
-  /** Current install progress (if installing) */
-  installProgress: ExtensionInstallProgress | null
-
-  /** Whether checking for updates */
-  checkingUpdates: boolean
-
-  /** Last update check timestamp */
-  lastUpdateCheck: number | null
 
   // ═══════════════════════════════════════════════════════════════
   // Synchronous Actions
@@ -2027,45 +2025,20 @@ export interface ExtensionsSlice {
   /** Set all installed extensions */
   setInstalledExtensions: (extensions: Record<string, InstalledExtension>) => void
 
-  /** Update a single installed extension */
-  updateInstalledExtension: (extensionId: string, updates: Partial<InstalledExtension>) => void
-
   /** Remove an installed extension from state */
   removeInstalledExtension: (extensionId: string) => void
 
   /** Set store extensions */
   setStoreExtensions: (extensions: StoreExtensionListing[]) => void
 
-  /** Set available updates */
-  setAvailableUpdates: (updates: ExtensionUpdateAvailable[]) => void
-
   /** Set store loading state */
   setStoreLoading: (loading: boolean) => void
 
-  /** Set store search query */
-  setStoreSearchQuery: (query: string) => void
-
-  /** Set store category filter */
-  setStoreCategoryFilter: (category: string | null) => void
-
-  /** Set store verified only filter */
-  setStoreVerifiedOnly: (verified: boolean) => void
-
-  /** Set store sort order */
-  setStoreSort: (sort: 'popular' | 'recent' | 'name') => void
-
-  /** Set install progress */
-  setInstallProgress: (progress: ExtensionInstallProgress | null) => void
-
-  /** Set checking updates state */
-  setCheckingUpdates: (checking: boolean) => void
-
-  /** Handle extension state change event */
-  handleExtensionStateChange: (
-    extensionId: string,
-    state: ExtensionLifecycleState,
-    error?: string,
-  ) => void
+  /**
+   * Apply an `extension:state-change` event from main: 'not-installed' removes the
+   * extension, 'installed' reloads the list from main.
+   */
+  handleExtensionStateChange: (extensionId: string, state: ExtensionLifecycleState) => void
 
   // ═══════════════════════════════════════════════════════════════
   // Async Actions (call IPC via window.electronAPI.extensions)
@@ -2080,38 +2053,17 @@ export interface ExtensionsSlice {
   /** Search store extensions */
   searchStoreExtensions: (query?: string, category?: string) => Promise<void>
 
-  /** Install an extension from the store */
-  installExtension: (
-    extensionId: string,
-    version?: string,
-  ) => Promise<{ success: boolean; error?: string }>
+  /** Install an extension from the store (administrators only) */
+  installExtension: (extensionId: string, version?: string) => Promise<ExtensionActionResult>
 
-  /** Sideload an extension from a .bpx file */
+  /** Sideload an extension from a .bpx file (administrators only) */
   sideloadExtension: (
     bpxPath: string,
     acknowledgeUnsigned?: boolean,
-  ) => Promise<{ success: boolean; error?: string }>
+  ) => Promise<ExtensionActionResult>
 
-  /** Uninstall an extension */
-  uninstallExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Enable an extension */
-  enableExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Disable an extension */
-  disableExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Update an extension to a new version */
-  updateExtension: (
-    extensionId: string,
-    version?: string,
-  ) => Promise<{ success: boolean; error?: string }>
-
-  /** Rollback an extension to a previous version */
-  rollbackExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Check for available updates */
-  checkForUpdates: () => Promise<void>
+  /** Uninstall an extension (administrators only) */
+  uninstallExtension: (extensionId: string) => Promise<ExtensionActionResult>
 
   // ═══════════════════════════════════════════════════════════════
   // Getters
@@ -2120,17 +2072,8 @@ export interface ExtensionsSlice {
   /** Get extension by ID */
   getExtension: (extensionId: string) => InstalledExtension | undefined
 
-  /** Get all active extensions */
-  getActiveExtensions: () => InstalledExtension[]
-
   /** Check if extension is installed */
   isExtensionInstalled: (extensionId: string) => boolean
-
-  /** Check if update is available for extension */
-  hasUpdate: (extensionId: string) => boolean
-
-  /** Get update info for extension */
-  getUpdateInfo: (extensionId: string) => ExtensionUpdateAvailable | undefined
 
   // ═══════════════════════════════════════════════════════════════
   // Reset
@@ -2214,124 +2157,6 @@ export interface ItemBrowserSlice {
 }
 
 // ============================================================================
-// Customers Slice
-// ============================================================================
-
-export type CustomersTab =
-  | 'overview'
-  | 'customers'
-  | 'accounts'
-  | 'distributors'
-  | 'integrators'
-
-export type CustomerBucket = 'day' | 'week' | 'month' | 'quarter'
-
-/** Preset windows offered by the workspace command bar. */
-export type CustomerRangeId = '30d' | '90d' | '12m' | '24m' | 'ytd' | 'all'
-
-/** Odoo-presence filter, distinct from the lifecycle segment filter. */
-export type CustomerPresence = 'all' | 'active' | 'gone'
-
-export interface CustomerFilters {
-  range: CustomerRangeId
-  bucket: CustomerBucket
-  search: string
-  /**
-   * Lifecycle segments from customer_lifecycle_segment(). Typed as string[]
-   * rather than the feature's SegmentId union so the store stays independent
-   * of src/features.
-   */
-  segments: string[]
-  /** Composite taxonomy keys: 'category' or 'category::subcategory'. */
-  categories: string[]
-  countries: string[]
-  /**
-   * Sales channels from customer_accounts.channel. Typed as string[] for the
-   * same reason segments is: the store stays independent of src/features.
-   *
-   * The Distributors and Integrators tabs scope themselves rather than writing
-   * here, so this stays a filter the user chose, not one a tab imposed.
-   */
-  channels: string[]
-  presence: CustomerPresence
-}
-
-/** The customer currently open in the right-hand detail panel. */
-export interface CustomerPanelState {
-  customerId: string
-  name: string
-}
-
-/**
- * A sync run as reported by GET /customers/sync/status.
- *
- * Mirrors an integration_sync_log row. `stale` is computed by the server: it
- * means the run still says 'running' but the process that owned it has stopped
- * reporting, so it is never coming back.
- */
-export interface CustomerSyncRun {
-  run_id: string
-  status: 'running' | 'success' | 'failed' | 'cancelled' | string
-  phase: string | null
-  phase_index: number | null
-  phase_count: number | null
-  progress_current: number | null
-  progress_total: number | null
-  started_at: string | null
-  completed_at: string | null
-  heartbeat_at: string | null
-  cancel_requested: boolean
-  error_message: string | null
-  records_created: number | null
-  records_updated: number | null
-  stale: boolean
-}
-
-/**
- * Everything the UI knows about the Odoo customer sync.
- *
- * This lives in the store rather than in the hook because the sidebar
- * navigator and the main-area workspace are separate React subtrees. When each
- * held its own useState, both rendered an enabled button and clicking one left
- * the other live - which was the whole two-buttons bug.
- */
-export interface CustomerSyncState {
-  /** True from the moment a start is requested until the run leaves 'running'. */
-  active: boolean
-  /** Set while a cancel request is in flight or awaiting the run's next checkpoint. */
-  stopping: boolean
-  run: CustomerSyncRun | null
-  /** Populated by the final response of a sync this client started. */
-  result: unknown | null
-  error: string | null
-}
-
-export interface CustomersSlice {
-  customersTab: CustomersTab
-  customerFilters: CustomerFilters
-  customerPanel: CustomerPanelState | null
-  customerSync: CustomerSyncState
-  /**
-   * Bumped after a sync completes. The sidebar navigator and the main-area
-   * workspace are separate React subtrees that cannot pass callbacks to each
-   * other, so they both watch this counter to know when to refetch.
-   */
-  customerDataVersion: number
-
-  setCustomersTab: (tab: CustomersTab) => void
-  invalidateCustomerData: () => void
-  setCustomerFilters: (patch: Partial<CustomerFilters>) => void
-  /** Adds or removes one value from a multi-select facet. Used by cross-filtering. */
-  toggleCustomerFacet: (
-    facet: 'segments' | 'categories' | 'countries' | 'channels',
-    value: string,
-  ) => void
-  resetCustomerFilters: () => void
-  setCustomerPanel: (panel: CustomerPanelState | null) => void
-  setCustomerSync: (patch: Partial<CustomerSyncState>) => void
-}
-
-// ============================================================================
 // Combined Store Type
 // ============================================================================
 
@@ -2355,7 +2180,6 @@ export type PDMStoreState = ToastsSlice &
   OperationLogSlice &
   AnnotationsSlice &
   ItemBrowserSlice &
-  CustomersSlice &
   VaultAuditSlice
 
 // ============================================================================

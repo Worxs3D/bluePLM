@@ -21,8 +21,6 @@ export type ModuleId =
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
-  // Customers
-  | 'customers'
   // Integrations
   | 'google-drive'
   // System
@@ -155,7 +153,7 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
   {
     id: 'supply-chain',
     name: 'Supply Chain',
-    description: 'Suppliers and customers',
+    description: 'Suppliers',
     isMasterToggle: true,
     defaultEnabled: true,
   },
@@ -321,14 +319,6 @@ export const MODULES: ModuleDefinition[] = [
     implemented: true,
   },
   {
-    id: 'customers',
-    name: 'Customers',
-    group: 'supply-chain',
-    icon: 'Users',
-    defaultEnabled: false, // Hidden by default
-    implemented: true,
-  },
-  {
     id: 'supplier-portal',
     name: 'Supplier Portal',
     group: 'supply-chain-suppliers',
@@ -371,10 +361,19 @@ export const MODULES: ModuleDefinition[] = [
   },
 ]
 
+/**
+ * Former core modules that now come from a native extension under the same id
+ * (the Customers extension registers 'customers'). A saved sidebar order keeps
+ * them, so the extension's workspace returns to where the user had it; every
+ * order consumer skips an id with no core definition, so they are inert while
+ * the extension is not installed.
+ */
+export const MODULES_MOVED_TO_EXTENSIONS: readonly string[] = ['customers']
+
 // Default section dividers (groups provide visual separation, so minimal dividers)
 export const DEFAULT_DIVIDERS: SectionDivider[] = [
   // Divider before integrations/system
-  { id: 'divider-1', enabled: true, position: 13 }, // After the Item Browser, before Customers
+  { id: 'divider-1', enabled: true, position: 13 }, // After the Item Browser
 ]
 
 // Default module order
@@ -398,10 +397,8 @@ export const DEFAULT_MODULE_ORDER: ModuleId[] = [
   'supplier-portal',
   // Quality (single top-level entry; opens the Item Browser)
   'items', // 13
-  // Customers
-  'customers', // 14
   // Integrations
-  'google-drive', // 15
+  'google-drive', // 14
   // System (reviews and settings at bottom)
   'terminal',
   'reviews',
@@ -484,7 +481,6 @@ export const DEFAULT_MODULE_PARENT_MAP: Record<ModuleId, ParentId> = {
   // Quality: single top-level entry (Item Browser)
   items: null,
   // Top-level (no parent)
-  customers: null,
   'google-drive': null,
   terminal: null,
   reviews: null,

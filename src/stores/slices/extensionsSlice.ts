@@ -1,11 +1,12 @@
 /**
- * Extensions Slice - State management for the Extension System
+ * Extensions Slice - State for per-machine extension packages
  *
  * This slice manages:
- * - Installed extensions from the Extension Host
- * - Store (marketplace) extensions from the API
- * - Extension lifecycle states and updates
- * - Installation progress and UI state
+ * - Installed extension packages, as the main process lists them
+ * - Store (marketplace) listings
+ *
+ * The desktop has no extension runtime: packages are installed and listed, never
+ * run. Install, sideload and uninstall are administrator actions.
  */
 import { StateCreator } from 'zustand'
 import type {
@@ -13,40 +14,33 @@ import type {
   ExtensionsSlice,
   InstalledExtension,
   StoreExtensionListing,
-  ExtensionUpdateAvailable,
-  ExtensionInstallProgress,
   ExtensionLifecycleState,
 } from '../types'
 import { log } from '@/lib/logger'
+import { validateWorkspaceRegistration } from '@/lib/nativeExtensions/registry'
 
 // Initial state
 const initialState: Pick<
   ExtensionsSlice,
-  | 'installedExtensions'
-  | 'extensionStates'
-  | 'storeExtensions'
-  | 'availableUpdates'
-  | 'storeLoading'
-  | 'storeSearchQuery'
-  | 'storeCategoryFilter'
-  | 'storeVerifiedOnly'
-  | 'storeSort'
-  | 'installProgress'
-  | 'checkingUpdates'
-  | 'lastUpdateCheck'
+  'installedExtensions' | 'storeExtensions' | 'storeLoading' | 'storeVerifiedOnly' | 'storeSort'
 > = {
   installedExtensions: {},
-  extensionStates: {},
   storeExtensions: [],
-  availableUpdates: [],
   storeLoading: false,
-  storeSearchQuery: '',
-  storeCategoryFilter: null,
   storeVerifiedOnly: false,
   storeSort: 'popular',
-  installProgress: null,
-  checkingUpdates: false,
-  lastUpdateCheck: null,
+}
+
+/**
+ * The renderer-side admin gate for extension installs. Main never sees the role.
+ * Returns `adminRequired` rather than a sentence: the slice does not import i18n
+ * (it would close an import cycle through the store), so the dialog translates it.
+ */
+function requireAdmin(
+  state: PDMStoreState,
+): { success: false; adminRequired: true; error?: undefined } | null {
+  if (state.getEffectiveRole() === 'admin') return null
+  return { success: false, adminRequired: true }
 }
 
 export const createExtensionsSlice: StateCreator<
@@ -59,47 +53,81 @@ export const createExtensionsSlice: StateCreator<
   ...initialState,
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Native extensions
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  nativeExtensions: {},
+  extensionWorkspaces: [],
+  extensionRightPanel: null,
+  orgNativeExtensionRows: [],
+
+  setOrgNativeExtensionRows: (rows) => {
+    set({ orgNativeExtensionRows: rows })
+  },
+
+  setNativeExtensionState: (state) => {
+    set((current) => ({
+      nativeExtensions: { ...current.nativeExtensions, [state.extensionId]: state },
+    }))
+  },
+
+  removeNativeExtensionState: (extensionId) => {
+    set((current) => {
+      if (!(extensionId in current.nativeExtensions)) return current
+      const { [extensionId]: _removed, ...rest } = current.nativeExtensions
+      return { nativeExtensions: rest }
+    })
+  },
+
+  registerExtensionWorkspace: (extensionId, registration) => {
+    const workspace = validateWorkspaceRegistration(
+      extensionId,
+      registration,
+      get().extensionWorkspaces,
+    )
+    set((current) => ({ extensionWorkspaces: [...current.extensionWorkspaces, workspace] }))
+    return workspace
+  },
+
+  unregisterExtensionWorkspace: (extensionId, workspaceId) => {
+    set((current) => {
+      const removed = current.extensionWorkspaces.filter(
+        (w) => w.extensionId === extensionId && (workspaceId === undefined || w.id === workspaceId),
+      )
+      if (removed.length === 0) return current
+      const removedIds = new Set(removed.map((w) => w.id))
+      const patch: Partial<PDMStoreState> = {
+        extensionWorkspaces: current.extensionWorkspaces.filter((w) => !removed.includes(w)),
+      }
+      if (current.extensionRightPanel && removedIds.has(current.extensionRightPanel)) {
+        patch.extensionRightPanel = null
+      }
+      // A view that no longer exists falls back to the explorer.
+      if (removedIds.has(current.activeView as string)) {
+        patch.activeView = 'explorer'
+      }
+      return patch
+    })
+  },
+
+  setExtensionRightPanel: (workspaceId) => {
+    if (get().extensionRightPanel === workspaceId) return
+    set({ extensionRightPanel: workspaceId })
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Synchronous Actions
   // ═══════════════════════════════════════════════════════════════════════════
 
   setInstalledExtensions: (extensions: Record<string, InstalledExtension>) => {
-    const extensionStates: Record<string, ExtensionLifecycleState> = {}
-    for (const [id, ext] of Object.entries(extensions)) {
-      extensionStates[id] = ext.state
-    }
-    set({
-      installedExtensions: extensions,
-      extensionStates,
-    })
-  },
-
-  updateInstalledExtension: (extensionId: string, updates: Partial<InstalledExtension>) => {
-    set((state) => {
-      const existing = state.installedExtensions[extensionId]
-      if (!existing) return state
-
-      const updated = { ...existing, ...updates }
-      return {
-        installedExtensions: {
-          ...state.installedExtensions,
-          [extensionId]: updated,
-        },
-        extensionStates: {
-          ...state.extensionStates,
-          [extensionId]: updated.state,
-        },
-      }
-    })
+    set({ installedExtensions: extensions })
   },
 
   removeInstalledExtension: (extensionId: string) => {
     set((state) => {
-      const { [extensionId]: removed, ...remaining } = state.installedExtensions
-      const { [extensionId]: removedState, ...remainingStates } = state.extensionStates
-      return {
-        installedExtensions: remaining,
-        extensionStates: remainingStates,
-      }
+      if (!(extensionId in state.installedExtensions)) return state
+      const { [extensionId]: _removed, ...remaining } = state.installedExtensions
+      return { installedExtensions: remaining }
     })
   },
 
@@ -107,70 +135,16 @@ export const createExtensionsSlice: StateCreator<
     set({ storeExtensions: extensions })
   },
 
-  setAvailableUpdates: (updates: ExtensionUpdateAvailable[]) => {
-    set({ availableUpdates: updates })
-  },
-
   setStoreLoading: (loading: boolean) => {
     set({ storeLoading: loading })
   },
 
-  setStoreSearchQuery: (query: string) => {
-    set({ storeSearchQuery: query })
-  },
-
-  setStoreCategoryFilter: (category: string | null) => {
-    set({ storeCategoryFilter: category })
-  },
-
-  setStoreVerifiedOnly: (verified: boolean) => {
-    set({ storeVerifiedOnly: verified })
-  },
-
-  setStoreSort: (sort: 'popular' | 'recent' | 'name') => {
-    set({ storeSort: sort })
-  },
-
-  setInstallProgress: (progress: ExtensionInstallProgress | null) => {
-    set({ installProgress: progress })
-  },
-
-  setCheckingUpdates: (checking: boolean) => {
-    set({ checkingUpdates: checking })
-  },
-
-  handleExtensionStateChange: (
-    extensionId: string,
-    state: ExtensionLifecycleState,
-    error?: string,
-  ) => {
-    set((current) => {
-      const existing = current.installedExtensions[extensionId]
-      if (!existing) {
-        // Extension not in our store yet, just update state
-        return {
-          extensionStates: {
-            ...current.extensionStates,
-            [extensionId]: state,
-          },
-        }
-      }
-
-      return {
-        installedExtensions: {
-          ...current.installedExtensions,
-          [extensionId]: {
-            ...existing,
-            state,
-            error,
-          },
-        },
-        extensionStates: {
-          ...current.extensionStates,
-          [extensionId]: state,
-        },
-      }
-    })
+  handleExtensionStateChange: (extensionId: string, state: ExtensionLifecycleState) => {
+    if (state === 'not-installed') {
+      get().removeInstalledExtension(extensionId)
+    } else {
+      void get().loadInstalledExtensions()
+    }
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -257,6 +231,9 @@ export const createExtensionsSlice: StateCreator<
   },
 
   installExtension: async (extensionId: string, version?: string) => {
+    const refused = requireAdmin(get())
+    if (refused) return refused
+
     try {
       const api = window.electronAPI?.extensions
       if (!api) {
@@ -271,11 +248,10 @@ export const createExtensionsSlice: StateCreator<
       const result = await api.install(downloadId, version, extensionId)
 
       if (result.success) {
-        // Refresh the installed extensions list to pick up the new installation
         await get().loadInstalledExtensions()
-        log.info('[Extensions]', 'Extension installed successfully', {
-          extensionId,
-          version: result.extension?.manifest.version,
+        log.info('[Extensions]', 'Extension installed', {
+          extensionId: result.extensionId,
+          version: result.version,
         })
       }
 
@@ -288,6 +264,9 @@ export const createExtensionsSlice: StateCreator<
   },
 
   sideloadExtension: async (bpxPath: string, acknowledgeUnsigned = false) => {
+    const refused = requireAdmin(get())
+    if (refused) return refused
+
     try {
       const api = window.electronAPI?.extensions
       if (!api) {
@@ -298,10 +277,10 @@ export const createExtensionsSlice: StateCreator<
       const result = await api.installFromFile(bpxPath, acknowledgeUnsigned)
 
       if (result.success) {
-        // Refresh the installed extensions list to pick up the new installation
         await get().loadInstalledExtensions()
-        log.info('[Extensions]', 'Extension sideloaded successfully', {
-          extensionId: result.extension?.manifest.id,
+        log.info('[Extensions]', 'Extension sideloaded', {
+          extensionId: result.extensionId,
+          version: result.version,
         })
       }
 
@@ -314,6 +293,9 @@ export const createExtensionsSlice: StateCreator<
   },
 
   uninstallExtension: async (extensionId: string) => {
+    const refused = requireAdmin(get())
+    if (refused) return refused
+
     try {
       const api = window.electronAPI?.extensions
       if (!api) {
@@ -335,122 +317,6 @@ export const createExtensionsSlice: StateCreator<
     }
   },
 
-  enableExtension: async (extensionId: string) => {
-    try {
-      const api = window.electronAPI?.extensions
-      if (!api) {
-        return { success: false, error: 'Extensions API not available' }
-      }
-
-      log.info('[Extensions]', 'Enabling extension', { extensionId })
-      const result = await api.enable(extensionId)
-
-      if (result.success) {
-        get().handleExtensionStateChange(extensionId, 'installed')
-      }
-
-      return result
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.error('[Extensions]', 'Failed to enable extension', { extensionId, error: message })
-      return { success: false, error: message }
-    }
-  },
-
-  disableExtension: async (extensionId: string) => {
-    try {
-      const api = window.electronAPI?.extensions
-      if (!api) {
-        return { success: false, error: 'Extensions API not available' }
-      }
-
-      log.info('[Extensions]', 'Disabling extension', { extensionId })
-      const result = await api.disable(extensionId)
-
-      if (result.success) {
-        get().handleExtensionStateChange(extensionId, 'disabled')
-      }
-
-      return result
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.error('[Extensions]', 'Failed to disable extension', { extensionId, error: message })
-      return { success: false, error: message }
-    }
-  },
-
-  updateExtension: async (extensionId: string, version?: string) => {
-    try {
-      const api = window.electronAPI?.extensions
-      if (!api) {
-        return { success: false, error: 'Extensions API not available' }
-      }
-
-      log.info('[Extensions]', 'Updating extension', { extensionId, version })
-      const result = await api.update(extensionId, version)
-
-      if (result.success && result.extension) {
-        get().updateInstalledExtension(extensionId, result.extension)
-        // Remove from available updates
-        set((state) => ({
-          availableUpdates: state.availableUpdates.filter((u) => u.extensionId !== extensionId),
-        }))
-      }
-
-      return { success: result.success, error: result.error }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.error('[Extensions]', 'Failed to update extension', { extensionId, error: message })
-      return { success: false, error: message }
-    }
-  },
-
-  rollbackExtension: async (extensionId: string) => {
-    try {
-      const api = window.electronAPI?.extensions
-      if (!api) {
-        return { success: false, error: 'Extensions API not available' }
-      }
-
-      log.info('[Extensions]', 'Rolling back extension', { extensionId })
-      const result = await api.rollback(extensionId)
-
-      if (result.success && result.extension) {
-        get().updateInstalledExtension(extensionId, result.extension)
-      }
-
-      return { success: result.success, error: result.error }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.error('[Extensions]', 'Failed to rollback extension', { extensionId, error: message })
-      return { success: false, error: message }
-    }
-  },
-
-  checkForUpdates: async () => {
-    const { setCheckingUpdates, setAvailableUpdates } = get()
-
-    try {
-      setCheckingUpdates(true)
-
-      const api = window.electronAPI?.extensions
-      if (!api) {
-        log.warn('[Extensions]', 'Extensions API not available')
-        return
-      }
-
-      const updates = await api.checkUpdates()
-      setAvailableUpdates(updates)
-      set({ lastUpdateCheck: Date.now() })
-
-      log.info('[Extensions]', 'Checked for updates', { count: updates.length })
-    } catch (error) {
-      log.error('[Extensions]', 'Failed to check for updates', { error: error })
-    } finally {
-      setCheckingUpdates(false)
-    }
-  },
-
   // ═══════════════════════════════════════════════════════════════════════════
   // Getters
   // ═══════════════════════════════════════════════════════════════════════════
@@ -459,20 +325,8 @@ export const createExtensionsSlice: StateCreator<
     return get().installedExtensions[extensionId]
   },
 
-  getActiveExtensions: () => {
-    return Object.values(get().installedExtensions).filter((ext) => ext.state === 'active')
-  },
-
   isExtensionInstalled: (extensionId: string) => {
     return extensionId in get().installedExtensions
-  },
-
-  hasUpdate: (extensionId: string) => {
-    return get().availableUpdates.some((u) => u.extensionId === extensionId)
-  },
-
-  getUpdateInfo: (extensionId: string) => {
-    return get().availableUpdates.find((u) => u.extensionId === extensionId)
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

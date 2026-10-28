@@ -98,6 +98,11 @@ Connect to Odoo for ERP integration.
 - Enter URL, database, API key
 - Test connection
 
+**Customers:** the customer sync and sales analytics (customers, orders and order lines
+mirrored read-only from Odoo) are not part of core since 4.8.0. They come from the private
+native extension `blueplm.customers`, which an org admin installs from Settings, Extensions,
+Install for organization. It reads the same Odoo connection configured here.
+
 ## Slack
 
 Send notifications to Slack channels.

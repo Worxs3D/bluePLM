@@ -13,7 +13,7 @@
 param(
   [switch]$CoreOnly,
   [string[]]$Modules = @('10-source-files','15-inspection','20-change-control',
-                         '30-supply-chain','40-integrations','50-extensions','60-customers'),
+                         '30-supply-chain','40-integrations','50-extensions'),
   [string]$Root = '/blueplm'
 )
 

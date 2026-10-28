@@ -44,6 +44,7 @@ export type { UseSlowDoubleClickOptions, UseSlowDoubleClickReturn } from './useS
 
 // Deep link handling
 export { useDeepLinkInstall } from './useDeepLinkInstall'
+export { useNativeExtensions } from './useNativeExtensions'
 
 // Auto-scroll during drag operations
 export { useAutoScrollOnDrag } from './useAutoScrollOnDrag'

@@ -3,11 +3,11 @@
  * Used by Sidebar, ActivityBar, and other UI components
  */
 
-import type { SidebarView } from '@/stores/types'
+import type { CoreSidebarView, SidebarView } from '@/stores/types'
 import { DEFAULT_CUSTOM_GROUPS } from '@/types/modules'
 
 /** Display names for modules (sentence case) */
-export const MODULE_LABELS: Record<SidebarView, string> = {
+export const MODULE_LABELS: Record<CoreSidebarView, string> = {
   // Source Files
   explorer: 'Explorer',
   pending: 'Pending Changes',
@@ -27,8 +27,6 @@ export const MODULE_LABELS: Record<SidebarView, string> = {
   // Supply Chain - Suppliers
   'supplier-database': 'Supplier Database',
   'supplier-portal': 'Supplier Portal',
-  // Customers
-  customers: 'Customers',
   // Integrations
   'google-drive': 'Google Drive',
   // System
@@ -37,13 +35,19 @@ export const MODULE_LABELS: Record<SidebarView, string> = {
 }
 
 /** Header titles for sidebar (uppercase) */
-export const MODULE_TITLES: Record<SidebarView, string> = Object.fromEntries(
+export const MODULE_TITLES: Record<CoreSidebarView, string> = Object.fromEntries(
   Object.entries(MODULE_LABELS).map(([key, value]) => [key, value.toUpperCase()]),
-) as Record<SidebarView, string>
+) as Record<CoreSidebarView, string>
+
+/** Label lookup that also accepts extension view ids (which have no core label). */
+function lookup(table: Record<CoreSidebarView, string>, view: SidebarView): string | undefined {
+  return (table as Readonly<Record<string, string | undefined>>)[view]
+}
 
 /** Get module label with fallback */
 export function getModuleLabel(view: SidebarView): string {
-  if (MODULE_LABELS[view]) return MODULE_LABELS[view]
+  const label = lookup(MODULE_LABELS, view)
+  if (label) return label
   const viewStr = view as string
   if (viewStr.startsWith('group-')) {
     const group = DEFAULT_CUSTOM_GROUPS.find((g) => g.id === viewStr)
@@ -54,7 +58,8 @@ export function getModuleLabel(view: SidebarView): string {
 
 /** Get module title (uppercase) with fallback */
 export function getModuleTitle(view: SidebarView): string {
-  if (MODULE_TITLES[view]) return MODULE_TITLES[view]
+  const title = lookup(MODULE_TITLES, view)
+  if (title) return title
   const viewStr = view as string
   if (viewStr.startsWith('group-')) {
     const group = DEFAULT_CUSTOM_GROUPS.find((g) => g.id === viewStr)

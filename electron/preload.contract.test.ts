@@ -18,10 +18,8 @@ import { describe, expect, it } from 'vitest'
 const ELECTRON_DIR = __dirname
 // Forward slashes because ts.createSourceFile normalizes fileName to them. With resolve()'s
 // backslashes on Windows no source file matched a preload (found by the first windows-latest run).
-const PRELOADS = [
-  resolve(ELECTRON_DIR, 'preload.ts'),
-  resolve(ELECTRON_DIR, 'extension-host/preload.ts'),
-].map((p) => p.replace(/\\/g, '/'))
+// The extension-host window and its preload were removed in 4.8.0 (it never ran).
+const PRELOADS = [resolve(ELECTRON_DIR, 'preload.ts')].map((p) => p.replace(/\\/g, '/'))
 const TYPES_FILE = resolve(ELECTRON_DIR, '../src/electron.d.ts')
 
 function listTsFiles(dir: string): string[] {

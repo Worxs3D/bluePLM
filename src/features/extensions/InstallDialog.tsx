@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { X, Download, CheckCircle2, XCircle, AlertTriangle, Monitor, Database } from 'lucide-react'
 import { VerificationBadge, NativeBadge } from './VerificationBadge'
 import { usePDMStore } from '@/stores/pdmStore'
+import { t } from '@/lib/i18n'
 
 interface InstallDialogProps {
   extensionId: string | null
@@ -40,7 +41,6 @@ export function InstallDialog({ extensionId, open, onClose }: InstallDialogProps
   const [permissionsAccepted, setPermissionsAccepted] = useState(false)
 
   const storeExtensions = usePDMStore((s) => s.storeExtensions)
-  const installProgress = usePDMStore((s) => s.installProgress)
   const installExtension = usePDMStore((s) => s.installExtension)
   const addToast = usePDMStore((s) => s.addToast)
 
@@ -73,7 +73,11 @@ export function InstallDialog({ extensionId, open, onClose }: InstallDialogProps
         setInstallState('success')
         addToast('success', `${storeExt?.name || extensionId} installed successfully`)
       } else {
-        setError(result.error || 'Installation failed')
+        setError(
+          result.adminRequired
+            ? t('extensionRuntime.notAdminError')
+            : result.error || 'Installation failed',
+        )
         setInstallState('error')
       }
     } catch (error) {
@@ -196,17 +200,7 @@ export function InstallDialog({ extensionId, open, onClose }: InstallDialogProps
                 <Download size={32} className="text-blue-400 animate-bounce" />
               </div>
               <h3 className="text-lg font-semibold text-gray-100 mb-2">Installing...</h3>
-              <p className="text-sm text-gray-400">
-                {installProgress?.message || 'Please wait...'}
-              </p>
-              {installProgress && (
-                <div className="mt-4 w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 transition-all duration-300"
-                    style={{ width: `${installProgress.percent}%` }}
-                  />
-                </div>
-              )}
+              <p className="text-sm text-gray-400">Please wait...</p>
             </div>
           )}
 

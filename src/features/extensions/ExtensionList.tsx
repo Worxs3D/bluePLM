@@ -7,17 +7,12 @@
 import { useState, useMemo } from 'react'
 import { Search, Filter, Grid, List, RefreshCw } from 'lucide-react'
 import { ExtensionCard } from './ExtensionCard'
-import type {
-  InstalledExtension,
-  StoreExtensionListing,
-  ExtensionUpdateAvailable,
-} from '@/stores/types'
+import type { InstalledExtension, StoreExtensionListing } from '@/stores/types'
 
 interface ExtensionListProps {
   // Data sources
   installedExtensions?: InstalledExtension[]
   storeExtensions?: StoreExtensionListing[]
-  updates?: ExtensionUpdateAvailable[]
 
   // UI state
   loading?: boolean
@@ -32,9 +27,6 @@ interface ExtensionListProps {
   onViewDetails?: (extensionId: string) => void
   onInstall?: (extensionId: string) => void
   onUninstall?: (extensionId: string) => void
-  onUpdate?: (extensionId: string) => void
-  onEnable?: (extensionId: string) => void
-  onDisable?: (extensionId: string) => void
   onRefresh?: () => void
 
   className?: string
@@ -42,12 +34,11 @@ interface ExtensionListProps {
 
 type ViewMode = 'grid' | 'list'
 type SortOption = 'name' | 'recent' | 'popular'
-type FilterOption = 'all' | 'verified' | 'installed' | 'updates'
+type FilterOption = 'all' | 'verified' | 'installed'
 
 export function ExtensionList({
   installedExtensions = [],
   storeExtensions = [],
-  updates = [],
   loading = false,
   emptyMessage = 'No extensions found',
   showSearch = true,
@@ -56,9 +47,6 @@ export function ExtensionList({
   onViewDetails,
   onInstall,
   onUninstall,
-  onUpdate,
-  onEnable,
-  onDisable,
   onRefresh,
   className = '',
 }: ExtensionListProps) {
@@ -66,15 +54,6 @@ export function ExtensionList({
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [sortBy, setSortBy] = useState<SortOption>('name')
   const [filterBy, setFilterBy] = useState<FilterOption>('all')
-
-  // Create update lookup map
-  const updatesMap = useMemo(() => {
-    const map = new Map<string, ExtensionUpdateAvailable>()
-    for (const update of updates) {
-      map.set(update.extensionId, update)
-    }
-    return map
-  }, [updates])
 
   // Create installed lookup map
   const installedMap = useMemo(() => {
@@ -109,9 +88,6 @@ export function ExtensionList({
       case 'installed':
         result = result.filter((ext) => installedMap.has(ext.extensionId))
         break
-      case 'updates':
-        result = result.filter((ext) => updatesMap.has(ext.extensionId))
-        break
     }
 
     // Apply sorting
@@ -128,7 +104,7 @@ export function ExtensionList({
     }
 
     return result
-  }, [storeExtensions, searchQuery, filterBy, sortBy, installedMap, updatesMap])
+  }, [storeExtensions, searchQuery, filterBy, sortBy, installedMap])
 
   // Filter installed extensions
   const filteredInstalledExtensions = useMemo(() => {
@@ -183,7 +159,6 @@ export function ExtensionList({
                 <option value="all">All</option>
                 <option value="verified">Verified</option>
                 <option value="installed">Installed</option>
-                {updates.length > 0 && <option value="updates">Updates ({updates.length})</option>}
               </select>
 
               <select
@@ -273,38 +248,27 @@ export function ExtensionList({
           {showingStoreExtensions
             ? filteredStoreExtensions.map((storeExt) => {
                 const installed = installedMap.get(storeExt.extensionId)
-                const update = updatesMap.get(storeExt.extensionId)
 
                 return (
                   <ExtensionCard
                     key={storeExt.id}
                     extension={installed}
                     storeExtension={storeExt}
-                    update={update}
                     compact={viewMode === 'list'}
                     onViewDetails={() => onViewDetails?.(storeExt.extensionId)}
-                    onInstall={() => onInstall?.(storeExt.extensionId)}
-                    onUninstall={() => onUninstall?.(storeExt.extensionId)}
-                    onUpdate={() => onUpdate?.(storeExt.extensionId)}
-                    onEnable={() => onEnable?.(storeExt.extensionId)}
-                    onDisable={() => onDisable?.(storeExt.extensionId)}
+                    onInstall={onInstall ? () => onInstall(storeExt.extensionId) : undefined}
+                    onUninstall={onUninstall ? () => onUninstall(storeExt.extensionId) : undefined}
                   />
                 )
               })
             : filteredInstalledExtensions.map((ext) => {
-                const update = updatesMap.get(ext.manifest.id)
-
                 return (
                   <ExtensionCard
                     key={ext.manifest.id}
                     extension={ext}
-                    update={update}
                     compact={viewMode === 'list'}
                     onViewDetails={() => onViewDetails?.(ext.manifest.id)}
-                    onUninstall={() => onUninstall?.(ext.manifest.id)}
-                    onUpdate={() => onUpdate?.(ext.manifest.id)}
-                    onEnable={() => onEnable?.(ext.manifest.id)}
-                    onDisable={() => onDisable?.(ext.manifest.id)}
+                    onUninstall={onUninstall ? () => onUninstall(ext.manifest.id) : undefined}
                   />
                 )
               })}

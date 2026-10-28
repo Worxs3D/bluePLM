@@ -59,12 +59,10 @@ import {
 } from './cli'
 import { performMigrationCheck, getMigrationResult, wasMigrationPerformed } from './migration'
 import {
-  registerExtensionHostHandlers,
-  unregisterExtensionHostHandlers,
-  cleanupExtensionHost,
-  onExtensionStateChange,
-  type ExtensionHostHandlerDependencies,
-} from './extensionHost'
+  registerExtensionHandlers,
+  unregisterExtensionHandlers,
+  type ExtensionHandlerDependencies,
+} from './extensions/handlers'
 import {
   registerDeepLinkHandlers,
   unregisterDeepLinkHandlers,
@@ -100,9 +98,6 @@ export { performMigrationCheck, getMigrationResult, wasMigrationPerformed } from
 // CLI exports for main.ts
 export { startCliServer, cleanupCli } from './cli'
 
-// Extension Host exports for main.ts
-export { cleanupExtensionHost, onExtensionStateChange } from './extensionHost'
-
 // Deep Link exports for main.ts
 export {
   handleDeepLink,
@@ -124,6 +119,7 @@ export { cleanupFs } from './fs'
 
 // Thumbnail cache: scheme registration runs before app ready, disposal at quit
 export { registerThumbnailScheme, disposeThumbnailStore } from './thumbnails'
+export { NATIVE_EXTENSION_SCHEME_PRIVILEGE } from './extensions/native'
 
 // Re-export getters
 export { getWorkingDirectory } from './fs'
@@ -214,7 +210,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
     logError,
   }
 
-  const extensionHostHandlerDeps: ExtensionHostHandlerDependencies = {
+  const extensionHandlerDeps: ExtensionHandlerDependencies = {
     log,
     logError,
   }
@@ -239,7 +235,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerUpdaterHandlers(mainWindow, updaterHandlerDeps)
   registerOAuthHandlers(mainWindow, oauthHandlerDeps)
   registerCliHandlers(mainWindow, cliHandlerDeps)
-  registerExtensionHostHandlers(mainWindow, extensionHostHandlerDeps)
+  registerExtensionHandlers(mainWindow, extensionHandlerDeps)
   registerDeepLinkHandlers(mainWindow, deepLinkHandlerDeps)
   registerArchiveHandlers(mainWindow, archiveHandlerDeps)
   registerRfqHandlers(mainWindow, { log, logError })
@@ -274,7 +270,7 @@ export function unregisterAllHandlers(): void {
   unregisterUpdaterHandlers()
   unregisterOAuthHandlers()
   unregisterCliHandlers()
-  unregisterExtensionHostHandlers()
+  unregisterExtensionHandlers()
   unregisterDeepLinkHandlers()
   unregisterArchiveHandlers()
   unregisterRfqHandlers()

@@ -1585,12 +1585,12 @@ declare global {
       // EXTENSION SYSTEM API
       // ═══════════════════════════════════════════════════════════════════════════════
 
+      // Per-machine extension packages (store browsing, install, uninstall; never run)
+      // and org-installed native extensions (see docs/extensions/index.md).
       extensions: {
         // ----- Queries -----
         getAll: () => Promise<ExtensionInfo[]>
         getExtension: (extensionId: string) => Promise<ExtensionInfo | undefined>
-        getHostStatus: () => Promise<ExtensionHostStatus>
-        getExtensionStats: (extensionId: string) => Promise<ExtensionStats | undefined>
 
         // ----- Store Operations -----
         fetchStore: () => Promise<StoreExtensionInfo[]>
@@ -1622,30 +1622,20 @@ declare global {
         ) => Promise<ExtensionInstallResult>
         uninstall: (extensionId: string) => Promise<{ success: boolean; error?: string }>
 
-        // ----- Lifecycle -----
-        enable: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-        disable: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-        activate: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-        deactivate: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-        kill: (extensionId: string, reason: string) => Promise<{ success: boolean; error?: string }>
+        // ----- Native extensions (org-installed, SHA-256 pinned) -----
+        nativePrepare: (request: {
+          extensionId: string
+          version: string
+          sha256: string
+          downloadUrl: string
+        }) => Promise<NativePrepareResult>
+        nativePrune: (
+          keepShas: string[],
+        ) => Promise<{ success: boolean; removed: string[]; error?: string }>
+        nativeInspect: () => Promise<NativeInspectResult>
 
-        // ----- Updates -----
-        checkUpdates: () => Promise<ExtensionUpdateInfo[]>
-        update: (extensionId: string, version?: string) => Promise<ExtensionInstallResult>
-        rollback: (extensionId: string) => Promise<ExtensionInstallResult>
-        pinVersion: (
-          extensionId: string,
-          version: string,
-        ) => Promise<{ success: boolean; error?: string }>
-        unpinVersion: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-        // ----- Event Listeners -----
+        // ----- Events -----
         onStateChange: (callback: (event: ExtensionStateChangeEvent) => void) => () => void
-        onViolation: (callback: (event: ExtensionViolationEvent) => void) => () => void
-        onUpdateAvailable: (callback: (updates: ExtensionUpdateInfo[]) => void) => () => void
-        onInstallProgress: (callback: (event: ExtensionInstallProgressEvent) => void) => () => void
-        onHostStats: (callback: (stats: ExtensionStats[]) => void) => () => void
-        onUICall: (callback: (call: ExtensionUICallEvent) => void) => () => void
       }
     }
   }
@@ -1655,8 +1645,8 @@ declare global {
 // EXTENSION SYSTEM TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Extension lifecycle state */
-type ExtensionState = 'not-installed' | 'installed' | 'loading' | 'active' | 'error' | 'disabled'
+/** Extension state as main reports it: a package is either installed or not. */
+type ExtensionState = 'not-installed' | 'installed'
 
 /** Extension verification status */
 type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
@@ -1664,7 +1654,7 @@ type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
 /** Extension category */
 type ExtensionCategory = 'sandboxed' | 'native'
 
-/** Loaded extension information */
+/** An installed extension package, as `extensions:get-all` returns it */
 interface ExtensionInfo {
   manifest: {
     id: string
@@ -1674,35 +1664,14 @@ interface ExtensionInfo {
     description?: string
     icon?: string
     repository?: string
-    license: string
+    license?: string
     category?: ExtensionCategory
     main?: string
     serverMain?: string
   }
   state: ExtensionState
   verification: ExtensionVerificationStatus
-  error?: string
-  installedAt?: string
-  activatedAt?: string
-}
-
-/** Extension Host status */
-interface ExtensionHostStatus {
-  running: boolean
-  ready: boolean
-  uptime: number
-  restartCount: number
-  lastError?: string
-}
-
-/** Extension runtime statistics */
-interface ExtensionStats {
-  extensionId: string
-  memoryUsageMB: number
-  cpuTimeMs: number
-  lastActivityMs: number
-  activationCount?: number
-  errorCount?: number
+  installedAt: string
 }
 
 /** Store extension listing */
@@ -1737,65 +1706,46 @@ interface StoreExtensionInfo {
   }
 }
 
-/** Extension installation result */
+/** Result of `extensions:install` and `extensions:install-from-file` */
 interface ExtensionInstallResult {
   success: boolean
-  extension?: ExtensionInfo
+  extensionId?: string
+  version?: string
   error?: string
-  verification?: ExtensionVerificationStatus
+  warning?: string
+  requiresAcknowledgment?: boolean
 }
 
-/** Available extension update */
-interface ExtensionUpdateInfo {
-  extensionId: string
-  currentVersion: string
-  newVersion: string
-  changelog?: string
-  breaking: boolean
-  minAppVersion?: string
-}
+/** `extensions:native-prepare` result */
+type NativePrepareResult =
+  | {
+      success: true
+      sha256: string
+      /** `blueplm-ext://<sha256>/` */
+      baseUrl: string
+      clientEntryUrl: string
+      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
+      cached: boolean
+    }
+  | { success: false; error: string }
 
-/** Extension state change event */
+/** `extensions:native-inspect` result (admin upload) */
+type NativeInspectResult =
+  | {
+      success: true
+      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
+      sha256: string
+      size: number
+      sqlFiles: Array<{ name: string; content: string }>
+      data: Uint8Array
+    }
+  | { success: false; canceled?: boolean; error?: string }
+
+/** `extension:state-change`: sent by main after an install or an uninstall */
 interface ExtensionStateChangeEvent {
   extensionId: string
   state: ExtensionState
-  previousState?: ExtensionState
-  error?: string
   timestamp: number
-}
-
-/** Watchdog violation event */
-interface ExtensionViolationEvent {
-  violation: {
-    type: 'memory_exceeded' | 'cpu_timeout' | 'unresponsive' | 'crash'
-    extensionId: string
-    timestamp: number
-    details: {
-      memoryUsage?: number
-      memoryLimit?: number
-      executionTime?: number
-      cpuLimit?: number
-      errorMessage?: string
-    }
-  }
-  killed: boolean
-}
-
-/** Install progress event */
-interface ExtensionInstallProgressEvent {
-  extensionId: string
-  phase: 'downloading' | 'verifying' | 'extracting' | 'loading' | 'deploying' | 'complete' | 'error'
-  percent: number
-  message: string
-  error?: string
-}
-
-/** UI call from extension */
-interface ExtensionUICallEvent {
-  extensionId: string
-  method: string
-  args: unknown[]
-  callId?: string
 }
 
 export {}

@@ -1,12 +1,11 @@
 {
   "name": "blue-plm",
-  "version": "4.7.6",
+  "version": "4.8.0",
   "description": "Open-source Product Lifecycle Management",
   "main": "dist-electron/main.js",
   "scripts": {
-    "predev": "node scripts/copy-extension-host.js",
     "dev": "vite",
-    "build": "npm run typecheck && vite build && node scripts/copy-extension-host.js && npm run build-sw-service && electron-builder",
+    "build": "npm run typecheck && vite build && npm run build-sw-service && electron-builder",
     "preview": "vite preview",
     "electron:dev": "vite",
     "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
@@ -58,7 +57,6 @@
     "pino-pretty": "^13.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^3.10.1",
     "zod": "^4.3.5",
     "zustand": "^5.0.2"
   },

@@ -18,7 +18,6 @@ import {
   cleanupCli,
   autoStartServiceFromCache,
   cleanupSolidWorksService,
-  cleanupExtensionHost,
   cleanupOAuth,
   cleanupUpdater,
   cleanupFs,
@@ -28,6 +27,7 @@ import {
   storePendingDeepLink,
   setDeepLinkDependencies,
   registerThumbnailScheme,
+  NATIVE_EXTENSION_SCHEME_PRIVILEGE,
   disposeThumbnailStore,
 } from './handlers'
 import { createAppMenu } from './menu'
@@ -500,9 +500,10 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('blueplm')
 }
 
-// Register the thumbnail scheme's privileges. Electron only accepts these
-// before the 'ready' event, so it has to happen at module scope.
-registerThumbnailScheme()
+// Register the thumbnail and native extension schemes' privileges. Electron only
+// accepts these before the 'ready' event, and only once, so it has to happen at
+// module scope in one call.
+registerThumbnailScheme([NATIVE_EXTENSION_SCHEME_PRIVILEGE])
 
 // Initialize deep link dependencies early for logging
 setDeepLinkDependencies({
@@ -788,14 +789,6 @@ function initializeApp() {
       // ================================================
       // Cleanup child processes and servers
       // ================================================
-
-      // Cleanup Extension Host (has 1 second internal timeout)
-      try {
-        await cleanupExtensionHost()
-        log('✓ Extension Host cleanup complete')
-      } catch (error) {
-        logError('Failed to cleanup Extension Host', { error: String(error) })
-      }
 
       // Cleanup SolidWorks service (can hang if service is stuck)
       try {
@@ -1132,17 +1125,6 @@ function createWindow() {
     }
     mainWindow = null
 
-    // ============================================
-    // CRITICAL: Close the Extension Host window when main window closes
-    // The Extension Host is a hidden BrowserWindow that prevents the
-    // 'window-all-closed' event from firing. We must close it here
-    // to allow the app to quit properly on Windows/Linux.
-    // ============================================
-    if (process.platform !== 'darwin') {
-      // On Windows/Linux, we need to close Extension Host immediately
-      // so window-all-closed fires and triggers app.quit()
-      cleanupExtensionHost()
-    }
   })
 
   // Register all IPC handlers

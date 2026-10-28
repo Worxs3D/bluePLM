@@ -47,8 +47,11 @@ DROP TABLE IF EXISTS color_swatches CASCADE;
 DROP TABLE IF EXISTS webhook_deliveries CASCADE;
 DROP TABLE IF EXISTS webhooks CASCADE;
 
--- Customers (children first; enrichment rows represent money already spent,
--- so this is the only place they are ever dropped)
+-- Customers (children first). Since 4.8.0 these tables belong to the
+-- blueplm.customers native extension (its sql/customers.sql), not to core,
+-- but a full reset must still leave a clean database, so they are dropped here
+-- when they exist. Enrichment rows represent money already spent; this is the
+-- only place they are ever dropped.
 DROP TABLE IF EXISTS customer_enrichment_run_items CASCADE;
 DROP TABLE IF EXISTS customer_enrichment_runs CASCADE;
 DROP TABLE IF EXISTS customer_enrichment_sources CASCADE;
@@ -239,9 +242,11 @@ DROP FUNCTION IF EXISTS get_rfq_summary(UUID) CASCADE;
 DROP FUNCTION IF EXISTS get_org_integration_status(UUID, TEXT) CASCADE;
 DROP FUNCTION IF EXISTS get_org_odoo_configs(UUID) CASCADE;
 DROP FUNCTION IF EXISTS is_supplier_account(TEXT) CASCADE;
+-- The blueplm.customers extension's functions (see the Customers tables above).
 DROP FUNCTION IF EXISTS seed_customer_categories(UUID) CASCADE;
 DROP FUNCTION IF EXISTS seed_customer_categories_for_new_org() CASCADE;
 DROP FUNCTION IF EXISTS update_customers_module_timestamp() CASCADE;
+DROP FUNCTION IF EXISTS customers_extension_schema_version() CASCADE;
 DROP FUNCTION IF EXISTS update_integration_credentials_timestamp() CASCADE;
 DROP FUNCTION IF EXISTS update_org_rfq_settings(UUID, JSONB) CASCADE;
 DROP FUNCTION IF EXISTS update_org_branding(UUID, TEXT, TEXT) CASCADE;
@@ -392,7 +397,8 @@ DROP POLICY IF EXISTS "Authenticated users can delete from vault" ON storage.obj
 -- 4. Run: modules/20-change-control.sql (optional)
 -- 5. Run: modules/30-supply-chain.sql (optional)
 -- 6. Run: modules/40-integrations.sql (optional)
--- 7. Run: modules/60-customers.sql (optional)
+-- 7. Run: modules/50-extensions.sql (optional), then the SQL of any native
+--    extension the organization installs (e.g. Customers: sql/customers.sql)
 --
 -- Then:
 --   - Create your organization

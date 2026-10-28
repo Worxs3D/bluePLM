@@ -36,10 +36,12 @@ let deps: ThumbnailProtocolDependencies | null = null
 
 /**
  * Must run before the app `ready` event, which is the only window in which
- * Electron accepts scheme privileges.
+ * Electron accepts scheme privileges. Electron takes one call only, so other
+ * custom schemes (the native extension scheme) are passed in as `extra`.
  */
-export function registerThumbnailScheme(): void {
+export function registerThumbnailScheme(extra: Electron.CustomScheme[] = []): void {
   protocol.registerSchemesAsPrivileged([
+    ...extra,
     {
       scheme: THUMBNAIL_SCHEME,
       privileges: {

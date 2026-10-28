@@ -58,11 +58,6 @@ DECLARE
     -- Supply chain
     'suppliers', 'part_suppliers', 'rfqs', 'rfq_items', 'rfq_suppliers', 'rfq_quotes',
     'rfq_number_counters',
-    -- Customers
-    'customer_categories', 'customer_accounts', 'customers', 'customer_addresses',
-    'customer_orders', 'customer_order_lines', 'customer_enrichments',
-    'customer_enrichment_sources', 'customer_enrichment_runs',
-    'customer_enrichment_run_items',
     -- Integration credentials
     'integration_credentials',
     -- Integrations

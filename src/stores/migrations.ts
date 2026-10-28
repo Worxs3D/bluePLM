@@ -14,7 +14,7 @@ export interface StoreMigration {
 }
 
 // Current schema version - increment when adding migrations
-export const CURRENT_STORE_VERSION = 11
+export const CURRENT_STORE_VERSION = 12
 
 // In-development Quality modules that were previously nested under the
 // 'group-quality' cascade menu and are now removed from the default sidebar.
@@ -246,7 +246,7 @@ export const migrations: StoreMigration[] = [
   },
   {
     version: 10,
-    description: 'Restore modules missing from a saved sidebar order, including Customers',
+    description: 'Restore modules missing from a saved sidebar order, including Customers (then core)',
     migrate: (state) => {
       const moduleConfig = state.moduleConfig
       if (!moduleConfig || typeof moduleConfig !== 'object') return state
@@ -355,6 +355,15 @@ export const migrations: StoreMigration[] = [
           moduleIconColors: dropRemovedKeys(config.moduleIconColors),
         },
       }
+    },
+  },
+  {
+    version: 12,
+    description:
+      'Customers moved to a native extension: drop the persisted customersTab (the extension keeps its own); the sidebar order keeps the customers entry',
+    migrate: (state) => {
+      const { customersTab: _removed, ...rest } = state as Record<string, unknown>
+      return rest
     },
   },
 ]

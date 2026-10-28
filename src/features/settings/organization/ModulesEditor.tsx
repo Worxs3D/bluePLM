@@ -44,6 +44,7 @@ import {
 } from 'lucide-react'
 import { IconGridPicker } from '@/components/shared/IconPicker'
 import { ColorPicker, ColorSwatchRow } from '@/components/shared/ColorPicker'
+import { ExtensionModulesSection } from './ExtensionModulesSection'
 import {
   MODULE_GROUPS,
   MODULES,
@@ -1128,6 +1129,13 @@ export function ModulesEditor({
           ))}
         </div>
       </div>
+
+      {/* Native extension workspaces: visibility only (placed by their group) */}
+      <ExtensionModulesSection
+        config={config}
+        onConfigChange={onConfigChange}
+        deniedModuleIds={deniedModuleIds}
+      />
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-xs text-plm-fg-dim">

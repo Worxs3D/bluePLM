@@ -3,7 +3,8 @@
  *
  * Manages two-stage startup:
  * Stage 1 (Core): Store hydration, Supabase config, auth session, organization, permissions
- * Stage 2 (Extensions): Discover and activate startup extensions
+ * Stage 2 (Extensions): List installed extension packages. Nothing is activated: the
+ * desktop has no extension runtime yet (docs/extensions/index.md).
  *
  * Returns startup state that gates the app render.
  */
@@ -41,9 +42,6 @@ interface StartupState {
   continueWithErrors: () => void
 }
 
-// Extension activation timeout (10 seconds per extension)
-const EXTENSION_TIMEOUT_MS = 10000
-
 // Timeout for waiting on auth session resolution
 const AUTH_TIMEOUT_MS = 15000
 
@@ -74,15 +72,16 @@ export function useAppStartup(): StartupState {
   const [isReady, setIsReady] = useState(false)
   const [stage, setStage] = useState<StartupStage>(1)
   const [status, setStatus] = useState('Loading preferences...')
-  const [errors, setErrors] = useState<StartupError[]>([])
+  // Extension activation failures will be reported here once a runtime exists; nothing
+  // activates extensions today, so the list stays empty.
+  const [errors] = useState<StartupError[]>([])
 
   // Track if startup has already run to prevent re-running on re-renders
   const startupRunRef = useRef(false)
 
-  const { loadInstalledExtensions, handleExtensionStateChange, addToast } = usePDMStore(
+  const { loadInstalledExtensions, addToast } = usePDMStore(
     useShallow((s) => ({
       loadInstalledExtensions: s.loadInstalledExtensions,
-      handleExtensionStateChange: s.handleExtensionStateChange,
       addToast: s.addToast,
     })),
   )
@@ -229,88 +228,13 @@ export function useAppStartup(): StartupState {
         recordMetric('Startup', 'Stage 4 started', {})
         setStage(4)
 
-        // Step 2.1: Discover extensions
+        // List installed packages. They are not run: there is no desktop runtime.
         setStatus('Discovering extensions...')
         await loadInstalledExtensions()
 
-        // Step 2.2: Activate startup extensions
-        const currentExtensions = usePDMStore.getState().installedExtensions
-        const extensionIds = Object.keys(currentExtensions)
-
-        if (extensionIds.length === 0) {
-          log.debug('[Startup]', 'No extensions to activate')
-          setStatus('Extensions ready')
-          completeStartup()
-          return
-        }
-
-        const failedExtensions: StartupError[] = []
-
-        for (const extId of extensionIds) {
-          const ext = currentExtensions[extId]
-          if (!ext || ext.state === 'disabled') {
-            continue // Skip disabled extensions
-          }
-
-          const extName = ext.manifest?.name || extId
-          setStatus(`Activating ${extName}...`)
-
-          try {
-            // Activate with timeout
-            const activationPromise = window.electronAPI?.extensions?.activate?.(extId)
-
-            if (activationPromise) {
-              const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
-                setTimeout(
-                  () => resolve({ success: false, error: 'Activation timeout' }),
-                  EXTENSION_TIMEOUT_MS,
-                )
-              })
-
-              const result = await Promise.race([activationPromise, timeoutPromise])
-
-              if (!result.success) {
-                log.warn('[Startup]', 'Extension activation failed', { extId, error: result.error })
-                failedExtensions.push({
-                  extensionId: extId,
-                  extensionName: extName,
-                  error: result.error || 'Unknown error',
-                })
-                handleExtensionStateChange(extId, 'error', result.error)
-              } else {
-                handleExtensionStateChange(extId, 'active')
-                log.debug('[Startup]', 'Extension activated', { extId })
-              }
-            }
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error)
-            log.error('[Startup]', 'Extension activation error', { extId, error: errorMsg })
-            failedExtensions.push({
-              extensionId: extId,
-              extensionName: extName,
-              error: errorMsg,
-            })
-            handleExtensionStateChange(extId, 'error', errorMsg)
-          }
-        }
-
         const stage4Duration = performance.now() - stage4Start
         recordMetric('Startup', 'Stage 4 complete', { durationMs: Math.round(stage4Duration) })
-
-        if (failedExtensions.length > 0) {
-          setErrors(failedExtensions)
-          log.warn('[Startup]', 'Some extensions failed to load', {
-            count: failedExtensions.length,
-          })
-          const names = failedExtensions.map((e) => e.extensionName).join(', ')
-          addToast(
-            'warning',
-            `${failedExtensions.length} extension(s) failed to load: ${names}`,
-            8000,
-          )
-        } else {
-          log.info('[Startup]', 'Stage 4: Extensions loading complete')
-        }
+        log.info('[Startup]', 'Stage 4: Extensions loading complete')
         completeStartup()
       } catch (error) {
         log.error('[Startup]', 'Startup error', { error: error })
@@ -320,7 +244,7 @@ export function useAppStartup(): StartupState {
     }
 
     runStartup()
-  }, [loadInstalledExtensions, handleExtensionStateChange, addToast])
+  }, [loadInstalledExtensions])
 
   // The main process reloads the window when the renderer dies, so without a
   // word on screen the app appears to have reset itself for no reason. Held

@@ -14,7 +14,6 @@ supabase/
 │   ├── 30-supply-chain.sql     # Suppliers, RFQs, pricing
 │   ├── 40-integrations.sql     # Webhooks, Odoo, credential store
 │   ├── 50-extensions.sql       # Extension system, extension secret store
-│   ├── 60-customers.sql        # Odoo customer sync, AI enrichment
 │   └── README.md               # Module documentation
 ├── tools/
 │   ├── reset.sql               # ⚠️ Nuclear reset (deletes all data)
@@ -41,11 +40,15 @@ Run these SQL files in order in your Supabase SQL Editor:
 -- 30-supply-chain.sql   - Optional: Suppliers, RFQs
 -- 40-integrations.sql   - Optional: Webhooks, external integrations, credential store
 -- 50-extensions.sql     - Optional: extension system and extension secret store
--- 60-customers.sql      - Optional: Odoo customer sync, AI enrichment
 ```
 
-Numeric order (`core → 10 → 15 → 20 → 30 → 40 → 50 → 60`) always works. Skipping a
+Numeric order (`core → 10 → 15 → 20 → 30 → 40 → 50`) always works. Skipping a
 module is only safe if it is marked Optional above.
+
+Customers (the Odoo customer sync and sales analytics) is not part of core since 4.8.0. It
+is the private native extension `blueplm.customers`, and its schema ships in its package as
+`sql/customers.sql`; apply that file after the modules above when an organization installs
+the extension. Databases that ran the old `60-customers.sql` keep their tables and data.
 
 ### 3. Nothing — the last file records the version
 
@@ -76,13 +79,13 @@ install error:
 
 - **Install-time.** `15`, `20` and `30` declare foreign keys against `files`, so they
   abort immediately with `relation "files" does not exist` if `10-source-files.sql` has
-  not been run. `40`, `50` and `60` have no such link and install on bare `core.sql`.
+  not been run. `40` and `50` have no such link and install on bare `core.sql`.
 - **Run-time.** Function bodies are only parsed for syntax at creation. A function that
   queries a table from a module you skipped installs happily and fails on first call.
   This is the `checkin_file` → `15-inspection.sql` case above, and it is the reason
   "installed without errors" is not the same as "working".
 
-Beyond that, `20`, `30`, `40`, `50` and `60` do not depend on one another and may be
+Beyond that, `20`, `30`, `40` and `50` do not depend on one another and may be
 installed in any relative order — verified by installing them in different orders and
 diffing the resulting schema. The only difference is the physical column order of
 `organizations`, which several modules extend with `ALTER TABLE ... ADD COLUMN`; that is
@@ -94,7 +97,7 @@ against this schema.
 The app reads `schema_version.version` on startup and warns if it does not match
 `EXPECTED_SCHEMA_VERSION` in `src/lib/schemaVersion.ts`.
 
-- Current schema version: **104** (keep in sync with `schema_release_version()` in `core.sql`)
+- Current schema version: **105** (keep in sync with `schema_release_version()` in `core.sql`)
 - The number is written by **verification only**: `verify_and_stamp_schema()` checks the
   release manifest in `core.sql`, and every security check, and stamps the version only if
   all of it holds.
@@ -296,11 +299,12 @@ prices, with no JWT. New views in `public` should be `security_invoker` and gran
 `authenticated`/`service_role` only. Both `check_anon_reach()` and
 `tools/emergency-lockdown.sql` cover views and materialized views.
 
-Three functions are exempt from the membership check and named in `verify-schema.sql`:
-`create_default_job_titles`, `create_default_permission_teams` and
-`seed_customer_categories` all run from `AFTER INSERT` triggers on `organizations`, when
-the new organization has no members and a membership check could only fail. They are not
-endpoints, and the verification script fails if any of them is reachable by `PUBLIC`.
+Two core functions are exempt from the membership check and named in `verify-schema.sql`:
+`create_default_job_titles` and `create_default_permission_teams` both run from `AFTER
+INSERT` triggers on `organizations`, when the new organization has no members and a
+membership check could only fail. They are not endpoints, and the verification script fails
+if either is reachable by `PUBLIC`. The Customers extension's `seed_customer_categories` has
+the same shape; where it is installed, `check_org_gates()` excuses it only from its ACL.
 
 ## Module Summary
 
@@ -316,7 +320,6 @@ install.
 | 30-supply-chain.sql | No | 11 + 1 view | 5 | Suppliers, RFQs, pricing |
 | 40-integrations.sql | No | 8 | 13 | Webhooks, Odoo, credential store |
 | 50-extensions.sql | No | 7 | 5 | Extension system, extension secret store |
-| 60-customers.sql | No | 10 | 23 | Customer sync, AI enrichment |
 
 ## Related Documentation
 

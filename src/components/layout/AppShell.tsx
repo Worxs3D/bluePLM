@@ -59,7 +59,6 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     setRightPanelWidth,
     rightPanelTabs,
     itemPanel,
-    customerPanel,
   } = usePDMStore(
     useShallow((s) => ({
       activeView: s.activeView,
@@ -72,9 +71,11 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       setRightPanelWidth: s.setRightPanelWidth,
       rightPanelTabs: s.rightPanelTabs,
       itemPanel: s.itemPanel,
-      customerPanel: s.customerPanel,
     })),
   )
+  const extensionWorkspaces = usePDMStore((s) => s.extensionWorkspaces)
+  const extensionRightPanel = usePDMStore((s) => s.extensionRightPanel)
+  const activeExtensionWorkspace = extensionWorkspaces.find((w) => w.id === activeView) ?? null
 
   const deniedModules = useDeniedModules()
 
@@ -87,16 +88,23 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     }
   }, [activeView, deniedModules, setActiveView])
 
+  // An extension workspace owns the main area and the right panel, like Items.
+  const extensionPanelOpen =
+    !!activeExtensionWorkspace?.RightPanel && extensionRightPanel === activeExtensionWorkspace.id
+
   /**
    * Views that own the main area also own the right panel: they open it for
    * their own detail context rather than the file-based tabs, so the generic
    * tab condition must not apply to them.
    */
-  const detailOwningViews = ['items', 'customers', 'workflows']
+  const detailOwningViews = ['items', 'workflows']
   const rightPanelOpen =
+    extensionPanelOpen ||
     (activeView === 'items' && !!itemPanel) ||
-    (activeView === 'customers' && !!customerPanel) ||
-    (!detailOwningViews.includes(activeView) && rightPanelVisible && rightPanelTabs.length > 0)
+    (!activeExtensionWorkspace &&
+      !detailOwningViews.includes(activeView) &&
+      rightPanelVisible &&
+      rightPanelTabs.length > 0)
 
   // Call hooks directly instead of receiving as props
   const { loadFiles } = useLoadFiles()

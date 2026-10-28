@@ -2,7 +2,8 @@
  * Extension System Types for API Server
  *
  * Server-side type definitions for extension sandbox execution.
- * These complement the client-side types in src/lib/extensions/types.ts
+ * The desktop no longer carries a client-side extension type library; the manifest
+ * schema is schemas/extension-v1.schema.json.
  *
  * @module extensions/types
  */

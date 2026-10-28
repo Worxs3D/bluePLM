@@ -1,5 +1,7 @@
 # Client API Reference
 
+> **Status:** this page describes the designed sandboxed extension API, which does not run today. Only native extensions run. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 The Extension Client API (`ExtensionClientAPI`) is the primary interface for extensions running in the Extension Host. All operations are sandboxed and permission-gated.
 
 ## Overview
