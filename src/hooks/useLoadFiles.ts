@@ -55,6 +55,7 @@ import {
   shouldSkipAutoDiscardForOrphans,
 } from './useLoadFiles/autoDiscard'
 import { runPostLoadBackgroundTasks } from './useLoadFiles/backgroundTasks'
+import { runGhostDirectoryCleanup } from './useLoadFiles/ghostDirectoryCleanup'
 import { createYieldGate, mapYielding, YIELD_CHECK_STRIDE } from './useLoadFiles/mergeYield'
 import {
   buildMergeLookups,
@@ -254,6 +255,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
       // computed them has closed its scope.
       let serverRowCountAtMerge: number | undefined
       let previouslySyncedCountAtMerge = 0
+      let serverFoldersErroredAtMerge = false
 
       try {
         // Run local file scan and server fetch in PARALLEL for faster boot
@@ -534,6 +536,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           } else if (pdmFiles && Array.isArray(pdmFiles)) {
             serverRowCountAtMerge = pdmFiles.length
             previouslySyncedCountAtMerge = localSyncIndex.size
+            serverFoldersErroredAtMerge = Boolean(serverFoldersResult.error)
 
             if (!silent) {
               setStatusMessage(`Merging ${pdmFiles.length} files...`)
@@ -1164,6 +1167,19 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
       // the 4.3.1 decision that a dialog contradicts a setting named "automatically
       // discard orphaned files" when the outcome already goes to the Recycle Bin.
       if (committedMerge && user && window.electronAPI && !isVaultStale()) {
+        // Empty directories left behind by a folder deleted on the server. The file
+        // discard below only recycles directories it emptied itself, so a folder that
+        // never held a file was never removed. Needs a complete server view: a failed
+        // folders fetch would make every live empty folder look unasserted.
+        if (
+          usePDMStore.getState().autoDiscardOrphanedFiles &&
+          currentVaultId &&
+          serverRowCountAtMerge !== undefined &&
+          !serverFoldersErroredAtMerge
+        ) {
+          await runGhostDirectoryCleanup(currentVaultId, loadingForVaultPath)
+        }
+
         const { autoDiscardOrphanedFiles, addToast, files: latestFiles } = usePDMStore.getState()
 
         const orphanedFiles = autoDiscardOrphanedFiles

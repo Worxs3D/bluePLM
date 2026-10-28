@@ -133,7 +133,7 @@ function ancestorChain(relativeFolderPath: string): string[] {
  * that was, move the view to the nearest surviving ancestor. Otherwise the user is
  * left looking at a folder that no longer exists on disk or in the store.
  */
-function relocateCurrentFolderIfRemoved(removedAbsolutePaths: string[], vaultPath: string): void {
+export function relocateCurrentFolderIfRemoved(removedAbsolutePaths: string[], vaultPath: string): void {
   if (removedAbsolutePaths.length === 0) return
 
   const { currentFolder, setCurrentFolder } = usePDMStore.getState()

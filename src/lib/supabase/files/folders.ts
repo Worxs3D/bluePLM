@@ -244,6 +244,40 @@ export async function getVaultFolders(
   }
 }
 
+/** Paths per request, so a long candidate list cannot build an oversized URL. */
+const DELETED_FOLDER_LOOKUP_CHUNK = 100
+
+/**
+ * Soft-deleted folder rows for the given paths, the evidence `ghostDirectories.ts` needs
+ * before recycling an empty local directory. Exact-match (`in`), not `ilike`: the
+ * directories were created on disk with the server's own spelling, and a miss only
+ * leaves an empty folder in place.
+ */
+export async function getDeletedFoldersByPath(
+  vaultId: string,
+  folderPaths: string[],
+): Promise<{ folders: Array<{ folder_path: string; deleted_at: string }>; error?: string }> {
+  const client = getSupabaseClient()
+  const folders: Array<{ folder_path: string; deleted_at: string }> = []
+
+  for (let i = 0; i < folderPaths.length; i += DELETED_FOLDER_LOOKUP_CHUNK) {
+    const chunk = folderPaths.slice(i, i + DELETED_FOLDER_LOOKUP_CHUNK)
+    const { data, error } = await client
+      .from('folders')
+      .select('folder_path, deleted_at')
+      .eq('vault_id', vaultId)
+      .in('folder_path', chunk)
+      .not('deleted_at', 'is', null)
+
+    if (error) return { folders: [], error: error.message }
+    for (const row of data ?? []) {
+      if (row.deleted_at) folders.push({ folder_path: row.folder_path, deleted_at: row.deleted_at })
+    }
+  }
+
+  return { folders }
+}
+
 // ============================================
 // Update Operations
 // ============================================

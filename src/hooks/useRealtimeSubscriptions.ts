@@ -1040,9 +1040,10 @@ export function useRealtimeSubscriptions(
           // Nothing on disk has changed and there is nothing further to do here
           // - this schedules the same debounced silent refresh a burst of file
           // deletions already uses, which is what lets the merge see the folder
-          // is gone. Removing the now-empty directory from disk happens inside
-          // discard-orphaned, reached through its own guards once that refresh
-          // completes.
+          // is gone. Removing the now-empty directory from disk happens after that
+          // refresh: inside discard-orphaned when files were recycled out of it, and
+          // in the ghost-directory cleanup (`src/lib/ghostDirectories.ts`) when the
+          // folder never held a file.
           scheduleOrphanDiscardRefresh()
         }
       },
