@@ -294,8 +294,6 @@ export const zhTW: TranslationDict = {
     // 供應鏈 - 供應商
     supplierDatabase: '供應商資料庫',
     supplierPortal: '供應商入口',
-    // 客戶
-    customers: '客戶',
     // 整合
     googleDrive: 'Google 雲端硬碟',
     // 系統

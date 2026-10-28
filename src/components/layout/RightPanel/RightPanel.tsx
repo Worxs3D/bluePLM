@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
@@ -14,15 +14,6 @@ import { VendorsTab } from '@/features/source/details/VendorsTab'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { FileBox, Layers, File, Loader2, FilePen, ExternalLink, ArrowLeft } from 'lucide-react'
-
-// Lazy so the customers feature (and its charting library) stays out of the
-// main bundle. Imported by path rather than through the feature barrel, which
-// would pull the workspace and navigator in alongside it.
-const CustomerDetailPanel = lazy(() =>
-  import('@/features/customers/detail/CustomerDetailPanel').then((m) => ({
-    default: m.CustomerDetailPanel,
-  })),
-)
 
 // Component to load OS icon for files
 function RightPanelIcon({ file, size = 24 }: { file: LocalFile; size?: number }) {
@@ -75,8 +66,6 @@ export function RightPanel() {
     addToast,
     itemPanel,
     setItemPanel,
-    customerPanel,
-    setCustomerPanel,
   } = usePDMStore(
     useShallow((s) => ({
       getSelectedFileObjects: s.getSelectedFileObjects,
@@ -90,8 +79,6 @@ export function RightPanel() {
       addToast: s.addToast,
       itemPanel: s.itemPanel,
       setItemPanel: s.setItemPanel,
-      customerPanel: s.customerPanel,
-      setCustomerPanel: s.setCustomerPanel,
     })),
   )
   const extensionPanelWorkspace = usePDMStore((s) =>
@@ -223,27 +210,6 @@ export function RightPanel() {
         style={{ width: rightPanelWidth }}
       >
         <ExtensionRightPanelView workspace={extensionPanelWorkspace} />
-      </div>
-    )
-  }
-
-  // The Customers workspace owns the right panel while it is open, the same
-  // way the Item Browser does: neither has a file selection to show tabs for.
-  if (customerPanel) {
-    return (
-      <div
-        className="bg-plm-panel border-l border-plm-border flex flex-col"
-        style={{ width: rightPanelWidth }}
-      >
-        <Suspense
-          fallback={
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 size={18} className="animate-spin text-plm-fg-muted" />
-            </div>
-          }
-        >
-          <CustomerDetailPanel panel={customerPanel} onClose={() => setCustomerPanel(null)} />
-        </Suspense>
       </div>
     )
   }

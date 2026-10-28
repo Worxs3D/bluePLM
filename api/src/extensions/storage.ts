@@ -64,7 +64,7 @@ export class ExtensionStorage {
 
   /**
    * The service-role client. `extension_storage` is service-role only under RLS
-   * (schema 103), so a user-scoped client reads nothing; every query below
+   * (schema 104), so a user-scoped client reads nothing; every query below
    * filters by org_id and extension_id itself instead.
    */
   private get supabase(): SupabaseClient {

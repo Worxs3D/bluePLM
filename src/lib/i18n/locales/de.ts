@@ -313,8 +313,6 @@ export const de: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Lieferantendatenbank',
     supplierPortal: 'Lieferantenportal',
-    // Customers
-    customers: 'Kunden',
     // Integrations
     googleDrive: 'Google Drive',
     // System

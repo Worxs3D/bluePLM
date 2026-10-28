@@ -49,7 +49,6 @@ export type SystemResource =
   | 'system:integrations' // External integrations
   | 'system:recovery-codes' // Admin recovery codes
   | 'system:impersonation' // User impersonation
-  | 'system:customer-enrichment' // Run billable AI customer research
 
 // Resource definition for the permission editor
 export interface ResourceDefinition {
@@ -213,17 +212,6 @@ export const MODULE_RESOURCES: ResourceDefinition[] = [
     defaultActions: [],
   },
 
-  // Customers
-  {
-    id: 'module:customers',
-    name: 'Customers',
-    description: 'View customers and run the Odoo customer sync',
-    category: 'modules',
-    icon: 'Users',
-    applicableActions: ['view', 'create', 'edit', 'delete', 'admin'],
-    defaultActions: [],
-  },
-
   // Integrations
   {
     id: 'module:google-drive',
@@ -373,17 +361,6 @@ export const SYSTEM_RESOURCES: ResourceDefinition[] = [
     category: 'system',
     icon: 'UserCog',
     applicableActions: ['admin'],
-    defaultActions: [],
-  },
-  {
-    id: 'system:customer-enrichment',
-    name: 'AI Customer Research',
-    // Separate from module:customers because each run bills the org's Anthropic
-    // account, so viewing customers must not imply the ability to spend money.
-    description: 'Run billable AI research on customers',
-    category: 'system',
-    icon: 'Sparkles',
-    applicableActions: ['view', 'admin'],
     defaultActions: [],
   },
 ]

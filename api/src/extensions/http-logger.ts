@@ -9,7 +9,7 @@
 import { log } from '../infrastructure/logging.js'
 import { createSupabaseAdminClient } from '../infrastructure/supabase.js'
 
-// `extension_http_log` is service-role only under RLS (schema 103), so every
+// `extension_http_log` is service-role only under RLS (schema 104), so every
 // read and write here goes through the service-role client, filtered by
 // org_id and extension_id.
 

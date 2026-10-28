@@ -20,7 +20,9 @@
 --   - 20-change-control.sql (ECOs, reviews, deviations)
 --   - 30-supply-chain.sql (suppliers, RFQs)
 --   - 40-integrations.sql (Odoo, webhooks)
---   - 60-customers.sql (Odoo customer sync, AI enrichment)
+--
+-- Customers (Odoo customer sync) is the blueplm.customers native extension
+-- since 4.8.0; its SQL ships in the extension package (sql/customers.sql).
 --
 -- =====================================================================
 
@@ -270,7 +272,7 @@ LANGUAGE sql IMMUTABLE AS $$
     -- literal, and literals are stripped before `requires` is searched, so
     -- there is no token to pin that would not resolve to nothing. Its behaviour
     -- is covered where behaviour can be covered: NC18 in the harness grants
-    -- seed_customer_categories back to authenticated and requires the stamp to
+    -- create_default_job_titles back to authenticated and requires the stamp to
     -- be withheld, which is false unless this answers true for the verdict that
     -- produces.
     ('core', NULL, 'function', 'org_gate_status_blocks(text)', NULL),
@@ -479,10 +481,7 @@ LANGUAGE sql IMMUTABLE AS $$
     -- 50-extensions.sql
     ('50-extensions', 'org_installed_extensions', 'function', 'get_extension_config(uuid,text)', 'require_org_member'),
     ('50-extensions', 'org_installed_extensions', 'function', 'get_extension_stats(uuid,text)', 'require_org_member'),
-    ('50-extensions', 'org_installed_extensions', 'function', 'update_extension_config(uuid,text,jsonb)', 'require_org_member && is_org_admin'),
-
-    -- 60-customers.sql
-    ('60-customers', 'customers', 'function', 'seed_customer_categories(uuid)', NULL)
+    ('50-extensions', 'org_installed_extensions', 'function', 'update_extension_config(uuid,text,jsonb)', 'require_org_member && is_org_admin')
   ) AS m(module, probe, kind, identity, requires);
 $$;
 
@@ -2415,10 +2414,11 @@ REVOKE ALL ON FUNCTION check_release_residue() FROM PUBLIC, anon, authenticated;
 --
 -- Some SECURITY DEFINER functions cannot be gated by an argument, because they
 -- take no organization to check the caller against. The two extension-log
--- sweeps delete by age across every tenant at once; the three seeders run from
--- the on_organization_created trigger, before the new organization has any
--- members to be one of. For all five, not being callable is the whole of the
--- protection, and check_org_gates() cannot express that: with no p_org_id there
+-- sweeps delete by age across every tenant at once; the two core seeders run
+-- from the on_organization_created trigger, before the new organization has any
+-- members to be one of (seed_customer_categories, the third, left core with the
+-- Customers extension in schema 104). For all four, not being callable is the
+-- whole of the protection, and check_org_gates() cannot express that: with no p_org_id there
 -- is no foreign id to substitute and no refusal to require.
 --
 -- So the ACL becomes the assertion. This list is small and hand-maintained on
@@ -2430,7 +2430,7 @@ REVOKE ALL ON FUNCTION check_release_residue() FROM PUBLIC, anon, authenticated;
 -- Why this is separate from check_org_gates() rather than folded into it: that
 -- function decides a verdict for every SECURITY DEFINER function in the schema,
 -- and changing how it reaches one changes what the stamp means everywhere. This
--- asks a single closed question about five named functions and can only ever
+-- asks a single closed question about four named functions and can only ever
 -- add a problem for one of them.
 CREATE OR REPLACE FUNCTION withdrawn_execute_manifest()
 RETURNS TABLE (module TEXT, signature TEXT)
@@ -2438,7 +2438,6 @@ LANGUAGE sql IMMUTABLE AS $$
   VALUES
     ('core',          'create_default_job_titles(uuid,uuid)'),
     ('core',          'create_default_permission_teams(uuid,uuid)'),
-    ('60-customers',  'seed_customer_categories(uuid)'),
     ('50-extensions', 'cleanup_extension_http_logs(integer)'),
     ('50-extensions', 'cleanup_extension_secret_access_logs(integer)')
 $$;
@@ -3092,8 +3091,9 @@ CREATE INDEX IF NOT EXISTS idx_user_permissions_resource ON user_permissions(res
 -- grant before it could see anything, so restricting one module would have
 -- silently hidden all the others.
 --
--- module_id is the ModuleId from src/types/modules.ts ('customers'), NOT the
--- 'module:customers' resource string used by team_permissions.
+-- module_id is the module or extension workspace id (a ModuleId from
+-- src/types/modules.ts, or an extension workspace id such as 'customers'), NOT
+-- the 'module:customers' resource string used by team_permissions.
 
 CREATE TABLE IF NOT EXISTS module_access (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -5451,11 +5451,12 @@ GRANT EXECUTE ON FUNCTION get_user_module_defaults(UUID) TO authenticated;
 -- See the module_access table above for the allowlist semantics: no rows for a
 -- module means everyone can see it.
 
--- Deliberately no DROP for user_can_access_module: the customers module's RLS
--- policies depend on it, and a DROP ... CASCADE here would silently delete
--- those policies when core.sql is re-run on an existing install, leaving the
--- customer tables unreadable. CREATE OR REPLACE is enough while the signature
--- is stable; a signature change needs the dependent policies dropped first.
+-- Deliberately no DROP for user_can_access_module: the Customers extension's
+-- RLS policies (sql/customers.sql in its package) depend on it, and a
+-- DROP ... CASCADE here would silently delete those policies when core.sql is
+-- re-run on an existing install, leaving the customer tables unreadable.
+-- CREATE OR REPLACE is enough while the signature is stable; a signature change
+-- needs the dependent policies dropped first.
 DROP FUNCTION IF EXISTS get_denied_modules() CASCADE;
 DROP FUNCTION IF EXISTS get_module_access_config() CASCADE;
 DROP FUNCTION IF EXISTS set_module_access(TEXT, UUID[], UUID[]) CASCADE;

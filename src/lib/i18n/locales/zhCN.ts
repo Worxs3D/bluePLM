@@ -294,8 +294,6 @@ export const zhCN: TranslationDict = {
     // 供应链 - 供应商
     supplierDatabase: '供应商数据库',
     supplierPortal: '供应商门户',
-    // 客户
-    customers: '客户',
     // 集成
     googleDrive: 'Google 云端硬盘',
     // 系统

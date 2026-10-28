@@ -333,8 +333,6 @@ export const en: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Supplier Database',
     supplierPortal: 'Supplier Portal',
-    // Customers
-    customers: 'Customers',
     // Integrations
     googleDrive: 'Google Drive',
     // System

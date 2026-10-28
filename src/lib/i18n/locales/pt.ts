@@ -306,8 +306,6 @@ export const pt: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Base de Dados de Fornecedores',
     supplierPortal: 'Portal de Fornecedores',
-    // Customers
-    customers: 'Clientes',
     // Integrations
     googleDrive: 'Google Drive',
     // System

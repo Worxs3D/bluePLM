@@ -93,7 +93,7 @@ const RESOURCE_GROUPS: {
     name: 'Supply Chain',
     icon: 'Truck',
     color: '#14b8a6',
-    resources: ['module:supplier-database', 'module:supplier-portal', 'module:customers'],
+    resources: ['module:supplier-database', 'module:supplier-portal'],
   },
   {
     id: 'system',
@@ -116,7 +116,6 @@ const RESOURCE_GROUPS: {
       'system:integrations',
       'system:recovery-codes',
       'system:impersonation',
-      'system:customer-enrichment',
     ],
   },
 ]

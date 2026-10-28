@@ -32,10 +32,17 @@ describe('validateWorkspaceRegistration', () => {
     expect(validateWorkspaceRegistration('acme.widgets', reg({ group: 'business' }), []).group).toBeNull()
   })
 
-  it.each(['explorer', 'settings', 'customers', 'items'])('refuses core module id %s', (id) => {
+  it.each(['explorer', 'settings', 'items'])('refuses core module id %s', (id) => {
     expect(CORE_VIEW_IDS.has(id)).toBe(true)
     expect(() => validateWorkspaceRegistration('acme.widgets', reg({ id }), [])).toThrow(
       /already a core module/,
+    )
+  })
+
+  it('accepts customers, which left core for the blueplm.customers extension', () => {
+    expect(CORE_VIEW_IDS.has('customers')).toBe(false)
+    expect(validateWorkspaceRegistration('blueplm.customers', reg({ id: 'customers' }), []).id).toBe(
+      'customers',
     )
   })
 

@@ -134,7 +134,7 @@ export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'admin'
  *
  * Fails closed: an error talking to the database is a denial, not an allow.
  *
- * @param resource - Permission resource, e.g. `module:customers`
+ * @param resource - Permission resource, e.g. `module:explorer`
  * @param action - Exact action required, e.g. `create`
  */
 export function requireTeamPermission(resource: string, action: PermissionAction) {

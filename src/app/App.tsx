@@ -97,7 +97,6 @@ export function App() {
       startLongTaskMonitor(() => {
         const {
           activeView,
-          customersTab,
           currentOperation,
           operationQueue,
           processingOperations,
@@ -107,11 +106,8 @@ export function App() {
           expandedFolders,
           activeVaultId,
         } = usePDMStore.getState()
-        // The customers tabs mount separately and cost wildly different
-        // amounts to render, so "customers" alone does not narrow anything.
         return {
           view: activeView,
-          ...(activeView === 'customers' ? { tab: customersTab } : {}),
           operationId: currentOperation?.id ?? null,
           commandId: currentOperation?.commandId ?? null,
           operationQueueLength: operationQueue.length,

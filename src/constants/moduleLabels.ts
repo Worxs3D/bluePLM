@@ -27,8 +27,6 @@ export const MODULE_LABELS: Record<CoreSidebarView, string> = {
   // Supply Chain - Suppliers
   'supplier-database': 'Supplier Database',
   'supplier-portal': 'Supplier Portal',
-  // Customers
-  customers: 'Customers',
   // Integrations
   'google-drive': 'Google Drive',
   // System

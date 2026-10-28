@@ -6,6 +6,64 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-10-28
+
+Schema 104 (one release on top of 4.7.6's 103), API 3.0.0. Apply `supabase/core.sql`, then
+modules 10 to 50 in order, then redeploy the API. **Customers is no longer part of
+BluePLM core**: organizations that use it install the `blueplm.customers` extension (see below).
+
+### Added
+
+- **Native extensions.** An organization admin can install an extension package (`.bpx`) for
+  the whole organization from Settings > Extensions > Install for organization. The package is
+  uploaded to the private `org-extensions` storage bucket and its sha256 is recorded on the
+  install row. The desktop app and the API run an extension only from a package whose bytes
+  match that hash: nothing else (a per-machine install, the store, a sideload or a deep link)
+  can make native code run. The desktop app verifies, extracts and serves the package over
+  `blueplm-ext://` and activates it with host API v1, which lets it add a workspace to the
+  activity bar, sidebar, main area and right panel, each behind its own error boundary.
+  Extensions can declare team permission resources, which the permissions editor lists. The
+  API loads an extension's server module and serves its routes under `/ext/<extensionId>/`,
+  authenticated, permission-checked and rate limited like core routes, for the organizations
+  named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
+  without a restart. Schema 104 adds the package columns, the bucket and its policies.
+
+### Changed
+
+- **Customers moved to a private extension, `blueplm.customers`.** The Customers workspace, its
+  sidebar navigator and detail panel, the Odoo customer sync routes (`/customers/sync`,
+  `/sync/status`, `/sync/cancel`, now `/ext/blueplm.customers/...`) and
+  `modules/60-customers.sql` (now the extension's `sql/customers.sql`, unchanged in behaviour)
+  are removed from core, along with `recharts`, the read-only Odoo call guard only the sync
+  used, and the `module:customers` and `system:customer-enrichment` permission definitions,
+  which the extension's manifest now declares. Nothing is dropped from existing databases:
+  customer tables, data and saved team permissions stay as they are, and a saved sidebar
+  position for Customers is kept for the extension's workspace. Schema 104 removes the module
+  from the release manifest and the verify and emergency-lockdown tools; API 3.0.0
+  because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
+  `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
+  redeploy, then install `blueplm.customers-<version>.bpx` for the organization.
+- The harness's NC18 control now re-grants the core seeder `create_default_job_titles` instead of
+  `seed_customer_categories`.
+
+### Security
+
+- **Extension install paths.** Packages are extracted through a staged, zip-slip-safe path; the
+  manifest id and version are validated before any filesystem call; store downloads are
+  verified against `X-Content-SHA256` and refused when it is missing or wrong; uninstall removes
+  the files; installing, sideloading and deep links are admin-only, and deep links refuse
+  invalid ids.
+- **Extension tables (schema 104).** The extension HTTP and secret-access logs accepted forged
+  rows from any signed-in user, and extension storage was readable and writable by every member;
+  all three are service-role only now. The extension SECURITY DEFINER functions pin
+  `search_path`.
+
+### Removed
+
+- The never-wired extension runtime (`src/lib/extensions/**`, the hidden extension-host window)
+  and the stub handlers that reported success without doing anything. Sandboxed extensions can
+  still be installed but have no runtime, and the app says so.
+
 ## [4.7.6] - 2026-10-28
 
 Renderer, Electron main, API 2.8.3, schema 103, SolidWorks service 1.23.0. The database must be

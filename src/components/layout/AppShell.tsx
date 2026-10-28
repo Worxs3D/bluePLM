@@ -59,7 +59,6 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
     setRightPanelWidth,
     rightPanelTabs,
     itemPanel,
-    customerPanel,
   } = usePDMStore(
     useShallow((s) => ({
       activeView: s.activeView,
@@ -72,7 +71,6 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       setRightPanelWidth: s.setRightPanelWidth,
       rightPanelTabs: s.rightPanelTabs,
       itemPanel: s.itemPanel,
-      customerPanel: s.customerPanel,
     })),
   )
   const extensionWorkspaces = usePDMStore((s) => s.extensionWorkspaces)
@@ -99,11 +97,10 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
    * their own detail context rather than the file-based tabs, so the generic
    * tab condition must not apply to them.
    */
-  const detailOwningViews = ['items', 'customers', 'workflows']
+  const detailOwningViews = ['items', 'workflows']
   const rightPanelOpen =
     extensionPanelOpen ||
     (activeView === 'items' && !!itemPanel) ||
-    (activeView === 'customers' && !!customerPanel) ||
     (!activeExtensionWorkspace &&
       !detailOwningViews.includes(activeView) &&
       rightPanelVisible &&

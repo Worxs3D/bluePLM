@@ -18,7 +18,12 @@ import { log } from '@/lib/logger'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
-import { getDefaultModuleConfig, MODULES, getChildModules } from '../types/modules'
+import {
+  getDefaultModuleConfig,
+  MODULES,
+  MODULES_MOVED_TO_EXTENSIONS,
+  getChildModules,
+} from '../types/modules'
 import type { KeybindingsConfig, SettingsTab } from '../types/settings'
 import type {
   PDMStoreState,
@@ -71,7 +76,6 @@ import {
   createOperationLogSlice,
   createAnnotationsSlice,
   createItemBrowserSlice,
-  createCustomersSlice,
   createVaultAuditSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
@@ -188,7 +192,6 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createOperationLogSlice(...a),
       ...createAnnotationsSlice(...a),
       ...createItemBrowserSlice(...a),
-      ...createCustomersSlice(...a),
       ...createVaultAuditSlice(...a),
     })),
     {
@@ -253,9 +256,6 @@ export const usePDMStore = create<PDMStoreState>()(
         itemListRowSize: state.itemListRowSize,
         itemIconSize: state.itemIconSize,
         itemColumns: state.itemColumns,
-        // Only the tab: customer filters are intentionally session-scoped,
-        // see DEFAULT_CUSTOMER_FILTERS in slices/customersSlice.ts
-        customersTab: state.customersTab,
 
         // ═══════════════════════════════════════════════════════════════
         // Theme & Appearance
@@ -627,9 +627,12 @@ export const usePDMStore = create<PDMStoreState>()(
             // Module order - use persisted if valid, otherwise default
             let moduleOrder = defaults.moduleOrder
             if (persistedConfig.moduleOrder && Array.isArray(persistedConfig.moduleOrder)) {
-              // Validate all modules exist
-              const validOrder = persistedConfig.moduleOrder.filter((id: string) =>
-                defaults.enabledModules.hasOwnProperty(id),
+              // Validate all modules exist. Ids of modules that moved to a native
+              // extension are kept so the extension's workspace keeps its place.
+              const validOrder = persistedConfig.moduleOrder.filter(
+                (id: string) =>
+                  defaults.enabledModules.hasOwnProperty(id) ||
+                  MODULES_MOVED_TO_EXTENSIONS.includes(id),
               )
               // Add any new modules that weren't in persisted order
               for (const id of defaults.moduleOrder) {

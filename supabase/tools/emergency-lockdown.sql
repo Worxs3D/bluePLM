@@ -113,7 +113,8 @@
 -- The renderer and the Electron client connect with the anon key but send a user
 -- JWT, which makes them `authenticated` for the whole session. They are
 -- unaffected. The API's service-role client is used only for invites, the
--- credential store and customer sync, all of which remain service_role.
+-- credential store and extension routes (such as the Customers sync), all of
+-- which remain service_role.
 --
 --
 -- SAFE TO RE-RUN

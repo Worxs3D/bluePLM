@@ -12,7 +12,6 @@ This folder contains the SQL schema modules that extend BluePLM's functionality 
 | `30-supply-chain.sql` | Supply Chain | Suppliers, RFQs, supplier portal | core.sql, 10-source-files.sql | Yes |
 | `40-integrations.sql` | Integrations | Odoo, webhooks, credential store | core.sql | Yes |
 | `50-extensions.sql` | Extensions | Extension system, extension secret store | core.sql | Yes |
-| `60-customers.sql` | Customers | Odoo customer sync, AI enrichment | core.sql | Yes |
 
 ## Installation Order
 
@@ -50,9 +49,6 @@ Always install in this order:
 
    -- Extensions (extension system, extension secret store)
    \i modules/50-extensions.sql
-
-   -- Customers (Odoo customer sync, AI enrichment)
-   \i modules/60-customers.sql
 
    ```
 
@@ -162,20 +158,13 @@ Contains the extension system:
 
 Depends on `core.sql` only, and nothing else depends on it.
 
-### 60-customers.sql (Customers)
+### Customers (not a core module since 4.8.0)
 
-Contains customer data synced from Odoo plus AI-generated research:
-- **Customers / Addresses / Orders / Order Lines** - Read-only mirror of Odoo `res.partner` and `sale.order`
-- **Customer Accounts** - Customers grouped by company or email domain; the unit enrichment attaches to
-- **Customer Categories** - Seeded ROV/marine taxonomy, the shared source of truth for the API and UI
-- **Enrichments / Sources / Runs** - Categorisation and sourced reports, plus run tracking and cost accounting
-
-Two things to know before changing this module. Enrichment costs real money per
-record, so nothing here is ever deleted by a sync: missing Odoo records are
-marked inactive instead, enrichment is versioned rather than overwritten, and
-the enrichment tables have no `DELETE` policy at all. And `customers.account_id`
-is sticky — a company rename must relink the existing account, because deriving
-a fresh one silently orphans research that has already been paid for.
+The Odoo customer sync and sales analytics moved to the private native extension
+`blueplm.customers`, whose package ships the schema as `sql/customers.sql` (what was
+`60-customers.sql`, unchanged in behaviour). Existing databases keep the tables and data.
+The rules that file follows - a sync never deletes, enrichment is versioned, and
+`customers.account_id` is sticky - are documented in its header.
 
 ## Idempotency
 

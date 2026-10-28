@@ -14,7 +14,7 @@ import type { ExtensionServerServices } from './types.js'
 
 /**
  * Resolve the org's `organization_integrations` row of type `integration` and
- * read its stored credential exactly as core's customer sync does. Returns
+ * read its stored credential exactly as core's customer sync did. Returns
  * null when there is no row or no credential. Rethrows only the two
  * "credential store is not usable" errors; any other failure is logged and
  * answered as null (the extension then tells the user to re-enter the key).

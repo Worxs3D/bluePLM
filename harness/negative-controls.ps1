@@ -294,7 +294,10 @@ Test-Control -Id 'NC17' -What 'consume_share_link restating validate_share_link'
 #
 # That is exactly the state release 95 shipped in before this change, and the
 # reason it shipped is that check_org_gates() carried a list of three function
-# names it would not probe, with seed_customer_categories on it. So this control
+# names it would not probe, with seed_customer_categories on it. That function
+# left core with the Customers extension (4.8.0), so the control now grants the
+# same exposure on create_default_job_titles, a core seeder of the same shape
+# (p_org_id, an insert the foreign key refuses for a synthesized org). So this control
 # is testing the removal of the list, not the REVOKE: with the list still in
 # place the grant below is invisible and the database stamps clean.
 #
@@ -305,10 +308,10 @@ Test-Control -Id 'NC17' -What 'consume_share_link restating validate_share_link'
 # What it can say is that a role a browser holds may execute it and nothing
 # established that it would refuse, which is the condition that must not be
 # stampable.
-Test-Control -Id 'NC18' -What 'seed_customer_categories granted back to authenticated, exactly as the default ACL had it' `
+Test-Control -Id 'NC18' -What 'create_default_job_titles granted back to authenticated, exactly as the default ACL had it' `
   -HoleFile '/sql/nc18-regrant-seed.sql' `
-  -ExpectToken @('unverifiable', 'seed_customer_categories') `
-  -RepairFiles @('/blueplm/modules/60-customers.sql')
+  -ExpectToken @('unverifiable', 'create_default_job_titles') `
+  -RepairFiles @('/blueplm/core.sql')
 
 # NC19 is NC18's shape with the one difference that matters: this function takes
 # no organization argument, so check_org_gates() has nothing to probe and returns
@@ -321,8 +324,8 @@ Test-Control -Id 'NC18' -What 'seed_customer_categories granted back to authenti
 # probe has grown to cover a function with no p_org_id, and this control is no
 # longer testing what it says it is.
 #
-# The hole here is more serious than NC18's. seed_customer_categories appends
-# constant taxonomy rows; cleanup_extension_http_logs deletes audit evidence for
+# The hole here is more serious than NC18's. create_default_job_titles appends
+# constant rows; cleanup_extension_http_logs deletes audit evidence for
 # every tenant in one statement, and an org-less caller did exactly that on this
 # harness. It never reached a production database - the function does not exist
 # on schema 85 - so this control guards a hole applying release 95 would have

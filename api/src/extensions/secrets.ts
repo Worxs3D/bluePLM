@@ -105,7 +105,7 @@ export class ExtensionSecrets {
 
   /**
    * The service-role client. The secret tables and `extension_secret_access`
-   * are service-role only under RLS (schema 103); every query below filters by
+   * are service-role only under RLS (schema 104); every query below filters by
    * org_id and extension_id itself instead.
    */
   private get supabase(): SupabaseClient {

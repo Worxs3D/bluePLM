@@ -155,7 +155,7 @@ sets only the Supabase credentials is correctly configured:
 
 The origin `null` is **always** allowed, in every environment, and
 `CORS_ORIGINS` adds to the allowlist rather than replacing it — so adding your
-ERP's domain cannot take Integrations, Customer Sync, Webhooks, the Suppliers
+ERP's domain cannot take Integrations, extension routes, Webhooks, the Suppliers
 view or the API health check offline.
 
 That entry exists for a packaged BluePLM build, which loads its renderer from a
