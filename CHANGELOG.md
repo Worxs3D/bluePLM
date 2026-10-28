@@ -28,8 +28,6 @@ the app expects 106.
   installer writes one value per product (name = product, data = serial). Serials compare
   ignoring spaces, dashes and case.
 
-### Added
-
 - **Optional embedded eDrawings 3D preview (Windows, off by default)** (#76, by @Worxs3D). A
   third CAD preview mode, `edrawings-embedded`, shows an interactive eDrawings viewer inside
   the details panel. The eDrawings ActiveX control runs in a separate framework-dependent
