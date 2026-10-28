@@ -112,6 +112,13 @@ interface FileSelectResult {
   error?: string
 }
 
+/** `dialog:select-directory`: a chosen folder, without listing its contents. */
+interface DirectorySelectResult {
+  success: boolean
+  path?: string
+  canceled?: boolean
+}
+
 interface FolderSelectResult {
   success: boolean
   folderName?: string
@@ -580,6 +587,8 @@ declare global {
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
       selectFolder: () => Promise<FolderSelectResult>
+      /** Pick a destination folder; unlike selectFolder it does not walk the folder. */
+      selectDirectory: (title?: string, defaultPath?: string) => Promise<DirectorySelectResult>
       showSaveDialog: (
         defaultName: string,
         filters?: Array<{ name: string; extensions: string[] }>,
@@ -1008,6 +1017,8 @@ declare global {
             }
           }
           error?: string
+          /** Service error code, e.g. SW_NOT_INSTALLED when only Document Manager is present. */
+          errorCode?: string
         }>
         exportStep: (
           filePath: string,
@@ -1131,6 +1142,42 @@ declare global {
             replacedReference?: string
             referenceUpdated: boolean
             engine: 'documentManager' | 'packAndGo'
+          }
+          error?: string
+          errorCode?: string
+        }>
+        /** Service 1.26.0+. Document Manager only; never touches files outside packageRoot. */
+        retargetReferences: (args: {
+          /** Absolute package folder (not a drive root). */
+          packageRoot: string
+          /** Absolute or package-relative files; default every .sldasm/.slddrw in the package. */
+          files?: string[]
+          /** Local vault roots, for exact vault-relative matching. */
+          vaultRoots?: string[]
+        }) => Promise<{
+          success: boolean
+          data?: {
+            packageRoot: string
+            files: Array<{
+              filePath: string
+              status: 'retargeted' | 'unchanged' | 'failed'
+              references: Array<{
+                oldPath: string
+                newPath?: string
+                status: 'retargeted' | 'unchanged' | 'missing' | 'ambiguous'
+                matchedBy?: 'package' | 'vaultPath' | 'pathSuffix' | 'fileName'
+                candidates?: string[]
+              }>
+              errorCode?: string
+              error?: string
+            }>
+            summary: {
+              total: number
+              retargeted: number
+              unchanged: number
+              failed: number
+              missingReferences: number
+            }
           }
           error?: string
           errorCode?: string
@@ -1307,6 +1354,29 @@ declare global {
           data?: { templatePath: string; outputPath: string }
           error?: string
         }>
+      }
+
+      // Review packages (src/lib/reviewPackage): PDF render staging and the review PDF cache
+      reviewPackage: {
+        /** A new empty folder under the OS temp folder, for staging one PDF render. */
+        createStagingDir: () => Promise<{ success: boolean; path?: string; error?: string }>
+        /** Removes a folder made by createStagingDir; refuses any other path. */
+        removeStagingDir: (dir: string) => Promise<{ success: boolean; error?: string }>
+        /** userData/review-pdf-cache, created if missing and pruned to its size limit. */
+        getPdfCacheDir: () => Promise<{ success: boolean; path?: string; error?: string }>
+        /** Base64 content of a file inside a staging folder (fs.readFile is vault-only). */
+        readStagedFile: (
+          filePath: string,
+        ) => Promise<{ success: boolean; data?: string; size?: number; error?: string }>
+        /** Base64 content of a PDF in the review PDF cache (the review viewer's source). */
+        readCachedPdf: (
+          filePath: string,
+        ) => Promise<{ success: boolean; data?: string; size?: number; error?: string }>
+        /** Write manifest.json / manifest.csv (UTF-8) into an existing package folder. */
+        writeManifest: (
+          dir: string,
+          files: Array<{ name: 'manifest.json' | 'manifest.csv'; content: string }>,
+        ) => Promise<{ success: boolean; error?: string }>
       }
 
       // RFQ Release Files API

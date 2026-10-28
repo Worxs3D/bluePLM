@@ -11,7 +11,8 @@ import {
   unwatchFile,
   isWatchingFile,
   createShareLink,
-  createReviewRequest,
+  getLatestCheckedInVersions,
+  requestReview,
   getActiveECOs,
   addFileToECO,
   supabase,
@@ -270,7 +271,7 @@ export async function handleRequestReview(
     return
   }
 
-  const { organization, user, activeVaultId } = usePDMStore.getState()
+  const { organization, user } = usePDMStore.getState()
   if (!organization || !user) {
     addOutput('error', 'Not signed in')
     return
@@ -307,24 +308,29 @@ export async function handleRequestReview(
   const message = (parsed.flags['message'] as string) || (parsed.flags['m'] as string) || undefined
   const title = (parsed.flags['title'] as string) || undefined
 
-  const { error } = await createReviewRequest(
-    organization.id,
-    file.pdmData.id,
-    activeVaultId,
-    user.id,
-    reviewerIds,
-    file.pdmData.version || 1,
-    title,
-    message,
-  )
-
-  if (!error) {
+  try {
+    // The server's latest checked-in version, never the cached pdmData.version.
+    const [latest] = await getLatestCheckedInVersions([file.pdmData.id])
+    if (!latest) {
+      addOutput('error', `${file.name} has no checked-in version to review`)
+      return
+    }
+    const result = await requestReview({
+      fileVersionIds: [latest.fileVersionId],
+      reviewerIds,
+      title: title ?? null,
+      message: message ?? null,
+    })
+    usePDMStore.getState().requestReviewQueueRefresh()
     addOutput(
       'success',
-      `Review request sent to ${reviewerIds.length} reviewer${reviewerIds.length > 1 ? 's' : ''} for ${file.name}`,
+      `Review request for ${file.name} v${latest.version} sent to ${result.reviewerIds.length} reviewer${result.reviewerIds.length === 1 ? '' : 's'}`,
     )
-  } else {
-    addOutput('error', `Failed to create review request: ${error}`)
+  } catch (error) {
+    addOutput(
+      'error',
+      `Failed to create review request: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }
 

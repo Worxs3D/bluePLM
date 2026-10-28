@@ -79,6 +79,11 @@ interface SaveDialogResult extends OperationResult {
   filePath?: string
 }
 
+interface DirectorySelectResult extends OperationResult {
+  path?: string
+  canceled?: boolean
+}
+
 interface TitleBarOverlayRect {
   x: number
   y: number
@@ -406,6 +411,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialogs
   selectFiles: () => ipcRenderer.invoke('dialog:select-files'),
   selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
+  selectDirectory: (title?: string, defaultPath?: string) =>
+    ipcRenderer.invoke('dialog:select-directory', title, defaultPath),
   showSaveDialog: (defaultName: string, filters?: Array<{ name: string; extensions: string[] }>) =>
     ipcRenderer.invoke('dialog:save-file', defaultName, filters),
   saveTextFileWithDialog: (
@@ -621,6 +628,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sourceDrawingPath?: string
       targetDrawingPath?: string
     }) => ipcRenderer.invoke('solidworks:duplicate-with-references', args),
+    retargetReferences: (args: { packageRoot: string; files?: string[]; vaultRoots?: string[] }) =>
+      ipcRenderer.invoke('solidworks:retarget-references', args),
     addComponent: (
       assemblyPath: string | null,
       componentPath: string,
@@ -691,6 +700,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('rfq:create-zip', options),
     openFolder: (rfqId: string, rfqNumber?: string) =>
       ipcRenderer.invoke('rfq:open-folder', rfqId, rfqNumber),
+  },
+
+  // Review packages: staging folders for PDF renders and the bounded review PDF cache
+  reviewPackage: {
+    createStagingDir: () => ipcRenderer.invoke('review-package:create-staging-dir'),
+    removeStagingDir: (dir: string) => ipcRenderer.invoke('review-package:remove-staging-dir', dir),
+    getPdfCacheDir: () => ipcRenderer.invoke('review-package:get-pdf-cache-dir'),
+    readStagedFile: (filePath: string) =>
+      ipcRenderer.invoke('review-package:read-staged-file', filePath),
+    readCachedPdf: (filePath: string) =>
+      ipcRenderer.invoke('review-package:read-cached-pdf', filePath),
+    writeManifest: (dir: string, files: Array<{ name: string; content: string }>) =>
+      ipcRenderer.invoke('review-package:write-manifest', dir, files),
   },
 
   // Archive (ZIP) operations
@@ -1257,6 +1279,7 @@ declare global {
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
       selectFolder: () => Promise<FolderSelectResult>
+      selectDirectory: (title?: string, defaultPath?: string) => Promise<DirectorySelectResult>
       showSaveDialog: (defaultName: string) => Promise<SaveDialogResult>
       saveTextFileWithDialog: (
         defaultName: string,

@@ -145,6 +145,23 @@ export function registerDialogHandlers(
     return { success: false, canceled: true }
   })
 
+  // Choose a destination folder. Unlike dialog:select-folder (built for "add folder"), this
+  // returns only the path and never walks the folder's contents.
+  ipcMain.handle('dialog:select-directory', async (_, title?: string, defaultPath?: string) => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: typeof title === 'string' && title ? title : 'Select Folder',
+      defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+      properties: ['openDirectory', 'createDirectory'],
+    })
+
+    restoreMainWindowFocus()
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      return { success: true, path: result.filePaths[0] }
+    }
+    return { success: false, canceled: true }
+  })
+
   // Save file dialog
   ipcMain.handle(
     'dialog:save-file',
@@ -198,6 +215,7 @@ export function unregisterDialogHandlers(): void {
   const handlers = [
     'dialog:select-files',
     'dialog:select-folder',
+    'dialog:select-directory',
     'dialog:save-file',
     'dialog:save-text-file',
   ]

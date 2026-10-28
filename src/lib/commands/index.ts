@@ -88,6 +88,7 @@ import { matchGhostFileCommand } from './handlers/matchGhostFile'
 import { reconcileMovedPathsCommand } from './handlers/reconcileMovedPaths'
 import { adoptServerPathsCommand } from './handlers/adoptServerPaths'
 import { copyToVaultCommand, moveToVaultCommand } from './handlers/vaultTransfer'
+import { downloadReviewPackageCommand, generateReviewPdfsCommand } from './handlers/reviewPackage'
 
 // Register all commands on module load
 function initializeCommands() {
@@ -139,6 +140,10 @@ function initializeCommands() {
   // Between vaults. Reached through the file context menus' Copy to Vault / Move to Vault.
   registerCommand('copy-to-vault', copyToVaultCommand)
   registerCommand('move-to-vault', moveToVaultCommand)
+
+  // Drawing reviews. Reached from the review package pane and the review detail view.
+  registerCommand('download-review-package', downloadReviewPackageCommand)
+  registerCommand('generate-review-pdfs', generateReviewPdfsCommand)
 }
 
 // Initialize on import

@@ -650,6 +650,24 @@ export interface VaultTransferParams extends BaseCommandParams {
   keepPath: boolean
 }
 
+/**
+ * Parameters for download-review-package: every item of a review (or the chosen ones) and its
+ * dependency closure at the pinned versions, written to `<destination>/<review title>/<vault path>`.
+ * See `src/lib/commands/handlers/reviewPackage.ts`.
+ */
+export interface DownloadReviewPackageParams {
+  reviewId: string
+  /** Absolute folder chosen by the user; the package gets its own subfolder inside it. */
+  destination: string
+  /** Only these review items. Omitted downloads every item. */
+  itemIds?: string[]
+}
+
+/** Parameters for generate-review-pdfs: render and store the PDF of each drawing version. */
+export interface GenerateReviewPdfsParams {
+  fileVersionIds: string[]
+}
+
 // ============================================
 // Command Definition
 // ============================================
@@ -687,6 +705,8 @@ export type CommandId =
   | 'adopt-server-paths'
   | 'copy-to-vault'
   | 'move-to-vault'
+  | 'download-review-package'
+  | 'generate-review-pdfs'
 
 export interface Command<TParams = unknown> {
   // Identifier
@@ -743,6 +763,8 @@ export type CommandMap = {
   'adopt-server-paths': Command<AdoptServerPathsParams>
   'copy-to-vault': Command<VaultTransferParams>
   'move-to-vault': Command<VaultTransferParams>
+  'download-review-package': Command<DownloadReviewPackageParams>
+  'generate-review-pdfs': Command<GenerateReviewPdfsParams>
 }
 
 // ============================================

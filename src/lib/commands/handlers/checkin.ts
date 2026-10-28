@@ -1,5 +1,5 @@
 // TODO(decompose): Extract to checkinUpload.ts — uploadFileContentToStorage with retry/verification logic (lines ~78–189)
-// TODO(decompose): Extract to checkinReferences.ts — extractAndStoreReferences and drawing revision propagation (lines ~257–370)
+// TODO(decompose): Drawing revision propagation could join checkinReferences.ts (extractAndStoreReferences moved there)
 // TODO(decompose): Extract to checkinProcessFile.ts — processFile inner function (single-file checkin logic including fast-path, upload path, metadata path) (lines ~866–1557)
 // TODO(decompose): Extract to checkinHelpers.ts — syncPendingVersionNotes, logCheckin, translateCheckinError, getFileContext, detectPostCheckinDrift (lines ~191–393, 839–860)
 
@@ -22,12 +22,10 @@ import { getSyncedFilesFromSelection } from '../types'
 import { ProgressTracker } from '../executor'
 import {
   checkinFile,
-  upsertFileReferences,
   getSupabaseClient,
   updateVersionNote,
   propagateDrawingRevisionToConfigurations,
 } from '../../supabase'
-import type { SWReference } from '../../supabase/files/mutations'
 import {
   processWithConcurrency,
   CONCURRENT_OPERATIONS,
@@ -49,20 +47,17 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
-import { swRefsToFileReferences } from '../../solidworks/referenceRows'
-import type { SWServiceReference } from '../../solidworks/types'
+import {
+  DRAWING_EXTENSIONS,
+  REFERENCE_FILE_EXTENSIONS,
+  extractAndStoreReferences,
+} from './checkinReferences'
 
 // SolidWorks file extensions that support metadata extraction
 const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
 
 /** Normalize a file path for cross-source comparison (SolidWorks vs file system) */
 const normalizePath = (p: string) => p.toLowerCase().replace(/\\/g, '/')
-
-// File types that have references to extract (assemblies reference components, drawings reference models)
-const REFERENCE_FILE_EXTENSIONS = ['.sldasm', '.slddrw']
-
-// Drawing extensions (need special handling for reference type)
-const DRAWING_EXTENSIONS = ['.slddrw']
 
 function pendingConfigurationNames(
   file: LocalFile,
@@ -303,125 +298,6 @@ function logCheckin(
   context: Record<string, unknown>,
 ) {
   log[level]('[Checkin]', message, context)
-}
-
-/**
- * Extract and store references after a successful check-in.
- * This populates the file_references table for Contains/Where-Used queries.
- *
- * Handles both:
- * - Assemblies: Component references (parts and sub-assemblies)
- * - Drawings: Model references (the parts/assemblies the drawing documents)
- *
- * @param file - The checked-in assembly or drawing file
- * @param orgId - Organization ID
- * @param vaultId - Vault ID
- * @param vaultRootPath - Optional local vault root path for better path matching
- * @returns Promise that resolves when extraction is complete (non-blocking to check-in)
- */
-async function extractAndStoreReferences(
-  file: LocalFile,
-  orgId: string,
-  vaultId: string,
-  vaultRootPath?: string,
-): Promise<void> {
-  // Process assemblies and drawings (both have references to extract)
-  if (!REFERENCE_FILE_EXTENSIONS.includes(file.extension.toLowerCase())) {
-    return
-  }
-
-  const fileId = file.pdmData?.id
-  if (!fileId) {
-    logCheckin('debug', 'Skipping reference extraction - no file ID', { fileName: file.name })
-    return
-  }
-
-  // Check if SolidWorks service is running
-  const status = await window.electronAPI?.solidworks?.getServiceStatus?.()
-  if (!status?.data?.running) {
-    logCheckin('debug', 'Skipping reference extraction - SW service not running', {
-      fileName: file.name,
-    })
-    return
-  }
-
-  const isDrawing = DRAWING_EXTENSIONS.includes(file.extension.toLowerCase())
-
-  try {
-    logCheckin('debug', 'Extracting file references', {
-      fileName: file.name,
-      fullPath: file.path,
-      isDrawing,
-    })
-
-    // Call SolidWorks service to get references
-    const result = await window.electronAPI?.solidworks?.getReferences?.(file.path)
-
-    if (!result?.success || !result.data?.references) {
-      logCheckin('debug', 'No references returned from SW service', {
-        fileName: file.name,
-        isDrawing,
-        error: result?.error,
-      })
-      return
-    }
-
-    const swRefs = result.data.references as SWServiceReference[]
-
-    logCheckin('debug', 'Got references from SW service', {
-      fileName: file.name,
-      isDrawing,
-      count: swRefs.length,
-      firstRef: swRefs[0]?.fileName,
-    })
-
-    // The shared mapper expands drawing configurations. Assemblies retain their existing component
-    // semantics because the service response does not include the parent file type.
-    const referenceTypesByPath = new Map(
-      swRefs.map((ref) => [normalizePath(ref.path), ref.fileType.toLowerCase()]),
-    )
-    const references: SWReference[] = swRefsToFileReferences(swRefs).map((reference) => {
-      const fileType = referenceTypesByPath.get(normalizePath(reference.childFilePath))
-      const referenceType: SWReference['referenceType'] =
-        isDrawing || (fileType !== 'assembly' && fileType !== 'part') ? 'reference' : 'component'
-
-      return { ...reference, referenceType }
-    })
-
-    // Store references in database (pass vault root for better path matching)
-    const upsertResult = await upsertFileReferences(
-      orgId,
-      vaultId,
-      fileId,
-      references,
-      vaultRootPath,
-    )
-
-    if (upsertResult.success) {
-      logCheckin('info', 'Stored file references', {
-        fileName: file.name,
-        isDrawing,
-        inserted: upsertResult.inserted,
-        updated: upsertResult.updated,
-        deleted: upsertResult.deleted,
-        skipped: upsertResult.skipped,
-        skippedReasons: upsertResult.skippedReasons,
-      })
-    } else {
-      logCheckin('warn', 'Failed to store file references', {
-        fileName: file.name,
-        isDrawing,
-        error: upsertResult.error,
-      })
-    }
-  } catch (error) {
-    // Non-fatal - reference extraction failure shouldn't block check-in
-    logCheckin('warn', 'Reference extraction failed', {
-      fileName: file.name,
-      isDrawing,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
 }
 
 function translateCheckinError(error: string | null | undefined, fileName: string): string {
