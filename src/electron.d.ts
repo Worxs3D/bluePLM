@@ -1,5 +1,11 @@
 // Type declarations for Electron API exposed via preload
 
+import type {
+  AppliedInspectionBalloons,
+  ExtractedDrawingCharacteristics,
+  InspectionBalloonRequest,
+} from './lib/inspection/types'
+
 // ============================================
 // Backup Log Types
 // ============================================
@@ -974,6 +980,21 @@ declare global {
               }
             }>
           }
+          error?: string
+          errorCode?: string
+        }>
+        extractDrawingCharacteristics: (filePath: string) => Promise<{
+          success: boolean
+          data?: ExtractedDrawingCharacteristics
+          error?: string
+          errorCode?: string
+        }>
+        applyInspectionBalloons: (
+          filePath: string,
+          balloons: InspectionBalloonRequest[],
+        ) => Promise<{
+          success: boolean
+          data?: AppliedInspectionBalloons
           error?: string
           errorCode?: string
         }>

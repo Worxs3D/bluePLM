@@ -13,6 +13,8 @@
  */
 import { createHash } from 'node:crypto'
 
+import type { ExtractedDrawingCharacteristics, InspectionBalloonRequest } from '../lib/inspection/types'
+
 import { createFakeFsApi, type FakeFsOptions } from './fakeElectronFs'
 
 type ElectronAPI = Window['electronAPI']
@@ -25,9 +27,17 @@ export interface SwConfiguration {
   properties: Record<string, string>
 }
 
+/** What the native-inspection commands see in a drawing, and the BluePLM balloons on it. */
+export interface SwDrawing {
+  extraction: ExtractedDrawingCharacteristics
+  balloons: InspectionBalloonRequest[]
+}
+
 export interface SwDocument {
   fileProperties: Record<string, string>
   configurations: SwConfiguration[]
+  /** Present for drawings the inspection commands can read. */
+  drawing?: SwDrawing
 }
 
 export interface DiskEntry {
@@ -59,6 +69,8 @@ function serialize(entry: DiskEntry): string {
       name: c.name,
       properties: sorted(c.properties),
     })),
+    // Balloons are part of a drawing's bytes; other documents serialize as before.
+    ...(entry.document.drawing ? { balloons: entry.document.drawing.balloons } : {}),
   })
 }
 
@@ -276,7 +288,10 @@ const normalize = (path: string) => path.replace(/\//g, SEP)
 const parentOf = (path: string) => path.slice(0, path.lastIndexOf(SEP))
 
 /** The service error codes the fake emits; wire-manifest.json must list each one. */
-export const FAKE_SERVICE_ERROR_CODES = { readOnly: 'DM_FILE_READ_ONLY' } as const
+export const FAKE_SERVICE_ERROR_CODES = {
+  readOnly: 'DM_FILE_READ_ONLY',
+  notADrawing: 'NOT_A_DRAWING',
+} as const
 
 /** Methods Electron's main process answers itself rather than forwarding to the service. */
 export const ANSWERED_BY_MAIN = new Set(['getServiceStatus'])
@@ -292,6 +307,8 @@ export const FAKE_SOLIDWORKS_METHODS = [
   'getProperties',
   'setProperties',
   'setPropertiesBatch',
+  'extractDrawingCharacteristics',
+  'applyInspectionBalloons',
 ] as const
 
 /** A scripted answer for the next call to `action`, replayed before the model answers. */
@@ -359,6 +376,12 @@ export function createFakeElectron(
     error: 'The file is read-only',
     errorCode: FAKE_SERVICE_ERROR_CODES.readOnly,
   }
+
+  const notADrawing = (filePath: string) => ({
+    success: false,
+    error: `Not a drawing: ${filePath}`,
+    errorCode: FAKE_SERVICE_ERROR_CODES.notADrawing,
+  })
 
   const writeScope = (doc: SwDocument, properties: Record<string, string>, configuration?: string) => {
     if (!configuration) {
@@ -479,6 +502,36 @@ export function createFakeElectron(
           propertiesSet,
           propertiesFailed: 0,
           failedProperties: null,
+        },
+      }
+    },
+    async extractDrawingCharacteristics(filePath) {
+      const replay = takeScript('extractDrawingCharacteristics')
+      if (replay) return replay as Awaited<ReturnType<SolidWorksAPI['extractDrawingCharacteristics']>>
+      const { document, error } = documentOf(filePath)
+      if (!document) return { success: false, error }
+      if (!document.drawing) return notADrawing(filePath)
+      return { success: true, data: structuredClone(document.drawing.extraction) }
+    },
+    async applyInspectionBalloons(filePath, balloons) {
+      const replay = takeScript('applyInspectionBalloons')
+      if (replay) return replay as Awaited<ReturnType<SolidWorksAPI['applyInspectionBalloons']>>
+      const { entry, document, error } = documentOf(filePath)
+      if (!document || !entry) return { success: false, error }
+      if (!document.drawing) return notADrawing(filePath)
+      if (entry.readonly) return readOnlyRefusal
+      const keys = new Set(document.drawing.extraction.characteristics.map((c) => c.sourceKey))
+      const placed = balloons.filter((b) => keys.has(b.sourceKey))
+      const removedPrevious = document.drawing.balloons.length
+      document.drawing.balloons = placed.map((b) => ({ ...b }))
+      disk.touch(filePath)
+      return {
+        success: true,
+        data: {
+          placed: placed.length,
+          missing: balloons.filter((b) => !keys.has(b.sourceKey)).map((b) => b.sourceKey),
+          removedPrevious,
+          saved: true,
         },
       }
     },

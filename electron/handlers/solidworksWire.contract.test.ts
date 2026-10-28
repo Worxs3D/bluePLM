@@ -222,6 +222,56 @@ describe('SolidWorks wire: responses the app reads', () => {
   })
 })
 
+describe('SolidWorks wire: native inspection commands', () => {
+  // The renderer reads these result shapes straight off `data`; every field they name must be one
+  // the service returns.
+  it.each([
+    ['extractDrawingCharacteristics', 'ExtractedDrawingCharacteristics'],
+    ['applyInspectionBalloons', 'AppliedInspectionBalloons'],
+  ])('%s returns every field of %s', (action, typeName) => {
+    const fields = interfaceMembers('src/lib/inspection/types.ts', typeName)
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.filter((f) => !manifest.actions[action]?.responseData?.includes(f))).toEqual([])
+  })
+
+  it('the app sends both actions with exactly the fields the manifest lists', () => {
+    const sent = collectSentCommands()
+    for (const action of ['extractDrawingCharacteristics', 'applyInspectionBalloons']) {
+      // filePath is a common field; the manifest may list it per action as well.
+      const own = (keys: string[]) =>
+        [...new Set(keys)].filter((k) => !manifest.commonRequestFields.includes(k)).sort()
+      const sentKeys = sent.filter((c) => c.action === action).flatMap((c) => c.keys)
+      expect(sentKeys, action).toContain('filePath')
+      expect(own(sentKeys), action).toEqual(own(manifest.actions[action]?.request ?? []))
+    }
+  })
+
+  it('the codes the inspection UI branches on are service codes', () => {
+    const sf = parse(resolve(REPO, 'src/lib/inspection/types.ts'))
+    const codes: string[] = []
+    walk(sf, (n) => {
+      if (
+        ts.isVariableDeclaration(n) &&
+        ts.isIdentifier(n.name) &&
+        n.name.text === 'INSPECTION_BALLOON_ERROR_CODES' &&
+        n.initializer
+      ) {
+        walk(n.initializer, (m) => {
+          if (ts.isStringLiteralLike(m) && SCREAMING.test(m.text)) codes.push(m.text)
+        })
+      }
+    })
+    expect(codes).toEqual([
+      'DM_FILE_READ_ONLY',
+      'FILE_OPEN_IN_SOLIDWORKS',
+      'DOC_HAS_UNSAVED_CHANGES',
+      'NOT_A_DRAWING',
+      'DOC_MODIFIED_NOT_SAVED',
+    ])
+    expect(codes.filter((c) => !manifest.errorCodes.service.includes(c))).toEqual([])
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Error codes
 

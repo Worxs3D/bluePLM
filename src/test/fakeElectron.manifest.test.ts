@@ -42,14 +42,32 @@ describe('the fake SolidWorks service matches the wire manifest', () => {
       fileProperties: { Number: 'BR-1' },
       configurations: [{ name: 'Default', properties: { Number: 'BR-1' } }],
     })
+    const drawing = 'C:\\vault\\part.slddrw'
+    electron.disk.write(drawing, 'bytes', {
+      fileProperties: {},
+      configurations: [],
+      drawing: {
+        extraction: {
+          units: 'mm',
+          sheets: [{ name: 'Sheet1', widthM: 0.42, heightM: 0.297 }],
+          characteristics: [],
+          skipped: [],
+          incompleteSheets: [],
+        },
+        balloons: [],
+      },
+    })
     const sw = electron.api.solidworks
     const replies: Record<string, unknown> = {
       getProperties: await sw.getProperties(path),
       setPropertiesBatch: await sw.setPropertiesBatch(path, { Default: { Number: 'BR-2' } }),
+      extractDrawingCharacteristics: await sw.extractDrawingCharacteristics(drawing),
+      applyInspectionBalloons: await sw.applyInspectionBalloons(drawing, [{ sourceKey: 'k', label: '1' }]),
     }
     for (const [action, reply] of Object.entries(replies)) {
       const data = (reply as { data?: Record<string, unknown> }).data ?? {}
-      const expected = manifest.actions[action].responseData ?? []
+      expect(action in manifest.actions, action).toBe(true)
+      const expected = manifest.actions[action]?.responseData ?? []
       expect(expected.filter((field) => !(field in data)), action).toEqual([])
     }
   })

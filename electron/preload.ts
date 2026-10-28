@@ -541,6 +541,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       filePath: string,
       characteristics: Array<Record<string, string | null>>,
     ) => ipcRenderer.invoke('solidworks:set-inspection-characteristics', filePath, characteristics),
+    extractDrawingCharacteristics: (filePath: string) =>
+      ipcRenderer.invoke('solidworks:extract-drawing-characteristics', filePath),
+    applyInspectionBalloons: (
+      filePath: string,
+      balloons: Array<{ sourceKey: string; label: string; persistRef?: string }>,
+    ) => ipcRenderer.invoke('solidworks:apply-inspection-balloons', filePath, balloons),
 
     // Document creation
     createDocumentFromTemplate: (templatePath: string, outputPath: string) =>
@@ -1654,6 +1660,48 @@ declare global {
               }
             }>
           }
+          error?: string
+          errorCode?: string
+        }>
+        // Mirrors src/lib/inspection/types.ts (the electron program cannot import from src/).
+        extractDrawingCharacteristics: (filePath: string) => Promise<{
+          success: boolean
+          data?: {
+            units: 'mm' | 'in' | 'other'
+            sheets: Array<{ name: string; widthM: number; heightM: number }>
+            characteristics: Array<{
+              sourceKey: string
+              baseKey: string
+              persistRef: string
+              annotationName: string
+              sheet: string
+              view: string | null
+              kind: 'dimension' | 'holeCallout' | 'gtol' | 'surfaceFinish'
+              subType: string | null
+              nominal: string
+              unit: string | null
+              plusTolerance: string | null
+              minusTolerance: string | null
+              upperLimit: string | null
+              lowerLimit: string | null
+              toleranceType: string | null
+              isReference: boolean
+              zone: string | null
+              x: number
+              y: number
+            }>
+            skipped: Array<{ sourceKey: string; baseKey: string | null; sheet: string; reason: string }>
+            incompleteSheets: string[]
+          }
+          error?: string
+          errorCode?: string
+        }>
+        applyInspectionBalloons: (
+          filePath: string,
+          balloons: Array<{ sourceKey: string; label: string; persistRef?: string }>,
+        ) => Promise<{
+          success: boolean
+          data?: { placed: number; missing: string[]; removedPrevious: number; saved: boolean }
           error?: string
           errorCode?: string
         }>
