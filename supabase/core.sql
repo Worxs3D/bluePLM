@@ -113,20 +113,21 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 102 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 103 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Members of the Administrators team are administrators in the two module functions that '
-  'still asked only whether users.role was admin. update_extension_config (50-extensions) '
-  'and update_google_drive_settings (40-integrations) now call is_org_admin(), the one '
-  'definition of admin in the database - users.role = admin OR membership of the '
-  'Administrators team - instead of a bare role lookup, so a team member whose role column '
-  'says engineer or viewer is no longer refused. The organization binding is unchanged: '
-  'require_org_member() still runs first. The manifest rows for both functions now require '
-  'is_org_admin as well as require_org_member, so a revert to the bare role test is '
-  'reported by verification instead of passing as ok. The renderer and the API apply the '
-  'same definition, so the three layers can no longer disagree about who is an admin.'
+  'Native inspection extraction binds inspection rows to the drawing annotations they came '
+  'from. inspection_characteristics and inspection_characteristic_versions gain source_key, '
+  'source_sheet and source_view (nullable text; NULL on manual rows and on rows from before '
+  'this release), and checkin_file copies all three into each snapshot. source_key is a '
+  'stable hash of the annotation persist reference read through the plain SOLIDWORKS API, '
+  'so a characteristic keeps its balloon number across re-extractions without a SOLIDWORKS '
+  'Inspection license. The three columns are deliberately left out of inspection_hash: '
+  'adding them would change the fingerprint of every existing table and give every drawing '
+  'a spurious version on its next check-in, and a key-only change loses nothing because the '
+  'live row keeps the keys and the snapshot still copies them. The release manifest has no '
+  'column kind, so verification does not see the columns; no function or table was added.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.

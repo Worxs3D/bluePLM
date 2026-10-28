@@ -13,11 +13,26 @@
 import { getSupabaseClient } from '../client'
 
 import type {
-  InspectionCharacteristic,
-  InspectionCharacteristicInsert,
-  InspectionCharacteristicVersion,
+  InspectionCharacteristic as GeneratedInspectionCharacteristic,
+  InspectionCharacteristicInsert as GeneratedInspectionCharacteristicInsert,
+  InspectionCharacteristicVersion as GeneratedInspectionCharacteristicVersion,
   InspectionMethod,
 } from '../../../types/database'
+
+/**
+ * Drawing source binding columns added in schema 103 (15-inspection.sql).
+ *
+ * TODO(schema 103): remove this intersection once the schema is applied and `npm run gen:types`
+ * has regenerated src/types/supabase.ts with these columns (never hand-edit that file).
+ */
+interface InspectionSourceColumns {
+  source_key: string | null
+  source_sheet: string | null
+  source_view: string | null
+}
+type InspectionCharacteristic = GeneratedInspectionCharacteristic & InspectionSourceColumns
+type InspectionCharacteristicVersion = GeneratedInspectionCharacteristicVersion & InspectionSourceColumns
+type InspectionCharacteristicInsert = GeneratedInspectionCharacteristicInsert & Partial<InspectionSourceColumns>
 
 /** Editable fields of an inspection characteristic (no audit/identity columns). */
 export interface InspectionRowValues {
@@ -42,6 +57,12 @@ export interface InspectionRowValues {
   internal_inspection_rate: number | null
   reference: string | null
   comments: string | null
+  /** Stable key of the drawing annotation this row was extracted from (null for manual / add-in rows). */
+  source_key: string | null
+  /** Sheet the annotation sits on, as extracted. */
+  source_sheet: string | null
+  /** Drawing view the annotation belongs to, as extracted (null for sheet annotations). */
+  source_view: string | null
 }
 
 /** A row as edited in the UI. `id` is present for existing rows, absent/local for new ones. */
@@ -86,7 +107,7 @@ export async function getInspectionRows(
     return { success: false, error: error.message }
   }
 
-  return { success: true, rows: data ?? [] }
+  return { success: true, rows: (data ?? []) as InspectionCharacteristic[] }
 }
 
 /**
@@ -116,7 +137,74 @@ export async function getInspectionRowsForVersion(
     return { success: false, error: error.message }
   }
 
-  return { success: true, rows: data ?? [] }
+  return { success: true, rows: (data ?? []) as InspectionCharacteristicVersion[] }
+}
+
+/**
+ * Highest numeric balloon number in a list of balloon_number values. Values that are not a
+ * plain non-negative integer (blank, "12A", "1.5", "-") are ignored. Returns 0 when none is numeric.
+ */
+export function maxNumericBalloonNumber(values: readonly (string | null | undefined)[]): number {
+  let max = 0
+  for (const value of values) {
+    const trimmed = value?.trim()
+    if (!trimmed || !/^\d+$/.test(trimmed)) continue
+    const n = Number(trimmed)
+    if (Number.isSafeInteger(n) && n > max) max = n
+  }
+  return max
+}
+
+const BALLOON_PAGE_SIZE = 1000
+
+/**
+ * The highest numeric balloon number this file has ever used: the max over its live rows and
+ * every snapshot of every one of its versions. New extracted characteristics are numbered above
+ * it, so a number that has been checked in is never reused. Non-numeric numbers are ignored.
+ *
+ * Snapshots have no file_id, so they are reached through file_versions (inner join). That is one
+ * query for the whole history (paged past PostgREST's row cap), not one per version.
+ */
+export async function getHighestUsedBalloonNumber(
+  fileId: string,
+): Promise<{ success: boolean; highest?: number; error?: string; notInstalled?: boolean }> {
+  const client = getSupabaseClient()
+
+  const { data: live, error: liveError } = await client
+    .from('inspection_characteristics')
+    .select('balloon_number')
+    .eq('file_id', fileId)
+
+  if (liveError) {
+    if (isTableMissingError(liveError)) {
+      return { success: false, notInstalled: true, error: liveError.message }
+    }
+    return { success: false, error: liveError.message }
+  }
+
+  const values: (string | null)[] = (live ?? []).map((row) => row.balloon_number)
+
+  for (let offset = 0; ; offset += BALLOON_PAGE_SIZE) {
+    const { data: page, error } = await client
+      .from('inspection_characteristic_versions')
+      .select('id, balloon_number, file_versions!inner(file_id)')
+      .eq('file_versions.file_id', fileId)
+      .order('id', { ascending: true })
+      .range(offset, offset + BALLOON_PAGE_SIZE - 1)
+
+    if (error) {
+      if (isTableMissingError(error)) {
+        return { success: false, notInstalled: true, error: error.message }
+      }
+      return { success: false, error: error.message }
+    }
+
+    const rows = page ?? []
+    for (const row of rows) values.push(row.balloon_number)
+    if (rows.length < BALLOON_PAGE_SIZE) break
+  }
+
+  return { success: true, highest: maxNumericBalloonNumber(values) }
 }
 
 /**
@@ -163,7 +251,8 @@ export async function saveInspectionRows(
     return { success: true }
   }
 
-  // Upsert provided rows
+  // Upsert provided rows. Ids are kept, so a row keeps its identity across saves, and every
+  // editable field (including source_key / source_sheet / source_view) is written from `values`.
   const now = new Date().toISOString()
   const payload: InspectionCharacteristicInsert[] = rows.map(({ id, ...values }) => ({
     id,

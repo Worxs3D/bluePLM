@@ -119,6 +119,10 @@ export {
   addInspectionMethod,
   updateInspectionMethod,
   deleteInspectionMethod,
+  getHighestUsedBalloonNumber,
+  maxNumericBalloonNumber,
+  emptyRowValues,
+  toRowInput,
   // Folder operations
   syncFolder,
   getVaultFolders,
