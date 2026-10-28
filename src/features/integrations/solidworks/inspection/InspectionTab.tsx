@@ -10,6 +10,8 @@ import {
   addInspectionMethod,
   updateInspectionMethod,
   deleteInspectionMethod,
+  emptyRowValues,
+  toRowInput,
   getFileVersions,
   type InspectionRowInput,
   type InspectionRowValues,
@@ -37,317 +39,41 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronsUpDown,
-  X,
-  Pencil,
-  Check,
   Settings2,
+  ScanSearch,
+  CircleDot,
 } from 'lucide-react'
 
 import { useSolidWorksService } from '../SolidWorksPanel'
 import { uploadInspectionPreview } from './uploadPreview'
+import { COLUMNS, DEFAULT_INSPECTION_METHODS } from './inspectionColumns'
+import { deriveCharType, subtypeLabel } from './swInspectionSubtypes'
+import {
+  buildPushBaseline,
+  compareRows,
+  matchesFilter,
+  serializePushable,
+  sortByBalloonAsc,
+  type SortDir,
+} from './inspectionTableUtils'
+import { InspectionCell } from './InspectionCell'
+import { ColumnFilter } from './ColumnFilter'
+import { MethodManagerModal } from './MethodManagerModal'
+import { useDrawingCharacteristics } from './useDrawingCharacteristics'
+import { ExtractPreviewDialog } from './ExtractPreviewDialog'
+import { BalloonConfirmDialog } from './BalloonConfirmDialog'
 
 interface InspectionTabProps {
   file: LocalFile
 }
 
-type ColumnType = 'text' | 'number' | 'select'
-
-interface ColumnDef {
-  key: keyof InspectionRowValues
-  label: string
-  type: ColumnType
-  options?: string[]
-  width: string
-}
-
-const CHAR_TYPES = ['Dimension', 'GTOL', 'Note', 'Datum']
-
-// Built-in inspection methods offered in the Method dropdown. Orgs can add more, which
-// are stored in the inspection_methods table and merged with these at runtime.
-const DEFAULT_INSPECTION_METHODS = [
-  'Visual',
-  'Scale/Ruler',
-  'Tape Measure',
-  'Calipers',
-  'Micrometer (OD)',
-  'Micrometer (ID)',
-  'Depth Micrometer',
-  'Height Gauge',
-  'Bore Gauge',
-  'Pin Gauge',
-  'Plug Gauge',
-  'Ring Gauge',
-  'Thread Gauge',
-  'Go/No-Go Gauge',
-  'Radius Gauge',
-  'Feeler Gauge',
-  'Dial Indicator',
-  'Protractor',
-  'Optical Comparator',
-  'CMM',
-  'Vision System',
-  'Laser Scanner',
-  'Surface Roughness Tester',
-  'Hardness Tester',
-  'Torque Wrench',
-]
-
-// Sentinel option value used to trigger the "add a new method" flow from the dropdown.
-const ADD_METHOD_OPTION = '__add_method__'
-
-// SOLIDWORKS Inspection characteristic sub-types (swiCharacteristicSubType_e, read from the
-// add-in interop DLL). The Inspection API exposes SubType as an integer but has no Type field,
-// so we both label the Sub-Type column and derive the bluePLM Type (Dimension/GTOL) from it.
-const SWI_SUBTYPE_LABELS: Record<number, string> = {
-  0: 'Diameter',
-  1: 'Radial',
-  2: 'Angular',
-  3: 'Length',
-  4: 'Angularity',
-  5: 'Concentricity',
-  6: 'Cylindricity',
-  7: 'Flatness',
-  8: 'Parallelism',
-  9: 'Perpendicularity',
-  10: 'Position',
-  11: 'Profile',
-  12: 'Profile of a Line',
-  13: 'Circularity',
-  14: 'Runout',
-  15: 'Straightness',
-  16: 'Symmetry',
-  17: 'Total Runout',
-  // 18 = NA (no meaningful sub-type) → left blank
-  19: 'Arc Length',
-  20: 'Chamfer',
-  21: 'Scalar',
-  22: 'Depth',
-  23: 'Counterbore Diameter',
-  24: 'Counterbore Depth',
-  25: 'Countersink Diameter',
-  26: 'Countersink Depth',
-  27: 'Square',
-  28: 'Thread',
-  29: 'Thread Size',
-  30: 'Thread Depth',
-  31: 'Countersink Angle',
-  32: 'Bend Angle',
-  33: 'Bend Radius',
-  34: 'Bend Direction',
-  35: 'Bend Sequence',
-  36: 'Bend Quantity',
-  37: 'Counterdrill Angle',
-  38: 'Counterdrill Depth',
-  39: 'Counterdrill Diameter',
-  40: 'Description',
-  41: 'Drill Angle',
-  42: 'Far Side Countersink Angle',
-  43: 'Far Side Countersink Diameter',
-  44: 'Fastener Size',
-  45: 'Fastener Type',
-  46: 'Head Clearance',
-  47: 'Hole Depth',
-  48: 'Hole Diameter',
-  49: 'Major Diameter',
-  50: 'Middle Countersink Angle',
-  51: 'Middle Countersink Diameter',
-  52: 'Minor Diameter',
-  53: 'Near Side Countersink Angle',
-  54: 'Near Side Countersink Diameter',
-  55: 'Standard',
-  56: 'Tap Drill Depth',
-  57: 'Tap Drill Diameter',
-  58: 'Thread Angle',
-  59: 'Thread Description',
-  60: 'Thread Diameter',
-  61: 'Thread Series',
-  62: 'Thru Hole Depth',
-  63: 'Thru Hole Diameter',
-  64: 'Thru Tap Depth',
-  65: 'Thru Tap Drill Diameter',
-  66: 'Thread Class',
-  67: 'Slot Length',
-  100: 'Hole X Location',
-  101: 'Hole Y Location',
-}
-
-// swiCharacteristicSubType_e IDs 4–17 are the geometric tolerances (Angularity…Total Runout).
-const SWI_GTOL_SUBTYPES = new Set([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
-const SWI_SUBTYPE_NA = 18
-
-/** Human-readable label for a SOLIDWORKS Inspection sub-type code (null when unknown/NA). */
-function subtypeLabel(subType: number | null | undefined): string | null {
-  if (subType === null || subType === undefined || subType === SWI_SUBTYPE_NA) return null
-  return SWI_SUBTYPE_LABELS[subType] ?? null
-}
-
-/**
- * Derive the bluePLM characteristic Type from the SOLIDWORKS Inspection sub-type code. The
- * Inspection API has no Type field, but the sub-type unambiguously implies the category:
- * IDs 4–17 are geometric tolerances (GTOL); everything else is dimensional (Dimension).
- * Returns null for the NA sub-type so the Type is left for the user to set.
- */
-function deriveCharType(subType: number | null | undefined): string | null {
-  if (subType === null || subType === undefined || subType === SWI_SUBTYPE_NA) return null
-  if (SWI_GTOL_SUBTYPES.has(subType)) return 'GTOL'
-  return 'Dimension'
-}
-
-const CLASSIFICATIONS = ['Critical', 'Major', 'Minor', 'Incidental']
-
-const COLUMNS: ColumnDef[] = [
-  { key: 'balloon_number', label: 'Balloon', type: 'text', width: 'w-20' },
-  { key: 'zone', label: 'Zone', type: 'text', width: 'w-16' },
-  { key: 'char_type', label: 'Type', type: 'select', options: CHAR_TYPES, width: 'w-28' },
-  { key: 'sub_type', label: 'Sub-Type', type: 'text', width: 'w-28' },
-  { key: 'nominal_value', label: 'Value', type: 'text', width: 'w-32' },
-  { key: 'unit', label: 'Unit', type: 'text', width: 'w-16' },
-  { key: 'plus_tolerance', label: '+ Tol', type: 'text', width: 'w-20' },
-  { key: 'minus_tolerance', label: '- Tol', type: 'text', width: 'w-20' },
-  { key: 'upper_limit', label: 'Upper', type: 'text', width: 'w-20' },
-  { key: 'lower_limit', label: 'Lower', type: 'text', width: 'w-20' },
-  {
-    key: 'classification',
-    label: 'Criticality',
-    type: 'select',
-    options: CLASSIFICATIONS,
-    width: 'w-28',
-  },
-  { key: 'inspection_method', label: 'Method', type: 'text', width: 'w-32' },
-  { key: 'operation', label: 'Operation', type: 'text', width: 'w-28' },
-  { key: 'aql', label: 'AQL', type: 'text', width: 'w-20' },
-  { key: 'sample_size', label: 'Sample', type: 'number', width: 'w-20' },
-  { key: 'supplier_inspection_rate', label: 'Supplier %', type: 'number', width: 'w-24' },
-  { key: 'internal_inspection_rate', label: 'Internal %', type: 'number', width: 'w-24' },
-  { key: 'reference', label: 'Reference', type: 'text', width: 'w-28' },
-  { key: 'comments', label: 'Comments', type: 'text', width: 'w-48' },
-]
-
 const AUTOSAVE_DELAY_MS = 1000
 
 const CURRENT_VERSION = 'current'
 
-// Font stack that can render GD&T / technical symbols (⌓, ⌭, ⊥, ⌖, Ø, …) decoded from
-// SOLIDWORKS. 'Segoe UI Symbol' covers the Unicode Miscellaneous Technical block on Windows.
-const SYMBOL_FONT = "'Segoe UI', 'Segoe UI Symbol', 'Cambria Math', system-ui, sans-serif"
-
-type SortDir = 'asc' | 'desc'
-
-/** Base row order used for persistence: balloon ascending (natural), empty balloons last. */
-function sortByBalloonAsc(rows: InspectionRowInput[]): InspectionRowInput[] {
-  return [...rows].sort((a, b) => {
-    const av = a.balloon_number ?? ''
-    const bv = b.balloon_number ?? ''
-    if (av === '' && bv === '') return 0
-    if (av === '') return 1
-    if (bv === '') return -1
-    return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
-  })
-}
-
-/** Generic column comparison. Empty values always sort to the bottom regardless of direction. */
-function compareRows(
-  a: InspectionRowInput,
-  b: InspectionRowInput,
-  key: keyof InspectionRowValues,
-  dir: SortDir,
-  type: ColumnType,
-): number {
-  const av = a[key]
-  const bv = b[key]
-  const aEmpty = av === null || av === undefined || av === ''
-  const bEmpty = bv === null || bv === undefined || bv === ''
-  if (aEmpty && bEmpty) return 0
-  if (aEmpty) return 1
-  if (bEmpty) return -1
-
-  let cmp: number
-  if (type === 'number') {
-    cmp = Number(av) - Number(bv)
-  } else {
-    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
-  }
-  return dir === 'asc' ? cmp : -cmp
-}
-
-/** Per-column filter match. Select uses exact match, text/number use case-insensitive contains. */
-function matchesFilter(
-  row: InspectionRowInput,
-  key: keyof InspectionRowValues,
-  filterValue: string,
-  type: ColumnType,
-): boolean {
-  if (!filterValue) return true
-  const value = row[key]
-  if (type === 'select') return String(value ?? '') === filterValue
-  const text = value === null || value === undefined ? '' : String(value)
-  return text.toLowerCase().includes(filterValue.toLowerCase())
-}
-
 interface VersionOption {
   id: string
   version: number
-}
-
-function emptyRowValues(sortOrder: number): InspectionRowValues {
-  return {
-    sort_order: sortOrder,
-    balloon_number: null,
-    char_id: null,
-    zone: null,
-    char_type: null,
-    sub_type: null,
-    nominal_value: null,
-    unit: null,
-    plus_tolerance: null,
-    minus_tolerance: null,
-    upper_limit: null,
-    lower_limit: null,
-    classification: null,
-    inspection_method: null,
-    operation: null,
-    aql: null,
-    sample_size: null,
-    supplier_inspection_rate: null,
-    internal_inspection_rate: null,
-    reference: null,
-    comments: null,
-  }
-}
-
-// Metadata fields we can write back to the SOLIDWORKS Bill of Characteristics. Geometry-derived
-// values (nominal, tolerances, limits) are never pushed. Order matters for the serialized baseline.
-const PUSHABLE_FIELDS: (keyof InspectionRowValues)[] = [
-  'classification',
-  'inspection_method',
-  'operation',
-  'aql',
-  'comments',
-]
-
-/** Serialize a row's pushable metadata for baseline/dirty comparison. */
-function serializePushable(row: InspectionRowInput): string {
-  return JSON.stringify(PUSHABLE_FIELDS.map((key) => row[key] ?? null))
-}
-
-/** Build a baseline map (row id -> serialized pushable fields) for unpushed-change tracking. */
-function buildPushBaseline(rows: InspectionRowInput[]): Record<string, string> {
-  const baseline: Record<string, string> = {}
-  for (const row of rows) baseline[row.id] = serializePushable(row)
-  return baseline
-}
-
-/** Map any inspection row record (live or snapshot) to the editable input shape. */
-function toRowInput(record: Record<string, unknown>): InspectionRowInput {
-  const base = emptyRowValues(0)
-  const result: InspectionRowInput = { ...base, id: String(record.id ?? crypto.randomUUID()) }
-  for (const key of Object.keys(base) as (keyof InspectionRowValues)[]) {
-    if (record[key] !== undefined && record[key] !== null) {
-      // @ts-expect-error - assigning dynamically validated field
-      result[key] = record[key]
-    }
-  }
-  return result
 }
 
 export function InspectionTab({ file }: InspectionTabProps) {
@@ -386,6 +112,12 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dirtyRef = useRef(false)
+  // The file whose live rows are on screen; null while loading or when a version snapshot is
+  // shown. `persist` writes only to this file, so rows never land on another file or version.
+  const loadedForRef = useRef<string | null>(null)
+  // Saves run one at a time: `saveInspectionRows` deletes then upserts, so an autosave of older
+  // rows still in flight could otherwise delete rows a later save just added.
+  const saveChainRef = useRef<Promise<unknown>>(Promise.resolve())
 
   const viewingCurrent = selectedVersion === CURRENT_VERSION
   const editable = viewingCurrent && isCheckedOutByMe
@@ -458,6 +190,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
     if (!fileId) return
     let cancelled = false
     setIsLoading(true)
+    loadedForRef.current = null
 
     const loader = viewingCurrent
       ? getInspectionRows(fileId)
@@ -478,13 +211,14 @@ export function InspectionTab({ file }: InspectionTabProps) {
           return
         }
         setNotInstalled(false)
-        const mapped = (result.rows ?? []).map((r) => toRowInput(r as Record<string, unknown>))
+        const mapped = (result.rows ?? []).map((r) => toRowInput(r))
         const sorted = sortByBalloonAsc(mapped)
         setRows(sorted)
         // Treat freshly loaded rows as the in-sync baseline; unpushed changes are tracked per session
         // relative to the last pull/push.
         setPushBaseline(buildPushBaseline(sorted))
         dirtyRef.current = false
+        loadedForRef.current = viewingCurrent ? fileId : null
       })
       .catch((error) => {
         if (cancelled) return
@@ -501,25 +235,44 @@ export function InspectionTab({ file }: InspectionTabProps) {
   }, [fileId, selectedVersion, viewingCurrent, addToast])
 
   const persist = useCallback(
-    async (rowsToSave: InspectionRowInput[]) => {
-      if (!fileId || !orgId || !user?.id) return
-      setIsSaving(true)
-      try {
-        const ordered = rowsToSave.map((row, index) => ({ ...row, sort_order: index }))
-        const result = await saveInspectionRows(fileId, orgId, user.id, ordered)
-        if (!result.success) {
-          addToast('error', result.error || t('common.error'))
-        } else {
-          dirtyRef.current = false
+    (rowsToSave: InspectionRowInput[]): Promise<boolean> => {
+      // Only the live rows of the file they were loaded for, while it is checked out by me.
+      // Decided now, not when the queued save runs: a file switch's cleanup flushes through
+      // here, and the next load resets `loadedForRef` before the chained save gets its turn.
+      const allowed = viewingCurrent && isCheckedOutByMe && loadedForRef.current === fileId
+      const loadedFor = loadedForRef.current
+      const save = async (): Promise<boolean> => {
+        if (!fileId || !orgId || !user?.id) return false
+        if (!allowed) {
+          log.warn('[InspectionTab]', 'Save refused: rows are not the editable live table', {
+            fileId,
+            loadedFor,
+          })
+          return false
         }
-      } catch (error) {
-        log.error('[InspectionTab]', 'Save failed', { error: String(error) })
-        addToast('error', t('common.error'))
-      } finally {
-        setIsSaving(false)
+        setIsSaving(true)
+        try {
+          const ordered = rowsToSave.map((row, index) => ({ ...row, sort_order: index }))
+          const result = await saveInspectionRows(fileId, orgId, user.id, ordered)
+          if (!result.success) {
+            addToast('error', result.error || t('common.error'))
+            return false
+          }
+          dirtyRef.current = false
+          return true
+        } catch (error) {
+          log.error('[InspectionTab]', 'Save failed', { error: String(error) })
+          addToast('error', t('common.error'))
+          return false
+        } finally {
+          setIsSaving(false)
+        }
       }
+      const run = saveChainRef.current.then(save)
+      saveChainRef.current = run.catch(() => undefined)
+      return run
     },
-    [fileId, orgId, user?.id, addToast],
+    [fileId, orgId, user?.id, viewingCurrent, isCheckedOutByMe, addToast],
   )
 
   // Debounced autosave when edits are pending
@@ -533,6 +286,57 @@ export function InspectionTab({ file }: InspectionTabProps) {
     },
     [persist],
   )
+
+  // Latest rows for the drawing flows, which read the table after awaiting the service.
+  const rowsRef = useRef<InspectionRowInput[]>(rows)
+  useEffect(() => {
+    rowsRef.current = rows
+  }, [rows])
+  const getRows = useCallback(() => rowsRef.current, [])
+
+  // Write a debounced edit now, so the drawing flows plan against what is saved.
+  const flushPendingSave = useCallback(async (): Promise<boolean> => {
+    if (!dirtyRef.current) return true
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = null
+    return persist(rowsRef.current)
+  }, [persist])
+
+  // Extraction replaced the table. New rows have nothing to push to the add-in, so they join
+  // the push baseline as in sync.
+  const commitMergedRows = useCallback(
+    async (next: InspectionRowInput[], added: InspectionRowInput[]): Promise<boolean> => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = null
+      rowsRef.current = next
+      setRows(next)
+      setPushBaseline((prev) => ({ ...prev, ...buildPushBaseline(added) }))
+      return persist(next)
+    },
+    [persist],
+  )
+
+  // Leaving a file or version writes its pending edit first, while `persist` still belongs to it.
+  useEffect(() => {
+    return () => {
+      if (!dirtyRef.current) return
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = null
+      void persist(rowsRef.current)
+    }
+  }, [fileId, selectedVersion, persist])
+
+  const drawing = useDrawingCharacteristics({
+    file,
+    fileId,
+    version: selectedVersion,
+    enabled: editable && isDrawing,
+    serviceRunning: swStatus.running,
+    serviceVersion: swStatus.version,
+    getRows,
+    flushPendingSave,
+    commitMergedRows,
+  })
 
   // Flush pending save on unmount
   useEffect(() => {
@@ -1004,8 +808,46 @@ export function InspectionTab({ file }: InspectionTabProps) {
         {editable && isDrawing && (
           <button
             type="button"
+            onClick={() => void drawing.handleExtract()}
+            disabled={drawing.busy || isImporting || isPushing}
+            className="btn btn-secondary btn-sm gap-1"
+            title={t('source.inspection.extractTitle')}
+          >
+            {drawing.isExtracting ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <ScanSearch size={12} />
+            )}
+            {drawing.isExtracting
+              ? t('source.inspection.extracting')
+              : t('source.inspection.extractFromDrawing')}
+          </button>
+        )}
+
+        {editable && isDrawing && rows.length > 0 && (
+          <button
+            type="button"
+            onClick={() => void drawing.handleBalloon()}
+            disabled={drawing.busy || isImporting || isPushing}
+            className="btn btn-secondary btn-sm gap-1"
+            title={t('source.inspection.balloonTitle')}
+          >
+            {drawing.isBallooning ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <CircleDot size={12} />
+            )}
+            {drawing.isBallooning
+              ? t('source.inspection.ballooning')
+              : t('source.inspection.balloonDrawing')}
+          </button>
+        )}
+
+        {editable && isDrawing && (
+          <button
+            type="button"
             onClick={handleImportFromSw}
-            disabled={isImporting || isPushing}
+            disabled={isImporting || isPushing || drawing.busy}
             className="btn btn-secondary btn-sm gap-1"
             title={t('source.inspection.importFromSw')}
           >
@@ -1018,7 +860,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
           <button
             type="button"
             onClick={handlePushToSw}
-            disabled={isImporting || isPushing || !hasUnpushed}
+            disabled={isImporting || isPushing || drawing.busy || !hasUnpushed}
             className="btn btn-secondary btn-sm gap-1"
             title={
               hasUnpushed
@@ -1129,8 +971,25 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 {isDrawing && (
                   <button
                     type="button"
+                    onClick={() => void drawing.handleExtract()}
+                    disabled={drawing.busy || isImporting}
+                    className="btn btn-secondary btn-sm gap-1"
+                  >
+                    {drawing.isExtracting ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <ScanSearch size={12} />
+                    )}
+                    {drawing.isExtracting
+                      ? t('source.inspection.extracting')
+                      : t('source.inspection.extractFromDrawing')}
+                  </button>
+                )}
+                {isDrawing && (
+                  <button
+                    type="button"
                     onClick={handleImportFromSw}
-                    disabled={isImporting}
+                    disabled={isImporting || drawing.busy}
                     className="btn btn-secondary btn-sm gap-1"
                   >
                     {isImporting ? (
@@ -1215,7 +1074,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
                       <InspectionCell
                         col={col}
                         value={row[col.key]}
-                        editable={editable && col.key !== 'balloon_number'}
+                        editable={editable && col.key !== 'balloon_number' && !col.readOnly}
                         onChange={(value) => handleCellChange(row.id, col.key, value)}
                         methodOptions={methodOptions}
                         onManageMethods={() => setMethodModalOpen(true)}
@@ -1242,6 +1101,23 @@ export function InspectionTab({ file }: InspectionTabProps) {
         )}
       </div>
 
+      {drawing.pendingExtract && (
+        <ExtractPreviewDialog
+          pending={drawing.pendingExtract}
+          onToggleRemove={drawing.toggleRemove}
+          onConfirm={() => void drawing.confirmExtract()}
+          onCancel={drawing.cancelExtract}
+        />
+      )}
+
+      {drawing.pendingBalloons && (
+        <BalloonConfirmDialog
+          plan={drawing.pendingBalloons}
+          onConfirm={() => void drawing.confirmBalloon()}
+          onCancel={drawing.cancelBalloon}
+        />
+      )}
+
       {methodModalOpen && (
         <MethodManagerModal
           methods={orgMethods}
@@ -1252,351 +1128,6 @@ export function InspectionTab({ file }: InspectionTabProps) {
           onClose={() => setMethodModalOpen(false)}
         />
       )}
-    </div>
-  )
-}
-
-interface InspectionCellProps {
-  col: ColumnDef
-  value: string | number | boolean | null
-  editable: boolean
-  onChange: (value: string | number | boolean | null) => void
-  methodOptions?: string[]
-  onManageMethods?: () => void
-}
-
-function InspectionCell({
-  col,
-  value,
-  editable,
-  onChange,
-  methodOptions,
-  onManageMethods,
-}: InspectionCellProps) {
-  if (!editable) {
-    const display = value === null || value === undefined || value === '' ? '—' : String(value)
-    return (
-      <span
-        className="block px-1 py-0.5 text-pdm-fg/90 truncate"
-        style={{ fontFamily: SYMBOL_FONT }}
-      >
-        {display}
-      </span>
-    )
-  }
-
-  // Method is a controlled vocabulary: built-in + org methods, with a "manage" option that
-  // opens the method manager modal (add/edit/remove).
-  if (col.key === 'inspection_method') {
-    const current = value === null || value === undefined ? '' : String(value)
-    const options = methodOptions ?? []
-    const currentInOptions =
-      current !== '' && options.some((m) => m.toLowerCase() === current.toLowerCase())
-    return (
-      <select
-        value={current}
-        onChange={(e) => {
-          const next = e.target.value
-          if (next === ADD_METHOD_OPTION) {
-            onManageMethods?.()
-            return
-          }
-          onChange(next === '' ? null : next)
-        }}
-        className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
-      >
-        <option value="">—</option>
-        {!currentInOptions && current !== '' && <option value={current}>{current}</option>}
-        {options.map((method) => (
-          <option key={method} value={method}>
-            {method}
-          </option>
-        ))}
-        <option value={ADD_METHOD_OPTION}>{t('source.inspection.manageMethods')}</option>
-      </select>
-    )
-  }
-
-  if (col.type === 'select') {
-    return (
-      <select
-        value={value === null || value === undefined ? '' : String(value)}
-        onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
-        className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
-      >
-        <option value="">—</option>
-        {col.options?.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  return (
-    <input
-      type={col.type === 'number' ? 'number' : 'text'}
-      value={value === null || value === undefined ? '' : String(value)}
-      onChange={(e) => {
-        if (col.type === 'number') {
-          const raw = e.target.value
-          onChange(raw === '' ? null : Number(raw))
-        } else {
-          onChange(e.target.value === '' ? null : e.target.value)
-        }
-      }}
-      className="w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs"
-      style={col.type === 'text' ? { fontFamily: SYMBOL_FONT } : undefined}
-    />
-  )
-}
-
-interface ColumnFilterProps {
-  col: ColumnDef
-  value: string
-  onChange: (value: string) => void
-}
-
-function ColumnFilter({ col, value, onChange }: ColumnFilterProps) {
-  const baseClass =
-    'w-full bg-pdm-bg border border-pdm-border rounded px-1 py-0.5 text-xs font-normal text-pdm-fg/90'
-
-  if (col.type === 'select') {
-    return (
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={baseClass}>
-        <option value="">{t('source.inspection.filterAll')}</option>
-        {col.options?.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  return (
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={t('source.inspection.filterPlaceholder')}
-      className={baseClass}
-      style={{ fontFamily: SYMBOL_FONT }}
-    />
-  )
-}
-
-interface MethodManagerModalProps {
-  methods: InspectionMethodOption[]
-  builtInMethods: string[]
-  onAdd: (name: string) => Promise<boolean>
-  onRename: (id: string, name: string) => Promise<boolean>
-  onRemove: (id: string) => Promise<boolean>
-  onClose: () => void
-}
-
-/** A merged list entry: built-in methods have a null id (read-only); org methods have an id. */
-interface MethodListRow {
-  id: string | null
-  name: string
-}
-
-function MethodManagerModal({
-  methods,
-  builtInMethods,
-  onAdd,
-  onRename,
-  onRemove,
-  onClose,
-}: MethodManagerModalProps) {
-  const [newName, setNewName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingValue, setEditingValue] = useState('')
-
-  // Built-in + custom, custom wins on case-insensitive clash, always alphabetically sorted.
-  const rows = useMemo<MethodListRow[]>(() => {
-    const map = new Map<string, MethodListRow>()
-    for (const name of builtInMethods) {
-      const key = name.trim().toLowerCase()
-      if (key) map.set(key, { id: null, name: name.trim() })
-    }
-    for (const method of methods) {
-      const key = method.name.trim().toLowerCase()
-      if (key) map.set(key, { id: method.id, name: method.name.trim() })
-    }
-    return [...map.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-    )
-  }, [builtInMethods, methods])
-
-  const handleAdd = useCallback(async () => {
-    const name = newName.trim()
-    if (!name || busy) return
-    setBusy(true)
-    const ok = await onAdd(name)
-    setBusy(false)
-    if (ok) setNewName('')
-  }, [newName, busy, onAdd])
-
-  const commitEdit = useCallback(
-    async (id: string) => {
-      const name = editingValue.trim()
-      if (!name) {
-        setEditingId(null)
-        return
-      }
-      setBusy(true)
-      const ok = await onRename(id, name)
-      setBusy(false)
-      if (ok) setEditingId(null)
-    },
-    [editingValue, onRename],
-  )
-
-  const handleRemove = useCallback(
-    async (id: string) => {
-      if (busy) return
-      setBusy(true)
-      await onRemove(id)
-      setBusy(false)
-    },
-    [busy, onRemove],
-  )
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-pdm-bg border border-pdm-border rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-pdm-border">
-          <div className="flex items-center gap-2 text-sm font-medium text-pdm-fg">
-            <Settings2 size={15} />
-            {t('source.inspection.methodsTitle')}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-pdm-border">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void handleAdd()
-              }
-            }}
-            placeholder={t('source.inspection.addMethodPlaceholder')}
-            className="flex-1 bg-pdm-bg border border-pdm-border rounded px-2 py-1 text-sm"
-            autoFocus
-          />
-          <button
-            type="button"
-            onClick={() => void handleAdd()}
-            disabled={!newName.trim() || busy}
-            className="btn btn-secondary btn-sm gap-1"
-          >
-            <Plus size={12} />
-            {t('source.inspection.addMethodButton')}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-auto py-1">
-          {rows.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-pdm-fg/50">
-              {t('source.inspection.noMethods')}
-            </div>
-          ) : (
-            rows.map((row) => (
-              <div
-                key={row.id ?? `builtin:${row.name}`}
-                className="flex items-center gap-2 px-4 py-1.5 hover:bg-pdm-bg/40 group"
-              >
-                {row.id !== null && row.id === editingId ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editingValue}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          void commitEdit(row.id as string)
-                        }
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
-                      className="flex-1 bg-pdm-bg border border-pdm-border rounded px-2 py-1 text-sm"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void commitEdit(row.id as string)}
-                      disabled={busy}
-                      className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
-                      title={t('common.save')}
-                    >
-                      <Check size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/70"
-                      title={t('common.cancel')}
-                    >
-                      <X size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm text-pdm-fg/90 truncate">{row.name}</span>
-                    {row.id !== null ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingId(row.id)
-                            setEditingValue(row.name)
-                          }}
-                          className="p-1 rounded hover:bg-pdm-border/50 text-pdm-fg/60 opacity-0 group-hover:opacity-100"
-                          title={t('common.edit')}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleRemove(row.id as string)}
-                          disabled={busy}
-                          className="p-1 rounded hover:bg-pdm-error/20 text-pdm-error opacity-0 group-hover:opacity-100"
-                          title={t('common.delete')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-[10px] uppercase tracking-wide text-pdm-fg/40 px-1">
-                        {t('source.inspection.builtIn')}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   )
 }
