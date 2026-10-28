@@ -15,6 +15,7 @@ import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { log } from '@/lib/logger'
+import { isCadPreviewMode } from '@/types/cadPreviewMode'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
@@ -437,8 +438,10 @@ export const usePDMStore = create<PDMStoreState>()(
           expandedFolders: new Set((persisted.expandedFolders as string[]) || []),
           // Convert expandedPendingSections back to Set
           expandedPendingSections: new Set((persisted.expandedPendingSections as string[]) || []),
-          // Ensure cadPreviewMode has a default
-          cadPreviewMode: (persisted.cadPreviewMode as 'thumbnail' | 'edrawings') || 'thumbnail',
+          // Keep only known preview modes from persisted state.
+          cadPreviewMode: isCadPreviewMode(persisted.cadPreviewMode)
+            ? persisted.cadPreviewMode
+            : 'thumbnail',
           // Merge topbarConfig over defaults so newly added toggles (e.g. showSolidworks)
           // aren't left undefined for users with a pre-existing persisted config.
           topbarConfig: {

@@ -90,7 +90,7 @@ jobs:
 
   build-windows:
     needs: [verify, check-release-metadata]
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -114,6 +114,11 @@ jobs:
 
       - name: Build Electron app
         run: npm run build -- --publish never
+        env:
+          BLUEPLM_EDRAWINGS_RELEASE_BUILD: '1'
+
+      - name: Verify eDrawings preview payload is present
+        run: node scripts/verify-edrawings-preview-artifacts.js
 
       # electron-builder skips an extraResources entry whose `from` directory is missing rather
       # than failing. Verify after the build that its expected service binary exists.

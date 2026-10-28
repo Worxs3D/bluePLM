@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { canHaveConfigurations } from '@/lib/solidworks/configurationSupport'
@@ -213,9 +214,10 @@ export function SWDatacardPanel({ file }: { file: LocalFile }) {
   const handleOpenInEDrawings = async () => {
     if (!file?.path) return
     try {
-      await window.electronAPI?.openInEDrawings(file.path)
+      const result = await window.electronAPI?.openInEDrawings(file.path)
+      if (!result?.success) addToast('error', t('solidworksSettings.openInEDrawingsFailed'))
     } catch {
-      addToast('error', 'Failed to open in eDrawings')
+      addToast('error', t('solidworksSettings.openInEDrawingsFailed'))
     }
   }
 
