@@ -59,7 +59,7 @@
     "date-fns": "^3.0.6",
     "electron-updater": "^6.7.3",
     "fastify": "^5.2.1",
-    "jszip": "^3.10.1",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^4.10.38",
     "pino-pretty": "^13.0.0",

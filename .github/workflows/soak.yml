@@ -67,7 +67,6 @@ jobs:
         run: |
           npx tsx scripts/render-perf/emitSchemaShape.ts
           npx vite build
-          node scripts/copy-extension-host.js
           test -e dist/perf.html
 
       - name: Soak
