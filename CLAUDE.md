@@ -201,6 +201,11 @@ The points that most often get violated:
   `supabase/modules/*.sql` are edited in place and must stay idempotent. Never write
   `schema_version` directly and never push SQL from a terminal command; the user applies it in
   the Supabase SQL editor.
+  Apply order is always `core.sql` first, then modules `10` through `60` in order: applying core after
+  module 40 once left production with core's drifted `claim_pending_membership`
+  (`.cursor/plans/schema-103-production-apply.md`). A nightly cloud routine (08:00 UTC) may apply a
+  finished schema release from `main` behind an independent review, so land a schema bump on `main`
+  only when it is ready for production.
 - **API changes require two files.** Bump `version` in `api/package.json` and
   `EXPECTED_API_VERSION` in `src/lib/apiVersion.ts`, with an `API_VERSION_DESCRIPTIONS` entry.
 - **State goes in `usePDMStore` slices.** Never create a new Zustand store.
