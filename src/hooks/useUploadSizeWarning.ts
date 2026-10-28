@@ -7,6 +7,7 @@
 
 import { useCallback } from 'react'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 import type { LargeFile } from '@/components/shared/Dialogs'
 
@@ -94,7 +95,13 @@ export function checkAndSetPendingUpload(
  * Hook for managing upload size warning state from the global store
  */
 export function useUploadSizeWarning() {
-  const { pendingLargeUpload, clearPendingLargeUpload, uploadSizeWarningThreshold } = usePDMStore()
+  const { pendingLargeUpload, clearPendingLargeUpload, uploadSizeWarningThreshold } = usePDMStore(
+    useShallow((s) => ({
+      pendingLargeUpload: s.pendingLargeUpload,
+      clearPendingLargeUpload: s.clearPendingLargeUpload,
+      uploadSizeWarningThreshold: s.uploadSizeWarningThreshold,
+    })),
+  )
 
   /**
    * Handle user choosing to upload all files

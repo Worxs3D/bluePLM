@@ -1,12 +1,19 @@
 import { X, Shield, User, Database, Users } from 'lucide-react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 export function ImpersonationBanner() {
-  const { impersonatedUser, stopUserImpersonation } = usePDMStore()
+  const { impersonatedUser, stopUserImpersonation } = usePDMStore(
+    useShallow((s) => ({
+      impersonatedUser: s.impersonatedUser,
+      stopUserImpersonation: s.stopUserImpersonation,
+    })),
+  )
 
   if (!impersonatedUser) return null
 
-  const isAdmin = impersonatedUser.role === 'admin'
+  const isAdmin = isAdminUser(impersonatedUser.role, impersonatedUser.teams)
   const teamCount = impersonatedUser.teams.length
   const vaultCount = impersonatedUser.vaultIds.length
   const permCount = Object.keys(impersonatedUser.permissions).filter(

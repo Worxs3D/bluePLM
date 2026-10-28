@@ -7,6 +7,7 @@
  */
 import { useCallback } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { LocalFile } from '@/stores/types'
 import { log } from '@/lib/logger'
 import { beginWatcherSuppression } from '@/lib/fileWatcherSuppression'
@@ -42,7 +43,13 @@ export interface DuplicateResult {
 }
 
 export function useDuplicatePartAndDrawing() {
-  const { files, vaultPath, addToast } = usePDMStore()
+  const { files, vaultPath, addToast } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      vaultPath: s.vaultPath,
+      addToast: s.addToast,
+    })),
+  )
 
   /**
    * Find a drawing sitting next to the part with a matching base name, which is the convention

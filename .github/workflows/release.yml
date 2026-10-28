@@ -23,6 +23,9 @@ jobs:
   # not a copy of it; see verify.yml.
   verify:
     uses: ./.github/workflows/verify.yml
+    secrets:
+      SOLIDWORKS_DM_LICENSE_KEY: ${{ secrets.SOLIDWORKS_DM_LICENSE_KEY }}
+      CI_ASSETS_TOKEN: ${{ secrets.CI_ASSETS_TOKEN }}
 
   # A tag is the only input to this workflow and two things can silently disagree with it, both
   # cheap to check here and expensive to discover afterwards.
@@ -87,7 +90,7 @@ jobs:
 
   build-windows:
     needs: [verify, check-release-metadata]
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -111,6 +114,8 @@ jobs:
 
       - name: Build Electron app
         run: npm run build -- --publish never
+        env:
+          BLUEPLM_EDRAWINGS_RELEASE_BUILD: '1'
 
       - name: Verify eDrawings preview payload is present
         run: node scripts/verify-edrawings-preview-artifacts.js

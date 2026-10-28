@@ -12,6 +12,7 @@
 import { useCallback, useMemo } from 'react'
 
 import { t } from '@/lib/i18n'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
 import { restoreStatesOf } from '@/lib/metadata/metadataRestorePlan'
 import {
@@ -96,6 +97,7 @@ export function useVaultAuditFill(
 ): UseVaultAuditFillResult {
   const loadedFiles = usePDMStore((state) => state.files)
   const user = usePDMStore((state) => state.user)
+  const userTeams = usePDMStore((state) => state.userTeams)
   const fill = usePDMStore((state) => state.vaultAuditFill)
   const setSelection = usePDMStore((state) => state.setVaultAuditFillSelection)
   const startFill = usePDMStore((state) => state.startVaultAuditFill)
@@ -119,7 +121,7 @@ export function useVaultAuditFill(
     [findings, selectedIds, heldByOthers, unsavedEdits],
   )
 
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = isAdminUser(user?.role, userTeams)
 
   const setMany = useCallback(
     (findingIds: readonly string[], shouldSelect: boolean) => {

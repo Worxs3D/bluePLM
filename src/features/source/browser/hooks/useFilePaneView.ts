@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { FileMetadataColumn } from '@/types/database'
 import { supabase, isWatchingFile } from '@/lib/supabase'
 
@@ -50,7 +51,34 @@ export function useFilePaneView() {
     tabsEnabled,
     activeTabId,
     updateTabFolder,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      selectedFiles: s.selectedFiles,
+      setSelectedFiles: s.setSelectedFiles,
+      toggleFileSelection: s.toggleFileSelection,
+      columns: s.columns,
+      sortColumn: s.sortColumn,
+      sortDirection: s.sortDirection,
+      toggleSort: s.toggleSort,
+      setSortColumn: s.setSortColumn,
+      setSortDirection: s.setSortDirection,
+      user: s.user,
+      organization: s.organization,
+      currentFolder: s.currentFolder,
+      setCurrentFolder: s.setCurrentFolder,
+      expandedFolders: s.expandedFolders,
+      toggleFolder: s.toggleFolder,
+      searchQuery: s.searchQuery,
+      searchType: s.searchType,
+      searchScope: s.searchScope,
+      hideSolidworksTempFiles: s.hideSolidworksTempFiles,
+      processingOperations: s.processingOperations,
+      tabsEnabled: s.tabsEnabled,
+      activeTabId: s.activeTabId,
+      updateTabFolder: s.updateTabFolder,
+    })),
+  )
 
   const { enforcedHiddenPaths } = useHiddenFolders()
 

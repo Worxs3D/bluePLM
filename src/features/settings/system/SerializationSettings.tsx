@@ -17,6 +17,7 @@ import {
 import { log } from '@/lib/logger'
 import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { detectHighestSerialNumber, type HighestSerialScanResult } from '@/lib/serialization'
 
@@ -94,7 +95,13 @@ const DEFAULT_SERIALIZATION_SETTINGS: SerializationSettingsData = {
 }
 
 export function SerializationSettings() {
-  const { organization, addToast, getEffectiveRole } = usePDMStore()
+  const { organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const { t } = useTranslation()
   const isAdmin = getEffectiveRole() === 'admin'
   const [loading, setLoading] = useState(true)

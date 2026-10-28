@@ -155,6 +155,9 @@ export function describeReport(
   if (report.folderFailures.length > 0) {
     leftovers.push(t(vaultTransferKey('resultFoldersFailed'), { count: report.folderFailures.length }))
   }
+  if (report.foldersKept.length > 0) {
+    leftovers.push(t(vaultTransferKey('resultFoldersKept'), { count: report.foldersKept.length }))
+  }
   if (report.referenceError !== undefined) {
     leftovers.push(t(vaultTransferKey('resultReferencesFailed')))
   }
@@ -175,6 +178,7 @@ export function describeReport(
       return `${entry.planned.sourceRelativePath}: ${entry.message ? `${reason} (${entry.message})` : reason}`
     }),
     ...report.folderFailures.map((folder) => `${folder}: ${t(vaultTransferKey('resultFolderFailed'))}`),
+    ...report.foldersKept.map((folder) => `${folder}: ${t(vaultTransferKey('resultFolderKept'))}`),
   ]
 
   const details = lines.slice(0, MAX_REPORTED_FILES)

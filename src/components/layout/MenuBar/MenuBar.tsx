@@ -26,17 +26,11 @@ import {
   Box,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
-import {
-  signInWithGoogle,
-  signOut,
-  isSupabaseConfigured,
-  getActiveSessions,
-  endRemoteSession,
-  UserSession,
-  supabase,
-} from '@/lib/supabase'
+import { getActiveSessions, endRemoteSession, UserSession, supabase } from '@/lib/supabase'
+import { getBackend, resolveBackend } from '@/lib/backend'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { logAuth } from '@/lib/userActionLogger'
 import { OnlineUsersIndicator } from '@/components/shared/OnlineUsers'
@@ -117,7 +111,32 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     tabsEnabled,
     setTabsEnabled,
     getEffectiveVaultIds,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      setUser: s.setUser,
+      setOrganization: s.setOrganization,
+      addToast: s.addToast,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      switchVault: s.switchVault,
+      setActiveView: s.setActiveView,
+      isOfflineMode: s.isOfflineMode,
+      setOfflineMode: s.setOfflineMode,
+      sidebarVisible: s.sidebarVisible,
+      toggleSidebar: s.toggleSidebar,
+      detailsPanelVisible: s.detailsPanelVisible,
+      toggleDetailsPanel: s.toggleDetailsPanel,
+      rightPanelVisible: s.rightPanelVisible,
+      toggleRightPanel: s.toggleRightPanel,
+      topbarConfig: s.topbarConfig,
+      setTopbarConfig: s.setTopbarConfig,
+      tabsEnabled: s.tabsEnabled,
+      setTabsEnabled: s.setTabsEnabled,
+      getEffectiveVaultIds: s.getEffectiveVaultIds,
+    })),
+  )
 
   // Filter vaults based on impersonated user's access
   const effectiveVaultIds = getEffectiveVaultIds()
@@ -336,7 +355,8 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     logAuth('Sign in button clicked')
     log.info('[MenuBar]', 'Sign in button clicked from MenuBar')
 
-    if (!isSupabaseConfigured()) {
+    const resolution = resolveBackend()
+    if (resolution.status !== 'ready') {
       log.warn('[MenuBar]', 'Supabase not configured')
       addToast(
         'error',
@@ -349,7 +369,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     log.info('[MenuBar]', 'Starting Google sign-in flow from MenuBar')
 
     try {
-      const { data, error } = await signInWithGoogle()
+      const { data, error } = await resolution.backend.auth.signInWithGoogle()
       log.info('[MenuBar]', 'signInWithGoogle returned', {
         hasData: !!data,
         hasError: !!error,
@@ -377,7 +397,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   const handleSignOut = async () => {
     logAuth('Sign out clicked')
     log.info('[MenuBar]', 'Sign out clicked')
-    const { error } = await signOut()
+    const { error } = await getBackend().auth.signOut()
     if (error) {
       log.error('[MenuBar]', 'Sign out error', { error: error.message })
     } else {

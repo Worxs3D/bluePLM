@@ -208,6 +208,11 @@ export function registerOAuthHandlers(window: BrowserWindow, deps: OAuthHandlerD
 
         let hasResolved = false
         let gdAuthServer: http.Server | null = null
+        // A sign-in the user never finishes must not leave a listening server for the session.
+        const gdAuthTimeout = setTimeout(
+          () => safeResolve({ success: false, error: 'Google Drive sign-in timed out. Please try again.' }),
+          OAUTH_CALLBACK_TIMEOUT_MS,
+        )
 
         const safeResolve = (result: {
           success: boolean
@@ -218,6 +223,7 @@ export function registerOAuthHandlers(window: BrowserWindow, deps: OAuthHandlerD
         }) => {
           if (!hasResolved) {
             hasResolved = true
+            clearTimeout(gdAuthTimeout)
             if (gdAuthServer) {
               gdAuthServer.close()
               gdAuthServer = null

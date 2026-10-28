@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 
 // Slack logo SVG component
@@ -132,7 +133,13 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 export function SlackSettings() {
-  const { organization, addToast, getEffectiveRole } = usePDMStore()
+  const { organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const apiUrl = getApiUrl(organization)

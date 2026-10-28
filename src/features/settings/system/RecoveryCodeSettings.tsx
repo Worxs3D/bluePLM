@@ -14,6 +14,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   generateAdminRecoveryCode,
   listAdminRecoveryCodes,
@@ -24,7 +25,14 @@ import {
 import { copyToClipboard } from '@/lib/clipboard'
 
 export function RecoveryCodeSettings() {
-  const { user, organization, addToast, getEffectiveRole } = usePDMStore()
+  const { user, organization, addToast, getEffectiveRole } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
 
   const [codes, setCodes] = useState<AdminRecoveryCode[]>([])

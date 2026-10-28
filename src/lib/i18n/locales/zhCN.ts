@@ -391,6 +391,8 @@ export const zhCN: TranslationDict = {
       '部分重命名未同步到服务器，服务器仍记录旧路径。受影响的文件显示为已移动；请运行 reconcile-moved-paths 进行更新。',
     cloudRenameFailed: '无法在服务器上重命名',
     movedAwayBlocked: '文件已移动 - 请先解决待处理的移动',
+    moveTargetExists: '目标文件夹中已存在“{{name}}”，因此未移动',
+    mergeKeptConflicts: '{{count}} 个文件在两个文件夹中都存在，因此保留在 {{folder}} 中',
     checkIn: '签入',
     checkOut: '签出',
     download: '下载',

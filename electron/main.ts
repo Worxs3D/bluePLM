@@ -1,9 +1,12 @@
 // BluePLM Electron Main Process
 // This file contains only app lifecycle, window creation, and imports handlers from modules
 
+// First: in a render-performance boot it moves userData before any module reads it.
+import { isPerfBoot, isSoakBoot, PERF_BOOT_ARG, PERF_BLOCKED_URLS } from './perfBoot'
 import { app, BrowserWindow, shell, screen, nativeTheme, session, Menu, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import { fileURLToPath } from 'url'
 import * as Sentry from '@sentry/electron/main'
 
@@ -28,6 +31,13 @@ import {
   disposeThumbnailStore,
 } from './handlers'
 import { createAppMenu } from './menu'
+import {
+  RENDERER_STALL_CHANNEL,
+  handleRendererStall,
+  parseRendererStallPayload,
+  startStallProfiler,
+  stopStallProfiler,
+} from './diagnostics/stallProfiler'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -278,6 +288,7 @@ const HARD_EXIT_FALLBACK_MS = 500
 const MAX_CRASH_RELOADS = 2
 const CRASH_RELOAD_BASE_DELAY_MS = 1_000
 const RENDERER_MEMORY_SAMPLE_INTERVAL_MS = 30_000
+const FOCUS_MEMORY_SAMPLE_MIN_GAP_MS = 5_000
 
 /**
  * A renderer that has run this long is a working one, so the reload budget is
@@ -289,6 +300,7 @@ const RENDERER_STABLE_MS = 5 * 60_000
 let rendererMemoryTimer: NodeJS.Timeout | null = null
 let crashCreditTimer: NodeJS.Timeout | null = null
 let crashReloadCount = 0
+let focusMemorySamplingBound = false
 let lastRendererMemory: { privateMB: number; sampledAt: number } | null = null
 
 /** Set once teardown starts, so a renderer exiting with it is not treated as a crash. */
@@ -300,36 +312,84 @@ let isAppQuitting = false
  * out-of-memory crash from any other kind. Private bytes are read here instead,
  * where they are real numbers.
  */
-function sampleRendererMemory(): { privateMB: number } | null {
+interface RendererMemorySample {
+  /** The renderer's resident working set, despite the name (kept so old logs stay comparable). */
+  privateMB: number
+  peakWorkingSetMB: number
+  /** Committed private bytes; Windows only, and what pagefile pressure acts on. */
+  privateBytesMB: number | null
+  gpuMB: number | null
+  allProcessesMB: number
+  systemFreeMB: number
+  systemTotalMB: number
+}
+
+const KILOBYTES_PER_MEGABYTE = 1024
+const BYTES_PER_MEGABYTE = 1024 * 1024
+
+function sampleRendererMemory(): RendererMemorySample | null {
   if (!mainWindow || mainWindow.isDestroyed()) return null
 
   try {
     const rendererPid = mainWindow.webContents.getOSProcessId()
-    const metric = app.getAppMetrics().find((entry) => entry.pid === rendererPid)
+    const metrics = app.getAppMetrics()
+    const metric = metrics.find((entry) => entry.pid === rendererPid)
     if (!metric) return null
 
-    // Reported in kilobytes.
-    return { privateMB: Math.round(metric.memory.workingSetSize / 1024) }
+    // Process metrics are reported in kilobytes.
+    const toMB = (kilobytes: number) => Math.round(kilobytes / KILOBYTES_PER_MEGABYTE)
+    const gpu = metrics.find((entry) => entry.type === 'GPU')
+    const privateBytes = metric.memory.privateBytes
+
+    return {
+      privateMB: toMB(metric.memory.workingSetSize),
+      peakWorkingSetMB: toMB(metric.memory.peakWorkingSetSize),
+      privateBytesMB: typeof privateBytes === 'number' ? toMB(privateBytes) : null,
+      gpuMB: gpu ? toMB(gpu.memory.workingSetSize) : null,
+      allProcessesMB: toMB(metrics.reduce((total, entry) => total + entry.memory.workingSetSize, 0)),
+      systemFreeMB: Math.round(os.freemem() / BYTES_PER_MEGABYTE),
+      systemTotalMB: Math.round(os.totalmem() / BYTES_PER_MEGABYTE),
+    }
   } catch {
     return null
   }
 }
 
+/**
+ * Samples memory and logs it. `trigger` says why, so a sample taken the moment the window
+ * regained focus can be told apart from the 30 s cadence: a renderer whose pages were trimmed
+ * while it sat behind SolidWorks pays for it on the first interactions after focus, and the
+ * number to compare is the working set just before and just after.
+ */
+function logRendererMemorySample(trigger: 'interval' | 'focus'): void {
+  const sample = sampleRendererMemory()
+  if (!sample) return
+
+  const previous = lastRendererMemory
+  lastRendererMemory = { privateMB: sample.privateMB, sampledAt: Date.now() }
+
+  writeLog('info', '[Main] [Renderer] Memory sample', {
+    ...sample,
+    deltaMB: previous ? sample.privateMB - previous.privateMB : null,
+    trigger,
+    msSincePrevious: previous ? Date.now() - previous.sampledAt : null,
+  })
+}
+
 function startRendererMemorySampling(): void {
   if (rendererMemoryTimer) return
 
-  rendererMemoryTimer = setInterval(() => {
-    const sample = sampleRendererMemory()
-    if (!sample) return
+  rendererMemoryTimer = setInterval(() => logRendererMemorySample('interval'), RENDERER_MEMORY_SAMPLE_INTERVAL_MS)
 
-    const previous = lastRendererMemory
-    lastRendererMemory = { privateMB: sample.privateMB, sampledAt: Date.now() }
-
-    writeLog('info', '[Main] [Renderer] Memory sample', {
-      privateMB: sample.privateMB,
-      deltaMB: previous ? sample.privateMB - previous.privateMB : null,
+  if (!focusMemorySamplingBound && mainWindow) {
+    focusMemorySamplingBound = true
+    mainWindow.on('focus', () => {
+      // Focus can arrive in bursts (alt-tab, clicking a title bar); one sample per burst.
+      const last = lastRendererMemory
+      if (last && Date.now() - last.sampledAt < FOCUS_MEMORY_SAMPLE_MIN_GAP_MS) return
+      logRendererMemorySample('focus')
     })
-  }, RENDERER_MEMORY_SAMPLE_INTERVAL_MS)
+  }
 }
 
 function stopRendererMemorySampling(): void {
@@ -420,6 +480,9 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 nativeTheme.themeSource = 'system'
 
 app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
+// Without it performance.memory is bucketed and reads the same value all session; the renderer's
+// health monitor (src/lib/health/healthMonitor.ts) needs the real JS heap for its high-water mark.
+app.commandLine.appendSwitch('enable-precise-memory-info')
 
 // ============================================
 // Deep Link Protocol Registration
@@ -470,7 +533,8 @@ if (initialDeepLink) {
   storePendingDeepLink(initialDeepLink)
 }
 
-const isTestMode = process.argv.includes('--test-mode') || process.env.BLUEPLM_TEST === '1'
+const isTestMode =
+  process.argv.includes('--test-mode') || process.env.BLUEPLM_TEST === '1' || isPerfBoot
 
 /**
  * Attempt to acquire the single instance lock with stale lock recovery.
@@ -615,6 +679,12 @@ function initializeApp() {
         })
       }
 
+      // The renderer reports a long main-thread block here; the profiler turns it into a CPU profile.
+      ipcMain.on(RENDERER_STALL_CHANNEL, (_event, payload: unknown) => {
+        const info = parseRendererStallPayload(payload)
+        if (info) void handleRendererStall(info)
+      })
+
       log('App ready, creating window...')
       createWindow()
 
@@ -669,6 +739,7 @@ function initializeApp() {
     isQuitting = true
     isAppQuitting = true
     stopRendererMemorySampling()
+    stopStallProfiler()
 
     log('App quitting, cleaning up all resources...')
 
@@ -838,6 +909,7 @@ function createWindow() {
       // backgrounded window stopped reconciling file changes entirely and then
       // ran every deferred refresh at once on refocus.
       backgroundThrottling: false,
+      additionalArguments: isPerfBoot ? [PERF_BOOT_ARG] : [],
     },
     show: false,
   })
@@ -853,6 +925,12 @@ function createWindow() {
       callback(false)
     }
   })
+
+  if (isPerfBoot) {
+    session.defaultSession.webRequest.onBeforeRequest({ urls: PERF_BLOCKED_URLS }, (_details, callback) =>
+      callback({ cancel: true }),
+    )
+  }
 
   // Restore maximized state
   if (savedState.isMaximized) {
@@ -903,6 +981,11 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     log('Page finished loading')
     startRendererMemorySampling()
+    startStallProfiler({
+      getWindow: () => mainWindow,
+      getLogsDir: () => path.join(app.getPath('userData'), 'logs'),
+      log: writeLog,
+    })
     scheduleCrashCreditReset()
     if (mainWindow) {
       // getTitleBarOverlayRect may not exist on all Electron versions
@@ -929,14 +1012,22 @@ function createWindow() {
     }
   })
 
-  const loadPath = isDev ? 'http://localhost:5173' : path.join(__dirname, '../dist/index.html')
+  const loadPath = isPerfBoot
+    ? path.join(__dirname, '../dist/perf.html')
+    : isDev
+      ? 'http://localhost:5173'
+      : path.join(__dirname, '../dist/index.html')
 
   log('Loading: ' + loadPath)
 
-  if (isDev) {
+  if (isDev && !isPerfBoot) {
     mainWindow.loadURL(loadPath)
   } else {
-    mainWindow.loadFile(loadPath).catch((error) => log('Error loading file: ' + String(error)))
+    // A soak boot tells the page to install its probes and drivers (src/perf/app/soak.ts).
+    mainWindow
+      .loadFile(loadPath, isSoakBoot ? { query: { soak: '1' } } : undefined)
+      .catch((error) => log('Error loading file: ' + String(error)))
+    if (isSoakBoot) void import('./perfSoak').then((m) => m.installSoakMainProbe())
   }
 
   // In production, intercept OAuth redirects

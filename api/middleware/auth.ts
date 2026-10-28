@@ -77,8 +77,21 @@ const authPluginImpl: FastifyPluginAsync = async (fastify) => {
           throw new Error('Auth: No organization')
         }
 
+        // Admin means role = 'admin' OR membership of the Administrators team.
+        // Resolved by the same SQL function the RLS policies use, so the API
+        // cannot drift from the database. Fails closed: an error is not admin.
+        const { data: adminData, error: adminError } = await supabase.rpc('is_org_admin')
+        if (adminError) {
+          fastify.log.warn({
+            msg: '[Auth] Admin check failed; treating user as non-admin',
+            userId: truncateId(user.id),
+            error: adminError.message,
+          })
+        }
+        const isAdmin = !adminError && adminData === true
+
         // Success - set user on request
-        request.user = profile as UserProfile
+        request.user = { ...(profile as Omit<UserProfile, 'isAdmin'>), isAdmin }
         request.supabase = supabase
         request.accessToken = token
 

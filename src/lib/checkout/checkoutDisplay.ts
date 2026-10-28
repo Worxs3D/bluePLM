@@ -192,6 +192,21 @@ export function getCheckoutDisplayUser(
   }
 }
 
+/**
+ * Tooltip text for a checked-out file: "Checked out by {name}" once the owner is known,
+ * otherwise the loading / unavailable placeholder. Null when nobody holds the file.
+ */
+export function getCheckoutOwnerLabel(
+  file: CheckoutDisplayFile | null | undefined,
+  currentUser: CheckoutCurrentUser | null | undefined,
+  hydrationHint?: CheckoutHydrationHint | { state: CheckoutHydrationHint } | null,
+): string | null {
+  const display = deriveCheckoutDisplay(file, currentUser, hydrationHint)
+  if (display.state === 'none' || !display.displayName) return null
+  if (display.state === 'hydrating' || display.state === 'unavailable') return display.displayName
+  return t('checkoutDisplay.checkedOutBy', { name: display.displayName })
+}
+
 export function getCheckoutUsersSignature(
   users: ReadonlyArray<Pick<CheckoutDisplayUser, 'checkoutSignature'>>,
 ): string {

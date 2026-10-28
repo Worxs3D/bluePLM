@@ -30,6 +30,12 @@ export interface CloudFileReconciliationParams {
    * `files.id`, so a cloud-only or moved-away row does not lose a profile it
    * already resolved. */
   existingCheckedOutUsers: ReadonlyMap<string, CheckoutUserProfile>
+  /**
+   * The server row each local path carried in the store before this load (lower-cased local
+   * path -> `files.id`). A local file left without a row whose path carried row F, while F now
+   * sits at another server path, was moved on the server. Absent on a first load.
+   */
+  previousServerIdByLocalPath?: ReadonlyMap<string, string>
   /** Current user id, to distinguish "I deleted this" from a genuine cloud file. */
   userId: string | undefined
   /** Absolute vault root, for building each injected row's absolute path. */
@@ -46,6 +52,22 @@ export interface CloudFileReconciliationResult {
   /** Folder paths implied by an injected cloud-only or moved-away file that do not
    * already exist locally - consumed by the caller's auto-create-folders step. */
   cloudFolders: Set<string>
+}
+
+/** Statuses of a store row with nothing on disk behind it. */
+const NOT_ON_DISK: ReadonlySet<string> = new Set(['cloud', 'moved_away', 'deleted'])
+
+/**
+ * The server row each local file carried in the store (lower-cased local path -> `files.id`),
+ * for `previousServerIdByLocalPath`.
+ */
+export function serverIdsByLocalPath(files: readonly LocalFile[]): Map<string, string> {
+  const ids = new Map<string, string>()
+  for (const f of files) {
+    if (f.isDirectory || !f.pdmData?.id || NOT_ON_DISK.has(f.diffStatus ?? '')) continue
+    ids.set(f.relativePath.toLowerCase(), f.pdmData.id)
+  }
+  return ids
 }
 
 /**
@@ -101,6 +123,60 @@ export async function reconcileCloudFiles(
     }
   }
 
+  const stubPdmDataFor = (pdmFile: CachedServerFile): PDMFile => {
+    const preservedUserInfo = existingCheckedOutUsers.get(pdmFile.id)
+    const serverFile = pdmFile as unknown as PDMFile
+    return reconcileCheckoutProfile(
+      serverFile,
+      isCheckoutProfileForOwner(preservedUserInfo, serverFile.checked_out_by)
+        ? preservedUserInfo
+        : serverFile.checked_out_user,
+    )
+  }
+
+  /** The record of a server path whose content now lives at `movedToRelativePath`. */
+  const movedAwayStub = (pdmFile: CachedServerFile, movedToRelativePath: string): LocalFile => ({
+    name: pdmFile.file_name,
+    path: buildFullPath(vaultPath, pdmFile.file_path),
+    relativePath: pdmFile.file_path,
+    isDirectory: false,
+    extension: pdmFile.extension || '',
+    size: pdmFile.file_size || 0,
+    modifiedTime: pdmFile.updated_at || '',
+    pdmData: stubPdmDataFor(pdmFile),
+    isSynced: false,
+    diffStatus: 'moved_away',
+    movedToRelativePath,
+  })
+
+  // Local files left without a server row, by the row their path carried before this load.
+  const unmatchedById = new Map<string, LocalFile>()
+  if (params.previousServerIdByLocalPath) {
+    for (const f of localFiles) {
+      if (f.isDirectory || f.pdmData || (f.diffStatus !== 'added' && f.diffStatus !== 'deleted_remote')) continue
+      const id = params.previousServerIdByLocalPath.get(f.relativePath.toLowerCase())
+      if (id) unmatchedById.set(id, f)
+    }
+  }
+
+  // Server rows a local file already carries (matched by path, inode or hash upstream).
+  const claimedBy = new Map<string, LocalFile>()
+  for (const f of localFiles) if (!f.isDirectory && f.pdmData?.id) claimedBy.set(f.pdmData.id, f)
+
+  // Orphans by content hash: the only local evidence of a server-side move. One orphan per hash
+  // is claimed; two holders of the same bytes are ambiguous and left alone.
+  const orphansByHash = new Map<string, LocalFile[]>()
+  for (const f of localFiles) {
+    if (f.isDirectory || f.pdmData || f.diffStatus !== 'deleted_remote' || !f.localHash) continue
+    orphansByHash.set(f.localHash, [...(orphansByHash.get(f.localHash) ?? []), f])
+  }
+  const takeServerMoveHolder = (contentHash: string): LocalFile | null => {
+    const candidates = orphansByHash.get(contentHash)
+    if (!candidates || candidates.length !== 1) return null
+    orphansByHash.delete(contentHash)
+    return candidates[0]
+  }
+
   let cloudScanIndex = 0
   for (const pdmFile of pdmFiles) {
     if (cloudScanIndex++ % yieldCheckStride === yieldCheckStride - 1) {
@@ -114,11 +190,10 @@ export async function reconcileCloudFiles(
     const wasMoved = pdmFile.content_hash && localContentHashes.has(pdmFile.content_hash)
     const wasInodeRenamed = inodeMatchedServerPaths.has(serverPathLower)
 
-    // Hash-only move: the content exists locally at some other path, but nothing
-    // upstream recorded exactly which file claimed it, so there is no destination
-    // to point a stub at. The file is handled entirely at its new location.
-    if (wasMoved) continue
-
+    // Inode evidence first: it names the destination, so the stub can point at it. A rename
+    // that kept its bytes also matches by hash, and checking the hash first dropped the stub
+    // for exactly the common case - and only once the main process had re-hashed the file at
+    // its new path, so the stub showed on the first load after a move and vanished on the next.
     if (wasInodeRenamed) {
       const movedToRelativePath = inodeMatchedServerPathToLocalPath.get(serverPathLower)
       // inodeMatchedServerPaths and inodeMatchedServerPathToLocalPath are built
@@ -127,31 +202,56 @@ export async function reconcileCloudFiles(
       // than emit a stub with no destination to render.
       if (movedToRelativePath) {
         registerCloudFolderAncestors(pdmFile.file_path)
-
-        const preservedUserInfo = existingCheckedOutUsers.get(pdmFile.id)
-        const stubServerFile = pdmFile as unknown as PDMFile
-        const stubPdmData = reconcileCheckoutProfile(
-          stubServerFile,
-          isCheckoutProfileForOwner(preservedUserInfo, stubServerFile.checked_out_by)
-            ? preservedUserInfo
-            : stubServerFile.checked_out_user,
-        )
-
-        localFiles.push({
-          name: pdmFile.file_name,
-          path: buildFullPath(vaultPath, pdmFile.file_path),
-          relativePath: pdmFile.file_path,
-          isDirectory: false,
-          extension: pdmFile.extension || '',
-          size: pdmFile.file_size || 0,
-          modifiedTime: pdmFile.updated_at || '',
-          pdmData: stubPdmData,
-          isSynced: false,
-          diffStatus: 'moved_away',
-          movedToRelativePath,
-        })
+        localFiles.push(movedAwayStub(pdmFile, movedToRelativePath))
       }
       continue
+    }
+
+    // The local file this row belonged to a moment ago is still at its old path: the row moved
+    // on the server (another machine's move or rename, or a realtime update this load now
+    // confirms). By id, so it holds whatever the bytes are.
+    const previousHolder = unmatchedById.get(pdmFile.id)
+    if (previousHolder) {
+      unmatchedById.delete(pdmFile.id)
+      registerCloudFolderAncestors(pdmFile.file_path)
+      previousHolder.pdmData = stubPdmDataFor(pdmFile)
+      previousHolder.diffStatus = 'moved'
+      previousHolder.isSynced = true
+      localFiles.push(movedAwayStub(pdmFile, previousHolder.relativePath))
+      continue
+    }
+
+    if (wasMoved) {
+      // The same bytes are on disk at another path. A server move looks like this too: another
+      // machine moved or renamed a file this machine holds at the old path, which the merge
+      // found as an orphan (synced here before, its row gone). Taking that orphan for a local
+      // move dropped the row, and the auto-discard then recycled the local copy, so the file
+      // vanished from this machine. The orphan becomes the pending move it is, with a stub at
+      // the server's path, as a local move would show.
+      const holder = takeServerMoveHolder(pdmFile.content_hash!)
+      if (holder) {
+        registerCloudFolderAncestors(pdmFile.file_path)
+        holder.pdmData = stubPdmDataFor(pdmFile)
+        holder.diffStatus = 'moved'
+        holder.isSynced = true
+        localFiles.push(movedAwayStub(pdmFile, holder.relativePath))
+        continue
+      }
+      // Otherwise a hash-only local move: the content exists locally at some other path and the
+      // merge gave that file this row. That file is the destination, so the server path gets its
+      // stub, as an inode match gives it; without one the old folder looked empty until the next
+      // load found the move by inode and added it. Only a row a local file carries is left out;
+      // when no file carries it, leaving it out hid a server file from this machine altogether.
+      const claimant = claimedBy.get(pdmFile.id)
+      if (claimant) {
+        // By path, not status: a moved file with unsaved edits shows as modified, and its stub
+        // is no less due.
+        if (claimant.relativePath.toLowerCase() !== pdmFile.file_path.toLowerCase()) {
+          registerCloudFolderAncestors(pdmFile.file_path)
+          localFiles.push(movedAwayStub(pdmFile, claimant.relativePath))
+        }
+        continue
+      }
     }
 
     // Neither move signal fired - a genuine cloud-only file (or, if I had it

@@ -16,12 +16,14 @@ interface CadFilePreviewProps {
   file: LocalFile
   solidWorks?: boolean
   embeddedAvailable?: boolean
+  preferThumbnailInExternalMode?: boolean
 }
 
 export function CadFilePreview({
   file,
   solidWorks = false,
   embeddedAvailable = true,
+  preferThumbnailInExternalMode = false,
 }: CadFilePreviewProps) {
   const cadPreviewMode = usePDMStore((state) => state.cadPreviewMode)
   const addToast = usePDMStore((state) => state.addToast)
@@ -47,8 +49,10 @@ export function CadFilePreview({
 
   const cadPreviewUrl = useMemo(
     () =>
-      solidWorks || cadPreviewMode === 'edrawings' ? null : buildThumbnailUrl(file, 'preview'),
-    [cadPreviewMode, file, solidWorks],
+      solidWorks || (cadPreviewMode === 'edrawings' && !preferThumbnailInExternalMode)
+        ? null
+        : buildThumbnailUrl(file, 'preview'),
+    [cadPreviewMode, file, preferThumbnailInExternalMode, solidWorks],
   )
   const { src: cadThumbnail, onError: onCadPreviewError } = useRetryableImage(cadPreviewUrl)
 
@@ -68,6 +72,7 @@ export function CadFilePreview({
     hasThumbnail: Boolean(cadThumbnail),
     eDrawingsInstalled,
     embeddedAvailable,
+    preferThumbnailInExternalMode,
   })
 
   if (variant === 'datacard') return <SWDatacardPanel file={file} />

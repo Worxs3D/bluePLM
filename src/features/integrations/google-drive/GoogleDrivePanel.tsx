@@ -35,6 +35,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { log } from '@/lib/logger'
 
@@ -107,7 +108,20 @@ export function GoogleDrivePanel() {
     setGdriveOpenDocument,
     incrementGdriveAuthVersion,
     getEffectiveRole,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      organization: s.organization,
+      gdriveCurrentFolderId: s.gdriveCurrentFolderId,
+      gdriveCurrentFolderName: s.gdriveCurrentFolderName,
+      gdriveIsSharedDrive: s.gdriveIsSharedDrive,
+      gdriveDriveId: s.gdriveDriveId,
+      gdriveOpenDocument: s.gdriveOpenDocument,
+      setGdriveOpenDocument: s.setGdriveOpenDocument,
+      incrementGdriveAuthVersion: s.incrementGdriveAuthVersion,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)

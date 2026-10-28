@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore, ThemeMode, Language } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { signOut, getSupabaseClient, endRemoteSession } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { getMachineId } from '@/lib/backup'
@@ -72,7 +73,23 @@ export function AccountSettings() {
     setTheme,
     language,
     setLanguage,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      setUser: s.setUser,
+      setOrganization: s.setOrganization,
+      activeVaultId: s.activeVaultId,
+      lowercaseExtensions: s.lowercaseExtensions,
+      setLowercaseExtensions: s.setLowercaseExtensions,
+      ignorePatterns: s.ignorePatterns,
+      addIgnorePattern: s.addIgnorePattern,
+      removeIgnorePattern: s.removeIgnorePattern,
+      theme: s.theme,
+      setTheme: s.setTheme,
+      language: s.language,
+      setLanguage: s.setLanguage,
+    })),
+  )
 
   const [sessions, setSessions] = useState<UserSession[]>([])
   const [currentMachineId, setCurrentMachineId] = useState<string | null>(null)

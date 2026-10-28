@@ -2904,6 +2904,10 @@ BEGIN
   -- The authoritative fingerprint is computed server-side from the live inspection rows so
   -- any edit made during the checkout session is detected automatically at check-in. A
   -- caller may still override it via p_inspection_hash. NULL means "no inspection table".
+  -- source_key / source_sheet / source_view (schema 103) are deliberately NOT in the hash:
+  -- adding them would change every existing table's fingerprint and bump every drawing's
+  -- version on its next check-in. They only bind rows to drawing annotations; the live row
+  -- keeps them and the snapshot below still copies them, so a key-only change loses nothing.
   SELECT md5(string_agg(
     coalesce(sort_order::text, '') || '|' ||
     coalesce(balloon_number, '') || '|' ||
@@ -3039,13 +3043,15 @@ BEGIN
       file_version_id, org_id, sort_order, balloon_number, char_id, zone,
       char_type, sub_type, nominal_value, unit, plus_tolerance, minus_tolerance,
       upper_limit, lower_limit, classification, inspection_method, operation,
-      aql, sample_size, supplier_inspection_rate, internal_inspection_rate, reference, comments
+      aql, sample_size, supplier_inspection_rate, internal_inspection_rate, reference, comments,
+      source_key, source_sheet, source_view
     )
     SELECT
       v_new_file_version_id, org_id, sort_order, balloon_number, char_id, zone,
       char_type, sub_type, nominal_value, unit, plus_tolerance, minus_tolerance,
       upper_limit, lower_limit, classification, inspection_method, operation,
-      aql, sample_size, supplier_inspection_rate, internal_inspection_rate, reference, comments
+      aql, sample_size, supplier_inspection_rate, internal_inspection_rate, reference, comments,
+      source_key, source_sheet, source_view
     FROM inspection_characteristics
     WHERE file_id = p_file_id;
   END IF;

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 import { resolveFileMetadata, resolvePartNumber, resolvedText } from '@/lib/metadata/overlay'
 import type { RFQ, RFQItem, RFQStatus, RFQSupplier } from '@/types/rfq'
@@ -49,7 +50,7 @@ function RFQListView({
   onSelectRFQ: (rfq: RFQ) => void
   onNewRFQ: () => void
 }) {
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
   const [rfqs, setRfqs] = useState<RFQ[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -301,7 +302,15 @@ function RFQDetailView({
   onBack: () => void
   onUpdate: (rfq: RFQ) => void
 }) {
-  const { addToast, files, organization, vaultPath, user } = usePDMStore()
+  const { addToast, files, organization, vaultPath, user } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      files: s.files,
+      organization: s.organization,
+      vaultPath: s.vaultPath,
+      user: s.user,
+    })),
+  )
   const [items, setItems] = useState<RFQItem[]>([])
   const [suppliers, setSuppliers] = useState<RFQSupplier[]>([])
   const [loading, setLoading] = useState(true)
@@ -1980,7 +1989,13 @@ function NewRFQDialog({
   onClose: () => void
   onCreate: (rfq: RFQ) => void
 }) {
-  const { organization, user, addToast } = usePDMStore()
+  const { organization, user, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      addToast: s.addToast,
+    })),
+  )
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)

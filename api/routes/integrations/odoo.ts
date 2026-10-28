@@ -213,7 +213,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (!request.user || request.user.role !== 'admin') {
+      if (!request.user || !request.user.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can configure integrations')
       }
 
@@ -423,7 +423,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       // caller, so it is a request-forgery surface even though it carries no
       // stored secret. Restricted to admins, who are the only ones with a
       // reason to test a connection.
-      if (!request.user || request.user.role !== 'admin') {
+      if (!request.user || !request.user.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can test integrations')
       }
 
@@ -459,7 +459,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       if (!request.user) {
         return sendError(reply, 401, ErrorCode.UNAUTHORIZED)
       }
-      if (request.user.role !== 'admin' && request.user.role !== 'engineer') {
+      if (!request.user.isAdmin && request.user.role !== 'engineer') {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins and engineers can sync')
       }
 
@@ -593,7 +593,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (!request.user || request.user.role !== 'admin') {
+      if (!request.user || !request.user.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can disconnect integrations')
       }
 
@@ -659,7 +659,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can access saved configurations')
       }
 
@@ -712,7 +712,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can save configurations')
       }
 
@@ -789,7 +789,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (request.user!.role !== 'admin') return sendError(reply, 403, ErrorCode.FORBIDDEN)
+      if (!request.user!.isAdmin) return sendError(reply, 403, ErrorCode.FORBIDDEN)
 
       const orgId = request.user!.org_id
       if (!orgId) return sendError(reply, 403, ErrorCode.FORBIDDEN, NO_ORGANIZATION)
@@ -884,7 +884,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (request.user!.role !== 'admin') return sendError(reply, 403, ErrorCode.FORBIDDEN)
+      if (!request.user!.isAdmin) return sendError(reply, 403, ErrorCode.FORBIDDEN)
 
       const { id } = request.params as { id: string }
       const { data: deleted } = await request
@@ -917,7 +917,7 @@ const odooRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     withCredentialErrors(async (request, reply) => {
-      if (request.user!.role !== 'admin') return sendError(reply, 403, ErrorCode.FORBIDDEN)
+      if (!request.user!.isAdmin) return sendError(reply, 403, ErrorCode.FORBIDDEN)
 
       const orgId = request.user!.org_id
       if (!orgId) return sendError(reply, 403, ErrorCode.FORBIDDEN, NO_ORGANIZATION)

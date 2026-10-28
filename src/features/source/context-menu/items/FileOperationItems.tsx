@@ -1,6 +1,7 @@
 // src/features/source/context-menu/items/FileOperationItems.tsx
 import { ExternalLink, FolderOpen, Edit, FolderPlus } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
 import { buildFullPath } from '@/lib/utils/path'
@@ -28,7 +29,12 @@ export function FileOperationItems({
   onClose,
   onRefresh,
 }: FileOperationItemsProps) {
-  const { files, vaultPath } = usePDMStore()
+  const { files, vaultPath } = usePDMStore(
+    useShallow((s) => ({
+      files: s.files,
+      vaultPath: s.vaultPath,
+    })),
+  )
 
   // A 'moved_away' stub has nothing on disk at its own relativePath - the content lives at
   // movedToRelativePath now. Never true for folders (moves only produce file-level stubs).

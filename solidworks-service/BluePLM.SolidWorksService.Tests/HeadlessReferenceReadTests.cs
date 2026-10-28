@@ -19,6 +19,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// Asserting this by calling the method would need SolidWorks, a document, and the race to
     /// land. The property is about reachability, so it is asserted against reachability.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class HeadlessReferenceReadTests
     {
         /// <summary>Everything that opens a document, or can end up launching SolidWorks to.</summary>

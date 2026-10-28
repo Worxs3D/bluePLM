@@ -57,6 +57,18 @@ describe('CAD preview variant', () => {
     ).toBe('unavailable')
   })
 
+  it('keeps the existing non-SolidWorks thumbnail in the external RightPanel', () => {
+    expect(
+      resolveCadPreviewVariant({
+        mode: 'edrawings',
+        solidWorks: false,
+        hasThumbnail: true,
+        eDrawingsInstalled: true,
+        preferThumbnailInExternalMode: true,
+      }),
+    ).toBe('thumbnail')
+  })
+
   it('never selects the native host where embedded preview placement is unavailable', () => {
     expect(
       resolveCadPreviewVariant({

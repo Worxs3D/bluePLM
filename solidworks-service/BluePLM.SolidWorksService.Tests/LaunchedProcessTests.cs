@@ -13,6 +13,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// the "is one already running?" check and the call, that is the user's own session - which
     /// was then recorded as BluePLM's, hidden, and left eligible for the watchdog to close.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class LaunchedProcessTests
     {
         [Fact]

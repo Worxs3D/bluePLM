@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { ActionComponentProps } from './types'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 import { isSolidWorksAlive } from '@/types/solidworks'
 import { getEffectiveExportSettings } from '@/features/settings/system'
@@ -63,8 +64,15 @@ export function ExportActions({
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const [exportSubmenu, setExportSubmenu] = useState<SubmenuKey | null>(null)
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const { addToast, addProgressToast, updateProgressToast, removeToast, organization } =
-    usePDMStore()
+  const { addToast, addProgressToast, updateProgressToast, removeToast, organization } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      addProgressToast: s.addProgressToast,
+      updateProgressToast: s.updateProgressToast,
+      removeToast: s.removeToast,
+      organization: s.organization,
+    })),
+  )
 
   // Filter to only exportable SolidWorks files (exclude folders)
   const swExtensions = ['.sldprt', '.sldasm', '.slddrw']

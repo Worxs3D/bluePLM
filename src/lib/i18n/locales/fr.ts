@@ -409,6 +409,8 @@ export const fr: TranslationDict = {
       'Certains renommages ne sont pas parvenus au serveur, qui enregistre toujours les anciens chemins. Les fichiers concernés apparaissent comme déplacés ; exécutez reconcile-moved-paths pour les mettre à jour.',
     cloudRenameFailed: 'Impossible de renommer sur le serveur',
     movedAwayBlocked: "Le fichier a été déplacé - résolvez d'abord le déplacement en attente",
+    moveTargetExists: '"{{name}}" existe déjà dans le dossier cible et n’a donc pas été déplacé',
+    mergeKeptConflicts: '{{count}} fichiers existent dans les deux dossiers et ont été laissés dans {{folder}}',
     checkIn: 'Archiver',
     checkOut: 'Extraire',
     download: 'Télécharger',

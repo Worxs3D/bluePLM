@@ -19,6 +19,7 @@ import {
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { RFQView } from '../rfq'
 import type { RFQ, RFQStatus } from '@/types/rfq'
 import { getRFQStatusInfo } from '@/types/rfq'
@@ -35,7 +36,12 @@ interface PortalStats {
 }
 
 export function SupplierPortalView() {
-  const { organization, setActiveView } = usePDMStore()
+  const { organization, setActiveView } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      setActiveView: s.setActiveView,
+    })),
+  )
   const [view, setView] = useState<'dashboard' | 'rfqs'>('dashboard')
   const [showNewRFQDialog, setShowNewRFQDialog] = useState(false)
   const [recentRFQs, setRecentRFQs] = useState<RFQ[]>([])

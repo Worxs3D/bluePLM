@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Loads the runtime-only native CommonJS addon. */
 const { app } = require('electron')
 const path = require('node:path')
+const { setImmediate } = require('node:timers')
 
 const expectedMode = process.argv[2]
 if (expectedMode !== 'production' && expectedMode !== 'verify') {

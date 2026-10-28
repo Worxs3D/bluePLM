@@ -17,6 +17,10 @@ import {
 interface FakeRectangle {
   width: number
   height: number
+  left?: number
+  top?: number
+  right?: number
+  bottom?: number
 }
 
 interface FakeElementOptions {
@@ -25,6 +29,7 @@ interface FakeElementOptions {
   renderedMarkup?: string
   role?: string
   className?: string
+  position?: string
   ariaLive?: string
   hidden?: boolean
   ariaHidden?: string
@@ -46,6 +51,9 @@ class FakeElement {
     if (name === 'aria-hidden') return this.options.ariaHidden ?? null
     return null
   }
+  getComputedPosition() {
+    return this.options.position ?? (this.options.className?.split(/\s+/).includes('fixed') ? 'fixed' : 'static')
+  }
   matches(selector: string) {
     if (
       this.options.renderedMarkup?.includes('data-native-preview-overlay=') &&
@@ -58,6 +66,19 @@ class FakeElement {
     if (
       this.options.marker === 'radix' &&
       selector.includes('[data-radix-popper-content-wrapper]')
+    ) {
+      return true
+    }
+    if (
+      selector.includes('[class~="fixed"]') &&
+      this.options.className?.split(/\s+/).includes('fixed')
+    ) {
+      return true
+    }
+    if (
+      this.options.marker === 'inline-fixed' &&
+      (selector.includes('[style*="position: fixed"]') ||
+        selector.includes('[style*="position:fixed"]'))
     ) {
       return true
     }
@@ -87,7 +108,13 @@ function stubOverlayDom(initialOverlays: FakeElementOptions[]) {
     querySelectorAll: (selector: string) => overlays.filter((element) => element.matches(selector)),
   })
   vi.stubGlobal('window', {
-    getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
+    innerWidth: 640,
+    innerHeight: 480,
+    getComputedStyle: (element: FakeElement) => ({
+      display: 'flex',
+      position: element.getComputedPosition(),
+      visibility: 'visible',
+    }),
     requestAnimationFrame: (callback: () => void) => {
       const frame = nextFrame++
       animationFrames.set(frame, callback)
@@ -185,6 +212,48 @@ describe('native preview context-menu seam', () => {
     stopObserving()
   })
 
+  it('automatically detects an unmarked fixed full-viewport dialog overlay', () => {
+    const overlayDom = stubOverlayDom([
+      {
+        className: 'fixed inset-0 bg-black/50',
+        rectangles: [{ left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480 }],
+      },
+    ])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, onOverlayCountChange)
+
+    expect(onOverlayCountChange).toHaveBeenCalledWith(1)
+    stopObserving()
+  })
+
+  it('uses a one-pixel viewport-edge tolerance for fixed overlays', () => {
+    const overlayDom = stubOverlayDom([
+      {
+        className: 'fixed inset-0',
+        rectangles: [{ left: 1, top: 1, right: 639, bottom: 479, width: 638, height: 478 }],
+      },
+    ])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, onOverlayCountChange)
+
+    expect(onOverlayCountChange).toHaveBeenCalledWith(1)
+    stopObserving()
+  })
+
+  it('does not hide for fixed elements that do not cover the viewport', () => {
+    const overlayDom = stubOverlayDom([
+      {
+        className: 'fixed z-50',
+        rectangles: [{ left: 16, top: 16, right: 336, bottom: 256, width: 320, height: 240 }],
+      },
+    ])
+    const onOverlayCountChange = vi.fn()
+    const stopObserving = observeNativePreviewOverlays(overlayDom.host, onOverlayCountChange)
+
+    expect(onOverlayCountChange).toHaveBeenCalledWith(0)
+    stopObserving()
+  })
+
   it('marks source-browser overlays that coexist with the details preview', () => {
     const sourceRoot = join(__dirname, '..', '..')
     const fileTree = readFileSync(join(sourceRoot, 'explorer', 'FileTree.tsx'), 'utf8')
@@ -231,7 +300,7 @@ describe('native preview context-menu seam', () => {
   it('ignores a permanent non-overlay with z-50 and aria-live', () => {
     const overlayDom = stubOverlayDom([
       {
-        className: 'fixed z-50',
+        className: 'z-50',
         ariaLive: 'polite',
         rectangles: VISIBLE_RECTANGLE,
       },

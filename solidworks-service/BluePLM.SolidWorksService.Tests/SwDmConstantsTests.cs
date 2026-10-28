@@ -15,6 +15,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// returned that rejection honestly; the caller discarded it. These tests are the detector that
     /// was missing.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class SwDmConstantsTests
     {
         #region Mirrors match the installed interop

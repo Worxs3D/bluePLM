@@ -30,6 +30,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// time it gets there.
     /// </summary>
     [Collection(FixtureRootEnvironmentCollection.Name)]
+    [Trait("Category", "Headless")]
     public class DmWriteProbeContainmentTests
     {
         private const string LeftoverName = "~$LEFTOVER.SLDPRT";

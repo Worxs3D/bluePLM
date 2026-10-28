@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useDeniedModules } from '@/hooks/useDeniedModules'
 import { supabase } from '@/lib/supabase'
 import { ModulesEditor } from './ModulesEditor'
@@ -38,7 +39,19 @@ export function ModulesSettings() {
     getEffectiveRole,
     organization,
     setActiveView,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      moduleConfig: s.moduleConfig,
+      setModuleConfig: s.setModuleConfig,
+      resetModulesToDefaults: s.resetModulesToDefaults,
+      loadOrgModuleDefaults: s.loadOrgModuleDefaults,
+      saveOrgModuleDefaults: s.saveOrgModuleDefaults,
+      forceOrgModuleDefaults: s.forceOrgModuleDefaults,
+      getEffectiveRole: s.getEffectiveRole,
+      organization: s.organization,
+      setActiveView: s.setActiveView,
+    })),
+  )
 
   const deniedModules = useDeniedModules()
 

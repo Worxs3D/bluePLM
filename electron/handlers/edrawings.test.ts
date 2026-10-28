@@ -22,6 +22,8 @@ import {
 import {
   createEDrawingsPreviewController,
   findEDrawingsExecutable,
+  hasDotNet8DesktopRuntime,
+  isEDrawingsNativePreviewAvailable,
   getEDrawingsNativeModuleCandidates,
   getEDrawingsPreviewHostCandidates,
   openEDrawingsFileExternally,
@@ -32,6 +34,7 @@ import {
   type PreviewOwner,
   validateEDrawingsPreviewFile,
   unregisterEDrawingsHandlers,
+  validateEDrawingsExternalOpenFile,
 } from './edrawings'
 
 class FakePreview implements NativeEDrawingsPreview {
@@ -185,6 +188,31 @@ describe('findEDrawingsExecutable', () => {
       exists: (candidate) => candidate === expected,
       listDirectories: () => [],
     })).toBe(expected)
+  })
+})
+
+describe('.NET Desktop Runtime detection', () => {
+  it('accepts an installed .NET 8 Windows Desktop Runtime', () => {
+    const listVersions = vi.fn(() => ['6.0.25', '8.0.12', '9.0.1'])
+
+    expect(hasDotNet8DesktopRuntime(listVersions)).toBe(true)
+    expect(listVersions).toHaveBeenCalledWith(
+      path.join(process.env.ProgramW6432 ?? process.env.ProgramFiles ?? 'C:\\Program Files', 'dotnet', 'shared', 'Microsoft.WindowsDesktop.App'),
+    )
+  })
+
+  it('returns unavailable when the .NET 8 Desktop Runtime is absent', () => {
+    expect(hasDotNet8DesktopRuntime(() => ['6.0.25', '9.0.1'])).toBe(false)
+    expect(hasDotNet8DesktopRuntime(() => [])).toBe(false)
+  })
+
+  it('keeps the embedded preview unavailable when the Desktop Runtime is missing', () => {
+    const nativeModule = { isAvailable: vi.fn(() => true) }
+
+    expect(isEDrawingsNativePreviewAvailable(nativeModule, 'preview-host.exe', false)).toBe(false)
+    expect(nativeModule.isAvailable).not.toHaveBeenCalled()
+    expect(isEDrawingsNativePreviewAvailable(nativeModule, 'preview-host.exe', true)).toBe(true)
+    expect(nativeModule.isAvailable).toHaveBeenCalledOnce()
   })
 })
 
@@ -543,6 +571,29 @@ describe('external eDrawings opening', () => {
       fs.rmSync(vaultRoot, { recursive: true, force: true })
       fs.rmSync(outsideRoot, { recursive: true, force: true })
     }
+  })
+
+  it('allows external opening only inside the configured UNC vault root', () => {
+    const vaultRoot = '\\\\server\\share\\vault'
+    const allowedFile = '\\\\server\\share\\vault\\parts\\frame.sldprt'
+    const outsideFile = '\\\\server\\share\\other\\frame.sldprt'
+    const dependencies = {
+      realpath: (candidate: string) => candidate,
+      isFile: (candidate: string) => candidate === allowedFile || candidate === outsideFile,
+    }
+
+    expect(validateEDrawingsExternalOpenFile(allowedFile, vaultRoot, dependencies)).toEqual({
+      success: true,
+      filePath: allowedFile,
+    })
+    expect(validateEDrawingsExternalOpenFile(outsideFile, vaultRoot, dependencies)).toMatchObject({
+      success: false,
+      errorCode: 'preview-file-outside-vault',
+    })
+    expect(validateEDrawingsPreviewFile(allowedFile, vaultRoot, dependencies)).toMatchObject({
+      success: false,
+      errorCode: 'preview-vault-not-local',
+    })
   })
 })
 

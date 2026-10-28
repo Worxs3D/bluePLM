@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ECO } from '@/stores/types'
 import { getSupabaseClient } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
@@ -83,7 +84,22 @@ export function ECOView() {
     setECOs,
     setECOsLoading,
     updateECO,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      isVaultConnected: s.isVaultConnected,
+      files: s.files,
+      selectedFiles: s.selectedFiles,
+      addToast: s.addToast,
+      ecos: s.ecos,
+      ecosLoading: s.ecosLoading,
+      ecosLoaded: s.ecosLoaded,
+      setECOs: s.setECOs,
+      setECOsLoading: s.setECOsLoading,
+      updateECO: s.updateECO,
+    })),
+  )
 
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<ECOStatus | 'all'>('all')

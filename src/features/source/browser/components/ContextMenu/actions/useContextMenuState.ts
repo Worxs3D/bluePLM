@@ -3,6 +3,7 @@
  */
 import { useMemo } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { SelectionCounts, SelectionState } from './types'
 
@@ -25,7 +26,7 @@ export function useContextMenuSelectionState({
   contextFiles,
   userId,
 }: UseContextMenuStateParams): UseContextMenuStateReturn {
-  const { files } = usePDMStore()
+  const { files } = usePDMStore(useShallow((s) => ({ files: s.files })))
 
   // Get all synced files - either directly selected or inside selected folders.
   // Excludes 'cloud' (nothing downloaded to act on) and 'moved_away' (a stub sharing the

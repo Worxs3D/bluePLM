@@ -10,6 +10,7 @@ import type { RefreshableActionProps } from './types'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 import { isSolidWorksUsable } from '@/types/solidworks'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 
 export function MetadataActions({
@@ -20,7 +21,7 @@ export function MetadataActions({
   onRefresh,
 }: RefreshableActionProps) {
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
-  const { user } = usePDMStore()
+  const { user } = usePDMStore(useShallow((s) => ({ user: s.user })))
   const swServiceRunning = isSolidWorksUsable(status)
   const [isSyncing, setIsSyncing] = useState(false)
 

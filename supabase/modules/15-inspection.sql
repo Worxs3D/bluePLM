@@ -138,6 +138,24 @@ CREATE INDEX IF NOT EXISTS idx_inspection_char_versions_file_version_id ON inspe
 CREATE INDEX IF NOT EXISTS idx_inspection_char_versions_org_id ON inspection_characteristic_versions(org_id);
 
 -- ===========================================
+-- DRAWING SOURCE BINDING (schema 103)
+-- ===========================================
+-- Binds a row to the drawing annotation it was extracted from (native extraction through
+-- the SOLIDWORKS API, no Inspection add-in). source_key is a stable hash of the
+-- annotation's persist reference; source_sheet / source_view are for display only.
+-- NULL on manual rows and on rows imported before 103. Snapshots copy all three
+-- (checkin_file in 10-source-files.sql). They are not part of inspection_hash: see the
+-- comment there.
+
+ALTER TABLE inspection_characteristics ADD COLUMN IF NOT EXISTS source_key TEXT;
+ALTER TABLE inspection_characteristics ADD COLUMN IF NOT EXISTS source_sheet TEXT;
+ALTER TABLE inspection_characteristics ADD COLUMN IF NOT EXISTS source_view TEXT;
+
+ALTER TABLE inspection_characteristic_versions ADD COLUMN IF NOT EXISTS source_key TEXT;
+ALTER TABLE inspection_characteristic_versions ADD COLUMN IF NOT EXISTS source_sheet TEXT;
+ALTER TABLE inspection_characteristic_versions ADD COLUMN IF NOT EXISTS source_view TEXT;
+
+-- ===========================================
 -- INSPECTION METHODS (org-level custom list)
 -- ===========================================
 -- Reusable inspection method names (e.g. "Visual", "Calipers", "CMM") that an org

@@ -10,6 +10,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { Bell, Lock, Loader2 } from 'lucide-react'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 export interface NotifiableCheckoutAvatarProps {
@@ -81,7 +82,13 @@ export function NotifiableCheckoutAvatar({
     return () => clearInterval(timerId)
   }, [isHovered])
 
-  const { user: currentUser, organization, addToast } = usePDMStore()
+  const { user: currentUser, organization, addToast } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+    })),
+  )
 
   const displayName = user.full_name || user.email?.split('@')[0] || 'User'
   const initials = getInitials(displayName)

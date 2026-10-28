@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { DialogState, DialogName, ForceCheckinFilesState, OrgUser } from '../types'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ServerDeletionTarget } from '@/lib/commands'
 import type { ECO } from '@/stores/types'
 import { isWatchingFile, getActiveECOs as fetchActiveECOs, isMachineOnline } from '@/lib/supabase'
@@ -110,7 +111,17 @@ export function useContextMenuState({
     // Members for org users
     members,
     membersLoading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      ecosLoaded: s.ecosLoaded,
+      ecosLoading: s.ecosLoading,
+      getActiveECOs: s.getActiveECOs,
+      setECOs: s.setECOs,
+      setECOsLoading: s.setECOsLoading,
+      members: s.members,
+      membersLoading: s.membersLoading,
+    })),
+  )
 
   // Dialog state
   const [dialogs, setDialogs] = useState<DialogState>(initialDialogState)

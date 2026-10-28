@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand'
 import { resetLoadFilesCoordination } from '@/hooks/loadFilesCoordination'
+import { isAdminUser } from '@/lib/isAdminUser'
 
 import type { PDMStoreState, UserSlice, ImpersonatedUser } from '../types'
 import type { User, Organization } from '../../types/pdm'
@@ -145,18 +146,25 @@ export const createUserSlice: StateCreator<
   signOut: () => get().resetSessionState(),
 
   // Get effective role (considering user impersonation)
+  // A member of the Administrators team is 'admin' here whatever users.role says,
+  // so the ~50 `getEffectiveRole() === 'admin'` gates in the UI follow the team.
   getEffectiveRole: () => {
-    const { user, impersonatedUser } = get()
-    if (impersonatedUser) return impersonatedUser.role
+    const { user, impersonatedUser, userTeams } = get()
+    if (impersonatedUser) {
+      return isAdminUser(impersonatedUser.role, impersonatedUser.teams)
+        ? 'admin'
+        : impersonatedUser.role
+    }
+    if (isAdminUser(user?.role, userTeams)) return 'admin'
     return user?.role ?? 'member'
   },
 
   // Actions - User Impersonation (admin feature)
   startUserImpersonation: async (targetUserId: string, customUser) => {
-    const { user, addToast, moduleConfig: defaultConfig } = get()
+    const { user, userTeams, addToast, moduleConfig: defaultConfig } = get()
 
-    // Only real admins can impersonate
-    if (user?.role !== 'admin') {
+    // Only real admins can impersonate (role column or Administrators team)
+    if (!user || !isAdminUser(user.role, userTeams)) {
       addToast('error', 'Only admins can impersonate users')
       return
     }
@@ -407,20 +415,20 @@ export const createUserSlice: StateCreator<
   },
 
   hasPermission: (resource: string, action: string) => {
-    const { user, impersonatedUser, userPermissions } = get()
+    const { user, impersonatedUser, userPermissions, userTeams } = get()
 
     // If impersonating a user, use their permissions
     if (impersonatedUser) {
       // Impersonated admin gets full access
-      if (impersonatedUser.role === 'admin') {
+      if (isAdminUser(impersonatedUser.role, impersonatedUser.teams)) {
         return true
       }
       const resourcePerms = impersonatedUser.permissions[resource] || []
       return resourcePerms.includes(action) || resourcePerms.includes('admin')
     }
 
-    // Admins always have full access
-    if (user?.role === 'admin') {
+    // Admins always have full access, whether by role column or by Administrators team
+    if (isAdminUser(user?.role, userTeams)) {
       return true
     }
 
@@ -435,15 +443,18 @@ export const createUserSlice: StateCreator<
   },
 
   canAccessModule: (moduleId: ModuleId) => {
-    const { user, impersonatedUser, deniedModules } = get()
+    const { user, impersonatedUser, deniedModules, userTeams } = get()
 
     // Impersonation loads the target user's teams but not their module access,
     // so fall back to the impersonated role rather than the real admin's.
     if (impersonatedUser) {
-      return impersonatedUser.role === 'admin' || !deniedModules.includes(moduleId)
+      return (
+        isAdminUser(impersonatedUser.role, impersonatedUser.teams) ||
+        !deniedModules.includes(moduleId)
+      )
     }
 
-    if (user?.role === 'admin') return true
+    if (isAdminUser(user?.role, userTeams)) return true
 
     return !deniedModules.includes(moduleId)
   },

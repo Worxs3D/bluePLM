@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Loader2, Package, FileOutput, Eye, RotateCcw, User, Building2, Box } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { ExportSettings as ExportSettingsType, DEFAULT_EXPORT_SETTINGS } from '@/types/pdm'
 
@@ -142,7 +143,14 @@ export function getEffectiveExportSettings(
 }
 
 export function ExportSettings() {
-  const { organization, addToast, getEffectiveRole, updateOrganization } = usePDMStore()
+  const { organization, addToast, getEffectiveRole, updateOrganization } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      addToast: s.addToast,
+      getEffectiveRole: s.getEffectiveRole,
+      updateOrganization: s.updateOrganization,
+    })),
+  )
   const isAdmin = getEffectiveRole() === 'admin'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

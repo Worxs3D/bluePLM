@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getRecentActivity } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -67,7 +68,18 @@ export function HistoryView() {
     setCurrentFolder,
     setSelectedFiles,
     addToast,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      isVaultConnected: s.isVaultConnected,
+      historyFolderFilter: s.historyFolderFilter,
+      setHistoryFolderFilter: s.setHistoryFolderFilter,
+      files: s.files,
+      setCurrentFolder: s.setCurrentFolder,
+      setSelectedFiles: s.setSelectedFiles,
+      addToast: s.addToast,
+    })),
+  )
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
 

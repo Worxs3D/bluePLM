@@ -434,6 +434,8 @@ export const en: TranslationDict = {
       'Some renames did not reach the server, which still records the old paths. Affected files show as moved; run reconcile-moved-paths to update them.',
     cloudRenameFailed: 'Could not rename on the server',
     movedAwayBlocked: 'File has moved - resolve the pending move first',
+    moveTargetExists: '"{{name}}" already exists in the target folder, so it was not moved',
+    mergeKeptConflicts: '{{count}} files exist in both folders, so they were left in {{folder}}',
     checkIn: 'Check In',
     checkOut: 'Check Out',
     download: 'Download',
@@ -662,7 +664,7 @@ export const en: TranslationDict = {
       noMethods: 'No methods yet. Add one above.',
       builtIn: 'Built-in',
       empty: 'No inspection characteristics yet.',
-      importFromSw: 'Pull from SOLIDWORKS',
+      importFromSw: 'Pull from SW Inspection',
       importing: 'Pulling…',
       importServiceOffline: 'Start the SOLIDWORKS service to import inspection characteristics.',
       importNotDrawing: 'Open a SOLIDWORKS drawing (.slddrw) to import inspection characteristics.',
@@ -673,7 +675,7 @@ export const en: TranslationDict = {
       importFailed: 'Failed to import from SOLIDWORKS',
       importConfirmReplace:
         'This will replace the current inspection rows with the characteristics from SOLIDWORKS. Continue?',
-      pushToSw: 'Push to SOLIDWORKS',
+      pushToSw: 'Push to SW Inspection',
       pushing: 'Pushing…',
       pushConfirm:
         'This will write inspection metadata (criticality, method, operation, AQL, comments) for {count} changed characteristic(s) back into the SOLIDWORKS drawing and save it. Continue?',
@@ -689,6 +691,75 @@ export const en: TranslationDict = {
         '{count} characteristic(s) have metadata changes not yet pushed to the SOLIDWORKS drawing.',
       unpushedWarnLeave:
         'You have inspection changes that have not been pushed to the SOLIDWORKS drawing. Leave anyway?',
+      // Native extraction and ballooning (plain SOLIDWORKS API, no Inspection add-in).
+      extractFromDrawing: 'Extract from drawing',
+      extractTitle:
+        'Read dimensions, GTOLs and surface finish symbols from the drawing. No SOLIDWORKS Inspection license needed.',
+      extracting: 'Extracting…',
+      extractServiceOffline: 'Start the SOLIDWORKS service to read the drawing.',
+      serviceTooOld:
+        'The SOLIDWORKS service ({{version}}) is too old to read or balloon drawings. Update it to {{required}} or later.',
+      notLocal: 'Download the drawing first. It has to be on this computer.',
+      extractFailed: 'Failed to read the drawing',
+      extractNone: 'No dimensions, GTOLs or surface finish symbols found in this drawing.',
+      extractUpToDate: 'The table already matches the drawing.',
+      extractPreviewTitle: 'Extract from drawing',
+      extractPreviewCounts:
+        '{{added}} new, {{updated}} changed, {{adopted}} linked, {{missing}} no longer in the drawing, {{unchanged}} unchanged',
+      extractAdded: 'New ({{count}})',
+      extractUpdated: 'Changed ({{count}})',
+      extractChanged: 'Changes: {{fields}}',
+      extractAdoptedBadge: 'Linked',
+      extractMissing: 'No longer in the drawing ({{count}})',
+      extractMissingHint: 'Ticked rows are removed from the table. Untick a row to keep it.',
+      extractRemoveRow: 'Remove balloon {{balloon}}',
+      extractIncompleteBadge: 'Sheet not fully read',
+      extractIncompleteSheets:
+        'Some of the drawing could not be read ({{sheets}}). Rows on those sheets are not ticked for removal, because their annotations may still be there.',
+      extractUnreadable: 'Could not be read ({{count}})',
+      extractUnreadableHint:
+        'These annotations are still in the drawing but could not be read. Their rows are kept as they are.',
+      extractManualNote:
+        '{{count}} row(s) not linked to the drawing are left as they are.',
+      extractApply: 'Apply',
+      extractApplied: 'Table updated: {{added}} added, {{updated}} changed, {{removed}} removed',
+      fieldSourceKey: 'drawing link',
+      fieldSourceView: 'View',
+      balloonDrawing: 'Balloon drawing',
+      balloonTitle:
+        'Write numbered balloons into the drawing on the BluePLM Inspection layer, replacing earlier BluePLM balloons.',
+      ballooning: 'Ballooning…',
+      balloonNothing: 'No rows are linked to the drawing. Extract from the drawing first.',
+      balloonAllStale:
+        'None of the linked rows are in the drawing any more. Extract from the drawing first.',
+      balloonConfirmTitle: 'Balloon drawing',
+      balloonConfirmBody:
+        'Place {{count}} balloon(s) in the drawing on the BluePLM Inspection layer. Balloons BluePLM placed before are replaced.',
+      balloonConfirmAddin:
+        'Balloons placed by the SOLIDWORKS Inspection add-in are not touched and stay in the drawing.',
+      balloonConfirmUnkeyed:
+        '{{count}} row(s) without a drawing link or balloon number get no balloon.',
+      balloonConfirmStale:
+        '{{count}} row(s) are no longer in the drawing and get no balloon. Extract from the drawing to update the table.',
+      balloonConfirmSave:
+        'The drawing is saved. Check it in afterwards to share the ballooned drawing.',
+      balloonConfirmApply: 'Balloon drawing',
+      balloonApplied:
+        'Placed {{placed}} balloon(s) (replaced {{removedPrevious}}) and saved the drawing. Check it in to share it.',
+      balloonNotSaved:
+        'Placed {{placed}} balloon(s), but the drawing could not be saved. Save it in SOLIDWORKS, then check it in.',
+      balloonMissing:
+        '{{count}} characteristic(s) were not found in the drawing and got no balloon.',
+      balloonFailed: 'Failed to balloon the drawing',
+      errorReadOnly:
+        'The drawing is read-only on disk. Check it out again to make it writable.',
+      errorOpenInSolidWorks:
+        'The drawing is open in SOLIDWORKS. Close it there and try again.',
+      errorUnsavedChanges:
+        'The drawing is open in SOLIDWORKS with unsaved changes. Save or close it there first.',
+      errorNotADrawing: 'This file is not a SOLIDWORKS drawing.',
+      errorModifiedNotSaved:
+        'Ballooning failed and the drawing is still open in SOLIDWORKS with partial balloon changes. Close it there without saving.',
     },
     // Writing datacard edits into the SolidWorks file. A write that does not reach the file keeps
     // the user's value and marks it, so these messages say where the value stands rather than
@@ -1350,6 +1421,9 @@ export const en: TranslationDict = {
       resultFoldersFailed: '{{count}} folders not created',
       resultReferencesFailed: 'references not copied',
       resultFolderFailed: 'Folder could not be created',
+      resultFoldersKept: '{{count}} emptied folders left on disk',
+      resultFolderKept:
+        'Folder left on disk: it still holds files BluePLM does not list (hidden, ignored or open)',
       resultAndMore: '...and {{count}} more',
 
       // Why a file is left out of a transfer

@@ -6,6 +6,7 @@ interface CadPreviewAvailability {
   hasThumbnail: boolean
   eDrawingsInstalled: boolean
   embeddedAvailable?: boolean
+  preferThumbnailInExternalMode?: boolean
 }
 
 export type CadPreviewVariant =
@@ -23,6 +24,7 @@ export function resolveCadPreviewVariant({
   hasThumbnail,
   eDrawingsInstalled,
   embeddedAvailable = true,
+  preferThumbnailInExternalMode = false,
 }: CadPreviewAvailability): CadPreviewVariant {
   if (solidWorks) {
     return mode === 'edrawings-embedded' && embeddedAvailable ? 'embedded' : 'datacard'
@@ -31,7 +33,10 @@ export function resolveCadPreviewVariant({
     if (embeddedAvailable) return 'embedded'
     return eDrawingsInstalled ? 'external-fallback' : 'unavailable'
   }
-  if (mode === 'edrawings') return eDrawingsInstalled ? 'external' : 'missing-edrawings'
+  if (mode === 'edrawings') {
+    if (preferThumbnailInExternalMode && hasThumbnail) return 'thumbnail'
+    return eDrawingsInstalled ? 'external' : 'missing-edrawings'
+  }
   if (hasThumbnail) return 'thumbnail'
   return eDrawingsInstalled ? 'external-fallback' : 'unavailable'
 }

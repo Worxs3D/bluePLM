@@ -177,7 +177,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const user = request.user!
 
       // Check admin permission
-      if (user.role !== 'admin') {
+      if (!user.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Admin role required')
       }
 

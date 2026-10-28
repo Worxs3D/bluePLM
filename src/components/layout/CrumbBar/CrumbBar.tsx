@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { buildFullPath } from '@/lib/utils/path'
 import { logExplorer } from '@/lib/userActionLogger'
+import { useStableCallback } from '@/hooks/useStableCallback'
 
 // Parse a full path back to relative path
 function parsePathToRelative(fullPath: string, vaultPath: string): string {
@@ -100,11 +101,14 @@ export function CrumbBar({
   const fullPath = currentPath ? buildFullPath(vaultPath, currentPath) : vaultPath
 
   // Enter edit mode
-  const startEditing = useCallback(() => {
+  // The handlers are stable wrappers, not useCallback: two memoized closures with different
+  // inputs chained each render's scope to an older one, and every scope held that render's
+  // props, including the file pane's getChildFolders over that render's whole file list.
+  const startEditing = useStableCallback(() => {
     setOpenDropdown(null)
     setEditValue(fullPath)
     setIsEditing(true)
-  }, [fullPath])
+  })
 
   // Exit edit mode
   const stopEditing = useCallback(() => {
@@ -113,7 +117,7 @@ export function CrumbBar({
   }, [])
 
   // Handle path submission
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useStableCallback(() => {
     const trimmedPath = editValue.trim()
     if (!trimmedPath) {
       stopEditing()
@@ -131,7 +135,7 @@ export function CrumbBar({
     }
 
     stopEditing()
-  }, [editValue, vaultPath, onNavigate, onNavigateRoot, stopEditing])
+  })
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -174,13 +178,10 @@ export function CrumbBar({
     setOpenDropdown((prev) => (prev === parentPath ? null : parentPath))
   }, [])
 
-  const handleDropdownNavigate = useCallback(
-    (relativePath: string) => {
-      setOpenDropdown(null)
-      onNavigate(relativePath)
-    },
-    [onNavigate],
-  )
+  const handleDropdownNavigate = useStableCallback((relativePath: string) => {
+    setOpenDropdown(null)
+    onNavigate(relativePath)
+  })
 
   // Handle keyboard events in edit mode
   const handleKeyDown = (e: React.KeyboardEvent) => {

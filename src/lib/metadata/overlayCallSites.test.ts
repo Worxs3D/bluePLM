@@ -916,15 +916,21 @@ const DELIBERATE: readonly Allowance[] = [
       'Counts cloud-only files that have never been checked in. The question is whether the server row has a revision yet, not what the field would display.',
   },
   {
-    file: 'hooks/useLoadFiles.ts',
-    symbols: ['runLoadFiles'],
+    file: 'hooks/useLoadFiles/mergeLocalFile.ts',
+    symbols: ['buildMergeLookups', 'mergeLocalFileWithServer'],
     reason:
       'The load-time merge, which is where committed data is assembled. Its reads are diagnostics plus the move-detection mirror that seeds pendingMetadata from the row.',
   },
   {
     file: 'hooks/useRealtimeSubscriptions.ts',
-    symbols: ['unsubscribeFiles'],
+    symbols: ['onFileChange'],
     reason: 'Logs the row a realtime event arrived for, to compare against the event payload.',
+  },
+  {
+    file: 'hooks/realtimeLocalWrites.ts',
+    symbols: ['withoutLocalChanges'],
+    reason:
+      'Compares the committed row with a snapshot of itself, field by field, to find which fields a local write changed while a realtime update waited. It decides which server fields to apply, never a displayed value.',
   },
   {
     file: 'lib/commands/handlers/fileOps.ts',
@@ -1007,10 +1013,11 @@ interface FoundRead extends UnroutedRead {
  * Tests are excluded: a test that quotes the bad shape is documenting it, and every fixture in the
  * suite builds both sides by hand. This file was inside its own scan until it was found matching
  * itself four times on the reserved-key rule, which is exactly how the anti-vacuity test below
- * survived having the scan's main rules deleted.
+ * survived having the scan's main rules deleted. `src/test/` is the shared test kit (the fake
+ * database ports the SQL's reserved-map merge), so it is excluded for the same reason.
  */
 const FOUND: readonly FoundRead[] = projectFiles
-  .filter((path) => !/\.test\.tsx?$/.test(path))
+  .filter((path) => !/\.test\.tsx?$/.test(path) && !posixPath(path).includes('/src/test/'))
   .flatMap((path) => {
     const source = program.getSourceFile(path)
     if (!source) return []

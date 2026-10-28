@@ -69,6 +69,7 @@ export function EDrawingsEmbeddedPreview({
 
   useEffect(() => {
     let observer: ResizeObserver | undefined
+    let boundsSyncFrame: number | undefined
     let stopObservingOverlays: (() => void) | undefined
     let stopHealthChecks: (() => void) | undefined
     const api = window.electronAPI
@@ -121,6 +122,13 @@ export function EDrawingsEmbeddedPreview({
 
     const syncActiveBounds = () => {
       if (session?.sessionId) void syncBounds(session.sessionId)
+    }
+    const scheduleBoundsSync = () => {
+      if (boundsSyncFrame !== undefined) return
+      boundsSyncFrame = window.requestAnimationFrame(() => {
+        boundsSyncFrame = undefined
+        syncActiveBounds()
+      })
     }
 
     const visibility = createNativePreviewVisibilityController({
@@ -216,10 +224,10 @@ export function EDrawingsEmbeddedPreview({
       visibility.setReady(true)
       observer = new ResizeObserver(syncActiveBounds)
       if (host.current) observer.observe(host.current)
-      window.addEventListener('resize', syncActiveBounds)
+      window.addEventListener('resize', scheduleBoundsSync)
       // Scroll does not bubble, but the capture phase reaches the DetailsPanel's
       // scroll container without coupling this preview to its implementation.
-      window.addEventListener('scroll', syncActiveBounds, true)
+      window.addEventListener('scroll', scheduleBoundsSync, true)
       stopHealthChecks = observePreviewHealth(
         () => session.status(),
         (statusErrorCode) => {
@@ -264,10 +272,11 @@ export function EDrawingsEmbeddedPreview({
       session?.dispose()
       visibility.setReady(false)
       observer?.disconnect()
+      if (boundsSyncFrame !== undefined) window.cancelAnimationFrame(boundsSyncFrame)
       stopObservingOverlays?.()
       stopHealthChecks?.()
-      window.removeEventListener('resize', syncActiveBounds)
-      window.removeEventListener('scroll', syncActiveBounds, true)
+      window.removeEventListener('resize', scheduleBoundsSync)
+      window.removeEventListener('scroll', scheduleBoundsSync, true)
       window.removeEventListener(CONTEXT_MENU_OPEN_EVENT, handleContextMenuOpen)
       window.removeEventListener(CONTEXT_MENU_CLOSE_EVENT, handleContextMenuClose)
       document.removeEventListener('pointerdown', handleOutsideContextMenu)

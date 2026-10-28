@@ -7,7 +7,16 @@
 import { FastifyPluginAsync } from 'fastify'
 import { schemas } from '../schemas/index.js'
 import { sendError, ErrorCode } from '../utils/index.js'
-import type { Supplier, PartSupplier, PriceBreak } from '../types.js'
+import type { Supplier, PartSupplier, PriceBreak, UserProfile } from '../types.js'
+
+/**
+ * Viewers may read suppliers but not change them. An administrator is never a
+ * viewer here, whatever the role column says: a member of the Administrators
+ * team can hold role = 'viewer', and was refused until this checked isAdmin.
+ */
+function isReadOnlyViewer(user: UserProfile): boolean {
+  return !user.isAdmin && user.role === 'viewer'
+}
 
 const supplierRoutes: FastifyPluginAsync = async (fastify) => {
   // List all suppliers
@@ -149,7 +158,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: fastify.authenticate,
     },
     async (request) => {
-      if (request.user!.role === 'viewer') {
+      if (isReadOnlyViewer(request.user!)) {
         const error = new Error('Viewers cannot create suppliers') as Error & { statusCode: number }
         error.statusCode = 403
         throw error
@@ -217,7 +226,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      if (request.user!.role === 'viewer') {
+      if (isReadOnlyViewer(request.user!)) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Viewers cannot update suppliers')
       }
 
@@ -260,7 +269,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      if (request.user!.role !== 'admin') {
+      if (!request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Only admins can delete suppliers')
       }
 
@@ -377,7 +386,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      if (request.user!.role === 'viewer') {
+      if (isReadOnlyViewer(request.user!)) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Viewers cannot link suppliers')
       }
 
@@ -472,7 +481,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id, supplierId } = request.params as { id: string; supplierId: string }
 
-      if (request.user!.role === 'viewer') {
+      if (isReadOnlyViewer(request.user!)) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Viewers cannot update supplier info')
       }
 
@@ -534,7 +543,7 @@ const supplierRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id, supplierId } = request.params as { id: string; supplierId: string }
 
-      if (request.user!.role === 'viewer') {
+      if (isReadOnlyViewer(request.user!)) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'Viewers cannot remove suppliers')
       }
 

@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react'
 import { BadgeCheck, CheckCircle } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { STATE_COLORS } from '@/types/workflow'
 import { IconGridPicker } from '@/components/shared/IconPicker'
 import type { EditStateDialogProps, WorkflowRoleBasic } from '../types'
 
 export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps) {
-  const { organization } = usePDMStore()
+  const { organization } = usePDMStore(useShallow((s) => ({ organization: s.organization })))
   const [name, setName] = useState(state.name)
   const [label, setLabel] = useState(state.label || '')
   const [description, setDescription] = useState(state.description || '')

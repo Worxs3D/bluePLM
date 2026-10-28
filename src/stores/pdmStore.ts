@@ -13,15 +13,10 @@
  */
 import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
-import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
-
+import { persist } from 'zustand/middleware'
 import { log } from '@/lib/logger'
 import { isCadPreviewMode } from '@/types/cadPreviewMode'
-
-import {
-  PERSIST_WRITE_THRESHOLD_MS,
-  STORE_MUTATION_THRESHOLD_MS,
-} from '@/lib/performanceThresholds'
+import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 
 import type { ModuleId, ModuleGroupId, ModuleConfig, SectionDivider } from '../types/modules'
 import { getDefaultModuleConfig, MODULES, getChildModules } from '../types/modules'
@@ -37,6 +32,12 @@ import type {
   SidebarView,
 } from './types'
 import { pickPersistedPathKeys, restorePersistedPathKeys } from './persistedPathKeys'
+import {
+  createPersistStorage,
+  flushPersistStorageOnPageHide,
+  memoizeByReference,
+} from './persistStorage'
+import { getStoreActionName } from './storeActionName'
 import { CURRENT_STORE_VERSION, runMigrations, getPersistedVersion } from './migrations'
 
 /**
@@ -77,16 +78,6 @@ import {
 import { defaultCardViewFields } from './slices/settingsSlice'
 
 const PERSIST_STORAGE_NAME = 'blue-plm-storage'
-const MAX_PERSISTED_KEY_DETAILS = 5
-
-interface PersistedKeySize {
-  key: string
-  bytes: number
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
 
 function getLocalStorage(): Storage | null {
   try {
@@ -96,74 +87,37 @@ function getLocalStorage(): Storage | null {
   }
 }
 
-const textEncoder = typeof TextEncoder === 'undefined' ? null : new TextEncoder()
+const persistStorage = createPersistStorage({ getStorage: getLocalStorage })
+flushPersistStorageOnPageHide(persistStorage)
 
-function getByteLength(value: string): number {
-  return textEncoder ? textEncoder.encode(value).length : value.length
+/**
+ * Remove the persisted store and stop it being written again until the page reloads. Use this
+ * instead of `localStorage.removeItem` - a write still waiting in the debounce would put the old
+ * state back.
+ */
+export function discardPersistedStore(): void {
+  persistStorage.discard(PERSIST_STORAGE_NAME)
 }
 
-function getTopPersistedKeySizes(value: StorageValue<unknown>): PersistedKeySize[] {
-  if (!isRecord(value.state)) return []
-
-  return Object.entries(value.state)
-    .map(([key, stateValue]) => {
-      const serialized = JSON.stringify(stateValue)
-      return {
-        key,
-        bytes: serialized === undefined ? 0 : getByteLength(serialized),
-      }
-    })
-    .sort((first, second) => second.bytes - first.bytes)
-    .slice(0, MAX_PERSISTED_KEY_DETAILS)
-}
-
-let persistedBlobSizeLogged = false
-
-function logPersistedBlobSize(name: string, rawValue: string | null): void {
-  if (persistedBlobSizeLogged) return
-  persistedBlobSizeLogged = true
-
-  log.info('[Perf]', 'Persisted blob size', {
-    key: name,
-    totalBytes: rawValue === null ? 0 : getByteLength(rawValue),
-  })
-}
-
-const diagnosticsStorage: PersistStorage<unknown> = {
-  getItem: (name) => {
-    const rawValue = getLocalStorage()?.getItem(name) ?? null
-    logPersistedBlobSize(name, rawValue)
-    if (rawValue === null) return null
-
-    const parsed: unknown = JSON.parse(rawValue)
-    return isRecord(parsed) ? (parsed as StorageValue<unknown>) : null
-  },
-  setItem: (name, value) => {
-    const serializeStart = performance.now()
-    const serialized = JSON.stringify(value)
-    const serializeMs = performance.now() - serializeStart
-    if (serialized === undefined) return
-
-    const writeStart = performance.now()
-    getLocalStorage()?.setItem(name, serialized)
-    const writeMs = performance.now() - writeStart
-    const totalMs = performance.now() - serializeStart
-
-    if (totalMs < PERSIST_WRITE_THRESHOLD_MS) return
-
-    log.warn('[Perf]', 'Persist write', {
-      key: name,
-      serializeMs: Math.round(serializeMs),
-      writeMs: Math.round(writeMs),
-      totalMs: Math.round(totalMs),
-      totalBytes: getByteLength(serialized),
-      topLevelKeys: getTopPersistedKeySizes(value),
-    })
-  },
-  removeItem: (name) => {
-    getLocalStorage()?.removeItem(name)
-  },
-}
+// `partialize` runs on every `set()`. These keep the derived values it returns referentially
+// stable between calls, which is what lets the storage adapter skip writes where nothing changed.
+const persistTabs = memoizeByReference((tabs: Tab[]) =>
+  tabs.map((tab) => {
+    // Strip each tab's working search before persisting. The global search is not persisted,
+    // so keeping a tab's searchQuery/searchType would resurrect an old search on that tab
+    // after a restart - results with no visible query behind them.
+    const persisted = { ...tab }
+    delete persisted.searchQuery
+    delete persisted.searchType
+    return persisted
+  }),
+)
+const persistExpandedFolders = memoizeByReference((folders: Set<string>) => Array.from(folders))
+const persistExpandedPendingSections = memoizeByReference((sections: Set<string>) =>
+  Array.from(sections),
+)
+const persistTerminalHistory = memoizeByReference((history: string[]) => history.slice(0, 100))
+const persistRecentSearches = memoizeByReference((searches: string[]) => searches.slice(0, 20))
 
 type PDMStoreInitializer = StateCreator<
   PDMStoreState,
@@ -198,6 +152,7 @@ function withMutationTiming(initializer: PDMStoreInitializer): PDMStoreInitializ
       if (durationMs >= STORE_MUTATION_THRESHOLD_MS) {
         const stack = new Error().stack
         log.warn('[Perf]', 'Slow store mutation', {
+          action: getStoreActionName(stack),
           durationMs: Math.round(durationMs),
           stack,
         })
@@ -239,7 +194,7 @@ export const usePDMStore = create<PDMStoreState>()(
     })),
     {
       name: PERSIST_STORAGE_NAME,
-      storage: diagnosticsStorage,
+      storage: persistStorage,
       partialize: (state) => ({
         // ═══════════════════════════════════════════════════════════════
         // Schema Version
@@ -274,21 +229,14 @@ export const usePDMStore = create<PDMStoreState>()(
         // ═══════════════════════════════════════════════════════════════
         // Tabs & Navigation
         // ═══════════════════════════════════════════════════════════════
-        // Strip each tab's working search before persisting. The global search is not persisted,
-        // so keeping a tab's searchQuery/searchType would resurrect an old search on that tab
-        // after a restart - results with no visible query behind them.
-        tabs: state.tabs.map((tab) => {
-          const persisted = { ...tab }
-          delete persisted.searchQuery
-          delete persisted.searchType
-          return persisted
-        }),
+        // Each tab's working search is stripped - see `persistTabs`.
+        tabs: persistTabs(state.tabs),
         activeTabId: state.activeTabId,
         tabGroups: state.tabGroups,
         tabsEnabled: state.tabsEnabled,
         currentFolder: state.currentFolder,
-        expandedFolders: Array.from(state.expandedFolders),
-        expandedPendingSections: Array.from(state.expandedPendingSections),
+        expandedFolders: persistExpandedFolders(state.expandedFolders),
+        expandedPendingSections: persistExpandedPendingSections(state.expandedPendingSections),
 
         // ═══════════════════════════════════════════════════════════════
         // Display Preferences
@@ -388,12 +336,12 @@ export const usePDMStore = create<PDMStoreState>()(
         // ═══════════════════════════════════════════════════════════════
         terminalVisible: state.terminalVisible,
         terminalHeight: state.terminalHeight,
-        terminalHistory: state.terminalHistory.slice(0, 100),
+        terminalHistory: persistTerminalHistory(state.terminalHistory),
 
         // ═══════════════════════════════════════════════════════════════
         // Search
         // ═══════════════════════════════════════════════════════════════
-        recentSearches: state.recentSearches.slice(0, 20),
+        recentSearches: persistRecentSearches(state.recentSearches),
 
         // ═══════════════════════════════════════════════════════════════
         // Test Runner

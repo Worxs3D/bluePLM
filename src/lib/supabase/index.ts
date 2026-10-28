@@ -22,7 +22,6 @@ export {
   signUpWithEmail,
   signInWithPhone,
   verifyPhoneOTP,
-  checkIfSupplierAccount,
   getSupplierContact,
   signOut,
   getCurrentUser,
@@ -120,6 +119,10 @@ export {
   addInspectionMethod,
   updateInspectionMethod,
   deleteInspectionMethod,
+  getHighestUsedBalloonNumber,
+  maxNumericBalloonNumber,
+  emptyRowValues,
+  toRowInput,
   // Folder operations
   syncFolder,
   getVaultFolders,

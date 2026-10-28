@@ -17,6 +17,7 @@ import { normalizePath } from './pathMatching'
 
 import { REFERENCES_UNRESOLVED } from './types'
 import type { SWServiceReference, SwReferenceOrigin } from './types'
+import { registerRebuildableCache } from '@/lib/health/cacheRegistry'
 
 /** Backstop lifetime for a resolved entry; watcher batches normally clear well before this. */
 const REFERENCES_CACHE_TTL_MS = 30_000
@@ -110,3 +111,5 @@ export function getSwReferencesCached(
 export function clearSwReferencesCache(): void {
   cache.clear()
 }
+
+registerRebuildableCache('sw-references', { size: () => cache.size, drop: clearSwReferencesCache })

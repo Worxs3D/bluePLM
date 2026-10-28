@@ -1,3 +1,4 @@
+import { isAdminUser, isInAdministratorsTeam } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
 import { buildConfigurationMapPayload } from '@/lib/metadata/configurationMaps'
 
@@ -310,19 +311,23 @@ export async function syncSolidWorksFileMetadata(
     return { success: false, error: fetchError.message }
   }
 
-  // A file that holds no part number or description is not asking for the row's to be cleared:
-  // this relays what was read out of a document, and only check-in carries a user's clear. Both
-  // callers - the SolidWorks panel's refresh and the Vault Audit - would otherwise blank a
-  // populated column whenever the read came back empty.
+  // A file that holds no part number, description or revision is not asking for the row's to be
+  // cleared: this relays what was read out of a document, and only check-in carries a user's
+  // clear. Both callers - the SolidWorks panel's refresh and the Vault Audit - would otherwise
+  // blank a populated column whenever the read came back empty. Revision was left out of the
+  // 4.4.5 guard, so an empty or whitespace read still wrote over it.
   const partNumber = nonEmptyText(metadata.part_number)
   const description = nonEmptyText(metadata.description)
+  const revision = nonEmptyText(metadata.revision)
+  // `null` is no more a value for the whole property bag than for one column: written, it erased
+  // every configuration's tab and description.
+  const customProperties = metadata.custom_properties ?? undefined
 
   // Check if any metadata actually changed
   const partNumberChanged = partNumber !== null && partNumber !== (file.part_number || null)
   const descriptionChanged = description !== null && description !== (file.description || null)
-  const revisionChanged =
-    metadata.revision !== undefined && (metadata.revision || null) !== (file.revision || null)
-  const customPropsChanged = metadata.custom_properties !== undefined
+  const revisionChanged = revision !== null && revision !== (file.revision || null)
+  const customPropsChanged = customProperties !== undefined
 
   if (!partNumberChanged && !descriptionChanged && !revisionChanged && !customPropsChanged) {
     // No changes - return current file
@@ -341,11 +346,11 @@ export async function syncSolidWorksFileMetadata(
   if (descriptionChanged) {
     updateData.description = description
   }
-  if (metadata.revision !== undefined && metadata.revision !== null) {
-    updateData.revision = metadata.revision
+  if (revisionChanged) {
+    updateData.revision = revision
   }
-  if (metadata.custom_properties !== undefined) {
-    updateData.custom_properties = metadata.custom_properties
+  if (customPropsChanged) {
+    updateData.custom_properties = customProperties
   }
 
   // Check if file is checked out by current user
@@ -551,7 +556,27 @@ export async function adminForceDiscardCheckout(
     .eq('id', adminUserId)
     .single()
 
-  if (adminError || adminUser?.role !== 'admin') {
+  if (adminError || !adminUser) {
+    return { success: false, error: 'Only admins can force discard checkouts' }
+  }
+
+  // Admin is the role column OR membership of the Administrators team
+  let isAdmin = isAdminUser(adminUser.role, null)
+  if (!isAdmin) {
+    const { data: memberships, error: teamError } = await client
+      .from('team_members')
+      .select('team:teams!inner(name)')
+      .eq('user_id', adminUserId)
+    if (!teamError) {
+      isAdmin = isInAdministratorsTeam(
+        (memberships || []).map((membership) => ({
+          name: (membership.team as { name?: string } | null)?.name ?? '',
+        })),
+      )
+    }
+  }
+
+  if (!isAdmin) {
     return { success: false, error: 'Only admins can force discard checkouts' }
   }
 

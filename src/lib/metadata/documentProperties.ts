@@ -123,13 +123,27 @@ const DESCRIPTION_WRITE_KEYS = ['Description'] as const
 const REVISION_WRITE_KEYS = ['Revision'] as const
 const TAB_NUMBER_WRITE_KEYS = ['Tab Number'] as const
 
+/**
+ * The read priority per file-scope field, for a display that shows what a document holds. The
+ * datacard used to keep its own shorter list without `Number`, the key BluePLM's own writer sets,
+ * so a part BluePLM had numbered showed no number there.
+ */
+export const FILE_FIELD_READ_KEYS = {
+  partNumber: PART_NUMBER_KEYS,
+  description: DESCRIPTION_KEYS,
+  revision: REVISION_KEYS,
+} as const
+
+/** Keys whose value, any of them, agrees with the database's part number (base or composite). */
+export const PART_NUMBER_ACCEPT_KEYS = ['Number', 'Base Item Number'] as const
+
 /** The file-scope fields compared for every model. */
 export const FILE_SCOPE_SPECS: readonly FieldSpec<FileScopeField>[] = [
   {
     field: 'part_number',
     scope: 'file',
     readKeys: PART_NUMBER_KEYS,
-    acceptKeys: ['Number', 'Base Item Number'],
+    acceptKeys: PART_NUMBER_ACCEPT_KEYS,
     repairKeys: BASE_PART_NUMBER_WRITE_KEYS,
   },
   {

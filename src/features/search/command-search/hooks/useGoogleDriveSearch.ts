@@ -1,13 +1,18 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { SearchFilter, GoogleDriveFileResult } from '../types'
 
 /**
  * Hook for searching Google Drive files
  */
 export function useGoogleDriveSearch(searchTerm: string, filter: SearchFilter) {
-  const { gdriveAuthVersion } = usePDMStore()
+  const { gdriveAuthVersion } = usePDMStore(
+    useShallow((s) => ({
+      gdriveAuthVersion: s.gdriveAuthVersion,
+    })),
+  )
 
   const [driveResults, setDriveResults] = useState<GoogleDriveFileResult[]>([])
   const [isDriveSearching, setIsDriveSearching] = useState(false)

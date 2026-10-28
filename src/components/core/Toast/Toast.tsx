@@ -13,12 +13,19 @@ import {
   ArrowDownToLine,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { copyToClipboard } from '@/lib/clipboard'
 import { log } from '@/lib/logger'
 import type { ToastMessage, ToastType } from './types'
 
 export function Toast() {
-  const { toasts, removeToast, dismissUpdateToast } = usePDMStore()
+  const { toasts, removeToast, dismissUpdateToast } = usePDMStore(
+    useShallow((s) => ({
+      toasts: s.toasts,
+      removeToast: s.removeToast,
+      dismissUpdateToast: s.dismissUpdateToast,
+    })),
+  )
 
   // Separate different toast types
   const updateToasts = toasts.filter((t) => t.type === 'update')
@@ -69,7 +76,15 @@ function UpdateToastItem({ toast, onDismiss }: { toast: ToastMessage; onDismiss:
     updateProgress,
     updateAvailable,
     setUpdateDownloading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      updateDownloading: s.updateDownloading,
+      updateDownloaded: s.updateDownloaded,
+      updateProgress: s.updateProgress,
+      updateAvailable: s.updateAvailable,
+      setUpdateDownloading: s.setUpdateDownloading,
+    })),
+  )
   const [isExiting, setIsExiting] = useState(false)
 
   const handleDownload = async () => {
@@ -259,6 +274,9 @@ function ProgressToastItem({ toast }: { toast: ToastMessage }) {
             {progress.label || `${progress.current}/${progress.total}`}
           </span>
         </div>
+      )}
+      {progress?.status && !isQueued && (
+        <span className="text-xs text-plm-fg-muted">{progress.status}</span>
       )}
     </div>
   )

@@ -88,7 +88,7 @@ export function createNativePreviewVisibilityController(api: {
   }
 }
 
-const OVERLAY_SELECTOR = [
+const SEMANTIC_OVERLAY_SELECTOR = [
   '[data-native-preview-overlay]',
   '[role="dialog"]',
   '[role="menu"]',
@@ -96,6 +96,9 @@ const OVERLAY_SELECTOR = [
   '[role="tooltip"]',
   '[data-radix-popper-content-wrapper]',
 ].join(', ')
+const FIXED_OVERLAY_SELECTOR = '[class~="fixed"], [style*="position: fixed"], [style*="position:fixed"]'
+const OVERLAY_SELECTOR = `${SEMANTIC_OVERLAY_SELECTOR}, ${FIXED_OVERLAY_SELECTOR}`
+const OVERLAY_VIEWPORT_EDGE_TOLERANCE_PX = 1
 
 function isVisibleOverlay(element: Element, host: HTMLElement): boolean {
   if (!(element instanceof HTMLElement) || element === host || host.contains(element)) return false
@@ -104,7 +107,22 @@ function isVisibleOverlay(element: Element, host: HTMLElement): boolean {
   if (style.display === 'none' || style.visibility === 'hidden') {
     return false
   }
-  return Array.from(element.getClientRects()).some((rect) => rect.width > 0 && rect.height > 0)
+  const rectangles = Array.from(element.getClientRects()).filter(
+    (rect) => rect.width > 0 && rect.height > 0,
+  )
+  if (rectangles.length === 0) return false
+  if (element.matches(SEMANTIC_OVERLAY_SELECTOR)) return true
+  if (style.position !== 'fixed') return false
+
+  const viewportWidth = window.visualViewport?.width ?? window.innerWidth
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+  return rectangles.some(
+    (rect) =>
+      rect.left <= OVERLAY_VIEWPORT_EDGE_TOLERANCE_PX &&
+      rect.top <= OVERLAY_VIEWPORT_EDGE_TOLERANCE_PX &&
+      rect.right >= viewportWidth - OVERLAY_VIEWPORT_EDGE_TOLERANCE_PX &&
+      rect.bottom >= viewportHeight - OVERLAY_VIEWPORT_EDGE_TOLERANCE_PX,
+  )
 }
 
 export function countVisibleNativePreviewOverlays(host: HTMLElement): number {
@@ -131,7 +149,7 @@ export function observeNativePreviewOverlays(
   const observer = new MutationObserver(scheduleReport)
   observer.observe(document.body, {
     attributes: true,
-    attributeFilter: ['aria-hidden', 'data-native-preview-overlay', 'hidden', 'role'],
+    attributeFilter: ['aria-hidden', 'class', 'data-native-preview-overlay', 'hidden', 'role', 'style'],
     childList: true,
     subtree: true,
   })

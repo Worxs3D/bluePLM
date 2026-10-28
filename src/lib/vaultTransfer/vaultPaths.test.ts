@@ -20,5 +20,9 @@ describe('vaultFoldersOverlap', () => {
   it('has no opinion about a vault with no folder', () => {
     expect(vaultFoldersOverlap('', 'C:\\Vaults\\Main')).toBe(false)
     expect(vaultFoldersOverlap('C:\\Vaults\\Main', '')).toBe(false)
+    expect(vaultFoldersOverlap('', '')).toBe(false)
+    // An empty folder is not a prefix of every rooted path.
+    expect(vaultFoldersOverlap('', '/mnt/vault')).toBe(false)
+    expect(vaultFoldersOverlap('/mnt/vault', '/')).toBe(false)
   })
 })

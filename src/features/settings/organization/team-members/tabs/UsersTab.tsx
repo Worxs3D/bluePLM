@@ -28,6 +28,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   useMembers,
   useTeams,
@@ -50,7 +51,14 @@ export interface UsersTabProps {
 
 export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabProps) {
   // Get user/org info from store
-  const { organization, getEffectiveRole, apiServerUrl, startUserImpersonation } = usePDMStore()
+  const { organization, getEffectiveRole, apiServerUrl, startUserImpersonation } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+      apiServerUrl: s.apiServerUrl,
+      startUserImpersonation: s.startUserImpersonation,
+    })),
+  )
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
 

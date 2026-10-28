@@ -27,6 +27,7 @@
  */
 import { useCallback } from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ContextMenuState } from './useContextMenuState'
 import type { OrgUser } from './useReviewModal'
 import {
@@ -137,7 +138,14 @@ export function useModalHandlers(deps: ModalHandlersDeps): UseModalHandlersRetur
     getActiveECOs: getActiveECOsFromStore,
     setECOs,
     setECOsLoading,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      ecosLoaded: s.ecosLoaded,
+      getActiveECOs: s.getActiveECOs,
+      setECOs: s.setECOs,
+      setECOsLoading: s.setECOsLoading,
+    })),
+  )
 
   const {
     user,

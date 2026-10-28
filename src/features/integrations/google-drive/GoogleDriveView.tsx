@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // Google Drive file types
 interface GoogleDriveFile {
@@ -81,7 +82,13 @@ export function GoogleDriveView({
   onFileSelect,
   currentFolderId,
 }: GoogleDriveViewProps) {
-  const { addToast, setGdriveOpenDocument, gdriveAuthVersion } = usePDMStore()
+  const { addToast, setGdriveOpenDocument, gdriveAuthVersion } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      setGdriveOpenDocument: s.setGdriveOpenDocument,
+      gdriveAuthVersion: s.gdriveAuthVersion,
+    })),
+  )
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)

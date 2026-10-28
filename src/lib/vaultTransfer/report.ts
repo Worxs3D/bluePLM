@@ -37,6 +37,8 @@ export interface TransferReport {
   /** Move only: files taken out of the source. */
   removed: number
   foldersRemoved: number
+  /** Move only: emptied source folders that are still on disk, because something BluePLM does not list is in them. */
+  foldersKept: string[]
   folderFailures: string[]
   referencesCopied: number
   referenceError?: string
@@ -70,6 +72,7 @@ export function buildTransferReport(
   )
 
   const keptInSource = removal?.kept ?? []
+  const foldersKept = removal?.foldersKept ?? []
   const cancelled = failedResults.length - failures.length
 
   const clean =
@@ -78,6 +81,7 @@ export function buildTransferReport(
     plan.skipped.length === 0 &&
     localCopyProblems.length === 0 &&
     keptInSource.length === 0 &&
+    foldersKept.length === 0 &&
     run.folderFailures.length === 0 &&
     run.referenceError === undefined
 
@@ -95,6 +99,7 @@ export function buildTransferReport(
     keptInSource,
     removed: removal?.removed.length ?? 0,
     foldersRemoved: removal?.foldersRemoved.length ?? 0,
+    foldersKept,
     folderFailures: run.folderFailures,
     referencesCopied: run.referencesCopied,
     referenceError: run.referenceError,

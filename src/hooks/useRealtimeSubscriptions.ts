@@ -14,10 +14,15 @@ import {
 import { buildFullPath } from '@/lib/commands/types'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { createTrailingBatcher } from '@/lib/trailingBatcher'
+import { findFileById, findStoredFileById } from '@/stores/fileIdIndex'
+import { createLocalWriteGuard } from './realtimeLocalWrites'
 import { checkoutLostWithEdits } from '@/lib/metadata/strandedEdits'
+import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
 import {
   hashCheckoutIdentifier,
   isCheckoutProfileForOwner,
+  type CheckoutUserProfile,
   type Organization,
   type PDMFile,
 } from '@/types/pdm'
@@ -109,6 +114,37 @@ export function classifyDeletionUpdate(params: {
     : { type: 'removed-cloud-only' }
 }
 
+/**
+ * A server row older than the stored one. `version` only grows on the server (check-in bumps it,
+ * nothing lowers it), so a lower version is an echo of an earlier write that arrived late - from
+ * the realtime queue, or a batch flushed after a newer local write. Same version: not older.
+ */
+export function isOlderThanStored(
+  incoming: Pick<PDMFile, 'version'> | Partial<PDMFile>,
+  stored: Pick<PDMFile, 'version'> | Partial<PDMFile> | null | undefined,
+): boolean {
+  return (
+    typeof incoming.version === 'number' &&
+    typeof stored?.version === 'number' &&
+    incoming.version < stored.version
+  )
+}
+
+/**
+ * Whether this user made the write an UPDATE event carries: the soft delete's `deleted_by` when
+ * the event is a deletion (a soft delete does not touch `updated_by`), otherwise `updated_by`.
+ */
+export function isOwnWrite(
+  newFile: Partial<PDMFile>,
+  oldFile: Partial<PDMFile> | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!userId) return false
+  const isDeletion = !oldFile?.deleted_at && !!newFile.deleted_at
+  const actor = isDeletion ? (newFile as { deleted_by?: string | null }).deleted_by : newFile.updated_by
+  return actor === userId
+}
+
 export type FolderDeletionOutcome = { type: 'not-a-deletion' } | { type: 'deleted' }
 
 /**
@@ -171,7 +207,7 @@ export function useRealtimeSubscriptions(
   useEffect(() => {
     if (!organization || isOfflineMode) return
 
-    const { addCloudFile, updateFilePdmData, removeCloudFile, addToast } = usePDMStore.getState()
+    const { addToast } = usePDMStore.getState()
 
     // Batch notifications to avoid toast spam when someone does bulk operations
     // Collects notifications over 500ms then shows a single summary toast
@@ -201,6 +237,10 @@ export function useRealtimeSubscriptions(
     )
     const scheduleOrphanDiscardRefresh = orphanDiscardRefreshScheduler.schedule
 
+    // The row a file holds in the store now: the one with its bytes, not its moved-away stub.
+    const storedRow = (fileId: string) => findStoredFileById(usePDMStore.getState().files, fileId)?.pdmData
+    const localWrites = createLocalWriteGuard(storedRow)
+
     // Batch file location updates to prevent render cascade when folder is moved
     // When a folder moves, each file inside sends its own UPDATE event - without batching,
     // this causes N re-renders for N files which can freeze the UI
@@ -228,7 +268,10 @@ export function useRealtimeSubscriptions(
         return
       }
 
-      const updates = Array.from(pendingLocationUpdates.values())
+      const updates = Array.from(pendingLocationUpdates.values()).map((u) => ({
+        ...u,
+        pdmData: localWrites.withoutLocalChanges(u.fileId, u.pdmData),
+      }))
       pendingLocationUpdates.clear()
 
       log.info('[Realtime]', 'Flushing batched file location updates', { count: updates.length })
@@ -236,6 +279,7 @@ export function useRealtimeSubscriptions(
       // Use the batch update function for a single set() call
       const { batchUpdateFileLocationsFromServer } = usePDMStore.getState()
       batchUpdateFileLocationsFromServer(updates)
+      for (const u of updates) localWrites.flushed(u.fileId, 'location')
     }
 
     const queueLocationUpdate = (
@@ -245,6 +289,7 @@ export function useRealtimeSubscriptions(
       pdmData: PDMFile,
     ) => {
       // Overwrite if same file gets multiple updates (last one wins)
+      localWrites.queued(fileId, 'location')
       pendingLocationUpdates.set(fileId, { fileId, newRelativePath, newFileName, pdmData })
 
       // Start/reset the flush timer
@@ -252,6 +297,134 @@ export function useRealtimeSubscriptions(
         clearTimeout(locationFlushTimeout)
       }
       locationFlushTimeout = setTimeout(flushLocationUpdates, LOCATION_FLUSH_DEBOUNCE_MS)
+    }
+
+    // Batch file removals (soft deletes, hard deletes). Each removal used to be its own store
+    // update, and each store update rebuilt the explorer tree and re-sorted the folder - about
+    // half a second of main-thread work per event, with events arriving ~1.2 s apart during a
+    // bulk delete. A burst is now one update. An event for an id that is still waiting flushes
+    // the batch first (see the files handler), so per-file ordering is unchanged.
+    let orphanRefreshAfterRemoval = false
+    let removalEventsBatched = 0
+    const removalBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        const startedAt = performance.now()
+        usePDMStore.getState().removeCloudFiles(ids)
+        log.info('[Realtime]', 'Applied batched file removals', {
+          files: ids.length,
+          events: removalEventsBatched,
+          durationMs: Math.round(performance.now() - startedAt),
+        })
+        removalEventsBatched = 0
+        if (orphanRefreshAfterRemoval) {
+          orphanRefreshAfterRemoval = false
+          scheduleOrphanDiscardRefresh()
+        }
+      },
+    })
+    const queueFileRemoval = (fileId: string) => {
+      removalEventsBatched += 1
+      removalBatcher.add(fileId)
+    }
+
+    // Inserts and server-row updates are batched the same way. Someone checking in, checking out
+    // or adding 500 files sends 500 events, and each used to be its own store update over the
+    // whole file list (a 500-event burst was 501 updates in src/perf/storeRealtime.perf.test.ts).
+    const pendingInserts = new Map<string, PDMFile>()
+    const insertBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        const inserted = ids.map((id) => pendingInserts.get(id)).filter((file): file is PDMFile => !!file)
+        pendingInserts.clear()
+        usePDMStore.getState().addCloudFiles(inserted)
+      },
+    })
+    const queueInsert = (file: PDMFile) => {
+      pendingInserts.set(file.id, file)
+      insertBatcher.add(file.id)
+    }
+
+    const pendingPdmUpdates = new Map<string, Array<Partial<PDMFile>>>()
+    const pdmUpdateBatcher = createTrailingBatcher({
+      onFlush: (ids) => {
+        // The store may have moved on while these waited: this machine's own check-in result
+        // lands between an event and its flush. A row older than what it now holds, or this
+        // user's own write when a local check-in or discard has landed since, is dropped here;
+        // applying it re-marked B the holder of a file B had just checked in. A check-in that
+        // changed no bytes keeps the version, so the version alone cannot tell.
+        const { files, isFileRecentlyModified, user } = usePDMStore.getState()
+        const storedById = new Map(
+          files.filter((f) => f.pdmData?.id && f.diffStatus !== 'moved_away').map((f) => [f.pdmData!.id, f.pdmData]),
+        )
+        const updates = ids.flatMap((fileId) =>
+          (pendingPdmUpdates.get(fileId) ?? [])
+            .filter(
+              (pdmData) =>
+                !isOlderThanStored(pdmData, storedById.get(fileId)) &&
+                !(
+                  isFileRecentlyModified(fileId) &&
+                  isOwnWrite(pdmData, undefined, user?.id) &&
+                  (pdmData.file_path === undefined || pdmData.file_path === storedById.get(fileId)?.file_path)
+                ),
+            )
+            .map((pdmData) => ({
+              fileId,
+              pdmData: localWrites.withoutLocalChanges(fileId, pdmData, storedById.get(fileId)),
+            })),
+        )
+        pendingPdmUpdates.clear()
+        usePDMStore.getState().updateFilesPdmData(updates)
+        for (const fileId of ids) localWrites.flushed(fileId, 'pdm')
+      },
+    })
+    const queuePdmUpdate = (fileId: string, pdmData: Partial<PDMFile>) => {
+      localWrites.queued(fileId, 'pdm')
+      const list = pendingPdmUpdates.get(fileId)
+      if (list) list.push(pdmData)
+      else pendingPdmUpdates.set(fileId, [pdmData])
+      pdmUpdateBatcher.add(fileId)
+    }
+
+    /** Who holds the file once the rows waiting in the batch land: the latest that says, else the store. */
+    const holderOnceApplied = (fileId: string) => {
+      const pending = pendingPdmUpdates.get(fileId) ?? []
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (pending[i].checked_out_by !== undefined) return pending[i].checked_out_by
+      }
+      return findFileById(usePDMStore.getState().files, fileId)?.pdmData?.checked_out_by
+    }
+
+    /** Apply whatever is still waiting for this file, so the next look at the store sees it. */
+    const flushPendingFor = (fileId: string) => {
+      // Location updates have their own queue; an event for a file whose move is still queued
+      // must see the move first, or the two are applied out of order (an older rename landing
+      // after this machine's own later move put the row back to the older path).
+      if (pendingLocationUpdates.has(fileId)) {
+        if (locationFlushTimeout) clearTimeout(locationFlushTimeout)
+        flushLocationUpdates()
+      }
+      if (removalBatcher.has(fileId)) removalBatcher.flush()
+      if (insertBatcher.has(fileId)) insertBatcher.flush()
+      if (pdmUpdateBatcher.has(fileId)) pdmUpdateBatcher.flush()
+    }
+
+    // One profile lookup per checkout owner, not two queries per event. The owner is checked
+    // against the store again when the profile arrives (ownerStillMatches below), the same
+    // check the load's batched profile hydration relies on. A failed lookup is not kept.
+    const profileByOwner = new Map<string, Promise<CheckoutUserProfile | null>>()
+    const lookupOwnerProfile = (ownerId: string, scope: { orgId: string; vaultId: string | null }) => {
+      const known = profileByOwner.get(ownerId)
+      if (known) return known
+      const lookup = import('@/lib/supabase')
+        .then(({ getUserBasicInfo }) => getUserBasicInfo(ownerId, scope))
+        .then(({ user }) => user)
+      profileByOwner.set(ownerId, lookup)
+      lookup.then(
+        (user) => {
+          if (!user) profileByOwner.delete(ownerId)
+        },
+        () => profileByOwner.delete(ownerId),
+      )
+      return lookup
     }
 
     const flushNotifications = () => {
@@ -363,7 +536,13 @@ export function useRealtimeSubscriptions(
     }
 
     // Subscribe to file changes
-    const unsubscribeFiles = subscribeToFiles(organization.id, (eventType, newFile, oldFile) => {
+    // `verified`: the row was just read back from the server (see the checkout check below).
+    const onFileChange = (
+      eventType: 'INSERT' | 'UPDATE' | 'DELETE',
+      newFile: PDMFile,
+      oldFile?: PDMFile,
+      verified = false,
+    ): void => {
       // Skip updates caused by current user (we handle those locally)
       const { user, activeVaultId } = usePDMStore.getState()
       const currentUserId = user?.id
@@ -383,11 +562,17 @@ export function useRealtimeSubscriptions(
         return
       }
 
+      // A change for this file is still waiting in a batch. Apply it before looking at this
+      // event, so the event sees (and acts on) the same store one-at-a-time updates would
+      // have left - e.g. a restore from trash arriving right after the delete.
+      const eventFileId = newFile?.id ?? oldFile?.id
+      if (eventFileId) flushPendingFor(eventFileId)
+
       switch (eventType) {
         case 'INSERT':
           // New file added by someone else
           if (newFile && newFile.created_by !== currentUserId) {
-            addCloudFile(newFile)
+            queueInsert(newFile)
             // Queue batched notification for new files
             queueNotification('add', newFile.created_by, newFile.file_name)
           }
@@ -397,11 +582,25 @@ export function useRealtimeSubscriptions(
           // File updated - could be checkout, version change, state change, path change (move), etc.
           if (newFile) {
             const { isFileRecentlyModified, files, vaultPath } = usePDMStore.getState()
-            const localFile = files.find((f) => f.pdmData?.id === newFile.id)
+            const localFile = findFileById(files, newFile.id)
 
-            const recentlyModified = isFileRecentlyModified(newFile.id)
-            const hasPendingMetadata = !!(
-              localFile?.pendingMetadata && Object.keys(localFile.pendingMetadata).length > 0
+            // The window after this machine's own check-in or discard exists to drop the late
+            // echoes of that write. It only covers rows this user wrote: another user's checkout
+            // or check-in inside the window is news, and dropping it left the old holder showing
+            // for 15 s (src/test/multi/checkoutAcrossMachines.test.ts).
+            // A path change is never only an echo: this user's rename or move right after a
+            // check-in still has to reach the row's server path.
+            const recentlyModified =
+              isFileRecentlyModified(newFile.id) &&
+              isOwnWrite(newFile, oldFile, currentUserId) &&
+              oldFile?.file_path === newFile.file_path
+            // Only a real edit counts: a pending value equal to the committed one (the part
+            // number a detected move mirrors into pending metadata) is not unsaved work, and
+            // treating it as such dropped every server change to a file with a pending move -
+            // its new holder, its new version - until the next reload.
+            const hasPendingMetadata = !!dropCommittedPendingMetadata(
+              localFile?.pendingMetadata,
+              localFile?.pdmData,
             )
 
             // Log incoming realtime event for debugging
@@ -415,6 +614,14 @@ export function useRealtimeSubscriptions(
               localPartNumber: localFile?.pdmData?.part_number,
             })
 
+            // A row older than the one the store holds is an echo that arrived after a newer
+            // write landed here (the check-in's own result, say). `version` only grows on the
+            // server, so it orders rows; `updated_at` does not, since clients stamp it.
+            if (isOlderThanStored(newFile, localFile?.pdmData)) {
+              log.debug('[Realtime]', 'SKIP: older than the stored row', { fileId: newFile.id })
+              break
+            }
+
             // Skip if file was recently modified locally (prevents state drift)
             // This handles the race condition where stale realtime events arrive
             // shortly after a local check-in/discard operation
@@ -423,10 +630,34 @@ export function useRealtimeSubscriptions(
               break
             }
 
+            if (
+              !verified &&
+              currentUserId &&
+              localFile?.pdmData?.checked_out_by === currentUserId &&
+              newFile.checked_out_by !== currentUserId &&
+              !isOwnWrite(newFile, oldFile, currentUserId)
+            ) {
+              log.debug('[Realtime]', 'Re-reading a row that takes away a checkout held here', {
+                fileId: hashCheckoutIdentifier(newFile.id),
+              })
+              verifyAndHandle(newFile, oldFile)
+              break
+            }
+
             // Skip if file has pending metadata (local changes not yet committed)
             // This prevents realtime events from overwriting user's unsaved edits
             if (hasPendingMetadata) {
               log.debug('[Realtime]', 'SKIP: file with pending metadata', { fileId: newFile.id })
+              // The path is not metadata. The move command leaves the row's server path to this
+              // echo, so a moved file with unsaved edits kept pointing at its old path.
+              if (oldFile?.file_path !== newFile.file_path) {
+                queuePdmUpdate(newFile.id, {
+                  id: newFile.id,
+                  file_path: newFile.file_path,
+                  file_name: newFile.file_name,
+                  extension: newFile.extension,
+                })
+              }
               if (
                 localFile &&
                 checkoutLostWithEdits({
@@ -469,7 +700,7 @@ export function useRealtimeSubscriptions(
             })
 
             if (deletion.type !== 'not-a-deletion') {
-              removeCloudFile(newFile.id)
+              queueFileRemoval(newFile.id)
               log.info('[Realtime]', 'File deleted from vault (soft delete)', {
                 fileId: hashCheckoutIdentifier(newFile.id),
                 hadLocalCopy: deletion.type === 'became-orphaned-locally',
@@ -479,8 +710,9 @@ export function useRealtimeSubscriptions(
                 // watcher to have an opinion about here - the refresh this schedules
                 // is what actually removes the file, and it does that under the merge's
                 // own tombstone-mtime and pending-metadata guards, plus the discard
-                // path's own watcher suppression, not a debounce.
-                scheduleOrphanDiscardRefresh()
+                // path's own watcher suppression, not a debounce. It is scheduled when the
+                // batched removal is applied, so it still runs after the store update.
+                orphanRefreshAfterRemoval = true
               }
               break
             }
@@ -527,8 +759,17 @@ export function useRealtimeSubscriptions(
                       hasLocalFile: !!localFile,
                     },
                   )
-                  // Still update pdmData to keep file_path in sync, but don't create folders
-                  updateFilePdmData(newFile.id, newFile)
+                  // Still update pdmData to keep file_path in sync, but don't create folders.
+                  // Only the path: the rest of this row is as old as the move, and applied after
+                  // a later local write (a checkout right after the rename) it cleared the
+                  // checkout in the store, so the check-in that followed was refused.
+                  queuePdmUpdate(newFile.id, {
+                    id: newFile.id,
+                    file_path: newFile.file_path,
+                    file_name: newFile.file_name,
+                    extension: newFile.extension,
+                    updated_by: newFile.updated_by,
+                  })
                 } else {
                   // Queue the update for batching - multiple file moves from a folder move
                   // will be combined into a single store update after 100ms debounce
@@ -549,61 +790,54 @@ export function useRealtimeSubscriptions(
                   if (!ownerId) break
                   // Commit the authoritative owner first. The merge path removes any
                   // profile from the previous checkout before enrichment resolves.
-                  updateFilePdmData(newFile.id, newFile)
+                  queuePdmUpdate(newFile.id, newFile)
                   const eventSequence = ++checkoutEventSequence
                   latestCheckoutEventByFile.set(newFile.id, eventSequence)
                   const eventVaultId = newFile.vault_id ?? activeVaultId ?? null
-                  const scope = {
-                    orgId: organization.id,
-                    vaultId: eventVaultId,
-                    fileId: newFile.id,
-                  }
-                  void import('@/lib/supabase')
-                    .then(({ getUserBasicInfo }) =>
-                      getUserBasicInfo(ownerId, scope).then(({ user }) => {
-                        const currentState = usePDMStore.getState()
-                        const currentFile = currentState.files.find(
-                          (file) => file.pdmData?.id === newFile.id,
-                        )
-                        const ownerStillMatches =
-                          currentFile?.pdmData?.checked_out_by === ownerId
-                        const eventStillLatest =
-                          latestCheckoutEventByFile.get(newFile.id) === eventSequence
-                        const currentActiveVaultId =
-                          currentState.activeVaultId ?? currentState.connectedVaults[0]?.id ?? null
-                        const vaultStillMatches =
-                          currentActiveVaultId === eventVaultId
+                  void lookupOwnerProfile(ownerId, { orgId: organization.id, vaultId: eventVaultId })
+                    .then((user) => {
+                      // The checkout itself may still be waiting in the batch. It is not flushed
+                      // to look: every flush is a store write and a full re-render, and a burst
+                      // of checkouts flushed once per profile (12 renders of ~170 ms in the
+                      // render-perf burst). The profile is queued behind it in the same batch.
+                      const currentState = usePDMStore.getState()
+                      const ownerStillMatches = holderOnceApplied(newFile.id) === ownerId
+                      const eventStillLatest =
+                        latestCheckoutEventByFile.get(newFile.id) === eventSequence
+                      const currentActiveVaultId =
+                        currentState.activeVaultId ?? currentState.connectedVaults[0]?.id ?? null
+                      const vaultStillMatches =
+                        currentActiveVaultId === eventVaultId
 
-                        if (
-                          !subscriptionActive ||
-                          !ownerStillMatches ||
-                          !eventStillLatest ||
-                          !vaultStillMatches
-                        ) {
-                          log.debug('[Realtime]', 'Discarding stale checkout profile', {
-                            fileId: hashCheckoutIdentifier(newFile.id),
-                            ownerId: hashCheckoutIdentifier(ownerId),
-                            eventSequence,
-                            ownerStillMatches,
-                            eventStillLatest,
-                            vaultStillMatches,
-                            stale: true,
-                          })
-                          return
-                        }
+                      if (
+                        !subscriptionActive ||
+                        !ownerStillMatches ||
+                        !eventStillLatest ||
+                        !vaultStillMatches
+                      ) {
+                        log.debug('[Realtime]', 'Discarding stale checkout profile', {
+                          fileId: hashCheckoutIdentifier(newFile.id),
+                          ownerId: hashCheckoutIdentifier(ownerId),
+                          eventSequence,
+                          ownerStillMatches,
+                          eventStillLatest,
+                          vaultStillMatches,
+                          stale: true,
+                        })
+                        return
+                      }
 
-                        if (user && isCheckoutProfileForOwner(user, ownerId)) {
-                          updateFilePdmData(newFile.id, {
-                            ...newFile,
-                            checked_out_user: user,
-                          } as Partial<PDMFile>)
-                        } else {
-                          // Commit the authoritative checkout fields while removing any
-                          // profile that could belong to a previous checkout owner.
-                          updateFilePdmData(newFile.id, newFile)
-                        }
-                      }),
-                    )
+                      if (user && isCheckoutProfileForOwner(user, ownerId)) {
+                        queuePdmUpdate(newFile.id, {
+                          ...newFile,
+                          checked_out_user: user,
+                        } as Partial<PDMFile>)
+                      } else {
+                        // Commit the authoritative checkout fields while removing any
+                        // profile that could belong to a previous checkout owner.
+                        queuePdmUpdate(newFile.id, newFile)
+                      }
+                    })
                     .catch((error: unknown) => {
                       log.warn('[Realtime]', 'Checkout profile hydration failed', {
                         fileId: hashCheckoutIdentifier(newFile.id),
@@ -611,9 +845,16 @@ export function useRealtimeSubscriptions(
                         error: error instanceof Error ? error.message : String(error),
                       })
                     })
+                    .finally(() => {
+                      // Only an in-flight lookup needs its sequence; a settled one would keep
+                      // an entry per file ever checked out for the session's life.
+                      if (latestCheckoutEventByFile.get(newFile.id) === eventSequence) {
+                        latestCheckoutEventByFile.delete(newFile.id)
+                      }
+                    })
                 } else {
                   // No new checkout by others, just update normally
-                  updateFilePdmData(newFile.id, newFile)
+                  queuePdmUpdate(newFile.id, newFile)
                 }
               }
             }
@@ -716,13 +957,36 @@ export function useRealtimeSubscriptions(
           // Note: Supabase realtime DELETE events only include primary key by default,
           // so oldFile may not have all fields (file_name, deleted_by, etc.)
           if (oldFile?.id) {
-            removeCloudFile(oldFile.id)
+            queueFileRemoval(oldFile.id)
             // Only show toast if we have a valid file name AND it wasn't deleted by current user
             // Skip toast entirely for DELETE events - they spam when bulk deleting and often lack file_name
             // Users can see deleted files in the file browser (red diff status)
           }
           break
       }
+    }
+
+    // Another user's row that says a file this machine holds is no longer held here is either a
+    // release (an admin's force release) or an event committed before this machine's own checkout
+    // that arrived after it: realtime does not order events against local writes, and applying
+    // the old row cleared a checkout the server still had (src/test/multi/savedSequences.test.ts).
+    // The server decides: the row is read back and handled in place of the event.
+    const verifyAndHandle = (newFile: PDMFile, oldFile?: PDMFile) => {
+      void import('@/lib/supabase').then(async ({ getFile }) => {
+        const { file, error } = await getFile(newFile.id)
+        if (!subscriptionActive) return
+        // The row is the server's now; who made this event's change is still the event's
+        // writer, which decides below whether it was this user's own move.
+        const row = error || !file ? newFile : { ...(file as unknown as PDMFile), updated_by: newFile.updated_by }
+        onFileChange('UPDATE', row, oldFile, true)
+      })
+    }
+
+    const unsubscribeFiles = subscribeToFiles(organization.id, (eventType, newFile, oldFile) => onFileChange(eventType, newFile, oldFile), () => {
+      // The channel rejoined after its connection dropped. Whatever changed meanwhile was not
+      // delivered, so a silent load brings the store back to what the server holds.
+      log.info('[Realtime]', 'Files channel rejoined; reloading to catch up')
+      requestSilentRefreshRef.current?.()
     })
 
     // Subscribe to folder changes. `folders` only carries explicit rows for
@@ -748,6 +1012,14 @@ export function useRealtimeSubscriptions(
             activeVaultId,
             folderId: newFolder?.id ?? oldFolder?.id,
           })
+          return
+        }
+
+        // A folder another user created (New Folder, or a directory their watcher saw appear) is
+        // shown by the next load; until then this machine showed it only after a reload. The
+        // same debounced silent refresh as a deletion brings it in now.
+        if (eventType === 'INSERT') {
+          if (newFolder?.created_by !== usePDMStore.getState().user?.id) scheduleOrphanDiscardRefresh()
           return
         }
 
@@ -1095,6 +1367,10 @@ export function useRealtimeSubscriptions(
         clearTimeout(locationFlushTimeout)
         flushLocationUpdates() // Flush any pending updates before cleanup
       }
+      // Apply batched changes before the refresh scheduler is cancelled below.
+      removalBatcher.flush()
+      insertBatcher.flush()
+      pdmUpdateBatcher.flush()
       // Clear any pending orphan-discard refresh - this effect's subscriptions are
       // unmounting, so firing it after teardown would call into a torn-down state.
       orphanDiscardRefreshScheduler.cancel()

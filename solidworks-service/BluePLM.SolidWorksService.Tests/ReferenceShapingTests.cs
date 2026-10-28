@@ -13,6 +13,7 @@ namespace BluePLM.SolidWorksService.Tests
     ///
     /// These run everywhere, including on a machine with no SolidWorks at all.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class ReferenceShapingTests
     {
         #region The broken-reference out-parameter

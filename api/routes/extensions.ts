@@ -205,7 +205,7 @@ const extensionRoutes: FastifyPluginAsync = async (fastify) => {
       const user = request.user!
 
       // Only admins can install extensions
-      if (user.role !== 'admin') {
+      if (!user.isAdmin) {
         return sendError(reply, 403, 'FORBIDDEN', 'Only admins can install extensions')
       }
 
@@ -249,7 +249,7 @@ const extensionRoutes: FastifyPluginAsync = async (fastify) => {
       const user = request.user!
       const { id: extensionId } = request.params as { id: string }
 
-      if (user.role !== 'admin') {
+      if (!user.isAdmin) {
         return sendError(reply, 403, 'FORBIDDEN', 'Only admins can uninstall extensions')
       }
 
@@ -354,7 +354,7 @@ const extensionRoutes: FastifyPluginAsync = async (fastify) => {
       const { id: extensionId } = request.params as { id: string }
       const body = request.body as { enabled?: boolean; pinnedVersion?: string | null }
 
-      if (user.role !== 'admin') {
+      if (!user.isAdmin) {
         return sendError(reply, 403, 'FORBIDDEN', 'Only admins can update extension settings')
       }
 

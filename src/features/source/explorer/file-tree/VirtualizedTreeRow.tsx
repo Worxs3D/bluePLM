@@ -98,11 +98,6 @@ interface VirtualizedTreeRowProps {
     onRefresh?: (silent?: boolean) => void,
   ) => void
   draggedFilesRef: React.MutableRefObject<LocalFile[]>
-  // Tree data for drag checks
-  files: LocalFile[]
-  // Folder sync/checkout status functions
-  checkFolderSynced: (path: string) => boolean
-  checkFolderCheckoutStatus: (path: string) => 'none' | 'mine' | 'others' | 'both' | null
   // Props passed from parent to avoid store subscriptions (performance optimization)
   currentFolder: string
   lowercaseExtensions: boolean
@@ -136,8 +131,9 @@ function useFolderIcon(file: LocalFile, folderIconColor: string) {
  * comparing props that actually affect THIS specific row's visual output.
  *
  * Props NOT compared (and why):
- * - files: No longer used in this component (drag logic moved to parent hook)
- * - Callback functions: Should be stable references from parent
+ * - Callback functions: must be identity-stable (useStableCallback in FileTree). A row that
+ *   skips a render keeps the props of its last real render, so a handler that closes over a
+ *   parent render keeps that render's whole file list and folder metrics alive.
  * - Refs (draggedFilesRef): Always same object reference
  * - selectedFiles arrays: The isSelected prop captures selection state for this row
  *
@@ -278,9 +274,6 @@ export const VirtualizedTreeRow = memo(function VirtualizedTreeRow({
   onFolderDragLeave,
   onDropOnFolder,
   draggedFilesRef,
-  files: _files, // No longer used here - parent gets files from store
-  checkFolderSynced: _checkFolderSynced,
-  checkFolderCheckoutStatus: _checkFolderCheckoutStatus,
   currentFolder,
   lowercaseExtensions,
   toggleFolder,

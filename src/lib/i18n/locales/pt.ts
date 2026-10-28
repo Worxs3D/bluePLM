@@ -404,6 +404,8 @@ export const pt: TranslationDict = {
       'Algumas mudanças de nome não chegaram ao servidor, que continua a registar os caminhos antigos. Os ficheiros afetados aparecem como movidos; execute reconcile-moved-paths para os atualizar.',
     cloudRenameFailed: 'Não foi possível mudar o nome no servidor',
     movedAwayBlocked: 'O ficheiro foi movido - resolva primeiro a mudança pendente',
+    moveTargetExists: '"{{name}}" já existe na pasta de destino, por isso não foi movido',
+    mergeKeptConflicts: '{{count}} arquivos existem nas duas pastas, por isso foram deixados em {{folder}}',
     checkIn: 'Check-In',
     checkOut: 'Check-Out',
     download: 'Transferir',

@@ -145,7 +145,7 @@ function runOf(results: TransferItemResult[]): TransferRunResult {
   }
 }
 
-const NOTHING_REMOVED: RemoveSourcesOutcome = { removed: [], kept: [], foldersRemoved: [] }
+const NOTHING_REMOVED: RemoveSourcesOutcome = { removed: [], kept: [], foldersRemoved: [], foldersKept: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -319,6 +319,7 @@ describe('execute', () => {
       removed: [gone],
       kept: [{ planned: kept, reason: 'source-changed' }],
       foldersRemoved: [],
+      foldersKept: [],
     } satisfies RemoveSourcesOutcome)
     const ctx = makeContext({ files })
 

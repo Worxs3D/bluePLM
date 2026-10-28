@@ -666,7 +666,10 @@ export class ProgressTracker {
    * Useful for showing validation phases before the main progress starts.
    */
   setStatus(message: string): void {
-    this.ctx.updateProgressToast(this.toastId, this.completed, 0, undefined, message)
+    // Its own line under the bar: in the counter slot a sentence squeezed the bar to nothing
+    // and pushed the text off to the side, and the bar dropped back to 0%.
+    const percent = this.total > 0 ? Math.round((this.completed / this.total) * 100) : 0
+    this.ctx.updateProgressToast(this.toastId, this.completed, percent, undefined, undefined, message)
   }
 
   /**

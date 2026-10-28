@@ -5,6 +5,8 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { app, BrowserWindow, ipcMain, shell, type WebContents } from 'electron'
 
+import { writeLog } from './logging'
+
 export interface EDrawingsDiscoveryDependencies {
   exists: (candidate: string) => boolean
   listDirectories: (parent: string) => string[]
@@ -13,6 +15,7 @@ export interface EDrawingsDiscoveryDependencies {
 export interface EDrawingsHandlerDependencies {
   getWorkingDirectory: () => string | null
   logWarn: (message: string, data?: unknown) => void
+  hasDotNet8DesktopRuntime?: () => boolean
 }
 
 export interface EDrawingsExternalOpenDependencies {
@@ -33,6 +36,10 @@ export interface EDrawingsPreviewPathDependencies {
 export interface EDrawingsPreviewFileDependencies {
   realpath: (candidate: string) => string
   isFile: (candidate: string) => boolean
+}
+
+export interface EDrawingsPreviewFileValidationOptions {
+  allowConfiguredUncVaultRoot?: boolean
 }
 
 export interface NativeEDrawingsPreview {
@@ -170,6 +177,33 @@ const CAD_FILE_EXTENSIONS = new Set([
 ])
 const EMPTY_BOUNDS: PreviewBounds = { x: 0, y: 0, width: 1, height: 1 }
 
+export function hasDotNet8DesktopRuntime(
+  listVersions: (runtimeDirectory: string) => string[] = (runtimeDirectory) => {
+    try {
+      return fs.readdirSync(runtimeDirectory)
+    } catch {
+      return []
+    }
+  },
+): boolean {
+  const programFiles = process.env.ProgramW6432 ?? process.env.ProgramFiles ?? 'C:\\Program Files'
+  const runtimeDirectory = path.join(
+    programFiles,
+    'dotnet',
+    'shared',
+    'Microsoft.WindowsDesktop.App',
+  )
+  return listVersions(runtimeDirectory).some((version) => /^8\.0\.\d+(?:\+.*)?$/.test(version))
+}
+
+export function isEDrawingsNativePreviewAvailable(
+  nativeModule: Pick<NativeEDrawingsModule, 'isAvailable'> | null,
+  previewHostPath: string | null,
+  desktopRuntimeAvailable: boolean,
+): boolean {
+  return Boolean(nativeModule && previewHostPath && desktopRuntimeAvailable && nativeModule.isAvailable())
+}
+
 let nativeEDrawingsModule: NativeEDrawingsModule | null | undefined
 let previewController: EDrawingsPreviewController | null = null
 const loadNativeModule = createRequire(__filename)
@@ -274,34 +308,47 @@ export function validateEDrawingsPreviewFile(
       }
     },
   },
+  options: EDrawingsPreviewFileValidationOptions = {},
 ): PreviewFileValidationResult {
   if (typeof filePath !== 'string' || filePath.length === 0 || filePath.includes('\0')) {
     return { success: false, errorCode: 'preview-file-invalid' }
   }
   if (!vaultRoot) return { success: false, errorCode: 'preview-vault-unavailable' }
-  if (isUncPath(vaultRoot)) {
+  const uncVault = isUncPath(vaultRoot)
+  const uncFile = isUncPath(filePath)
+  const pathApi = uncVault || uncFile ? path.win32 : path
+  if (uncVault && !options.allowConfiguredUncVaultRoot) {
     return { success: false, errorCode: 'preview-vault-not-local' }
   }
-  if (isUncPath(filePath) || hasTraversalSegment(filePath) || !path.isAbsolute(filePath)) {
+  if (
+    uncVault !== uncFile ||
+    hasTraversalSegment(filePath) ||
+    !pathApi.isAbsolute(filePath)
+  ) {
     return { success: false, errorCode: 'preview-file-not-allowed' }
   }
-  if (!CAD_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+  if (!CAD_FILE_EXTENSIONS.has(pathApi.extname(filePath).toLowerCase())) {
     return { success: false, errorCode: 'preview-file-type-unsupported' }
   }
 
   try {
     const realVaultRoot = dependencies.realpath(vaultRoot)
     const realFilePath = dependencies.realpath(filePath)
-    if (isUncPath(realVaultRoot) || isUncPath(realFilePath) || !dependencies.isFile(realFilePath)) {
+    if (
+      isUncPath(realVaultRoot) !== isUncPath(realFilePath) ||
+      (isUncPath(realVaultRoot) && !options.allowConfiguredUncVaultRoot) ||
+      !dependencies.isFile(realFilePath)
+    ) {
       return { success: false, errorCode: 'preview-file-not-available' }
     }
 
-    const relativePath = path.relative(realVaultRoot, realFilePath)
+    const canonicalPathApi = isUncPath(realVaultRoot) || isUncPath(realFilePath) ? path.win32 : path
+    const relativePath = canonicalPathApi.relative(realVaultRoot, realFilePath)
     if (
       relativePath === '' ||
       relativePath === '..' ||
-      relativePath.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativePath)
+      relativePath.startsWith(`..${canonicalPathApi.sep}`) ||
+      canonicalPathApi.isAbsolute(relativePath)
     ) {
       return { success: false, errorCode: 'preview-file-outside-vault' }
     }
@@ -310,6 +357,16 @@ export function validateEDrawingsPreviewFile(
   } catch {
     return { success: false, errorCode: 'preview-file-not-available' }
   }
+}
+
+export function validateEDrawingsExternalOpenFile(
+  filePath: unknown,
+  vaultRoot: string | null,
+  dependencies?: EDrawingsPreviewFileDependencies,
+): PreviewFileValidationResult {
+  return validateEDrawingsPreviewFile(filePath, vaultRoot, dependencies, {
+    allowConfiguredUncVaultRoot: true,
+  })
 }
 
 /**
@@ -323,7 +380,7 @@ export async function openEDrawingsFileExternally(
     findExecutable: findEDrawingsExecutable,
     openPath: shell.openPath,
     spawnProcess: spawn,
-    logWarn: console.warn,
+    logWarn: (message, data) => writeLog('warn', message, data),
   },
 ): Promise<EDrawingsExternalOpenMode | null> {
   const eDrawingsPath = dependencies.findExecutable()
@@ -721,9 +778,12 @@ export function registerEDrawingsHandlers(
 
   ipcMain.handle('edrawings:native-available', () => {
     const nativeModule = getNativeModule()
-    if (!nativeModule || !getPreviewHostPath()) return false
     try {
-      return nativeModule.isAvailable()
+      return isEDrawingsNativePreviewAvailable(
+        nativeModule,
+        getPreviewHostPath(),
+        (dependencies.hasDotNet8DesktopRuntime ?? hasDotNet8DesktopRuntime)(),
+      )
     } catch (error) {
       dependencies.logWarn('[eDrawings] Native availability check failed', {
         error: String(error),
@@ -736,7 +796,7 @@ export function registerEDrawingsHandlers(
     if (!isApplicationWindowSender(event.sender)) {
       return { success: false, errorCode: 'external-open-failed' }
     }
-    const checkedFile = validateEDrawingsPreviewFile(filePath, dependencies.getWorkingDirectory())
+    const checkedFile = validateEDrawingsExternalOpenFile(filePath, dependencies.getWorkingDirectory())
     if (!checkedFile.success) {
       return { success: false, errorCode: 'external-open-failed' }
     }

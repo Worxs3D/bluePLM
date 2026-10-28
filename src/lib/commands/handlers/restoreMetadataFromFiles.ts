@@ -18,6 +18,7 @@
 
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { runDivergenceScan } from '@/lib/metadata/divergenceScan'
 import {
   buildMetadataRestorePlan,
@@ -117,7 +118,7 @@ async function applyPlan(
 }
 
 async function handleRestore(parsed: ParsedCommand, addOutput: OutputFn): Promise<void> {
-  const { organization, activeVaultId, vaultPath, user } = usePDMStore.getState()
+  const { organization, activeVaultId, vaultPath, user, userTeams } = usePDMStore.getState()
   if (!organization?.id || !user?.id) {
     addOutput('error', t('metadataRestore.noOrganization'))
     return
@@ -128,7 +129,7 @@ async function handleRestore(parsed: ParsedCommand, addOutput: OutputFn): Promis
   }
 
   const apply = parsed.flags.apply === true
-  if (apply && user.role !== 'admin') {
+  if (apply && !isAdminUser(user.role, userTeams)) {
     addOutput('error', t('metadataRestore.adminOnly'))
     return
   }

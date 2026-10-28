@@ -10,6 +10,7 @@ namespace BluePLM.SolidWorksService.Tests
     /// the cause the failures look like the files. A vault-wide read is the worst case: thousands of
     /// identical failures, each of them plausible.
     /// </summary>
+    [Trait("Category", "Headless")]
     public class UnknownActionTests
     {
         [Fact]

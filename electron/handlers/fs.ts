@@ -13,12 +13,8 @@ import { pipeline } from 'stream/promises'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { findLockingProcessViaService } from './solidworks'
-import {
-  createVaultWatcher,
-  isIgnoredVaultPath,
-  type VaultWatcher,
-  type WatcherScanCache,
-} from './fsWatcher'
+import { createVaultWatcher, isIgnoredVaultPath, type WatcherScanCache } from './fsWatcher'
+import { createWatcherLifecycle } from './watcherLifecycle'
 import { registerEmptyDirHandlers } from './emptyDirs'
 import type { LocalFileInfo } from '../types'
 
@@ -44,8 +40,6 @@ const SCAN_STARVATION_MIN_WORK_MS = 100
 // Module-level state
 let mainWindow: BrowserWindow | null = null
 let workingDirectory: string | null = null
-let fileWatcher: VaultWatcher | null = null
-let currentWatchPath: string | null = null // Track current watched path for deduplication
 let pendingDeleteOperations = 0
 let deleteWatcherStopPromise: Promise<void> | null = null
 
@@ -631,36 +625,22 @@ async function findLockingProcess(
   }
 }
 
-// Stop file watcher
-async function stopFileWatcher(): Promise<void> {
-  if (fileWatcher) {
-    log('Stopping file watcher')
-    const watcher = fileWatcher
-    fileWatcher = null
-    currentWatchPath = null
-    await watcher.close()
-    log('File watcher closed')
-  }
-}
+// The vault watcher: one at a time, starts and stops queued (watcherLifecycle.ts).
+const vaultWatcher = createWatcherLifecycle(
+  (dirPath) =>
+    createVaultWatcher(dirPath, {
+      log: (message, data) => log(message, data),
+      getMainWindow: () => mainWindow,
+      scanCache: watcherScanCache,
+    }),
+  (message) => log(message),
+)
+const stopFileWatcher = () => vaultWatcher.stop()
+const startFileWatcher = (dirPath: string) => vaultWatcher.start(dirPath)
 
-// File watcher for detecting external changes
-async function startFileWatcher(dirPath: string): Promise<void> {
-  // Skip if already watching this exact path (prevents rapid restarts during HMR)
-  if (fileWatcher && currentWatchPath === dirPath) {
-    log('File watcher already active for: ' + dirPath)
-    return
-  }
-
-  await stopFileWatcher()
-
-  log('Starting file watcher for: ' + dirPath)
-  currentWatchPath = dirPath
-
-  fileWatcher = createVaultWatcher(dirPath, {
-    log: (message, data) => log(message, data),
-    getMainWindow: () => mainWindow,
-    scanCache: watcherScanCache,
-  })
+/** Watchers this module holds open (0 or 1): read by the soak's main-process sampler. */
+export function openFileWatcherCount(): number {
+  return vaultWatcher.current() ? 1 : 0
 }
 
 // Native file drag icon - a simple file icon that works well across platforms
@@ -1908,7 +1888,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
       if (needsWatcherPause) {
         pendingDeleteOperations++
         log(
-          `[Delete #${deleteOpId}] Pending delete ops: ${pendingDeleteOperations}, fileWatcher exists: ${!!fileWatcher}`,
+          `[Delete #${deleteOpId}] Pending delete ops: ${pendingDeleteOperations}, fileWatcher exists: ${!!vaultWatcher.current()}`,
         )
 
         if (pendingDeleteOperations === 1) {
@@ -2121,7 +2101,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         )
 
       // Stop watcher ONCE for the entire batch
-      if (needsWatcherPause && fileWatcher) {
+      if (needsWatcherPause && vaultWatcher.current()) {
         log(`[DeleteBatch #${batchId}] Stopping file watcher for batch operation`)
         await stopFileWatcher()
         // Brief wait for any pending file system events to settle
@@ -2319,7 +2299,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
       )
 
     // Stop watcher ONCE for the entire batch
-    if (needsWatcherPause && fileWatcher) {
+    if (needsWatcherPause && vaultWatcher.current()) {
       log(`[TrashBatch #${batchId}] Stopping file watcher for batch operation`)
       await stopFileWatcher()
       await new Promise((resolve) => setTimeout(resolve, FS_EVENT_SETTLE_MS))
@@ -2465,7 +2445,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         oldPath.startsWith(workingDirectory) ||
         newPath.startsWith(workingDirectory))
 
-    if (needsWatcherPause && fileWatcher) {
+    if (needsWatcherPause && vaultWatcher.current()) {
       log(`[Rename] Stopping file watcher for directory rename`)
       await stopFileWatcher()
       // Wait for Windows to release kernel-level directory handles
@@ -2642,6 +2622,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
 
                 if (sourceGone && destExists) {
                   log(`[Rename-PS] Move verified successfully`)
+                  invalidateScanCacheAfterWrite('rename (Move-Item)', { oldPath, newPath, fileCount })
                   return { success: true, fileCount }
                 } else {
                   log(`[Rename-PS] Move verification FAILED - source still exists or dest missing`)
@@ -3017,8 +2998,22 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         })
         return { success: true, fileCount: copiedCount }
       } else {
+        const destExisted = fs.existsSync(destPath)
         copyFileWritable(sourcePath, destPath)
-        fs.unlinkSync(sourcePath)
+        try {
+          fs.unlinkSync(sourcePath)
+        } catch (unlinkErr) {
+          // The source is still there (locked, or read-only on Windows), so a copy left at the
+          // destination would be a second live file the next scan reports as new local work.
+          if (!destExisted) {
+            try {
+              fs.unlinkSync(destPath)
+            } catch {
+              // Best effort: the move is reported as failed either way.
+            }
+          }
+          throw unlinkErr
+        }
         log('Moved (copy+delete) file: ' + sourcePath + ' -> ' + destPath)
         invalidateScanCacheAfterWrite('move', { sourcePath, destPath, fileCount: 1 })
         return { success: true, fileCount: 1 }
@@ -3350,28 +3345,5 @@ export function unregisterFsHandlers(): void {
  * @param timeoutMs - Maximum time to wait for watcher.close() (default: 2000ms)
  */
 export async function cleanupFs(timeoutMs: number = 2000): Promise<void> {
-  if (fileWatcher) {
-    log('Stopping file watcher for cleanup')
-    const watcher = fileWatcher
-    fileWatcher = null
-    currentWatchPath = null
-
-    try {
-      // Race between watcher.close() and a hard timeout
-      // This ensures we don't hang forever if the watcher is stuck
-      await Promise.race([
-        watcher.close().then(() => {
-          log('File watcher closed successfully')
-        }),
-        new Promise<void>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('File watcher close timed out'))
-          }, timeoutMs)
-        }),
-      ])
-    } catch (error) {
-      // Log error but don't throw - we need cleanup to continue even if watcher is stuck
-      logError('Error closing file watcher (continuing with cleanup)', { error: String(error) })
-    }
-  }
+  await vaultWatcher.closeForExit(timeoutMs)
 }

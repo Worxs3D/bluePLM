@@ -11,6 +11,7 @@
 import { useState } from 'react'
 import { X, AlertTriangle, CloudOff, Download, CheckCircle, RefreshCw } from 'lucide-react'
 import { usePDMStore, MissingStorageFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands/executor'
 
 interface MissingStorageFilesDialogProps {
@@ -24,7 +25,12 @@ function MissingStorageFilesDialogInner({
   onClose,
   onRefresh,
 }: MissingStorageFilesDialogProps) {
-  const { clearMissingStorageFiles, addToast } = usePDMStore()
+  const { clearMissingStorageFiles, addToast } = usePDMStore(
+    useShallow((s) => ({
+      clearMissingStorageFiles: s.clearMissingStorageFiles,
+      addToast: s.addToast,
+    })),
+  )
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(
     new Set(files.map((f) => f.fileId)),
@@ -245,7 +251,12 @@ export function MissingStorageFilesContainer({
 }: {
   onRefresh?: (silent?: boolean) => void
 }) {
-  const { missingStorageFiles, clearMissingStorageFiles } = usePDMStore()
+  const { missingStorageFiles, clearMissingStorageFiles } = usePDMStore(
+    useShallow((s) => ({
+      missingStorageFiles: s.missingStorageFiles,
+      clearMissingStorageFiles: s.clearMissingStorageFiles,
+    })),
+  )
 
   if (missingStorageFiles.length === 0) return null
 

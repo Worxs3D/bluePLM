@@ -24,9 +24,11 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getFileVersions, rollbackToVersion, updateVersionNote } from '@/lib/supabase'
 import { getDownloadUrl } from '@/lib/storage'
 import { log } from '@/lib/logger'
+import { describeVersion } from '@/lib/files/versionDisplay'
 
 interface VersionEntry {
   id: string
@@ -75,7 +77,19 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
     addExpectedFileChanges,
     clearExpectedFileChanges,
     setLastOperationCompletedAt,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      updateFileInStore: s.updateFileInStore,
+      updatePendingVersionNote: s.updatePendingVersionNote,
+      updatePendingCheckinNote: s.updatePendingCheckinNote,
+      addExpectedFileChanges: s.addExpectedFileChanges,
+      clearExpectedFileChanges: s.clearExpectedFileChanges,
+      setLastOperationCompletedAt: s.setLastOperationCompletedAt,
+    })),
+  )
 
   // Calculate dropdown position when opening
   useEffect(() => {
@@ -290,60 +304,51 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
   const renderVersionText = () => {
     if (file.isDirectory) return null
 
-    const cloudVersion = file.pdmData?.version || null
-    if (!cloudVersion) {
-      return <span className="text-plm-fg-muted">-/-</span>
+    const display = describeVersion(file)
+    const cloudVersion = display.serverVersion ?? 0
+    switch (display.kind) {
+      case 'none':
+        return <span className="text-plm-fg-muted">{display.text}</span>
+      case 'rolledBack':
+        return (
+          <span
+            className="text-plm-info"
+            title={`Viewing version ${display.localVersion} (latest is ${cloudVersion}). Check in to save.`}
+          >
+            {display.text}
+          </span>
+        )
+      case 'modified':
+        return (
+          <span
+            className="text-plm-warning"
+            title={`Local changes (will be version ${cloudVersion + 1})`}
+          >
+            {display.text}
+          </span>
+        )
+      case 'moved':
+        return (
+          <span className="text-plm-accent" title="File moved (version unchanged)">
+            {display.text}
+          </span>
+        )
+      case 'outdated':
+        return (
+          <span
+            className="text-purple-400"
+            title={
+              display.localVersion !== undefined
+                ? `Local version ${display.localVersion}, server has version ${cloudVersion}. Use Get Latest to update.`
+                : `Newer version available on server (v${cloudVersion}). Local version unknown.`
+            }
+          >
+            {display.text}
+          </span>
+        )
+      default:
+        return <span>{display.text}</span>
     }
-
-    // After rollback
-    if (file.localActiveVersion !== undefined && file.localActiveVersion !== cloudVersion) {
-      return (
-        <span
-          className="text-plm-info"
-          title={`Viewing version ${file.localActiveVersion} (latest is ${cloudVersion}). Check in to save.`}
-        >
-          {file.localActiveVersion}/{cloudVersion}
-        </span>
-      )
-    }
-
-    // Local changes
-    if (file.diffStatus === 'modified') {
-      return (
-        <span
-          className="text-plm-warning"
-          title={`Local changes (will be version ${cloudVersion + 1})`}
-        >
-          {cloudVersion + 1}/{cloudVersion}
-        </span>
-      )
-    } else if (file.diffStatus === 'moved') {
-      return (
-        <span className="text-plm-accent" title="File moved (version unchanged)">
-          {cloudVersion}/{cloudVersion}
-        </span>
-      )
-    } else if (file.diffStatus === 'outdated') {
-      // Use tracked localVersion if available, otherwise show "?" for unknown
-      const localVer = file.localVersion
-      const localVerDisplay = localVer !== undefined ? localVer : '?'
-      const tooltip =
-        localVer !== undefined
-          ? `Local version ${localVer}, server has version ${cloudVersion}. Use Get Latest to update.`
-          : `Newer version available on server (v${cloudVersion}). Local version unknown.`
-      return (
-        <span className="text-purple-400" title={tooltip}>
-          {localVerDisplay}/{cloudVersion}
-        </span>
-      )
-    }
-
-    // In sync
-    return (
-      <span>
-        {cloudVersion}/{cloudVersion}
-      </span>
-    )
   }
 
   // Don't show dropdown for directories or unsynced files

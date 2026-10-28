@@ -1,4 +1,4 @@
-const installArguments = ['install', '--ignore-scripts']
+const installArguments = ['ci', '--ignore-scripts']
 
 function resolveNpmInvocation(platform = process.platform, environment = process.env) {
   if (platform !== 'win32') {

@@ -17,6 +17,13 @@ export interface UserProfile {
   full_name: string | null
   role: 'admin' | 'engineer' | 'viewer'
   org_id: string | null
+  /**
+   * Whether this user is an administrator: `role === 'admin'` OR a member of
+   * the Administrators team. Resolved once per request by the auth middleware
+   * through the `is_org_admin()` SQL function. Gate admin-only routes on this,
+   * never on `role` alone.
+   */
+  isAdmin: boolean
 }
 
 export interface FileRecord {

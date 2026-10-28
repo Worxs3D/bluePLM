@@ -1,0 +1,304 @@
+{
+  "$comment": [
+    "The wire between the Electron main process and the SolidWorks service (one JSON object per line on stdin/stdout).",
+    "Checked from both sides: electron/handlers/solidworksWire.contract.test.ts (what the TypeScript sends and matches on) and",
+    "solidworks-service/BluePLM.SolidWorksService.Tests/WireManifestTests.cs (the Program.cs action switch, the fields it reads, the codes it emits).",
+    "request lists the fields an action reads besides the common ones. ignoredByService names fields the app sends that the service does not read.",
+    "responseData lists the data fields the app reads back for that action (only where a test pins them)."
+  ],
+  "commonRequestFields": [
+    "action",
+    "filePath",
+    "requestId"
+  ],
+  "responseFields": [
+    "data",
+    "error",
+    "errorCode",
+    "errorDetails",
+    "requestId",
+    "success"
+  ],
+  "actions": {
+    "addComponent": {
+      "request": [
+        "componentPath",
+        "coordinates"
+      ]
+    },
+    "applyInspectionBalloons": {
+      "request": [
+        "balloons"
+      ],
+      "responseData": [
+        "missing",
+        "placed",
+        "removedPrevious",
+        "saved"
+      ]
+    },
+    "createDocumentFromTemplate": {
+      "request": [
+        "outputPath",
+        "templatePath"
+      ]
+    },
+    "deleteProperties": {
+      "request": [
+        "configuration",
+        "propertyNames"
+      ]
+    },
+    "duplicateWithReferences": {
+      "request": [
+        "sourceDrawingPath",
+        "sourceModelPath",
+        "targetDrawingPath",
+        "targetModelPath"
+      ]
+    },
+    "exportDxf": {
+      "request": [
+        "outputPath"
+      ]
+    },
+    "exportIges": {
+      "request": [
+        "configurations",
+        "exportAllConfigs",
+        "outputPath"
+      ],
+      "ignoredByService": {
+        "configurations": "ExportToIges(filePath, outputPath) takes no configuration list: a multi-configuration IGES export writes the active configuration only.",
+        "exportAllConfigs": "Same: ExportToIges has no all-configurations mode."
+      }
+    },
+    "exportImage": {
+      "request": [
+        "height",
+        "outputPath",
+        "width"
+      ]
+    },
+    "exportPdf": {
+      "request": [
+        "filenamePattern",
+        "outputPath",
+        "pdmMetadata"
+      ]
+    },
+    "exportStep": {
+      "request": [
+        "configuration",
+        "configurations",
+        "exportAllConfigs",
+        "filenamePattern",
+        "outputPath",
+        "pdmMetadata",
+        "pdmMetadataOverride"
+      ],
+      "ignoredByService": {
+        "pdmMetadataOverride": "Sent by the STEP export menu; the service never reads it, so it has no effect."
+      }
+    },
+    "exportStl": {
+      "request": [
+        "binaryFormat",
+        "configuration",
+        "configurations",
+        "customAngle",
+        "customDeviation",
+        "exportAllConfigs",
+        "filenamePattern",
+        "outputPath",
+        "pdmMetadata",
+        "resolution"
+      ]
+    },
+    "extractDrawingCharacteristics": {
+      "request": [],
+      "responseData": [
+        "characteristics",
+        "incompleteSheets",
+        "sheets",
+        "skipped",
+        "units"
+      ],
+      "skippedFields": [
+        "baseKey",
+        "reason",
+        "sheet",
+        "sourceKey"
+      ]
+    },
+    "findLockingProcesses": {
+      "request": []
+    },
+    "getBom": {
+      "request": [
+        "configuration",
+        "includeChildren"
+      ]
+    },
+    "getConfigurations": {
+      "request": []
+    },
+    "getDocumentInfo": {
+      "request": []
+    },
+    "getInspectionCharacteristics": {
+      "request": []
+    },
+    "getMassProperties": {
+      "request": [
+        "configuration"
+      ]
+    },
+    "getOpenDocuments": {
+      "request": [
+        "includeComponents"
+      ]
+    },
+    "getPreview": {
+      "request": [
+        "configuration",
+        "size"
+      ]
+    },
+    "getProperties": {
+      "request": [
+        "configuration"
+      ],
+      "responseData": [
+        "configurationProperties",
+        "configurations",
+        "fileProperties"
+      ]
+    },
+    "getPropertiesDocumentManager": {
+      "request": [
+        "configuration"
+      ]
+    },
+    "getReferences": {
+      "request": [
+        "origin"
+      ]
+    },
+    "getSelectedFiles": {
+      "request": []
+    },
+    "getShellThumbnail": {
+      "request": [
+        "size"
+      ]
+    },
+    "isDocumentOpen": {
+      "request": []
+    },
+    "packAndGo": {
+      "request": [
+        "outputFolder",
+        "prefix",
+        "suffix"
+      ]
+    },
+    "ping": {
+      "request": []
+    },
+    "quit": {
+      "request": []
+    },
+    "releaseHandles": {
+      "request": []
+    },
+    "replaceComponent": {
+      "request": [
+        "newComponent",
+        "oldComponent"
+      ]
+    },
+    "resetComConnection": {
+      "request": []
+    },
+    "saveDocument": {
+      "request": []
+    },
+    "setDmLicense": {
+      "request": [
+        "licenseKey"
+      ]
+    },
+    "setDocumentProperties": {
+      "request": [
+        "configuration",
+        "properties"
+      ]
+    },
+    "setDocumentReadOnly": {
+      "request": [
+        "readOnly"
+      ]
+    },
+    "setInspectionCharacteristics": {
+      "request": [
+        "characteristics"
+      ]
+    },
+    "setProperties": {
+      "request": [
+        "configuration",
+        "properties"
+      ]
+    },
+    "setPropertiesBatch": {
+      "request": [
+        "configProperties"
+      ],
+      "responseData": [
+        "configurationsProcessed",
+        "failedConfigurations",
+        "failedProperties"
+      ]
+    },
+    "warmup": {
+      "request": []
+    }
+  },
+  "errorCodes": {
+    "service": [
+      "CONFIGURATION_ENUMERATION_FAILED",
+      "DM_DUPLICATE_FAILED",
+      "DM_FILE_IN_USE",
+      "DM_FILE_READ_ONLY",
+      "DM_FUTURE_VERSION",
+      "DM_UNAVAILABLE",
+      "DOC_HAS_UNSAVED_CHANGES",
+      "DOC_MODIFIED_NOT_SAVED",
+      "FILE_OPEN_IN_SOLIDWORKS",
+      "INSPECTION_ADDIN_UNAVAILABLE",
+      "NOT_A_DRAWING",
+      "NO_ENGINE_AVAILABLE",
+      "PAG_UNMAPPED_REFERENCES",
+      "REFERENCES_UNRESOLVED",
+      "SOLIDWORKS_COM_INACCESSIBLE",
+      "SOLIDWORKS_NOT_RUNNING",
+      "SW_NOT_INSTALLED",
+      "SW_WARMUP_FAILED",
+      "UNKNOWN_ACTION"
+    ],
+    "comErrorCode": [
+      "Success",
+      "Timeout",
+      "RpcFailed",
+      "SwBusy",
+      "SwNotRunning",
+      "SwUnresponsive",
+      "FileNotOpen",
+      "Unknown"
+    ],
+    "client": [
+      "TIMEOUT"
+    ]
+  }
+}

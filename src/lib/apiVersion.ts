@@ -23,6 +23,8 @@
  * - Version 2.8.1: restore (POST /trash/:id/restore) and the REST soft-delete
  *   (DELETE /files/:id) now bump updated_at, so delta sync propagates them to
  *   other clients
+ * - Version 2.8.3: a missing row answers 404 instead of 500; checkout/checkin accept no
+ *   body; PATCH /files/:id/metadata refuses a state change on a checked-out file
  *
  * When making API changes:
  * 1. Increment version in api/package.json
@@ -34,7 +36,7 @@ import { usePDMStore } from '../stores/pdmStore'
 
 // The API version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_API_VERSION = '2.8.1'
+export const EXPECTED_API_VERSION = '2.8.3'
 
 // Minimum API version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -84,6 +86,10 @@ export const API_VERSION_DESCRIPTIONS: Record<string, string> = {
     'POST /files/:id/undo-checkout was leaving checked_out_by_machine_id and checked_out_by_machine_name set after releasing a lock, and never restored file_path/file_name from the new checkout path snapshot the way the client-side undoCheckout() now does. It clears both machine columns and the snapshot columns, restores the path/name from the snapshot first when one was recorded, and now bumps updated_at on release so delta sync actually sees the change - previously a release through this route was invisible to a client on the delta path and the file could keep showing as checked out. The file response schema gained checked_out_file_path/checked_out_file_name, which were being computed by the checkout_file RPC but silently stripped from the checkout response by Fastify because the schema never declared them',
   '2.8.1':
     'POST /trash/:id/restore was clearing deleted_at/deleted_by without bumping updated_at, so a restore was invisible to the watermark-based delta sync (get_vault_files_delta) for any client whose cache had already advanced past the delete - the row stayed a permanent ghost. The restore route now bumps updated_at, matching the desktop restoreFile() implementation. DELETE /files/:id (REST soft delete) had the same omission and now bumps updated_at too, matching the desktop softDeleteFile() implementation',
+  '2.8.2':
+    'Members of the Administrators team are administrators. Every admin-only route (extensions, webhooks, Odoo integration configuration and sync, supplier deletion, the recovery-code route and forced undo-checkout) tested only users.role, so a team member whose role column said engineer or viewer was refused. The auth middleware now resolves admin once per request through the is_org_admin() SQL function - role = admin OR Administrators team membership, the same answer the row-level security policies give - and exposes it as request.user.isAdmin, and the routes gate on that. A failure to answer is treated as not admin',
+  '2.8.3':
+    'Found by the route-level test suite (api/routes/authMatrix.test.ts, files.routes.test.ts). A lookup of a row that does not exist answered 500: .single() returns PostgREST PGRST116 and the routes threw it, so their 404 branches never ran; the error handler now answers 404. Administrators-team members whose role column says viewer were refused the five supplier write routes, which tested role alone; they now check isAdmin first. PATCH /files/:id/metadata changed the state of a checked-out file, which /release and /obsolete refuse; it now answers 409, and 404 for a file outside the organization of the caller. POST /files/:id/checkin answered 409 instead of 403 to a caller without the lock, because it matched a message checkin_file does not send. POST /files/:id/checkout and /checkin with no body answered 400 although every field is optional',
 }
 
 export interface ApiVersionCheckResult {

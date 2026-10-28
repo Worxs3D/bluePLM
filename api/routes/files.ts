@@ -4,7 +4,7 @@
  * Core file operations: list, get, checkout, checkin, sync, download, delete.
  */
 
-import { FastifyPluginAsync } from 'fastify'
+import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import crypto from 'crypto'
 import { SIGNED_URL_EXPIRY } from '../src/config/env.js'
 import { schemas } from '../schemas/index.js'
@@ -24,6 +24,15 @@ import type { FileRecord } from '../types.js'
 
 /** Postgres unique-constraint violation (SQLSTATE 23505). */
 const UNIQUE_VIOLATION = '23505'
+
+/**
+ * Lets a route whose body fields are all optional be called with no body.
+ * Fastify validates a missing body as `undefined`, which fails `type: 'object'`,
+ * so `POST /files/:id/checkout` with no body answered 400.
+ */
+async function defaultEmptyBody(request: FastifyRequest): Promise<void> {
+  request.body ??= {}
+}
 
 const fileRoutes: FastifyPluginAsync = async (fastify) => {
   // List files with optional filters
@@ -164,6 +173,7 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
           },
         },
       },
+      preValidation: defaultEmptyBody,
       preHandler: fastify.authenticate,
     },
     async (request, reply) => {
@@ -232,6 +242,7 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
           },
         },
       },
+      preValidation: defaultEmptyBody,
       preHandler: fastify.authenticate,
     },
     async (request, reply) => {
@@ -314,7 +325,13 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
         if (result.error?.includes('not found')) {
           return sendError(reply, 404, ErrorCode.NOT_FOUND, result.error)
         }
-        if (result.error?.includes('not checked out')) {
+        // checkin_file (modules/10-source-files.sql) says "You do not have this
+        // file checked out"; matching only "not checked out" missed it, so a
+        // caller without the lock got 409 instead of this 403.
+        if (
+          result.error?.includes('not checked out') ||
+          result.error?.includes('do not have this file checked out')
+        ) {
           return sendError(reply, 403, ErrorCode.FORBIDDEN, result.error)
         }
         return sendError(reply, 409, ErrorCode.CONFLICT, result.error || 'Checkin failed')
@@ -385,7 +402,7 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
       if (fetchError) throw fetchError
       if (!file) return sendError(reply, 404, ErrorCode.NOT_FOUND, 'File not found')
 
-      if (file.checked_out_by !== request.user!.id && request.user!.role !== 'admin') {
+      if (file.checked_out_by !== request.user!.id && !request.user!.isAdmin) {
         return sendError(reply, 403, ErrorCode.FORBIDDEN, 'File is not checked out to you')
       }
 
@@ -854,11 +871,23 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
       // Get current file for webhook
       const { data: currentFile } = await request
         .supabase!.from('files')
-        .select('file_path, file_name, state')
+        .select('file_path, file_name, state, checked_out_by')
         .eq('id', id)
-        .single()
+        .eq('org_id', request.user!.org_id)
+        .maybeSingle()
 
-      if (state && currentFile?.state !== state) {
+      if (!currentFile) {
+        return sendError(reply, 404, ErrorCode.NOT_FOUND, 'File not found')
+      }
+
+      // The same rule as /release and /obsolete. Without it this route was the
+      // way round theirs: a checked-out file could be released from under the
+      // person editing it, as long as the caller asked here.
+      if (state && currentFile.state !== state && currentFile.checked_out_by) {
+        return sendError(reply, 409, ErrorCode.CONFLICT, 'Cannot change the state of a checked out file')
+      }
+
+      if (state && currentFile.state !== state) {
         const change = await changeFileStateViaWorkflow(
           request.supabase!,
           id,
@@ -886,9 +915,9 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
             'file.state_change',
             {
               file_id: id,
-              file_path: currentFile?.file_path,
-              file_name: currentFile?.file_name,
-              old_state: currentFile?.state,
+              file_path: currentFile.file_path,
+              file_name: currentFile.file_name,
+              old_state: currentFile.state,
               new_state: state,
               user_id: request.user!.id,
               user_email: request.user!.email,
@@ -923,15 +952,15 @@ const fileRoutes: FastifyPluginAsync = async (fastify) => {
       if (error) throw error
 
       // Trigger webhook if state changed
-      if (state && currentFile?.state !== state) {
+      if (state && currentFile.state !== state) {
         await triggerWebhooks(
           request.user!.org_id!,
           'file.state_change',
           {
             file_id: id,
-            file_path: currentFile?.file_path,
-            file_name: currentFile?.file_name,
-            old_state: currentFile?.state,
+            file_path: currentFile.file_path,
+            file_name: currentFile.file_name,
+            old_state: currentFile.state,
             new_state: state,
             user_id: request.user!.id,
             user_email: request.user!.email,

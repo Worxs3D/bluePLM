@@ -6,6 +6,285 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+Renderer and API 2.8.3 - no schema change, SolidWorks service unchanged. Redeploy the API for
+the API fixes; the app expects 2.8.3.
+
+### Fixed
+
+Found by the new two-machine simulator (`src/test/multi/`): two app instances on one server,
+with realtime delayed, dropped and reconnected.
+
+- **Another user's checkout no longer goes unseen for 15 s after your own check-in.** The guard
+  against stale echoes of your check-in dropped every update to that file, so it showed as free
+  (or not outdated) while someone else held it. It now drops only your own older echoes.
+- **Your own late echoes no longer put a checkout back.** Realtime updates wait in a short
+  batch; one queued before your check-in or checkout, applied after it, restored the old row.
+  Batched updates now skip rows older than the stored one, and never overwrite fields a local
+  write changed after they were queued. A row that says a file you hold is no longer held is
+  read back from the server before it is believed.
+- **A lost realtime connection catches up when it comes back.** Supabase does not replay what
+  it missed; the files channel now reloads silently when it rejoins.
+- **A refused checkout shows who holds the file**, instead of leaving it looking free.
+- **A file another machine moved or renamed stays on your disk as a pending move.** Realtime
+  used to move only the row (a synced file where nothing was on disk), the next load took your
+  copy for an orphan and recycled it, and the moved file did not show at all. It is now a
+  `moved` row where your bytes are and a stub where the server says, as for a move made on your
+  own machine; Re-align or Resolve Pending Moves settles it. The same holds after a restart.
+  A remote case-only rename keeps your own spelling.
+- **Re-align moves files again.** Adopting the server path counted the file's own stub at the
+  destination as an occupant and skipped every move that had one.
+- **A server row is never hidden because the same bytes exist elsewhere on disk.** The load
+  skipped such a row as a local move even when no local file claimed it.
+- **A pending move keeps its stub and its badge** across new versions, renames, folder renames
+  and unsaved edits, and loses them once settled; no empty folder is left behind.
+- **A file deleted on the server while you download it is removed again**, instead of staying
+  on disk unlisted and coming back as a new local file.
+- **A file renamed here and then deleted on the server reads as deleted, not as new** (which
+  offered it for check-in again).
+- **A folder rename or move no longer claims a server path for a file the server did not move.**
+- **A checkout no longer writes the row back as it was when the command started.**
+- **The move-detection part number copy is no longer treated as an edit**, so it no longer
+  freezes realtime for the file or turns into an edit of the old value after another user
+  changes the part number.
+- **Disk changes made while an operation runs are looked at once it finishes**, not dropped.
+
+Not fixed, recorded as failing tests for a decision: checking out a copy that is behind the
+server makes the old bytes writable, so the next check-in buries the other user's version;
+checking in a file another machine moved asks "renamed or moved locally?" and undoes their move
+on yes; a save within 5 s of an operation is taken for the app's own write. See
+`src/test/multi/` and the report in `.cursor/plans/test-two-machines-report.md`.
+
+- **API: a missing row answers 404, not 500.** `.single()` on no row returns PostgREST
+  `PGRST116`, the routes threw it, and the error handler made it a 500, so the routes' own 404
+  branches never ran (`DELETE /files/<unknown>`, undo-checkout, suppliers, vaults and more).
+- **API: Administrators-team members with the viewer role can write suppliers.** The five
+  supplier write routes refused `role = 'viewer'` without checking `isAdmin`.
+- **API: `PATCH /files/:id/metadata` no longer changes the state of a checked-out file**
+  (409, as `/release` and `/obsolete` already did), and answers 404 for another organization's file.
+- **API: check-in by someone without the lock answers 403**, as intended; the route matched a
+  message `checkin_file` does not send and answered 409. Checkout and check-in also accept a
+  call with no body, since every field is optional (it was a 400).
+- **Moving a file onto a folder that already holds that name no longer destroys the other file.**
+  The move renamed over it (Windows replaces an existing file on rename), the server then refused
+  the duplicate path and rolled the move back, leaving one file where there were two. The move is
+  now refused with a message naming the file.
+- **Dropping a folder onto a folder of the same name no longer overwrites files both hold.** The
+  merge ran with "prompt", which nothing prompts for, and fell through to overwrite. Files in
+  both folders now stay where they are (you are told how many), the source folder is recycled
+  only when the merge emptied it, and subfolders the merge creates show up at once.
+- **Renaming to a name typed without its extension checks the real name.** "B" next to
+  `b.sldprt` passed the duplicate check (it compared "B"), then became `B.sldprt` and replaced
+  the other file.
+- **Renaming or moving a folder that has no folders row now moves its files on the server and
+  respects other users' checkouts.** Folders that arrived by download, copy or move often have no
+  row; both the server path update and the "checked out by someone else" guard were skipped for
+  them, so the files reloaded as pending moves.
+- **"Delete from Server" with the local copy kept no longer hides that copy until the next
+  load.** It was turned into a local-only file and then removed from the list anyway.
+
+- **Watcher refreshes and restarts no longer rewrite the whole local sync index.** Every
+  committed load put every entry back, changed or not (about 2 writes and 1 read per file, so
+  ~60,000 IndexedDB operations for one saved file in a 30k vault). Only entries that change are
+  written now, large inode updates read the vault once, and the three reads a load makes share
+  one pass.
+- **A load no longer rewrites the whole vault cache to store checkout profiles it already has.**
+  The profiles were fetched and written back on every load, which undid the small-delta skip.
+- **Bursts of realtime events from other users are one store update, not one per file.**
+  Check-ins, check-outs and additions of many files are batched like deletions already were, and
+  a burst of check-outs looks up each owner's profile once instead of two queries per file.
+- **Re-align no longer discards the saved hash stamps**, which made the next start re-hash the
+  whole vault.
+- **A file read with an empty Revision no longer blanks the revision in BluePLM.** The SolidWorks
+  panel's metadata refresh and Vault Audit's "use the file's value" relay what they read out of a
+  document; 4.4.5 stopped an empty item number or description from overwriting the row, and the
+  revision now gets the same rule. Only check-in, which carries your own edit, can clear it.
+- **An empty property bag can no longer replace a file's configuration metadata.** A `null`
+  custom-properties value from either of those writers, or from a re-upload onto an existing row,
+  used to erase every configuration's tab and description; it is now treated as "no value".
+- **A moved file's "Moved Away" row no longer disappears on the next full load.** A rename keeps
+  the file's bytes, so once the file had been re-hashed at its new path the load took it for a
+  hash-only move and dropped the stub at the old path, even though the inode named where it went.
+  The stub showed on the first load after a move and vanished on the next, while a folder refresh
+  kept it. The load now checks the inode first, as the folder refresh already did.
+- **The SolidWorks properties tab reads the item number BluePLM writes.** Its P/N, description and
+  revision used a short list of property names without `Number`, so a part numbered by BluePLM
+  showed no number and its PDM block was flagged as disagreeing with the file. They now use the
+  shared read lists, accept `Number` or `Base Item Number` for the comparison, and a `$PRP`
+  reference reads as empty instead of being copied into the database by "Refresh metadata".
+
+### Tests
+
+- API route tests (`api/routes/authMatrix.test.ts`, `files.routes.test.ts`, harness in
+  `api/test/routeHarness.ts`): every registered route is checked for 401 without a token, and
+  for which personas get 403 (engineer, viewer, admin by role, admin by team with the viewer
+  role, admin whose `is_org_admin()` check fails). Checkout, check-in, undo-checkout, soft delete,
+  state changes and release are checked against what lands in the typed fake Supabase.
+- Performance regression gate in `src/perf/` (runs in `npm test`): operation counts at 1k, 10k
+  and 30k files for loads, persist bursts, folder lookups, realtime bursts, Re-align and first
+  check-in. Report: `.cursor/plans/test-audit-C-report.md`.
+- Integration harness under `src/test/`: a typed in-memory Supabase checked against
+  `src/types/supabase.ts`, a fake disk and SolidWorks service, and the real store and commands.
+  Covers the metadata round trip (edit, write to file, check in, reload), every metadata writer
+  against null, empty, absent and whitespace values, load races with moves and restarts, and the
+  first rendered component tests (item number, description and tab cells, `useConfigHandlers`).
+- Render tests for the file pane, details panel, SolidWorks properties and Where Used tabs, and a
+  smoke render of the whole app: file states and badges, pending metadata shown the same in the
+  list and the details panel, who may edit, context menu entries per state, and empty and
+  1,000-file vaults. Report: `.cursor/plans/test-gaps-ui-report.md`.
+
+## [4.7.5] - 2026-10-25
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Saving a checked-out file shows the new version right away.** A reload reused the hash taken
+  before the edit, which still matched the server, so the file stayed "2/2" until check-in
+  re-hashed it. A cached hash is now reused only while the file's size and modified time are the
+  ones it was computed from; otherwise the file is re-hashed.
+- **Checked-in files no longer stay amber ("4/3") when they match the server.** The same stale
+  hash, taken from content later replaced, kept them marked modified until a check-out/check-in.
+- **Edits made while BluePLM was closed are found on the next start.** The sync index now keeps
+  the size and modified time each saved hash was computed from, so a hash the disk no longer
+  matches is dropped instead of trusted. The first start after updating re-hashes files whose
+  saved hash predates this, once, in the background.
+- **A moved file keeps its "moved" badge after the background hash pass**, and a file with unsaved
+  metadata edits stays modified. The hash pass re-classified files with its own copy of the rules
+  and dropped both.
+- **Refreshing a folder classifies files the same way as a full load.** Ignored files no longer
+  turn into new files, orphans whose server row was deleted no longer turn into new files, and a
+  file whose content matches the server shows the server's version.
+
+### Changed
+
+- The rules that decide a file's status live in one place, `src/hooks/useLoadFiles/fileClassification.ts`,
+  used by the full load, the folder refresh and the hash pass. `useLoadFiles.ts` is split into
+  modules under `src/hooks/useLoadFiles/` (3,098 to 1,352 lines), and scenario tests
+  (`fileStateScenarios.test.ts`) drive the load, hash pass and folder refresh through save,
+  revert, check-in, restart, rename and race sequences.
+
+## [4.7.4] - 2026-10-23
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Starting the SolidWorks service shows it running again.** The SolidWorks integration flag is
+  set once at onboarding (off when SolidWorks was not detected) and has no settings toggle. While
+  it was off, Start spawned a healthy service and showed "SolidWorks service started", but the
+  status check reported it stopped and every SolidWorks feature stayed hidden (Isaac). A manual
+  Start, from Settings or the SolidWorks panel, now turns the integration back on.
+
+## [4.7.3] - 2026-10-22
+
+Renderer only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Checked-out files show who holds them again.** Since at least Oct 13, every vault load failed
+  to look up the people holding checkouts. The lookup sent one request listing every checked-out
+  file ID (about 750 IDs, a 29 KB URL), and the gateway rejected it with a bare `400 Bad Request`.
+  Rows held by someone else then showed no avatar and no checkout or check-in button, so they
+  looked checked in while refusing every checkout (Blake and David). The lookup now asks for the
+  few distinct owners (11 in that vault, batched at 100) using the `checked_out_by` the load
+  already has, and maps each profile back to its files. It works for every role, since any
+  signed-in user can read their organization's user list. A batch that fails no longer discards
+  the batches that succeeded.
+- **A file held by an unknown owner still looks checked out.** If an owner's profile cannot be
+  loaded, the row now shows a `?` avatar with "Checkout owner unavailable" (or "Loading checkout
+  owner") instead of nothing. In both context menus, Check Out now says "(by others)" instead of
+  "(already out)" when someone else holds every selected file, with the owner's name in the
+  tooltip. The tree-view menu also gets the "(by others)" hint on Check In.
+
+## [4.7.2] - 2026-10-17
+
+Renderer and Electron main only - no schema change, no API change, SolidWorks service unchanged.
+
+### Fixed
+
+- **Fewer pauses from saving app state.** Every change to the app's state re-serialized and
+  rewrote the whole saved-state blob in local storage, even when nothing that gets saved had
+  changed. Wilson's blob was 700 KB (about 13x larger than ours), so each write was a large
+  allocation, and a burst of writes during load and refocus could stall the window for seconds. The
+  adapter (`src/stores/persistStorage.ts`) now skips writes when the saved slices are unchanged,
+  batches the rest (500 ms) and flushes on window hide and close. Saved slices that were rebuilt
+  on every write are now referentially stable. A hard crash can lose up to 500 ms of changes.
+  The cause of Wilson's lag is not yet proven; the diagnostics below are there to confirm it.
+- **A broken IndexedDB repairs itself.** Blake's vault cache stopped working at 20:07 with
+  `Internal error opening backing store for indexedDB.open`, and every load after that was a full
+  fetch: the failed open was remembered for the life of the window and never retried. A failed open
+  is now forgotten so the next call tries again, and on a corrupt-store error the app deletes the
+  cache database once per session, and if that also fails asks the main process to clear the
+  session's IndexedDB storage (the vault cache and the local sync index are rebuilt from the server
+  and disk). The load that hits the error still falls back to a full fetch without waiting.
+- **Every load no longer re-reads the whole vault cache.** After each load the checkout-profile
+  update read the entire ~27,000-row cache entry back out of IndexedDB even when it had no profiles
+  to write (`profileCount: 0`, 7-20 s in Blake's log). It now returns before touching the database.
+  A delta of 25 rows or fewer no longer rewrites the full entry either (350-500 ms and a large
+  allocation for one changed row); it is written once the entry is ten minutes old or the delta
+  grows. A skipped write only means the next load fetches the same few rows again.
+- **A burst of deletes is one update.** Realtime soft deletes arrive about 1.2 s apart in a bulk
+  delete and each rebuilt the explorer tree and re-sorted the folder (about half a second of
+  main-thread work per event). They are now collected (250 ms quiet period, 1 s at most) and applied
+  in one store update. An event for a file that is still waiting applies the batch first, so the
+  order for any one file is unchanged.
+- **Navigating between folders no longer rescans the vault.** `getFilesInFolder` split and
+  lowercased the path of all ~29,000 rows on every call (~240 ms in Blake's log). The explorer now
+  builds a parent-folder index the second time it is asked about the same file list, so moving
+  between folders is a map lookup (about 0.05 ms in the harness against 55-185 ms), with the same
+  rows in the same order. The first lookup after the file list changes is still the plain scan, so
+  a store that changes every few hundred milliseconds is not made slower.
+- **Fewer store updates per load.** A load with 753 checked-out files made 753 store updates to mark
+  their profiles pending and 753 to clear them, and one update per externally deleted file for the
+  auto-download exclusions (about 8,000 in one vault). Each is now a single update. Exclusions for
+  files that are on disk again are dropped, so the saved list stops growing without bound.
+- **The causes of failures are logged.** The vault cache open failure was logged as `{}`, and the
+  `Checkout profile lookup failed` warning (133 in Blake's log) as `"[object Object]"`. Both now
+  carry name, message, code, details, hint and status.
+
+### Added
+
+- **Stall profiler.** The long-animation-frame attribution is empty on every machine we have logs
+  from, so the cause of the multi-second stalls is still unproven. The main process now keeps a
+  rolling 25 s V8 CPU profile of the window and, when the renderer reports a stall over 2 s (at most
+  once a minute), logs `Stall CPU profile` with the top 15 functions by self time and the share
+  spent in garbage collection, idle and native code, and saves the full `.cpuprofile` next to the
+  logs (newest 3 kept, none over 20 MB). It fails soft if DevTools is open, and
+  `BLUEPLM_DISABLE_STALL_PROFILER=1` turns it off.
+- **More precise timings in the log.** `Load stage timings` (one line per load: cache read, fetch,
+  delta merge, merge, folder status, exclusion pass, `setFiles`, total, with row counts),
+  `Cached server files` now says how long sanitising and the IndexedDB write each took, `Skipping
+  cache rewrite for a small delta`, `Applied batched file removals`, `Pruned auto-download
+  exclusions`, and `Slow store mutation` names the store action while `Persist write` lists the
+  saved keys that changed.
+
+- **Diagnostics for slow refocus.** The log now records `Window focus regained` (time away, first
+  frame, long tasks, slow events and input delay in the 5 s after refocus), `Persist writes` (a
+  30 s rollup of writes requested, skipped and performed), `Persisted blob is large` (with the
+  largest keys), and a memory sample on every focus that also carries peak working set, private
+  bytes, GPU and total app memory and system free memory. Long-animation-frame logging now starts
+  at 150 ms instead of 500 ms, capped at 20 lines per minute with the rest counted in the
+  `Main thread blocked` rollup.
+
+## [4.7.1] - 2026-10-15
+
+Renderer, API 2.8.2 and schema 102.
+
+### Fixed
+
+- **Members of the Administrators team now get every admin feature.** The app only treated someone
+  as an administrator when their `role` column said `admin`, and ignored the Administrators team
+  that the database already counted. A team member whose role was `engineer` or `viewer` lost the
+  Metadata Audit tab under Settings → SolidWorks and about fifty other admin-only screens and
+  actions (integrations, backups, serialization, workflows, impersonation, force release), and was
+  refused by the admin-only API routes. There is now one definition of admin - the role column OR
+  Administrators team membership - applied by the renderer (`src/lib/isAdminUser.ts`), by the API
+  (`request.user.isAdmin`, resolved through `is_org_admin()`), and by the two database functions
+  that still tested the role alone (`update_extension_config`, `update_google_drive_settings`).
+  Removing someone from the team removes the access, since nothing writes their role column.
+  **Apply `supabase/core.sql` and the two modules, and redeploy the API, for the server-side gates
+  to open for team members.** Reported by Wilson.
+
 ## [4.7.0] - 2026-10-08
 
 Renderer only - no schema change, no API change, SolidWorks service unchanged.

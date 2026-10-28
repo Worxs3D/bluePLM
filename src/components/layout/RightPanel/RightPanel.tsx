@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
 import { getFileIconType } from '@/lib/utils'
@@ -74,7 +75,23 @@ export function RightPanel() {
     setItemPanel,
     customerPanel,
     setCustomerPanel,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      getSelectedFileObjects: s.getSelectedFileObjects,
+      rightPanelWidth: s.rightPanelWidth,
+      rightPanelTab: s.rightPanelTab,
+      rightPanelTabs: s.rightPanelTabs,
+      setRightPanelTab: s.setRightPanelTab,
+      moveTabToBottom: s.moveTabToBottom,
+      moveTabToRight: s.moveTabToRight,
+      reorderTabsInPanel: s.reorderTabsInPanel,
+      addToast: s.addToast,
+      itemPanel: s.itemPanel,
+      setItemPanel: s.setItemPanel,
+      customerPanel: s.customerPanel,
+      setCustomerPanel: s.setCustomerPanel,
+    })),
+  )
 
   // Handle tab drop from either panel
   const handleTabDrop = useCallback(
@@ -308,6 +325,7 @@ export function RightPanel() {
                       file={file}
                       solidWorks={isSolidWorksFile}
                       embeddedAvailable={false}
+                      preferThumbnailInExternalMode
                     />
                   ) : (
                     <div className="flex-1 flex items-center justify-center text-plm-fg-muted">

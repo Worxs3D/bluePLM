@@ -86,6 +86,7 @@ import {
   unregisterArchiveHandlers,
   type ArchiveHandlerDependencies,
 } from './archive'
+import { registerRfqHandlers, unregisterRfqHandlers } from './rfq'
 import {
   initThumbnailStore,
   registerThumbnailProtocol,
@@ -252,6 +253,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerExtensionHostHandlers(mainWindow, extensionHostHandlerDeps)
   registerDeepLinkHandlers(mainWindow, deepLinkHandlerDeps)
   registerArchiveHandlers(mainWindow, archiveHandlerDeps)
+  registerRfqHandlers(mainWindow, { log, logError })
 
   // Thumbnails are served over a custom scheme rather than IPC, so they are set
   // up here alongside the handlers but do not register any ipcMain channels.
@@ -287,6 +289,7 @@ export function unregisterAllHandlers(): void {
   unregisterExtensionHostHandlers()
   unregisterDeepLinkHandlers()
   unregisterArchiveHandlers()
+  unregisterRfqHandlers()
   unregisterThumbnailProtocol()
   unregisterThumbnailIpcHandlers()
 }

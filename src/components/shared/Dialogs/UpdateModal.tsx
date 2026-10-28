@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Download, Loader2, X, Sparkles, ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 export function UpdateModal() {
@@ -15,7 +16,20 @@ export function UpdateModal() {
     setShowUpdateModal,
     setInstallerPath,
     addToast,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      updateAvailable: s.updateAvailable,
+      updateDownloading: s.updateDownloading,
+      updateDownloaded: s.updateDownloaded,
+      updateProgress: s.updateProgress,
+      setUpdateDownloading: s.setUpdateDownloading,
+      setUpdateDownloaded: s.setUpdateDownloaded,
+      showUpdateModal: s.showUpdateModal,
+      setShowUpdateModal: s.setShowUpdateModal,
+      setInstallerPath: s.setInstallerPath,
+      addToast: s.addToast,
+    })),
+  )
 
   const [isExiting, setIsExiting] = useState(false)
   const [isRunningInstaller, setIsRunningInstaller] = useState(false)

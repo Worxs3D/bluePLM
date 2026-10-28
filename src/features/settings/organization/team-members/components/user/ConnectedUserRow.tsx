@@ -20,7 +20,9 @@
  * ```
  */
 import { useCallback, useState } from 'react'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import {
   useTeams,
   useMembers,
@@ -51,15 +53,25 @@ export function ConnectedUserRow({ user, teamContext, compact }: ConnectedUserRo
   // Get current user info from store
   const {
     user: currentUser,
+    userTeams,
     organization,
     getEffectiveRole,
     startUserImpersonation,
     impersonatedUser,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      userTeams: s.userTeams,
+      organization: s.organization,
+      getEffectiveRole: s.getEffectiveRole,
+      startUserImpersonation: s.startUserImpersonation,
+      impersonatedUser: s.impersonatedUser,
+    })),
+  )
 
   const orgId = organization?.id ?? null
   const isAdmin = getEffectiveRole() === 'admin'
-  const isRealAdmin = currentUser?.role === 'admin'
+  const isRealAdmin = isAdminUser(currentUser?.role, userTeams)
 
   // Data hooks (these are cached, so calling them in each row is efficient)
   const { teams } = useTeams(orgId)

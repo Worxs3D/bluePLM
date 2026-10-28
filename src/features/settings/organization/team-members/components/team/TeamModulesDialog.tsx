@@ -4,6 +4,7 @@ import * as LucideIcons from 'lucide-react'
 import { Users, X, Loader2, Trash2 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { ModulesEditor } from '../../../ModulesEditor'
 import type { ModuleConfig } from '@/types/modules'
 import type { TeamModulesDialogProps } from '../../types'
@@ -15,7 +16,15 @@ export function TeamModulesDialog({ team, onClose }: TeamModulesDialogProps) {
     saveTeamModuleDefaults,
     clearTeamModuleDefaults,
     moduleConfig,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      addToast: s.addToast,
+      loadTeamModuleDefaults: s.loadTeamModuleDefaults,
+      saveTeamModuleDefaults: s.saveTeamModuleDefaults,
+      clearTeamModuleDefaults: s.clearTeamModuleDefaults,
+      moduleConfig: s.moduleConfig,
+    })),
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)

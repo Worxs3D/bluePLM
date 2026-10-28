@@ -28,6 +28,7 @@ import { useCallback, useEffect } from 'react'
 import { supabase, removeUserFromOrg } from '@/lib/supabase'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { OrgUser } from '../types'
 import {
   type UserBasic,
@@ -48,7 +49,18 @@ export function useMembers(orgId: string | null) {
     setMembers,
     setMembersLoading,
     removeMember: removeMemberFromStore,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      addToast: s.addToast,
+      members: s.members,
+      membersLoading: s.membersLoading,
+      membersLoaded: s.membersLoaded,
+      setMembers: s.setMembers,
+      setMembersLoading: s.setMembersLoading,
+      removeMember: s.removeMember,
+    })),
+  )
 
   const loadMembers = useCallback(async () => {
     if (!orgId) return

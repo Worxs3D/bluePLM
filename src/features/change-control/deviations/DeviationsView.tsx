@@ -22,6 +22,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient, getFileVersions } from '@/lib/supabase'
 import { formatDistanceToNow, format } from 'date-fns'
 
@@ -137,7 +138,16 @@ const DEVIATION_TYPES = [
 ]
 
 export function DeviationsView() {
-  const { organization, user, isVaultConnected, files, selectedFiles, addToast } = usePDMStore()
+  const { organization, user, isVaultConnected, files, selectedFiles, addToast } = usePDMStore(
+    useShallow((s) => ({
+      organization: s.organization,
+      user: s.user,
+      isVaultConnected: s.isVaultConnected,
+      files: s.files,
+      selectedFiles: s.selectedFiles,
+      addToast: s.addToast,
+    })),
+  )
 
   const [deviations, setDeviations] = useState<Deviation[]>([])
   const [isLoading, setIsLoading] = useState(false)

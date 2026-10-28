@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
 
 /**
@@ -28,7 +29,26 @@ export function useVaultManagement() {
     setIsLoading,
     addRecentVault,
     addToast,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      isOfflineMode: s.isOfflineMode,
+      vaultPath: s.vaultPath,
+      isVaultConnected: s.isVaultConnected,
+      filesLoaded: s.filesLoaded,
+      connectedVaults: s.connectedVaults,
+      activeVaultId: s.activeVaultId,
+      setVaultPath: s.setVaultPath,
+      setVaultConnected: s.setVaultConnected,
+      setFiles: s.setFiles,
+      setServerFiles: s.setServerFiles,
+      setFilesLoaded: s.setFilesLoaded,
+      setStatusMessage: s.setStatusMessage,
+      setIsLoading: s.setIsLoading,
+      addRecentVault: s.addRecentVault,
+      addToast: s.addToast,
+    })),
+  )
 
   // Get setSettingsTab from store (added by Agent 2)
   const setSettingsTab = usePDMStore((s) => s.setSettingsTab)

@@ -1,26 +1,19 @@
-// SIZE: this file is over the 1500-line split threshold in .cursor/rules/style.mdc.
-// The performance work deliberately did not carry the split: loadFiles is one long
-// pipeline whose stages share ~20 locals, so a mechanical extraction would have
-// meant threading a large context object through every stage in the same change as
-// behavioural fixes. New module-level state added by that work lives in
-// ./loadFilesCoordination.ts instead, so the file did not grow. The inline
-// TODO(decompose) markers below record the intended seams; take them one at a time
-// in a change that does nothing else.
+// The per-file classification, rename detection, background hash pass and folder refresh
+// live in ./useLoadFiles/ as functions that take their inputs, so they can be tested without
+// React. The rules that decide a file's status are in ./useLoadFiles/fileClassification.ts.
 
-import { useCallback, useRef, startTransition } from 'react'
+import { useCallback, useRef } from 'react'
 // flushSync removed - causes React crashes when called during existing render cycles
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
-import { getFilesLightweight, getCheckedOutUsers, getVaultFolders } from '@/lib/supabase'
+import { getFilesLightweight, getVaultFolders } from '@/lib/supabase'
 import { executeCommand } from '@/lib/commands'
 import { buildFullPath } from '@/lib/commands/types'
 import { isAutomaticDiscardCoolingDown } from '@/lib/commands/handlers/discardOrphaned'
-import { dropCommittedPendingMetadata } from '@/lib/pendingMetadata'
 import { recordMetric } from '@/lib/performanceMetrics'
 import { log } from '@/lib/logger'
 import {
   getFilesWithCache,
-  updateCachedUserInfo,
   type CacheWriteContext,
   type CachedServerFile,
 } from '@/lib/cache/vaultFileCache'
@@ -30,19 +23,14 @@ import {
   getInodeMap,
   getVersionMap,
   updateInodes,
+  type SavedVersionData,
   type SyncIndexPathInfo,
 } from '@/lib/cache/localSyncIndex'
 import { t } from '@/lib/i18n'
-import { logExplorer } from '@/lib/userActionLogger'
-import type { LocalFile } from '@/stores/types'
-import type { CheckoutProfileScope } from '@/lib/supabase/files/queries'
+import { describeError } from '@/lib/errorDetails'
 import {
   hashCheckoutIdentifier,
-  isCheckoutProfileForOwner,
-  mergePdmFileData,
-  reconcileCheckoutProfile,
   type CheckoutLoadContext,
-  type CheckoutUserProfile,
   type LoadFilesSessionContext,
   type PDMFile,
 } from '@/types/pdm'
@@ -51,47 +39,42 @@ import {
   computeServerFolderFingerprint,
   consumeSupersededLoad,
   getLastMergedState,
-  isLoadFilesInFlight,
   markLoadSuperseded,
   runExclusiveLoad,
   setLastMergedState,
   shouldSkipMerge,
 } from './loadFilesCoordination'
 import { getFileMutationEpoch } from '@/lib/fileMutationEpoch'
-import { reconcileCloudFiles } from './useLoadFiles/cloudFileReconciliation'
-import { cloudRowsForFolderRefresh } from './useLoadFiles/refreshFolderCloudRows'
+import { reconcileCloudFiles, serverIdsByLocalPath } from './useLoadFiles/cloudFileReconciliation'
+import { findExclusionsForFilesPresentLocally } from './useLoadFiles/autoDownloadExclusionPruning'
+import {
+  buildAutoDiscardToastMessage,
+  commonOrphanFolderName,
+  runAutoDiscardForOrphans,
+  selectDiscardableOrphans,
+  shouldSkipAutoDiscardForOrphans,
+} from './useLoadFiles/autoDiscard'
+import { runPostLoadBackgroundTasks } from './useLoadFiles/backgroundTasks'
+import { createYieldGate, mapYielding, YIELD_CHECK_STRIDE } from './useLoadFiles/mergeYield'
+import {
+  buildMergeLookups,
+  buildSyncIndexEntries,
+  mergeLocalFileWithServer,
+} from './useLoadFiles/mergeLocalFile'
+import { detectInodeRenames, hashRenameCandidates } from './useLoadFiles/renameDetection'
+import { useRefreshCurrentFolder } from './useLoadFiles/useRefreshCurrentFolder'
 
-const CHECKOUT_PROFILE_MAX_ATTEMPTS = 3
-const CHECKOUT_PROFILE_RETRY_BASE_MS = 200
-
-/** Enough resolved renames to recognise the pattern without logging all of them. */
-const RENAME_LOG_SAMPLE_LIMIT = 5
+export {
+  buildAutoDiscardToastMessage,
+  commonOrphanFolderName,
+  runAutoDiscardForOrphans,
+  selectDiscardableOrphans,
+  shouldSkipAutoDiscardForOrphans,
+}
+export type { AutoDiscardSanityCheckInput } from './useLoadFiles/autoDiscard'
 
 /** Enough orphan paths to see what a batch is without logging thousands. */
 const ORPHAN_LOG_SAMPLE_LIMIT = 10
-
-/**
- * How much of the previously-synced file set is allowed to look orphaned in one pass
- * before the auto-discard gate refuses to act on it.
- *
- * A silent refresh trusts the server's file list at face value, which is safe when the
- * list is complete but not when it isn't: a revoked `vault_access` row, an RLS
- * predicate that stops matching, or a SECURITY DEFINER function called with mismatched
- * arguments can all return a successful, error-free response holding far fewer rows
- * than the vault actually has. From this file's position that is indistinguishable
- * from "most of the vault was deleted by another user since the last load" - the two
- * can only be told apart by how implausible the count is. A real bulk deletion large
- * enough to matter (a few thousand files pruned from a 25k-file vault) still passes
- * through at 90%; a broken query landing on empty or near-empty does not reach disk.
- */
-const AUTO_DISCARD_MAX_ORPHAN_FRACTION = 0.9
-
-/**
- * Merge phases hand the thread back after this long. The merge runs as one
- * synchronous block, so a 25k-file vault produced single 9-second tasks during
- * which hover, scrolling and the cursor shape all stopped responding.
- */
-const MERGE_YIELD_INTERVAL_MS = 50
 
 let loadRequestSequence = 0
 const latestLoadRequestByVault = new Map<string, string>()
@@ -102,270 +85,8 @@ function createLoadRequestId(): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-/** Items processed between clock checks. Reading the clock per item is itself measurable. */
-const YIELD_CHECK_STRIDE = 256
-
-/**
- * Returns a gate that hands the main thread back once it has been held for
- * MERGE_YIELD_INTERVAL_MS, and does nothing before that.
- *
- * Yielding mid-merge is safe because the epoch check immediately before
- * setFiles discards any merge that a file operation landed during, so an
- * interleaved checkout cannot be reverted by a merge that started before it.
- */
-function createYieldGate(): () => Promise<void> {
-  let lastYieldAt = performance.now()
-
-  return async () => {
-    if (performance.now() - lastYieldAt < MERGE_YIELD_INTERVAL_MS) return
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    lastYieldAt = performance.now()
-  }
-}
-
-async function mapYielding<T, R>(
-  items: T[],
-  transform: (item: T) => R,
-  yieldIfSlow: () => Promise<void>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length)
-
-  for (let index = 0; index < items.length; index++) {
-    results[index] = transform(items[index])
-    if (index % YIELD_CHECK_STRIDE === YIELD_CHECK_STRIDE - 1) await yieldIfSlow()
-  }
-
-  return results
-}
-
-function waitForCheckoutRetry(attempt: number): Promise<void> {
-  const delayMs = CHECKOUT_PROFILE_RETRY_BASE_MS * 2 ** (attempt - 1)
-  return new Promise((resolve) => setTimeout(resolve, delayMs))
-}
-
-/**
- * Vaults with an automatic discard currently running.
- *
- * `beginWatcherSuppression` (used internally by the discard-orphaned command) already
- * keeps the deletions a discard performs from being read back by the file watcher as
- * external changes and re-triggering another silent refresh - that is the loop the
- * pre-existing `committedMerge && !silent` gate this replaces was guarding against.
- * This set is the second, independent line of defense: it stops *this* code from
- * starting a second discard for the same vault while one it started is still running,
- * so a gap in that suppression (a slow network-drive trash operation, a future caller)
- * degrades into "the next pass finds nothing left to do" rather than into two
- * concurrent batches touching the same files.
- *
- * A time-based debounce was deliberately not used here: a fixed delay would either be
- * too short to matter or long enough to make a real, one-off deletion feel slow to
- * disappear, whereas this only ever blocks the one case that matters - a second pass
- * trying to touch files the first pass has not finished with.
- */
-const vaultsWithActiveAutoDiscard = new Set<string>()
-
-/**
- * Run `discard` for a vault's orphan batch, refusing to start a second one for the
- * same vault while the first is still in flight.
- *
- * Exported standalone (no store or React access) so the re-entrancy guard can be
- * proven with a test that never mounts the hook: two overlapping calls for the same
- * vault, around a `discard` that has not resolved yet, must produce exactly one call
- * to it rather than two.
- */
-export async function runAutoDiscardForOrphans(
-  vaultId: string,
-  discardableOrphans: LocalFile[],
-  discard: (files: LocalFile[]) => Promise<void>,
-): Promise<'skipped-empty' | 'skipped-in-flight' | 'ran'> {
-  if (discardableOrphans.length === 0) return 'skipped-empty'
-
-  if (vaultsWithActiveAutoDiscard.has(vaultId)) {
-    return 'skipped-in-flight'
-  }
-
-  vaultsWithActiveAutoDiscard.add(vaultId)
-  try {
-    await discard(discardableOrphans)
-    return 'ran'
-  } finally {
-    vaultsWithActiveAutoDiscard.delete(vaultId)
-  }
-}
-
-/**
- * Orphans that are safe to remove automatically.
- *
- * Two guards apply, and both exist because the local copy may hold work that exists
- * nowhere else - but they do not cover the same ground. The pending-metadata check
- * catches unsaved metadata edits that were never checked in, on any pass.
- * `orphansEditedSinceServerRowLost` is narrower than its name suggests: it compares
- * disk mtime against `syncedPath.orphanedAt`, a tombstone that `updateSyncIndexFromServer`
- * writes only *after* this same pass's classification runs, from an index read at the
- * start of the pass. So on the pass where a file first becomes orphaned, `orphanedAt`
- * is always undefined and this guard cannot fire - it only protects a file that was
- * already orphaned on some earlier pass and has since been edited. A file orphaned and
- * edited in that same first pass is caught only if the edit also left pending metadata
- * behind. An mtime that can't be read counts as "possibly edited" rather than as
- * proof of no edit. Extracted as a pure function so both guards can be tested directly
- * against fixtures instead of through a full load pass.
- */
-export function selectDiscardableOrphans(
-  orphanedFiles: LocalFile[],
-  orphansEditedSinceServerRowLost: ReadonlySet<string>,
-): LocalFile[] {
-  return orphanedFiles.filter(
-    (f) =>
-      !orphansEditedSinceServerRowLost.has(f.relativePath.toLowerCase()) &&
-      !(f.pendingMetadata && Object.keys(f.pendingMetadata).length > 0),
-  )
-}
-
-/** What the auto-discard sanity check needs from a completed merge pass. */
-export interface AutoDiscardSanityCheckInput {
-  /** `pdmFiles.length` from the merge's server-fetch branch; `undefined` when that
-   * branch never ran (offline, no org, or a server error - all already safe on their
-   * own, since none of them can classify a file as `deleted_remote`). */
-  serverRowCount: number | undefined
-  /** `localSyncIndex.size` at the top of the same pass: every path ever known to be
-   * synced, whether or not it is still present on disk. */
-  previouslySyncedCount: number
-  /** Files classified `deleted_remote` this pass, before the edited/pending guards. */
-  orphanCount: number
-}
-
-/**
- * True when the server response this pass merged against looks like a partial or
- * empty view of the vault rather than a genuine mass deletion - see
- * `AUTO_DISCARD_MAX_ORPHAN_FRACTION` for why zero rows is treated as suspicious
- * unconditionally, while a non-zero but truncated response is judged by how much of
- * the previously-synced set it would orphan.
- */
-export function shouldSkipAutoDiscardForOrphans({
-  serverRowCount,
-  previouslySyncedCount,
-  orphanCount,
-}: AutoDiscardSanityCheckInput): boolean {
-  // Nothing to protect (no orphans) or nothing to compare against (a vault that was
-  // never synced before can't have a "previously synced" set to have lost sight of).
-  if (orphanCount === 0 || previouslySyncedCount === 0) return false
-
-  // `orphanCount` only counts files still present on disk, so a vault where most of
-  // the previously-synced set was already cleaned up locally can show zero server
-  // rows yet a reassuringly low fraction below. Zero rows therefore trips the guard
-  // outright rather than trusting the fraction to catch it.
-  if (serverRowCount === 0) return true
-
-  if (serverRowCount === undefined) return false
-
-  return orphanCount / previouslySyncedCount > AUTO_DISCARD_MAX_ORPHAN_FRACTION
-}
-
-/**
- * The folder name to put in the discard toast, if every discarded file shares one.
- *
- * Naming a folder is only unambiguous when there is exactly one candidate - a mixed
- * batch, or one that includes a root-level file, falls back to a plain count instead.
- */
-export function commonOrphanFolderName(files: LocalFile[]): string | null {
-  const topFolders = new Set(
-    files.map((f) => {
-      const separatorIndex = f.relativePath.indexOf('/')
-      return separatorIndex === -1 ? null : f.relativePath.slice(0, separatorIndex)
-    }),
-  )
-  if (topFolders.size !== 1) return null
-  const [folder] = topFolders
-  return folder
-}
-
-/** The non-blocking toast shown after an automatic discard actually removes files. */
-export function buildAutoDiscardToastMessage(count: number, folderName: string | null): string {
-  // Number morphology (plural noun endings, verb/adjective agreement) is
-  // language-specific, so the caller only picks which pre-written form to use -
-  // it never assembles one language's grammar for another (see `_one`/`_other`
-  // pairs in `src/lib/i18n/locales/*.ts`).
-  const suffix = count === 1 ? '_one' : '_other'
-  return folderName
-    ? t(`autoDiscard.removed.fromFolder${suffix}`, { count, folder: folderName })
-    : t(`autoDiscard.removed.generic${suffix}`, { count })
-}
-
-interface CheckoutProfileFetchResult {
-  users: Record<string, CheckoutUserProfile>
-  error: unknown
-  attempts: number
-}
-
-async function fetchCheckoutProfilesWithRetry(
-  fileIds: string[],
-  scope: CheckoutProfileScope,
-  requestId: string,
-  isCurrent?: () => boolean,
-): Promise<CheckoutProfileFetchResult> {
-  let lastError: unknown = null
-
-  for (let attempt = 1; attempt <= CHECKOUT_PROFILE_MAX_ATTEMPTS; attempt++) {
-    if (isCurrent && !isCurrent()) {
-      return { users: {}, error: null, attempts: attempt - 1 }
-    }
-
-    const fetchStart = performance.now()
-    let result: { users: Record<string, CheckoutUserProfile>; error: unknown }
-    try {
-      result = await getCheckedOutUsers(fileIds, scope)
-    } catch (error) {
-      result = { users: {}, error }
-    }
-    const latencyMs = Math.round(performance.now() - fetchStart)
-
-    if (isCurrent && !isCurrent()) {
-      log.info('[CheckoutHydration]', 'Discarding profile response after context change', {
-        requestId,
-        orgId: hashCheckoutIdentifier(scope.orgId),
-        vaultId: hashCheckoutIdentifier(scope.vaultId),
-        attempt,
-        latencyMs,
-        stale: true,
-      })
-      return { users: {}, error: null, attempts: attempt }
-    }
-
-    if (!result.error) {
-      log.info('[CheckoutHydration]', 'Checkout profiles fetched', {
-        requestId,
-        orgId: hashCheckoutIdentifier(scope.orgId),
-        vaultId: hashCheckoutIdentifier(scope.vaultId),
-        fileCount: fileIds.length,
-        hitCount: Object.keys(result.users).length,
-        missCount: fileIds.length - Object.keys(result.users).length,
-        attempt,
-        latencyMs,
-        stale: false,
-      })
-      return { users: result.users, error: null, attempts: attempt }
-    }
-
-    lastError = result.error
-    log.warn('[CheckoutHydration]', 'Checkout profile lookup failed', {
-      requestId,
-      orgId: hashCheckoutIdentifier(scope.orgId),
-      vaultId: hashCheckoutIdentifier(scope.vaultId),
-      fileCount: fileIds.length,
-      attempt,
-      latencyMs,
-      error: getErrorMessage(result.error),
-      retrying: attempt < CHECKOUT_PROFILE_MAX_ATTEMPTS,
-    })
-
-    if (attempt < CHECKOUT_PROFILE_MAX_ATTEMPTS) {
-      await waitForCheckoutRetry(attempt)
-    }
-  }
-
-  return { users: {}, error: lastError, attempts: CHECKOUT_PROFILE_MAX_ATTEMPTS }
+  // PostgREST errors are plain objects: String() on one is "[object Object]".
+  return describeError(error).message ?? String(error)
 }
 
 /**
@@ -414,10 +135,6 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
   const latestSessionContext = useRef<LoadFilesSessionContext | undefined>(sessionContext)
   latestSessionContext.current = sessionContext
 
-  // Folders whose refresh already dropped the main-process scan cache, so a refresh that
-  // keeps growing for some other reason cannot invalidate on every press. See the
-  // self-heal in refreshCurrentFolder.
-  const scanCacheSelfHealedFolders = useRef(new Set<string>())
 
   const authenticatedUserId =
     sessionContext?.authenticatedUserId !== undefined
@@ -562,6 +279,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // lands while this pass runs makes the merge stale. See fileMutationEpoch.
         const epochAtScanStart = getFileMutationEpoch()
 
+        // The server list, the server folder set and the sync index are written only once
+        // the merge is known to commit. A discarded merge used to leave them behind: a load
+        // that fetched the server mid-move kept 10 already-deleted rows in `serverFiles`,
+        // and a folder delete then counted and "deleted" them again.
+        const commitsAfterMerge: Array<() => void> = []
+
         // A delta scan is only safe when it can build on a prior full scan; the
         // main process falls back to a full walk on its own if it cannot.
         const canDeltaScan =
@@ -611,7 +334,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // Load persisted version/hash data for accurate outdated detection on app restart
         const versionMapPromise = currentVaultId
           ? getVersionMap(currentVaultId)
-          : Promise.resolve(new Map<string, { localVersion?: number; localHash?: string }>())
+          : Promise.resolve(new Map<string, SavedVersionData>())
 
         // Fetch server folders (for empty folder sync feature)
         // These are explicit folder records, separate from implicit folders derived from file paths
@@ -786,6 +509,12 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           localHash: f.hash,
         }))
 
+        // Paths whose cached hash is stale (the file changed on disk since it was hashed) or
+        // unverified (no stamp to check it against). The background hash pass re-hashes them
+        // even when it otherwise skips files with a tracked localVersion, and their cached
+        // hash is never persisted with a stamp.
+        const rehashPaths = new Set<string>()
+
         // Get ignored paths checker for later use (don't filter, just mark as ignored)
         const isIgnoredPath = currentVaultId
           ? (path: string) => usePDMStore.getState().isPathIgnored(currentVaultId, path)
@@ -816,10 +545,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             // remains the established full-domain shape. The existing consumers only read the
             // lightweight fields here; keep the boundary explicit instead of leaking `any`.
             const pdmMap = new Map<string, PDMFile>(
-              pdmFiles.map((file) => [
-                file.file_path.toLowerCase(),
-                file as unknown as PDMFile,
-              ]),
+              pdmFiles.map((file) => [file.file_path.toLowerCase(), file as unknown as PDMFile]),
             )
 
             // Create a map of server folders by path (case-insensitive for Windows compatibility)
@@ -847,7 +573,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               extension: file.extension ?? '',
               content_hash: file.content_hash || '',
             }))
-            setServerFiles(serverFilesList)
+            commitsAfterMerge.push(() => setServerFiles(serverFilesList))
 
             // Clean up auto-download exclusions for files that no longer exist on the server
             if (currentVaultId) {
@@ -870,129 +596,14 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             for (const folder of serverFoldersResult.folders || []) {
               serverFolderPathsSet.add(folder.folder_path)
             }
-            setServerFolderPaths(serverFolderPathsSet)
+            commitsAfterMerge.push(() => setServerFolderPaths(serverFolderPathsSet))
 
             // Create set of local file paths for deletion detection (case-insensitive)
             const localPathSet = new Set(localFiles.map((f) => f.relativePath.toLowerCase()))
 
-            // Create a map of existing files' localActiveVersion to preserve rollback state
-            // Use getState() to get current files at execution time (not stale closure value)
-            // Key by BOTH absolute path and relative path for robust lookup during refresh
             const currentFiles = usePDMStore.getState().files
-            const existingLocalActiveVersions = new Map<string, number>()
-            for (const f of currentFiles) {
-              if (f.localActiveVersion !== undefined) {
-                existingLocalActiveVersions.set(f.path, f.localActiveVersion)
-                existingLocalActiveVersions.set(f.relativePath, f.localActiveVersion)
-              }
-            }
-
-            // Create a map of existing files' localVersion to preserve tracked version numbers
-            // localVersion tracks which version's content is actually on disk (set during download/checkin)
-            // Seed from IndexedDB first (survives app restart), then overlay in-memory values
-            const existingLocalVersions = new Map<string, number>()
-            for (const [relPath, data] of savedVersionMap) {
-              if (data.localVersion !== undefined) {
-                existingLocalVersions.set(relPath, data.localVersion)
-              }
-            }
-            for (const f of currentFiles) {
-              if (f.localVersion !== undefined) {
-                existingLocalVersions.set(f.path, f.localVersion)
-                existingLocalVersions.set(f.relativePath, f.localVersion)
-                // Mirror the lowercase convention used by the IndexedDB sync index
-                // so cold-start (IndexedDB-only) and warm-refresh lookups share a key space.
-                existingLocalVersions.set(f.relativePath.toLowerCase(), f.localVersion)
-              }
-            }
-
-            // Create a map of existing files' localHash to preserve computed hashes
-            // This prevents re-computing hashes or falling back to timestamp-based diff detection
-            // when the file watcher triggers a refresh after operations like checkin
-            // Seed from IndexedDB first (survives app restart), then overlay in-memory values
-            // Index under BOTH relativePath and full path so the per-file lookup below can hit
-            // either; mirrors existingLocalVersions which already does this correctly.
-            const existingLocalHashes = new Map<string, string>()
-            for (const [relPath, data] of savedVersionMap) {
-              if (data.localHash) {
-                existingLocalHashes.set(relPath, data.localHash)
-              }
-            }
-            for (const f of currentFiles) {
-              if (f.localHash) {
-                existingLocalHashes.set(f.path, f.localHash)
-                existingLocalHashes.set(f.relativePath, f.localHash)
-                // Mirror the lowercase convention used by the IndexedDB sync index
-                // so cold-start (IndexedDB-only) and warm-refresh lookups share a key space.
-                existingLocalHashes.set(f.relativePath.toLowerCase(), f.localHash)
-              }
-            }
-
-            // Create a map of existing files' pendingMetadata to preserve unsaved changes
-            // This prevents losing user's edits (like generated part numbers) when FileWatcher triggers refresh
-            const existingPendingMetadata = new Map<
-              string,
-              (typeof currentFiles)[0]['pendingMetadata']
-            >()
-            for (const f of currentFiles) {
-              if (f.pendingMetadata && Object.keys(f.pendingMetadata).length > 0) {
-                existingPendingMetadata.set(f.path, f.pendingMetadata)
-              }
-            }
-
-            // Secondary map keyed by server-relative path for moved file lookups
-            // When a file is renamed, pendingMetadata is stored under the OLD path, but we look up by NEW path.
-            // This map allows us to find pending metadata using pdmData.file_path (the old server path).
-            const existingPendingByServerPath = new Map<
-              string,
-              (typeof currentFiles)[0]['pendingMetadata']
-            >()
-            for (const f of currentFiles) {
-              if (
-                f.pendingMetadata &&
-                Object.keys(f.pendingMetadata).length > 0 &&
-                f.pdmData?.file_path
-              ) {
-                existingPendingByServerPath.set(
-                  f.pdmData.file_path.toLowerCase(),
-                  f.pendingMetadata,
-                )
-              }
-            }
-
-            // Preserve only profiles whose IDs still match the current owner.
-            const existingCheckedOutUsers = new Map<string, CheckoutUserProfile>()
-            for (const f of currentFiles) {
-              const profile = f.pdmData?.checked_out_user
-              if (
-                f.pdmData?.id &&
-                isCheckoutProfileForOwner(profile, f.pdmData.checked_out_by)
-              ) {
-                existingCheckedOutUsers.set(f.pdmData.id, profile)
-              }
-            }
-
-            // Also get persistedPendingMetadata for app restart survival
             const { persistedPendingMetadata, isFileRecentlyModified } = usePDMStore.getState()
-
-            // Create a map of existing files' pdmData for recently modified files
-            // This prevents server data from overwriting local changes that were just saved
-            // (e.g., when FileWatcher triggers LoadFiles right after Save to File before DB update propagates)
-            const recentlyModifiedPdmData = new Map<string, (typeof currentFiles)[0]['pdmData']>()
-            for (const f of currentFiles) {
-              if (f.pdmData?.id && isFileRecentlyModified(f.pdmData.id)) {
-                recentlyModifiedPdmData.set(f.path, f.pdmData)
-                window.electronAPI?.log(
-                  'debug',
-                  '[LoadFiles] Preserving pdmData for recently modified file',
-                  {
-                    path: f.path,
-                    fileId: f.pdmData.id,
-                    partNumber: f.pdmData.part_number,
-                  },
-                )
-              }
-            }
+            const lookups = buildMergeLookups(currentFiles, savedVersionMap, isFileRecentlyModified)
 
             // Create a map of files checked out by me, keyed by content hash for move detection
             // This allows us to detect moved files (same content, different path) and preserve their pdmData
@@ -1001,527 +612,56 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             const checkedOutByMeByHash = new Map<string, PDMFile>()
             for (const pdmFile of pdmFiles) {
               if (pdmFile.content_hash && pdmFile.checked_out_by === user?.id) {
-                checkedOutByMeByHash.set(
-                  pdmFile.content_hash,
-                  pdmFile as unknown as PDMFile,
-                )
+                checkedOutByMeByHash.set(pdmFile.content_hash, pdmFile as unknown as PDMFile)
               }
             }
 
-            // TODO(decompose): Extract to hooks/useLoadFiles/renameDetection.ts — hash-based
-            // and inode-based rename detection (~130 lines). Pure function taking localFiles,
-            // pdmMap, localPathSet, checkedOutByMeByHash, savedInodeMap, user and returning
-            // { inodeRenameMap, inodeMatchedServerPaths, updatedLocalFiles }.
-            // --- Rename detection: compute hashes for unmatched local files ---
-            // When a file is renamed externally (e.g. SolidWorks tree rename), the new path
-            // has no hash in cache. Without a hash, the existing move detection (below) can't
-            // match the file to its server record by content_hash. We fix this by computing
-            // hashes for unmatched local files when there are also missing checked-out-by-me
-            // server files — a strong signal that an external rename occurred.
+            // A file renamed externally has no cached hash at its new path; hash the likely
+            // candidates so the content-hash move detection in the merge can match them.
             if (checkedOutByMeByHash.size > 0 && window.electronAPI?.computeFileHashes) {
-              // Only the checked-out-by-me records that have gone missing locally can be
-              // the source side of a rename, so they alone define what we are looking for.
-              const missingServerPaths = new Set<string>()
-              const missingServerSizes = new Set<number>()
-              for (const [, pdmFile] of checkedOutByMeByHash) {
-                if (!localPathSet.has(pdmFile.file_path.toLowerCase())) {
-                  missingServerPaths.add(pdmFile.file_path.toLowerCase())
-                  if (typeof pdmFile.file_size === 'number') {
-                    missingServerSizes.add(pdmFile.file_size)
-                  }
-                }
-              }
-
-              // A rename preserves content, so it preserves size. Hashing only the local
-              // files whose size matches a missing record keeps this pass proportional to
-              // the number of renames rather than to the size of the vault: the Blue
-              // Robotics vault was hashing 691 files against 7 candidates on every load,
-              // for ~1.3s and zero matches. Fall back to the unfiltered set when the
-              // server reports no sizes, so older records still get rename detection.
-              const canFilterBySize = missingServerSizes.size > 0
-              const unmatchedLocalFiles = localFiles.filter(
-                (f) =>
-                  !f.isDirectory &&
-                  !f.localHash &&
-                  !pdmMap.has(f.relativePath.toLowerCase()) &&
-                  (!canFilterBySize || missingServerSizes.has(f.size)),
+              localFiles = await hashRenameCandidates(
+                localFiles,
+                pdmMap,
+                localPathSet,
+                checkedOutByMeByHash,
+                window.electronAPI.computeFileHashes,
               )
-
-              if (unmatchedLocalFiles.length > 0 && missingServerPaths.size > 0) {
-                window.electronAPI?.log(
-                  'info',
-                  '[LoadFiles] Rename detection: computing hashes for unmatched local files',
-                  {
-                    unmatchedLocal: unmatchedLocalFiles.length,
-                    missingServer: missingServerPaths.size,
-                    sizeFiltered: canFilterBySize,
-                    unmatchedSamples: unmatchedLocalFiles.slice(0, 3).map((f) => f.relativePath),
-                    missingSamples: Array.from(missingServerPaths).slice(0, 3),
-                  },
-                )
-
-                const hashRequests = unmatchedLocalFiles.map((f) => ({
-                  path: f.path,
-                  relativePath: f.relativePath,
-                  size: f.size,
-                  mtime: new Date(f.modifiedTime).getTime(),
-                }))
-
-                try {
-                  const { results } = await window.electronAPI.computeFileHashes(hashRequests)
-                  if (results && results.length > 0) {
-                    const hashMap = new Map(results.map((r) => [r.relativePath, r.hash]))
-                    let renameMatchCount = 0
-                    localFiles = localFiles.map((f) => {
-                      const computed = hashMap.get(f.relativePath)
-                      if (computed) {
-                        if (checkedOutByMeByHash.has(computed)) renameMatchCount++
-                        return { ...f, localHash: computed }
-                      }
-                      return f
-                    })
-                    window.electronAPI?.log(
-                      'info',
-                      '[LoadFiles] Rename detection: hashes computed',
-                      {
-                        hashesComputed: results.length,
-                        renameMatchesFound: renameMatchCount,
-                      },
-                    )
-                  }
-                } catch (error) {
-                  window.electronAPI?.log(
-                    'warn',
-                    '[LoadFiles] Rename detection: hash computation failed',
-                    { error: String(error) },
-                  )
-                }
-              }
             }
-
-            // --- Inode-based rename detection ---
-            // The NTFS file index (stats.ino) persists across renames on the same volume.
-            // We use previously persisted inodes from the sync index to match "new" local
-            // files to "missing" server files. This handles all rename scenarios including
-            // modified-then-renamed files where hash matching fails.
-            const inodeRenameMap = new Map<string, PDMFile>() // localPath(lower) -> pdmFile
-            const inodeMatchedServerPaths = new Set<string>() // old server paths matched by inode
-            // Reverse of inodeMatchedServerPaths: old server path (lower) -> the local
-            // file's actual relativePath that claimed it. Lets the cloud-file
-            // reconciliation pass emit a 'moved_away' stub that names its destination
-            // instead of silently dropping the server's record of the old path.
-            const inodeMatchedServerPathToLocalPath = new Map<string, string>()
-            let checkedOutRenameCount = 0
-
-            if (savedInodeMap.size > 0) {
-              // Build ino -> pdmFile map for server files that are missing locally.
-              // savedInodeMap is Map<ino, paths[]> — try each candidate path against pdmMap
-              // to handle stale duplicate entries from the old updateInodes upsert bug.
-              //
-              // Inode matches are NOT restricted to checked-out-by-me files. NTFS MFT indices
-              // are per-machine and file-unique, making false positives extremely unlikely.
-              // Restricting to checked-out files caused ghost/orphan pairs after a checkin
-              // that updated the server path and released the checkout.
-              const inodeToServerFile = new Map<number, PDMFile>()
-              for (const [ino, oldRelativePaths] of savedInodeMap) {
-                for (const oldRelativePath of oldRelativePaths) {
-                  const pdmFile = pdmMap.get(oldRelativePath)
-                  if (pdmFile && !localPathSet.has(oldRelativePath)) {
-                    inodeToServerFile.set(ino, pdmFile)
-                    break
-                  }
-                }
-              }
-
-              if (inodeToServerFile.size > 0) {
-                // Check each unmatched local file for an inode match
-                for (const localFile of localFiles) {
-                  if (localFile.isDirectory || !localFile.ino || localFile.ino === 0) continue
-                  if (pdmMap.has(localFile.relativePath.toLowerCase())) continue
-
-                  const serverFile = inodeToServerFile.get(localFile.ino)
-                  if (serverFile) {
-                    inodeRenameMap.set(localFile.relativePath.toLowerCase(), serverFile)
-                    inodeMatchedServerPaths.add(serverFile.file_path.toLowerCase())
-                    inodeMatchedServerPathToLocalPath.set(
-                      serverFile.file_path.toLowerCase(),
-                      localFile.relativePath,
-                    )
-                    inodeToServerFile.delete(localFile.ino)
-                    if (serverFile.checked_out_by) checkedOutRenameCount++
-                  }
-                }
-
-                if (inodeRenameMap.size > 0) {
-                  // One line, not one per match. An unreconciled folder rename
-                  // produces hundreds of matches on every load; logged per file they
-                  // were 80% of one 4.5 MB session log, and each one is an IPC call
-                  // made from inside the merge that blocks the thread it reports on.
-                  window.electronAPI?.log('info', '[LoadFiles] Inode rename summary', {
-                    matches: inodeRenameMap.size,
-                    checkedOut: checkedOutRenameCount,
-                    remainingUnresolved: inodeToServerFile.size,
-                    samples: Array.from(inodeRenameMap.entries())
-                      .slice(0, RENAME_LOG_SAMPLE_LIMIT)
-                      .map(([newPath, serverFile]) => `${serverFile.file_path} -> ${newPath}`),
-                  })
-                }
-              }
-            }
-
-            // TODO(decompose): Extract to hooks/useLoadFiles/mergeFilesWithServer.ts — the
-            // local-server merge loop (~320 lines, through "MATCH STATS" log). Pure function
-            // taking localFiles, pdmMap, existing*Maps, user, and returning merged localFiles
-            // with pdmData, diffStatus, localVersion, and pendingMetadata applied.
+            const { inodeRenameMap, inodeMatchedServerPaths, inodeMatchedServerPathToLocalPath } =
+              detectInodeRenames(localFiles, pdmMap, localPathSet, savedInodeMap)
 
             // Merge PDM data into local files and compute diff status
-            let matchedCount = 0
-            let unmatchedCount = 0
-            const unmatchedSamples: string[] = []
-
+            const stats = { matched: 0, unmatched: 0, unmatchedSamples: [] as string[] }
+            const mergeContext = {
+              lookups,
+              pdmMap,
+              serverFoldersMap,
+              inodeRenameMap,
+              checkedOutByMeByHash,
+              localPathSet,
+              localSyncIndex,
+              isIgnoredPath,
+              persistedPendingMetadata,
+              userId: user?.id,
+              vaultPath: loadingForVaultPath,
+              rehashPaths,
+              orphansEditedSinceServerRowLost,
+              stats,
+            }
             localFiles = await mapYielding(
               localFiles,
-              (localFile) => {
-                if (localFile.isDirectory) {
-                  // Check if this folder exists on server (from explicit folder records)
-                  const folderKey = localFile.relativePath.toLowerCase()
-                  const serverFolder = serverFoldersMap.get(folderKey)
-                  if (serverFolder) {
-                    // Attach folder pdmData for synced folders
-                    return {
-                      ...localFile,
-                      isSynced: true,
-                      pdmData: {
-                        id: serverFolder.id,
-                        folder_path: serverFolder.folder_path,
-                      } as any, // TODO: type this
-                    }
-                  }
-                  return localFile
-                }
-
-                // Use lowercase for case-insensitive matching (Windows compatibility)
-                const lookupKey = localFile.relativePath.toLowerCase()
-                let pdmData = pdmMap.get(lookupKey)
-                let isMovedFile = false
-
-                // Debug: track match/unmatch counts
-                if (pdmData) {
-                  matchedCount++
-                } else {
-                  unmatchedCount++
-                  if (unmatchedSamples.length < 5) {
-                    unmatchedSamples.push(lookupKey)
-                  }
-                }
-
-                // Preserve localActiveVersion from existing file (for rollback state)
-                // Try both absolute path and relative path for robust lookup
-                const existingLocalActiveVersion =
-                  existingLocalActiveVersions.get(localFile.path) ||
-                  existingLocalActiveVersions.get(localFile.relativePath)
-
-                // Preserve localVersion from existing file (tracks actual version on disk)
-                // The lowercase fallback matches the IndexedDB sync index key space, which is
-                // the only seed available on cold start.
-                const existingLocalVersion =
-                  existingLocalVersions.get(localFile.path) ||
-                  existingLocalVersions.get(localFile.relativePath) ||
-                  existingLocalVersions.get(localFile.relativePath.toLowerCase())
-
-                // Debug: log when localActiveVersion is being preserved (helps diagnose rollback issues)
-                if (existingLocalActiveVersion !== undefined) {
-                  window.electronAPI?.log('debug', '[LoadFiles] Preserving localActiveVersion', {
-                    path: localFile.relativePath,
-                    version: existingLocalActiveVersion,
-                  })
-                }
-
-                // Preserve localHash from existing file if not computed fresh
-                // This prevents falling back to timestamp-based diff detection after file watcher refreshes
-                // Try both full path (in-memory entries) and relativePath (IndexedDB entries) so a
-                // persisted hash from a previous app session is always reachable.
-                const existingLocalHash =
-                  existingLocalHashes.get(localFile.path) ||
-                  existingLocalHashes.get(localFile.relativePath) ||
-                  existingLocalHashes.get(localFile.relativePath.toLowerCase())
-                const effectiveLocalHash = localFile.localHash || existingLocalHash
-
-                // PRIMARY: Inode-based rename detection
-                // The NTFS file index (ino) persists across renames. If we previously recorded
-                // this file's inode at a different path, it was renamed/moved.
-                if (!pdmData && inodeRenameMap.size > 0) {
-                  const inodeMatch = inodeRenameMap.get(localFile.relativePath.toLowerCase())
-                  if (inodeMatch) {
-                    pdmData = inodeMatch
-                    isMovedFile = true
-                  }
-                }
-
-                // FALLBACK: Hash-based move detection for cases where inode is unavailable
-                // (e.g., first load after upgrade, network drives, ino=0)
-                if (!pdmData && effectiveLocalHash) {
-                  const movedFromFile = checkedOutByMeByHash.get(effectiveLocalHash)
-                  if (movedFromFile) {
-                    const originalPathStillExists = localPathSet.has(
-                      movedFromFile.file_path.toLowerCase(),
-                    )
-
-                    if (!originalPathStillExists) {
-                      pdmData = movedFromFile
-                      isMovedFile = true
-                    }
-                  }
-                }
-
-                // Determine diff status
-                let diffStatus:
-                  | 'added'
-                  | 'modified'
-                  | 'outdated'
-                  | 'moved'
-                  | 'ignored'
-                  | 'deleted_remote'
-                  | undefined
-                if (!pdmData) {
-                  // File exists locally but not on server
-                  // Check if it's in the ignore list (keep local only)
-                  if (isIgnoredPath(localFile.relativePath)) {
-                    diffStatus = 'ignored'
-                  } else {
-                    // Check if this file was previously synced (in sync index)
-                    // If it was synced before but is no longer on server, it was deleted by another user.
-                    // The index keeps a tombstone for such a path, so the answer no longer
-                    // depends on the server row having disappeared since the last load.
-                    const syncedPath = localSyncIndex.get(localFile.relativePath.toLowerCase())
-                    if (syncedPath) {
-                      // File was synced before but no longer on server = orphaned (deleted_remote)
-                      diffStatus = 'deleted_remote'
-                      if (syncedPath.orphanedAt !== undefined) {
-                        const modifiedTimeMs = new Date(localFile.modifiedTime).getTime()
-                        // An unreadable mtime can't prove the file is untouched, so it is
-                        // treated the same as a provably-later one: possibly edited, kept.
-                        const possiblyEditedSinceOrphaned =
-                          Number.isNaN(modifiedTimeMs) || modifiedTimeMs > syncedPath.orphanedAt
-                        if (possiblyEditedSinceOrphaned) {
-                          orphansEditedSinceServerRowLost.add(
-                            localFile.relativePath.toLowerCase(),
-                          )
-                        }
-                      }
-                    } else {
-                      // File was never synced = genuinely new (added)
-                      diffStatus = 'added'
-                    }
-                  }
-                } else if (isMovedFile) {
-                  // File was moved - needs check-in to update server path (but no version increment)
-                  diffStatus = 'moved'
-                } else if (pdmData.content_hash && effectiveLocalHash) {
-                  // Both hashes available - use hash comparison (most accurate)
-                  if (pdmData.content_hash === effectiveLocalHash) {
-                    // Hashes match - file is synced, leave diffStatus undefined
-                  } else {
-                    // Hashes differ - determine if local is newer or cloud is newer
-                    const localModTime = new Date(localFile.modifiedTime).getTime()
-                    const cloudUpdateTime = pdmData.updated_at
-                      ? new Date(pdmData.updated_at).getTime()
-                      : 0
-
-                    if (localModTime > cloudUpdateTime) {
-                      diffStatus = 'modified'
-                    } else {
-                      diffStatus = 'outdated'
-                    }
-                  }
-                } else if (pdmData.content_hash) {
-                  // No local hash available - use VERSION-BASED detection first, then TIMESTAMP fallback
-                  const localModTime = new Date(localFile.modifiedTime).getTime()
-                  const cloudUpdateTime = pdmData.updated_at
-                    ? new Date(pdmData.updated_at).getTime()
-                    : 0
-                  const isCheckedOutByMe = pdmData.checked_out_by === user?.id
-
-                  // PRIORITY 1: Use tracked localVersion for accurate outdated detection
-                  // This is set when files are downloaded, checked in, or rolled back
-                  if (existingLocalVersion !== undefined && pdmData.version !== undefined) {
-                    if (existingLocalVersion < pdmData.version) {
-                      // Server has a newer version - file is definitely outdated
-                      diffStatus = 'outdated'
-                    } else if (existingLocalVersion === pdmData.version) {
-                      // Versions match - file should be synced
-                      // But if checked out by me and local is newer, might be modified
-                      if (isCheckedOutByMe && localModTime > cloudUpdateTime + 5000) {
-                        diffStatus = 'modified'
-                      }
-                      // Otherwise: leave as synced (diffStatus undefined)
-                    }
-                    // If existingLocalVersion > pdmData.version: local has uncommitted changes (modified)
-                    // This shouldn't normally happen, but leave status as-is
-                  } else {
-                    // No localVersion available — do NOT use timestamp fallback for "outdated"
-                    // since it produces mass false positives (e.g., files downloaded weeks ago
-                    // whose server updated_at was bumped by unrelated checkout/checkin activity).
-                    // Instead, trust that background hash computation will resolve the real status.
-                    const MODIFIED_TOLERANCE_MS = 5000
-
-                    if (
-                      isCheckedOutByMe &&
-                      localModTime > cloudUpdateTime + MODIFIED_TOLERANCE_MS
-                    ) {
-                      diffStatus = 'modified'
-                    }
-                    // For non-checked-out files: leave as synced (undefined) and let
-                    // background hash computation determine the accurate status.
-                  }
-                }
-                // The background hash computation will set the proper status once hashes are computed
-
-                // Preserve pendingMetadata from existing file OR from persistedPendingMetadata (for app restart)
-                // For moved files, also try looking up by the OLD path (stored in pdmData.file_path)
-                // since pendingMetadata was stored under the old path before the rename
-                const recoveredPending =
-                  existingPendingMetadata.get(localFile.path) ||
-                  persistedPendingMetadata[localFile.path] ||
-                  (isMovedFile && pdmData?.file_path
-                    ? existingPendingByServerPath.get(pdmData.file_path.toLowerCase()) ||
-                      persistedPendingMetadata[
-                        buildFullPath(loadingForVaultPath, pdmData.file_path)
-                      ]
-                    : undefined)
-
-                // Compare against the server row: an edit the server already holds is not an edit,
-                // and leaving it pending marks the file as needing check-in forever.
-                const preservedPending = dropCommittedPendingMetadata(recoveredPending, pdmData)
-
-                // Check if this file was recently modified locally (e.g., just saved to SW file + DB)
-                // If so, preserve the existing pdmData to prevent server data from overwriting local changes
-                // This handles the race condition between Save to File and FileWatcher triggering LoadFiles
-                const recentlyModifiedData = recentlyModifiedPdmData.get(localFile.path)
-
-                // Determine final pdmData:
-                // 1. If file was recently modified locally, use preserved pdmData (highest priority)
-                // 2. Otherwise use server pdmData as-is
-                //
-                // Pending values are deliberately NOT merged in here. Doing so re-created, on every
-                // vault load, the same conflation updatePendingMetadata used to perform: the edit
-                // read back as a value the server confirmed. Readers overlay pending over committed
-                // at render time through src/lib/metadata/overlay.ts.
-                let finalPdmData = pdmData
-
-                if (recentlyModifiedData && pdmData) {
-                  // Recently modified - keep the local pdmData to prevent reversion
-                  finalPdmData = mergePdmFileData(recentlyModifiedData, {
-                    checked_out_by: pdmData.checked_out_by,
-                    checked_out_at: pdmData.checked_out_at,
-                  })
-                  window.electronAPI?.log(
-                    'debug',
-                    '[LoadFiles] SKIP merge for recently modified file',
-                    {
-                      path: localFile.path,
-                      serverPartNumber: pdmData?.part_number,
-                      preservedPartNumber: recentlyModifiedData.part_number,
-                      reason: 'recently_modified',
-                    },
-                  )
-                }
-
-                if (finalPdmData?.id) {
-                  const preservedUserInfo = existingCheckedOutUsers.get(finalPdmData.id)
-                  const profile = isCheckoutProfileForOwner(
-                    preservedUserInfo,
-                    finalPdmData.checked_out_by,
-                  )
-                    ? preservedUserInfo
-                    : finalPdmData.checked_out_user
-                  finalPdmData = reconcileCheckoutProfile(finalPdmData, profile)
-                }
-
-                // CRITICAL: Preserve 'modified' status for files with pending metadata changes
-                // The hash comparison above may incorrectly set diffStatus to undefined because
-                // the file content hasn't changed yet (user only edited UI fields).
-                // But we know there ARE pending changes, so force 'modified' status.
-                const finalDiffStatus =
-                  preservedPending && Object.keys(preservedPending).length > 0 && pdmData
-                    ? ('modified' as const)
-                    : diffStatus
-
-                // When a file is detected as moved via inode/hash, mirror the BR number
-                // (part_number) into pendingMetadata so it's preserved if a subsequent
-                // reload fails to re-detect the move (e.g., inode data is lost).
-                let finalPending = preservedPending
-                if (isMovedFile && pdmData?.part_number && !preservedPending?.part_number) {
-                  finalPending = {
-                    ...preservedPending,
-                    part_number: pdmData.part_number,
-                  }
-                }
-
-                // Only the failure - a server part number that did not survive the move -
-                // is worth a line of its own. Logging the success case too made an
-                // unreconciled folder rename cost hundreds of IPC calls per load from
-                // inside this loop; the count now rides along in Merge summary.
-                if (isMovedFile) {
-                  const partNumberLost = !!pdmData?.part_number && !finalPending?.part_number
-                  if (partNumberLost) {
-                    window.electronAPI?.log('warn', '[LoadFiles] Moved file lost its part number', {
-                      oldPath: pdmData?.file_path,
-                      newPath: localFile.relativePath,
-                      pdmPartNumber: pdmData?.part_number ?? null,
-                      preservedPartNumber: preservedPending?.part_number ?? null,
-                    })
-                  }
-                }
-
-                // Determine localVersion:
-                // - If file is synced (hashes verifiably match), use server version
-                // - If preserved from previous state and >= server version, keep it (prevents stale cache overwrite)
-                // - Otherwise undefined (will be set when downloaded or checked in)
-                //
-                // CRITICAL: We must NOT stamp pdmData.version onto localVersion when there is no
-                // disk evidence (no localHash AND no existingLocalVersion). Doing so makes the file
-                // appear synced at the server's version forever, even though disk content may not
-                // match. Instead, leave localVersion undefined and let the forced background hash
-                // (see filesNeedingHash logic below) resolve the truth from disk.
-                const isSyncedWithServer =
-                  pdmData &&
-                  !finalDiffStatus &&
-                  pdmData.content_hash &&
-                  effectiveLocalHash &&
-                  pdmData.content_hash === effectiveLocalHash
-                const computedLocalVersion =
-                  isSyncedWithServer && pdmData
-                    ? existingLocalVersion !== undefined && existingLocalVersion >= pdmData.version
-                      ? existingLocalVersion
-                      : pdmData.version
-                    : existingLocalVersion
-
-                return {
-                  ...localFile,
-                  pdmData: finalPdmData || undefined,
-                  isSynced: !!pdmData,
-                  diffStatus: finalDiffStatus,
-                  // Preserve rollback state if it exists
-                  localActiveVersion: existingLocalActiveVersion,
-                  // Track actual version on disk
-                  localVersion: computedLocalVersion,
-                  // Preserve localHash from existing file if not computed fresh
-                  localHash: effectiveLocalHash,
-                  // Preserve pendingMetadata so user's unsaved edits survive file refresh
-                  pendingMetadata: finalPending,
-                }
-              },
+              (localFile) => mergeLocalFileWithServer(localFile, mergeContext),
               yieldIfSlow,
             )
 
             // Debug: Log match statistics
             window.electronAPI?.log('info', '[LoadFiles] MATCH STATS', {
-              matched: matchedCount,
-              unmatched: unmatchedCount,
+              matched: stats.matched,
+              unmatched: stats.unmatched,
               serverTotal: pdmFiles.length,
-              unmatchedSamples,
+              unmatchedSamples: stats.unmatchedSamples,
             })
+
 
             // Add cloud-only files (exist on server but not locally) as "cloud" or "deleted"
             // entries, emit a 'moved_away' stub for an inode-matched rename (see
@@ -1533,7 +673,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               localPathSet,
               inodeMatchedServerPaths,
               inodeMatchedServerPathToLocalPath,
-              existingCheckedOutUsers,
+              existingCheckedOutUsers: lookups.checkedOutUsers,
+              previousServerIdByLocalPath: serverIdsByLocalPath(currentFiles),
               userId: user?.id,
               vaultPath: loadingForVaultPath,
               yieldIfSlow,
@@ -1665,48 +806,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             if (currentVaultId) {
               const serverPaths = pdmFiles.map((file) => file.file_path)
 
-              // Persist inodes (and localVersion/localHash) for all matched local files
-              // so the next load can use inodes for rename detection and version/hash
-              // for accurate outdated status on app restart
-              const inodeEntries: Array<{
-                path: string
-                ino: number
-                localVersion?: number
-                localHash?: string
-                localOnly?: boolean
-              }> = []
-              for (const f of localFiles) {
-                // A 'moved_away' stub has no disk presence and therefore no `ino` -
-                // this check excludes it on that basis alone, but the diffStatus
-                // guard is kept explicit rather than assumed, per the plan's D1 note.
-                if (
-                  !f.isDirectory &&
-                  f.ino &&
-                  f.ino > 0 &&
-                  f.pdmData &&
-                  f.diffStatus !== 'moved_away'
-                ) {
-                  inodeEntries.push({
-                    path: f.relativePath,
-                    ino: f.ino,
-                    localVersion: f.localVersion,
-                    localHash: f.localHash,
-                    // A moved file sits at a path the server does not have yet.
-                    localOnly: f.diffStatus === 'moved',
-                  })
-                  if (
-                    f.diffStatus === 'moved' &&
-                    f.pdmData.file_path &&
-                    f.pdmData.file_path.toLowerCase() !== f.relativePath.toLowerCase()
-                  ) {
-                    // The old server path, pinned to the same inode so the move stays
-                    // detectable. Not flagged: it is on the server, so the prune leaves
-                    // it alone anyway, and flagging it would make the prune keep skipping
-                    // it after its server row went away, with nothing left to remove it.
-                    inodeEntries.push({ path: f.pdmData.file_path, ino: f.ino })
-                  }
-                }
-              }
+              const inodeEntries = buildSyncIndexEntries(localFiles, rehashPaths)
 
               // Chain: reconcile against the server list first, THEN stamp inodes/versions.
               // The order does not stop updateInodes from recreating a path the first call
@@ -1714,19 +814,21 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               // above are what keeps the two from fighting over the moved-file paths.
               // localPathSet is what lets the first call tell a file that is still on disk
               // from one that is gone, which decides tombstone versus delete.
-              updateSyncIndexFromServer(currentVaultId, serverPaths, localPathSet)
-                .then((): Promise<void> | void => {
-                  if (inodeEntries.length > 0) {
-                    return updateInodes(currentVaultId, inodeEntries)
-                  }
-                })
-                .catch((error) => {
-                  window.electronAPI?.log(
-                    'warn',
-                    '[LoadFiles] Failed to update sync index or inodes',
-                    { error: String(error) },
-                  )
-                })
+              commitsAfterMerge.push(() => {
+                updateSyncIndexFromServer(currentVaultId, serverPaths, localPathSet)
+                  .then((): Promise<void> | void => {
+                    if (inodeEntries.length > 0) {
+                      return updateInodes(currentVaultId, inodeEntries)
+                    }
+                  })
+                  .catch((error) => {
+                    window.electronAPI?.log(
+                      'warn',
+                      '[LoadFiles] Failed to update sync index or inodes',
+                      { error: String(error) },
+                    )
+                  })
+              })
             }
           }
         } else {
@@ -1790,8 +892,9 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           }
         }
 
+        const postMergeFolderMs = Math.round(performance.now() - postMergeFolderStart)
         window.electronAPI?.log('info', '[LoadFiles] Post-merge folder status', {
-          durationMs: Math.round(performance.now() - postMergeFolderStart),
+          durationMs: postMergeFolderMs,
           folderCount: folders.length,
           childrenByParentSize: childrenByParent.size,
         })
@@ -1831,8 +934,6 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
           // Only run detection if we have previous state (skip on first load)
           if (previousFiles.length > 0) {
-            const { addAutoDownloadExclusion } = usePDMStore.getState()
-
             // Build set of paths that previously had local copies (synced files with local presence)
             const previousLocalSyncedPaths = new Set(
               previousFiles
@@ -1888,9 +989,10 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
 
             // Add exclusions for all externally deleted files
             if (filesToExclude.size > 0) {
-              for (const relativePath of filesToExclude) {
-                addAutoDownloadExclusion(currentVaultId, relativePath)
-              }
+              // One store update for the whole batch (see addAutoDownloadExclusions).
+              usePDMStore
+                .getState()
+                .addAutoDownloadExclusions(currentVaultId, Array.from(filesToExclude))
 
               window.electronAPI?.log(
                 'info',
@@ -1905,9 +1007,26 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
               )
             }
           }
+
+          // Drop exclusions for files that are on disk again. Runs after the additions above,
+          // whose files are cloud-only in `localFiles` and so are never dropped here.
+          const currentExclusions =
+            usePDMStore.getState().autoDownloadExcludedFiles[currentVaultId] ?? []
+          const staleExclusions = findExclusionsForFilesPresentLocally(
+            currentExclusions,
+            localFiles,
+          )
+          if (staleExclusions.size > 0) {
+            usePDMStore.getState().removeAutoDownloadExclusions(currentVaultId, staleExclusions)
+            window.electronAPI?.log('info', '[LoadFiles] Pruned auto-download exclusions', {
+              pruned: staleExclusions.size,
+              remaining: currentExclusions.length - staleExclusions.size,
+            })
+          }
         }
+        const postMergeExclusionMs = Math.round(performance.now() - postMergeExclusionStart)
         window.electronAPI?.log('info', '[LoadFiles] Post-merge exclusion pass', {
-          durationMs: Math.round(performance.now() - postMergeExclusionStart),
+          durationMs: postMergeExclusionMs,
           previousFileCount: usePDMStore.getState().files.length,
           incomingCount: localFiles.length,
         })
@@ -1931,6 +1050,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           return
         }
 
+        for (const commit of commitsAfterMerge) commit()
+
         const setFilesStart = performance.now()
         const previousStoreCount = usePDMStore.getState().files.length
         window.electronAPI?.log('info', '[LoadFiles] Calling setFiles', {
@@ -1943,6 +1064,26 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           incomingCount: localFiles.length,
           previousStoreCount,
           storeCount: usePDMStore.getState().files.length,
+        })
+        // One line per load that adds up where the time went, so a stalled session can be
+        // read without reassembling a dozen separate lines.
+        window.electronAPI?.log('info', '[LoadFiles] Load stage timings', {
+          requestId: loadContext.requestId,
+          silent,
+          cacheHit: serverResultWithCache.cacheHit,
+          deltaCount: serverResultWithCache.deltaCount,
+          serverRows: serverResult.files?.length ?? 0,
+          localRows: localResult.files.length,
+          mergedRows: localFiles.length,
+          localScanMs: Math.round(localScanDuration),
+          cacheReadMs: serverResultWithCache.timing.cacheReadMs,
+          serverFetchMs: serverResultWithCache.timing.fetchMs,
+          deltaMergeMs: serverResultWithCache.timing.mergeMs,
+          mergeMs: Math.round(mergeDuration),
+          postMergeFolderMs,
+          postMergeExclusionMs,
+          setFilesMs: Math.round(performance.now() - setFilesStart),
+          totalMs: Math.round(performance.now() - vaultLoadStart),
         })
         setFilesLoaded(true) // Mark that initial load is complete
         committedMerge = true
@@ -1961,472 +1102,29 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           `Loaded ${totalFiles} files, ${folderCount} folders${syncedCount > 0 ? ` (${syncedCount} synced)` : ''}`,
         )
 
-        // TODO(decompose): Extract to hooks/useLoadFiles/backgroundTasks.ts — all post-render
-        // background work (~400 lines): user info lazy-load, hash computation, auto-download
-        // of cloud files, auto-download of updates. Takes isVaultStale, localFiles,
-        // organization, user, and store actions. Auto-discard deliberately does not belong
-        // here: it mutates the filesystem and so has to stay inside the exclusive load.
-
         // Background tasks (non-blocking) - run after UI renders
         if (user && window.electronAPI) {
-          setTimeout(async () => {
-            // Skip background tasks if vault changed
-            if (isVaultStale()) {
-              window.electronAPI?.log(
-                'info',
-                '[LoadFiles] Skipping background tasks - vault changed',
-              )
-              return
-            }
-
-            // NOTE: We no longer set read-only status on startup.
-            // Read-only is managed at checkout/checkin time only:
-            // - Checkout: sets writable
-            // - Checkin/Download/GetLatest: sets read-only
-            // The file system preserves these attributes between sessions.
-
-            // 1. Lazy-load checked out user info for UI display (non-blocking)
-            // This adds user names/emails to the UI without blocking initial render
-            const userInfoStart = performance.now()
-            const checkedOutFileIds = localFiles
-              .filter((f) => !f.isDirectory && f.pdmData?.checked_out_by)
-              .map((f) => f.pdmData?.id)
-              .filter((fileId): fileId is string => Boolean(fileId))
-
-            const hydrationOwners = new Map<string, string>()
-            for (const file of localFiles) {
-              if (!file.isDirectory && file.pdmData?.id && file.pdmData.checked_out_by) {
-                hydrationOwners.set(file.pdmData.id, file.pdmData.checked_out_by)
-              }
-            }
-
-            if (checkedOutFileIds.length > 0 && organization && loadingForVaultId) {
-              const uniqueFileIds = [...new Set(checkedOutFileIds)]
-              const hydrationAction = usePDMStore.getState()
-              for (const fileId of uniqueFileIds) {
-                const ownerId = hydrationOwners.get(fileId)
-                if (!ownerId) continue
-                hydrationAction.setCheckoutHydrationStatus(fileId, {
-                  ownerId,
-                  state: 'pending',
-                  attempt: 0,
-                  lastError: null,
-                  requestId: loadContext.requestId,
-                  updatedAt: Date.now(),
-                })
-              }
-
-              const scope: CheckoutProfileScope = {
-                orgId: organization.id,
-                vaultId: loadingForVaultId,
-              }
-              const profileResult = await fetchCheckoutProfilesWithRetry(
-                uniqueFileIds,
-                scope,
-                loadContext.requestId,
-                isLoadContextCurrent,
-              )
-
-              if (!isLoadContextCurrent()) {
-                log.info('[CheckoutHydration]', 'Discarding stale profile response', {
-                  requestId: loadContext.requestId,
-                  orgId: hashCheckoutIdentifier(scope.orgId),
-                  vaultId: hashCheckoutIdentifier(scope.vaultId),
-                  responseCount: Object.keys(profileResult.users).length,
-                  stale: true,
-                })
-                return
-              }
-
-              const usersFound = Object.keys(profileResult.users).length
-              const updateStart = performance.now()
-              hydrationAction.applyCheckoutUserProfiles(profileResult.users)
-
-              for (const fileId of uniqueFileIds) {
-                const ownerId = hydrationOwners.get(fileId)
-                if (!ownerId) continue
-                const profile = profileResult.users[fileId]
-                if (profile && isCheckoutProfileForOwner(profile, ownerId)) {
-                  hydrationAction.clearCheckoutHydrationStatus(fileId)
-                } else {
-                  hydrationAction.setCheckoutHydrationStatus(fileId, {
-                    ownerId,
-                    state: 'error',
-                    attempt: profileResult.attempts,
-                    lastError: profileResult.error
-                      ? getErrorMessage(profileResult.error)
-                      : 'profile_not_found',
-                    requestId: loadContext.requestId,
-                    updatedAt: Date.now(),
-                  })
-                }
-              }
-
-              // This call is queued after the base cache write, and the context is
-              // checked again inside the IndexedDB transaction.
-              void updateCachedUserInfo(
-                organization.id,
-                loadingForVaultId,
-                profileResult.users,
-                cacheContext,
-              )
-
-              recordMetric('VaultLoad', 'User info update complete', {
-                durationMs: Math.round(performance.now() - updateStart),
-                fetchMs: Math.round(performance.now() - userInfoStart),
-                usersFound,
-              })
-            }
-            recordMetric('VaultLoad', 'User info task complete', {
-              durationMs: Math.round(performance.now() - userInfoStart),
-              checkedOutFiles: checkedOutFileIds.length,
-            })
-
-            // 2. Background hash computation - SKIPPED on startup for performance
-            // We now use timestamp-based diff detection which is instant.
-            // Hashes are computed on-demand at checkin time when accuracy is critical.
-            // This saves ~27 seconds on vaults with 25k+ files.
-            // When forceHashComputation=true (Full Refresh), compute ALL synced files for accurate sync status.
-            //
-            // EXCEPTION: even when skipHashComputation=true, we MUST hash "first-sight" files —
-            // ones that have a server content_hash but neither a localHash nor a localVersion.
-            // The merge has no disk evidence for these, so without a real hash we'd either
-            // mis-classify them as synced or have to make up a localVersion (the latter is
-            // exactly the bug that caused users to see "v2/v2" while disk content was older).
-            // The set is bounded to files we've truly never observed, so cost stays small in
-            // steady state.
-            const skipHashComputation = !forceHashComputation
-
-            const hashTaskStart = performance.now()
-            // When forceHashComputation, compute hashes for ALL files with server content_hash (even if local hash exists)
-            // Otherwise, only compute for files without local hash
-            // Cloud-only rows have no file on disk to hash - their path is where the
-            // file would go if it were downloaded. Including them sent ~15,000 paths
-            // per load to the hashing IPC, in batches of 20, for the sole purpose of
-            // failing readFileSync on each one.
-            const hasLocalContent = (f: (typeof localFiles)[number]) =>
-              f.diffStatus !== 'cloud' && f.diffStatus !== 'deleted'
-
-            const filesNeedingHash = skipHashComputation
-              ? localFiles.filter(
-                  (f) =>
-                    !f.isDirectory &&
-                    hasLocalContent(f) &&
-                    f.pdmData?.content_hash &&
-                    !f.localHash &&
-                    f.localVersion === undefined,
-                )
-              : localFiles.filter(
-                  (f) =>
-                    !f.isDirectory &&
-                    hasLocalContent(f) &&
-                    f.pdmData?.content_hash &&
-                    (forceHashComputation || !f.localHash),
-                )
-
-            recordMetric('VaultLoad', 'Hash computation starting', {
-              filesNeedingHash: filesNeedingHash.length,
-              totalFiles: localFiles.filter((f) => !f.isDirectory).length,
-              skipped: skipHashComputation,
-            })
-
-            if (filesNeedingHash.length > 0 && window.electronAPI.computeFileHashes) {
-              window.electronAPI?.log('info', '[LoadFiles] Computing hashes for', {
-                count: filesNeedingHash.length,
-                forceHashComputation,
-              })
-              setStatusMessage(
-                forceHashComputation
-                  ? `Full refresh: Computing hashes (0/${filesNeedingHash.length})...`
-                  : `Checking ${filesNeedingHash.length} files for changes...`,
-              )
-
-              // Prepare file list for hash computation
-              const hashRequests = filesNeedingHash.map((f) => ({
-                path: f.path,
-                relativePath: f.relativePath,
-                size: f.size,
-                mtime: new Date(f.modifiedTime).getTime(),
-              }))
-
-              try {
-                // Compute hashes in background (with progress updates via IPC)
-                const hashComputeStart = performance.now()
-                const { results } = await window.electronAPI.computeFileHashes(hashRequests)
-                const hashComputeDuration = performance.now() - hashComputeStart
-
-                recordMetric('VaultLoad', 'Hash IPC complete', {
-                  durationMs: Math.round(hashComputeDuration),
-                  filesHashed: results?.length || 0,
-                })
-
-                if (results && results.length > 0 && !isVaultStale()) {
-                  // Create a map for quick lookup
-                  const hashMap = new Map(results.map((r) => [r.relativePath, r.hash]))
-
-                  // Update files with computed hashes and recompute diff status
-                  const updateStart = performance.now()
-                  const currentFiles = usePDMStore.getState().files
-                  const updatedFiles = currentFiles.map((f) => {
-                    if (f.isDirectory) return f
-
-                    const computedHash = hashMap.get(f.relativePath)
-                    if (!computedHash) return f
-
-                    // Recompute diff status with the new hash
-                    let newDiffStatus = f.diffStatus
-                    let newLocalVersion = f.localVersion
-                    if (f.pdmData?.content_hash && computedHash) {
-                      if (f.pdmData.content_hash !== computedHash) {
-                        // Hashes differ - check which is newer
-                        const localModTime = new Date(f.modifiedTime).getTime()
-                        const cloudUpdateTime = f.pdmData.updated_at
-                          ? new Date(f.pdmData.updated_at).getTime()
-                          : 0
-                        newDiffStatus = localModTime > cloudUpdateTime ? 'modified' : 'outdated'
-                        // Debug: log hash mismatches to help identify stale data issues
-                        window.electronAPI?.log('warn', '[HashCompute] Hash mismatch detected', {
-                          file: f.name,
-                          localHash: computedHash.substring(0, 12),
-                          serverHash: f.pdmData.content_hash.substring(0, 12),
-                          localModTime: new Date(localModTime).toISOString(),
-                          serverUpdatedAt: f.pdmData.updated_at,
-                          result: newDiffStatus,
-                          checkedOut: !!f.pdmData.checked_out_by,
-                        })
-                      } else {
-                        // Hashes match - file is synced with server version
-                        newDiffStatus = undefined
-                        newLocalVersion = f.pdmData.version
-                      }
-                    }
-
-                    return {
-                      ...f,
-                      localHash: computedHash,
-                      diffStatus: newDiffStatus,
-                      localVersion: newLocalVersion,
-                    }
-                  })
-                  const updateDuration = performance.now() - updateStart
-
-                  // Use startTransition for non-blocking UI updates during background hash computation
-                  // This prevents UI jank when updating many files' hash status
-                  startTransition(() => {
-                    setFiles(updatedFiles)
-                  })
-
-                  recordMetric('VaultLoad', 'Hash update complete', {
-                    durationMs: Math.round(updateDuration),
-                    filesUpdated: results.length,
-                  })
-                  window.electronAPI?.log('info', '[LoadFiles] Hash computation complete', {
-                    updated: results.length,
-                  })
-                }
-              } catch (error) {
-                window.electronAPI?.log('error', '[LoadFiles] Hash computation failed', {
-                  error: String(error),
-                })
-              }
-
-              // Clear the status message after hash computation
-              setStatusMessage('')
-
-              recordMetric('VaultLoad', 'Hash task complete', {
-                durationMs: Math.round(performance.now() - hashTaskStart),
-                filesProcessed: filesNeedingHash.length,
-              })
-            }
-
-            // 3. Auto-download cloud files and updates (if enabled)
-            // Run after hash computation so we have accurate diff statuses
-            // IMPORTANT: Skip on silent refreshes to prevent infinite loops
-            // (silent refreshes are triggered by download/update commands completing)
-            if (silent) {
-              window.electronAPI?.log('info', '[AutoDownload] Skipping - silent refresh')
-            }
-
-            const {
-              autoDownloadCloudFiles,
-              autoDownloadUpdates,
-              addToast,
-              autoDownloadExcludedFiles,
-              activeVaultId,
-            } = usePDMStore.getState()
-
-            // Skip auto-download if vault changed during async operations
-            if (isVaultStale()) {
-              window.electronAPI?.log('info', '[AutoDownload] Skipping - vault changed during load')
-              return
-            }
-
-            // Log auto-download settings state for debugging
-            window.electronAPI?.log('info', '[AutoDownload] Settings check', {
-              autoDownloadCloudFiles,
-              autoDownloadUpdates,
+          const backgroundFiles = localFiles
+          setTimeout(() => {
+            void runPostLoadBackgroundTasks({
+              localFiles: backgroundFiles,
+              rehashPaths,
               silent,
-              hasOrg: !!organization,
+              forceHashComputation,
               isOfflineMode,
+              organization,
+              userId: user.id,
+              loadingForVaultId,
+              loadContext,
+              cacheContext,
+              isLoadContextCurrent,
+              isVaultStale,
+              setFiles,
+              setStatusMessage,
             })
-
-            if (
-              !silent &&
-              (autoDownloadCloudFiles || autoDownloadUpdates) &&
-              organization &&
-              !isOfflineMode
-            ) {
-              const latestFiles = usePDMStore.getState().files
-
-              // Get exclusion list for current vault
-              const excludedPaths = activeVaultId
-                ? autoDownloadExcludedFiles[activeVaultId] || []
-                : []
-              const excludedPathsSet = new Set(excludedPaths)
-
-              // Auto-download cloud-only files and folders
-              if (autoDownloadCloudFiles) {
-                // Get cloud-only files (not in excluded paths)
-                const cloudOnlyFiles = latestFiles.filter(
-                  (f) =>
-                    !f.isDirectory &&
-                    f.diffStatus === 'cloud' &&
-                    f.pdmData?.content_hash &&
-                    // Exclude files that were intentionally removed locally
-                    !excludedPathsSet.has(f.relativePath),
-                )
-
-                // Get cloud-only folders (will download all their contents)
-                const cloudOnlyFolders = latestFiles.filter(
-                  (f) =>
-                    f.isDirectory &&
-                    f.diffStatus === 'cloud' &&
-                    // Exclude folders that were intentionally removed locally
-                    !excludedPathsSet.has(f.relativePath),
-                )
-
-                // Combine files and folders for download
-                const itemsToDownload = [...cloudOnlyFiles, ...cloudOnlyFolders]
-
-                if (itemsToDownload.length > 0) {
-                  const fileCount = cloudOnlyFiles.length
-                  const folderCount = cloudOnlyFolders.length
-                  window.electronAPI?.log('info', '[AutoDownload] Downloading cloud items', {
-                    files: fileCount,
-                    folders: folderCount,
-                  })
-                  try {
-                    // Don't pass onRefresh - we already skipped auto-download on silent refreshes,
-                    // and the download command will update the store. User can manually refresh if needed.
-                    const result = await executeCommand('download', { files: itemsToDownload })
-                    if (result.succeeded > 0) {
-                      const message =
-                        folderCount > 0
-                          ? `Auto-downloaded ${result.succeeded} cloud file${result.succeeded > 1 ? 's' : ''} (${folderCount} folder${folderCount > 1 ? 's' : ''})`
-                          : `Auto-downloaded ${result.succeeded} cloud file${result.succeeded > 1 ? 's' : ''}`
-                      addToast('success', message)
-                    }
-                    if (result.failed > 0) {
-                      window.electronAPI?.log('warn', '[AutoDownload] Some downloads failed', {
-                        failed: result.failed,
-                        errors: result.errors,
-                      })
-                    }
-                  } catch (error) {
-                    window.electronAPI?.log(
-                      'error',
-                      '[AutoDownload] Failed to download cloud files',
-                      { error: String(error) },
-                    )
-                  }
-                }
-              }
-
-              // Auto-download updates for outdated files
-              if (autoDownloadUpdates) {
-                // Debug: Log all files with outdated status before filtering
-                const allOutdatedStatus = latestFiles.filter((f) => f.diffStatus === 'outdated')
-                window.electronAPI?.log('debug', '[AutoDownload] Files with outdated status', {
-                  count: allOutdatedStatus.length,
-                  files: allOutdatedStatus.map((f) => ({
-                    name: f.name,
-                    relativePath: f.relativePath,
-                    isDirectory: f.isDirectory,
-                    hasContentHash: !!f.pdmData?.content_hash,
-                    contentHash: f.pdmData?.content_hash?.substring(0, 12),
-                    localHash: f.localHash?.substring(0, 12),
-                    fileId: f.pdmData?.id,
-                    checkedOutBy: f.pdmData?.checked_out_by,
-                  })),
-                })
-
-                const outdatedFiles = latestFiles.filter(
-                  (f) => !f.isDirectory && f.diffStatus === 'outdated' && f.pdmData?.content_hash,
-                )
-
-                // Debug: Log files that were filtered out
-                const filteredOut = allOutdatedStatus.filter(
-                  (f) => f.isDirectory || !f.pdmData?.content_hash,
-                )
-                if (filteredOut.length > 0) {
-                  window.electronAPI?.log(
-                    'warn',
-                    '[AutoDownload] Outdated files FILTERED OUT (no content_hash or is directory)',
-                    {
-                      count: filteredOut.length,
-                      files: filteredOut.map((f) => ({
-                        name: f.name,
-                        isDirectory: f.isDirectory,
-                        hasContentHash: !!f.pdmData?.content_hash,
-                      })),
-                    },
-                  )
-                }
-
-                if (outdatedFiles.length > 0) {
-                  window.electronAPI?.log('info', '[AutoDownload] Updating outdated files', {
-                    count: outdatedFiles.length,
-                    files: outdatedFiles.map((f) => ({
-                      name: f.name,
-                      relativePath: f.relativePath,
-                      localHash: f.localHash?.substring(0, 12),
-                      serverHash: f.pdmData?.content_hash?.substring(0, 12),
-                      fileId: f.pdmData?.id,
-                    })),
-                  })
-                  try {
-                    // Don't pass onRefresh - same reason as above
-                    const result = await executeCommand('get-latest', { files: outdatedFiles })
-                    window.electronAPI?.log('info', '[AutoDownload] Update result', {
-                      total: result.total,
-                      succeeded: result.succeeded,
-                      failed: result.failed,
-                      errors: result.errors,
-                    })
-                    if (result.succeeded > 0) {
-                      addToast(
-                        'success',
-                        `Auto-updated ${result.succeeded} file${result.succeeded > 1 ? 's' : ''}`,
-                      )
-                    }
-                    if (result.failed > 0) {
-                      window.electronAPI?.log('warn', '[AutoDownload] Some updates failed', {
-                        failed: result.failed,
-                        errors: result.errors,
-                      })
-                    }
-                  } catch (error) {
-                    window.electronAPI?.log(
-                      'error',
-                      '[AutoDownload] Failed to update outdated files',
-                      { error: String(error) },
-                    )
-                  }
-                }
-              }
-            }
           }, 50) // Small delay to let React render first
         }
+
       } catch (error) {
         if (!silent) {
           setStatusMessage('Error loading files')
@@ -2564,10 +1262,14 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
                   })
                 }
                 if (result.skipped) {
-                  window.electronAPI?.log('warn', '[AutoDiscard] Kept files that could not recycle', {
-                    skipped: result.skipped,
-                    paths: result.skippedPaths?.slice(0, ORPHAN_LOG_SAMPLE_LIMIT),
-                  })
+                  window.electronAPI?.log(
+                    'warn',
+                    '[AutoDiscard] Kept files that could not recycle',
+                    {
+                      skipped: result.skipped,
+                      paths: result.skippedPaths?.slice(0, ORPHAN_LOG_SAMPLE_LIMIT),
+                    },
+                  )
                 }
                 if (result.failed > 0) {
                   window.electronAPI?.log('warn', '[AutoDiscard] Some files failed to discard', {
@@ -2645,314 +1347,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
     [runLoadFiles, currentVaultId],
   )
 
-  // TODO(decompose): Extract to hooks/useRefreshFolder.ts — refreshCurrentFolder is a
-  // self-contained hook (~220 lines) that shares no mutable state with loadFiles.
-  // Could be a standalone useRefreshFolder(vaultPath, user, setFiles, ...) hook.
+  const refreshCurrentFolder = useRefreshCurrentFolder(currentVaultId)
 
-  /**
-   * Refresh only a specific folder (faster than full vault refresh)
-   * Uses cached server data and only scans the local folder
-   */
-  const refreshCurrentFolder = useCallback(
-    async (folderPath: string) => {
-      logExplorer('refreshCurrentFolder ENTRY', { folderPath, vaultPath })
-      window.electronAPI?.log('info', '[RefreshFolder] Called with', { folderPath, vaultPath })
-      if (!window.electronAPI || !vaultPath) return
-
-      // Guard against concurrent refreshes. isLoading misses silent watcher-driven
-      // loadFiles passes, so check the in-flight tracker too.
-      if (usePDMStore.getState().isLoading || isLoadFilesInFlight()) {
-        window.electronAPI?.log('info', '[RefreshFolder] Skipping - already refreshing')
-        return
-      }
-
-      // Set loading state and yield to UI thread so spinner renders before heavy work
-      // (replaces flushSync which can crash React if called during an existing render cycle)
-      setIsLoading(true)
-      setStatusMessage(`Refreshing folder...`)
-      await new Promise((resolve) => setTimeout(resolve, 0))
-
-      try {
-        // 1. Get existing files from store
-        const existingFiles = usePDMStore.getState().files
-        const serverFiles = usePDMStore.getState().serverFiles
-
-        // 2. Scan only the target folder locally (fast - no hash computation)
-        const localResult = await window.electronAPI.listFolderFast(folderPath)
-
-        if (!localResult.success || !localResult.files) {
-          window.electronAPI?.log('error', '[RefreshFolder] Failed to scan folder', {
-            error: localResult.error,
-          })
-          setStatusMessage('Failed to refresh folder')
-          return
-        }
-
-        window.electronAPI?.log('info', '[RefreshFolder] Scanned folder', {
-          folderPath,
-          localCount: localResult.files.length,
-        })
-
-        // 2b. Preserve the current folder's own entry (will be excluded by filter but needs to stay)
-        // listFolderFast returns CONTENTS of the folder, not the folder entry itself
-        const currentFolderEntry = folderPath
-          ? existingFiles.find(
-              (f) => f.relativePath.toLowerCase() === folderPath.toLowerCase() && f.isDirectory,
-            )
-          : undefined
-
-        // 3. Separate existing files: those in the folder vs those outside
-        const folderPrefix = folderPath ? folderPath.toLowerCase() + '/' : ''
-        const filesOutsideFolder = existingFiles.filter((f) => {
-          const relPath = f.relativePath.toLowerCase()
-          // Keep files that are NOT in or under the refreshed folder
-          if (folderPath === '') {
-            // Refreshing root - replace everything
-            return false
-          }
-          return !relPath.startsWith(folderPrefix) && relPath !== folderPath.toLowerCase()
-        })
-
-        // 4. Build COMPLETE pdmData map from existing files (not stripped serverFiles)
-        // This preserves version, part_number, checkout info, workflow_state, etc.
-        const existingPdmMap = new Map<string, NonNullable<(typeof existingFiles)[0]['pdmData']>>()
-        const existingVersionMap = new Map<
-          string,
-          { localVersion?: number; localActiveVersion?: number }
-        >()
-        for (const f of existingFiles) {
-          const key = f.relativePath.toLowerCase()
-          if (f.pdmData) {
-            existingPdmMap.set(key, f.pdmData)
-          }
-          if (f.localVersion !== undefined || f.localActiveVersion !== undefined) {
-            existingVersionMap.set(key, {
-              localVersion: f.localVersion,
-              localActiveVersion: f.localActiveVersion,
-            })
-          }
-        }
-
-        // Also build a set of server file paths for cloud-only detection
-        const serverPathSet = new Set<string>()
-        for (const sf of serverFiles) {
-          serverPathSet.add(sf.file_path.toLowerCase())
-        }
-
-        // Server paths that a local entry somewhere else already accounts for.
-        //
-        // The full load resolves moves (by inode, then by content hash) and then
-        // emits a 'moved_away' stub at the old server path instead of a phantom
-        // cloud-only row there. That resolution lives in the store, as a local
-        // entry whose pdmData points at a different path - so it can be read back
-        // here rather than recomputed. Without this, step 6 treats every
-        // unreconciled move as a cloud-only file and re-adds it at its old path:
-        // one vault with 466 moved files gained 810 phantom rows and 58 phantom
-        // folders per press of Refresh, and every later load then merged the
-        // larger store.
-        //
-        // claimedServerPathToLocalPath is the destination for each claimed path,
-        // so step 6 below can rebuild the same 'moved_away' stub the full load
-        // would produce, rather than dropping the path outright (which would
-        // strand the folder's own view of it exactly as D1 describes).
-        const claimedServerPaths = new Set<string>()
-        const claimedServerPathToLocalPath = new Map<string, string>()
-        for (const f of existingFiles) {
-          if (f.isDirectory || !f.pdmData?.file_path) continue
-          const serverPath = f.pdmData.file_path.toLowerCase()
-          if (serverPath !== f.relativePath.toLowerCase()) {
-            claimedServerPaths.add(serverPath)
-            claimedServerPathToLocalPath.set(serverPath, f.relativePath)
-          }
-        }
-
-        // 5. Merge local folder files with COMPLETE server data from existing files
-        const userId = user?.id
-        const refreshedFolderFiles = localResult.files.map((localFile: any) => {
-          if (localFile.isDirectory) {
-            return {
-              ...localFile,
-              localHash: localFile.hash,
-            }
-          }
-
-          const lookupKey = localFile.relativePath.toLowerCase()
-          // Use complete pdmData from existing files (has version, part_number, etc.)
-          const pdmData = existingPdmMap.get(lookupKey)
-
-          // Determine diff status
-          let diffStatus: 'added' | 'modified' | 'outdated' | 'cloud' | 'moved' | undefined
-          if (!pdmData) {
-            // Check if file exists on server but we don't have pdmData yet
-            // (shouldn't happen normally, but handle gracefully)
-            diffStatus = serverPathSet.has(lookupKey) ? undefined : 'added'
-          } else if (pdmData.file_path && pdmData.file_path.toLowerCase() !== lookupKey) {
-            // The server still records this file at its old path, so it is a move
-            // awaiting check-in. Recomputing it as synced would drop the badge and
-            // leave nothing in the UI saying the check-in is still owed.
-            diffStatus = 'moved'
-          } else if (pdmData.content_hash && localFile.hash) {
-            if (pdmData.content_hash !== localFile.hash) {
-              const localModTime = new Date(localFile.modifiedTime).getTime()
-              const cloudUpdateTime = pdmData.updated_at
-                ? new Date(pdmData.updated_at).getTime()
-                : 0
-              diffStatus = localModTime > cloudUpdateTime ? 'modified' : 'outdated'
-            }
-          } else if (pdmData.content_hash) {
-            // No local hash - use version-based detection first, then timestamp fallback
-            // (mirrors the loadFiles merge logic to avoid false "outdated" from timestamps)
-            const localModTime = new Date(localFile.modifiedTime).getTime()
-            const cloudUpdateTime = pdmData.updated_at ? new Date(pdmData.updated_at).getTime() : 0
-            const isCheckedOutByMe = pdmData.checked_out_by === userId
-
-            const vInfo = existingVersionMap.get(lookupKey)
-            const existingLocalVersion = vInfo?.localVersion
-
-            if (existingLocalVersion !== undefined && pdmData.version !== undefined) {
-              if (existingLocalVersion < pdmData.version) {
-                diffStatus = 'outdated'
-              } else if (existingLocalVersion === pdmData.version) {
-                if (isCheckedOutByMe && localModTime > cloudUpdateTime + 5000) {
-                  diffStatus = 'modified'
-                }
-              }
-            } else {
-              if (isCheckedOutByMe && localModTime > cloudUpdateTime + 5000) {
-                diffStatus = 'modified'
-              }
-            }
-          }
-
-          const versionInfo = existingVersionMap.get(lookupKey)
-          return {
-            ...localFile,
-            localHash: localFile.hash,
-            pdmData: pdmData || undefined,
-            isSynced: !!pdmData,
-            diffStatus,
-            localVersion: versionInfo?.localVersion,
-            localActiveVersion: versionInfo?.localActiveVersion,
-          }
-        })
-
-        // 6. Add cloud-only files in this folder (exist on server but not locally),
-        // or a 'moved_away' stub when this path is claimed by a rename recorded
-        // elsewhere in the store (see the comment on claimedServerPathToLocalPath above).
-        //
-        // Same hash-move skip as `reconcileCloudFiles`: a CAD vault is full of
-        // intentional copies, and treating "this hash is already local" as a new
-        // cloud file resurrects hashless ghosts Download cannot fetch (Rai's 642).
-        const localPathSet = new Set(
-          localResult.files.map((f: { relativePath: string }) => f.relativePath.toLowerCase()),
-        )
-        const localContentHashes = new Set<string>()
-        for (const localFile of localResult.files) {
-          if (!localFile.isDirectory && localFile.hash) {
-            localContentHashes.add(localFile.hash)
-          }
-        }
-        for (const existing of existingFiles) {
-          if (existing.isDirectory || !existing.localHash) continue
-          const existingPath = existing.relativePath.toLowerCase()
-          const inThisFolder =
-            folderPath === '' ||
-            existingPath === folderPath.toLowerCase() ||
-            existingPath.startsWith(folderPrefix)
-          if (inThisFolder) continue
-          localContentHashes.add(existing.localHash)
-        }
-
-        const cloudRows = cloudRowsForFolderRefresh({
-          serverFiles,
-          localPathSet,
-          existingPdmMap,
-          claimedServerPathToLocalPath,
-          localContentHashes,
-          folderPath,
-          folderPrefix,
-          vaultPath,
-        })
-        refreshedFolderFiles.push(...cloudRows.rows)
-
-        // 7. Combine: files outside folder + refreshed folder files + current folder entry
-        // The current folder entry must be preserved so navigation back works correctly
-        const combinedFiles = [
-          ...filesOutsideFolder,
-          ...refreshedFolderFiles,
-          ...(currentFolderEntry ? [currentFolderEntry] : []),
-        ]
-
-        // Sort for consistent display
-        combinedFiles.sort((a, b) => {
-          if (a.isDirectory && !b.isDirectory) return -1
-          if (!a.isDirectory && b.isDirectory) return 1
-          return a.relativePath.localeCompare(b.relativePath)
-        })
-
-        window.electronAPI?.log('info', '[RefreshFolder] Complete', {
-          folderPath,
-          outsideFolder: filesOutsideFolder.length,
-          inFolder: refreshedFolderFiles.length,
-          total: combinedFiles.length,
-          suppressedClaimedServerPaths: claimedServerPaths.size,
-          skippedHashDuplicates: cloudRows.skippedHashDuplicates,
-          skippedHashless: cloudRows.skippedHashless,
-        })
-
-        // A refresh reconciles; it does not discover. Growing the store while the
-        // disk scan found no more than the store already held means entries were
-        // duplicated or resurrected, which is how one vault climbed from 27,183 to
-        // 27,993 rows on a single press of Refresh.
-        //
-        // It also means the main-process scan cache is behind the disk, because the
-        // store is built from that cache and this folder scan just found more. Drop it
-        // so the next delta load re-walks, instead of leaving the user on Full Refresh.
-        // Once per folder until that folder refreshes cleanly: growth has other causes,
-        // and those must not buy a full vault walk on every press.
-        const healKey = folderPath.toLowerCase()
-        if (combinedFiles.length > existingFiles.length) {
-          const alreadyHealed = scanCacheSelfHealedFolders.current.has(healKey)
-          window.electronAPI?.log('warn', '[RefreshFolder] Store grew during refresh', {
-            folderPath,
-            before: existingFiles.length,
-            after: combinedFiles.length,
-            grewBy: combinedFiles.length - existingFiles.length,
-            localCount: localResult.files.length,
-            invalidatedScanCache: !alreadyHealed,
-          })
-          if (!alreadyHealed) {
-            scanCacheSelfHealedFolders.current.add(healKey)
-            await window.electronAPI?.invalidateScanCache('refresh-folder-store-grew')
-          }
-        } else {
-          scanCacheSelfHealedFolders.current.delete(healKey)
-        }
-
-        // Use startTransition to mark this as a non-urgent update
-        // This allows React to render the loading spinner before processing the heavy file list
-        // IMPORTANT: setIsLoading(false) is inside the transition so the concurrency guard
-        // stays up until setFiles actually applies — prevents race with realtime batch updates
-        const stStart = performance.now()
-        logExplorer('startTransition CALLING', { combinedFilesCount: combinedFiles.length })
-        startTransition(() => {
-          logExplorer('startTransition EXECUTING setFiles', {
-            delayMs: Math.round(performance.now() - stStart),
-          })
-          setFiles(combinedFiles)
-          setIsLoading(false)
-          setStatusMessage(`Refreshed ${refreshedFolderFiles.length} items`)
-          setTimeout(() => setStatusMessage(''), 3000)
-        })
-      } catch (error) {
-        window.electronAPI?.log('error', '[RefreshFolder] Error', { error: String(error) })
-        setStatusMessage('Error refreshing folder')
-        setIsLoading(false)
-        setTimeout(() => setStatusMessage(''), 3000)
-      }
-    },
-    [vaultPath, user, setFiles, setIsLoading, setStatusMessage],
-  )
 
   return { loadFiles, refreshCurrentFolder }
 }

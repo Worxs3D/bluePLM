@@ -423,3 +423,149 @@ describe('applyAlignment', () => {
     expect(executeCommand).not.toHaveBeenCalled()
   })
 })
+
+// Pinned by mutation testing (.cursor/plans/test-mutation-report.md): the outcome mapping, the
+// two-command merge for mixed move decisions, and which rows each step hands to its command.
+describe('applyAlignment step results', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSyncIndex.mockResolvedValue(new Map())
+    isAutomaticDiscardCoolingDown.mockReturnValue(false)
+    shouldSkipAutoDiscardForOrphans.mockReturnValue(false)
+  })
+
+  async function pullOutdatedStep(result: CommandResult) {
+    executeCommand.mockResolvedValue(result)
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, pullOutdated: true },
+      baseCtx({ files: [file({ diffStatus: 'outdated' })] }),
+    )
+    return outcome.steps.find((s) => s.step === 'pullOutdated')
+  }
+
+  it.each([
+    ['nothing-to-do', commandResult({ total: 0 }), 0],
+    // Work found but none attempted: a refusal, every candidate skipped.
+    ['refused', commandResult({ total: 2 }), 2],
+    ['ok', commandResult({ total: 2, succeeded: 2 }), 0],
+    ['failed', commandResult({ success: false, total: 2, failed: 2 }), 0],
+    // Something succeeded but the command did not report success: never "ok".
+    ['partial', commandResult({ success: false, total: 2, succeeded: 2 }), 0],
+  ])('reports %s for its command result', async (expected, result, skipped) => {
+    const step = await pullOutdatedStep(result)
+
+    expect(step?.outcome).toBe(expected)
+    expect(step?.attempted).toBe(result.total)
+    expect(step?.skipped).toBe(skipped)
+    expect(step?.detail).toBe('ok')
+  })
+
+  it("keeps the command's own skipped count over the refusal default", async () => {
+    const step = await pullOutdatedStep(commandResult({ total: 3, skipped: 1 }))
+
+    expect(step?.outcome).toBe('refused')
+    expect(step?.skipped).toBe(1)
+  })
+
+  it('adds up adopt and keep-local results into one step', async () => {
+    executeCommand.mockImplementation(async (commandId) =>
+      commandId === 'adopt-server-paths'
+        ? commandResult({ total: 2, succeeded: 2, skipped: 1, message: 'adopted 2' })
+        : commandResult({ success: false, total: 3, succeeded: 1, failed: 2, skipped: 2, message: 'kept 1' }),
+    )
+
+    const outcome = await applyAlignment(
+      {
+        ...NO_PLAN,
+        resolvePendingMoves: true,
+        pendingMoveActions: { a: 'adopt', b: 'reconcile' },
+      },
+      baseCtx(),
+    )
+
+    expect(outcome.steps.find((s) => s.step === 'resolvePendingMoves')).toMatchObject({
+      outcome: 'partial',
+      attempted: 5,
+      succeeded: 3,
+      failed: 2,
+      skipped: 3,
+      detail: 'adopted 2; kept 1',
+    })
+  })
+
+  it('is not ok when only one of the two move commands succeeded', async () => {
+    executeCommand.mockImplementation(async (commandId) =>
+      commandId === 'adopt-server-paths'
+        ? commandResult({ total: 1, succeeded: 1, message: '' })
+        : commandResult({ success: false, total: 1, succeeded: 1, message: 'kept 1' }),
+    )
+
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, resolvePendingMoves: true, pendingMoveActions: { a: 'adopt', b: 'reconcile' } },
+      baseCtx(),
+    )
+
+    const step = outcome.steps.find((s) => s.step === 'resolvePendingMoves')
+    expect(step?.outcome).toBe('partial')
+    expect(step?.detail).toBe('kept 1')
+  })
+
+  it('pulls only outdated files, never folders or files in another state', async () => {
+    const outdated = file({ relativePath: 'old.sldprt', diffStatus: 'outdated' })
+    const files = [
+      outdated,
+      file({ relativePath: 'edited.sldprt', diffStatus: 'modified' }),
+      file({ relativePath: 'synced.sldprt', diffStatus: undefined }),
+      file({ relativePath: 'Folder', isDirectory: true, diffStatus: 'outdated' }),
+    ]
+    executeCommand.mockResolvedValue(commandResult({ total: 1, succeeded: 1 }))
+
+    await applyAlignment({ ...NO_PLAN, pullOutdated: true }, baseCtx({ files }))
+
+    expect(executeCommand).toHaveBeenCalledTimes(1)
+    expect(executeCommand).toHaveBeenCalledWith('get-latest', { files: [outdated] })
+  })
+
+  it('does not call get-latest when nothing is outdated', async () => {
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, pullOutdated: true },
+      baseCtx({ files: [file({ diffStatus: 'modified' })] }),
+    )
+
+    expect(executeCommand).not.toHaveBeenCalled()
+    expect(outcome.steps.find((s) => s.step === 'pullOutdated')?.outcome).toBe('nothing-to-do')
+  })
+
+  it('recycles orphans through the automatic discard path, never the user-initiated one', async () => {
+    const orphan = file({ relativePath: 'gone.sldprt', diffStatus: 'deleted_remote' })
+    const folder = file({ relativePath: 'GoneFolder', isDirectory: true, diffStatus: 'deleted_remote' })
+    runAutoDiscardForOrphans.mockImplementation(async (_vaultId, files, discard) => {
+      await discard(files)
+      return 'ran'
+    })
+    executeCommand.mockResolvedValue(commandResult({ total: 1, succeeded: 1 }))
+
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, recycleOrphans: true },
+      baseCtx({ files: [orphan, folder] }),
+    )
+
+    expect(runAutoDiscardForOrphans).toHaveBeenCalledWith('vault-1', [orphan], expect.any(Function))
+    expect(executeCommand).toHaveBeenCalledWith('discard-orphaned', { files: [orphan], isAutomatic: true })
+    expect(outcome.steps.find((s) => s.step === 'recycleOrphans')?.outcome).toBe('ok')
+  })
+
+  it.each([
+    ['the discard runner found nothing', 'skipped-empty' as const],
+    ['the discard runner never called the command', 'ran' as const],
+  ])('reports nothing-to-do when %s', async (_label, runResult) => {
+    runAutoDiscardForOrphans.mockResolvedValue(runResult)
+
+    const outcome = await applyAlignment(
+      { ...NO_PLAN, recycleOrphans: true },
+      baseCtx({ files: [file({ diffStatus: 'deleted_remote' })] }),
+    )
+
+    expect(outcome.steps.find((s) => s.step === 'recycleOrphans')?.outcome).toBe('nothing-to-do')
+  })
+})

@@ -1,3 +1,5 @@
+import { isInAdministratorsTeam } from '../isAdminUser'
+
 import { getSupabaseClient } from './client'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
@@ -214,6 +216,7 @@ export async function getUserPermissions(
       team_id,
       team:teams!inner(
         id,
+        name,
         team_permissions(resource, actions)
       )
     `,
@@ -222,6 +225,15 @@ export async function getUserPermissions(
 
   if (error) {
     return { permissions: null, error: error.message }
+  }
+
+  // Membership of the Administrators team is full access, the same as the role
+  // column: is_org_admin() in the database accepts either.
+  const teamNames = (data || []).map((membership) => ({
+    name: (membership.team as { name?: string } | null)?.name ?? '',
+  }))
+  if (isInAdministratorsTeam(teamNames)) {
+    return { permissions: { __admin__: ['view', 'create', 'edit', 'delete', 'admin'] } }
   }
 
   // Merge permissions from all teams
@@ -359,7 +371,8 @@ export async function checkPermission(
       `
       team_id,
       team:teams!inner(
-        team_permissions!inner(resource, actions)
+        name,
+        team_permissions(resource, actions)
       )
     `,
     )
@@ -367,6 +380,14 @@ export async function checkPermission(
 
   if (error) {
     return { hasPermission: false, error: error.message }
+  }
+
+  // Membership of the Administrators team is full access
+  const teamNames = (data || []).map((membership) => ({
+    name: (membership.team as { name?: string } | null)?.name ?? '',
+  }))
+  if (isInAdministratorsTeam(teamNames)) {
+    return { hasPermission: true }
   }
 
   // Check if any team has the required permission
@@ -410,10 +431,16 @@ export async function checkPermissions(
     return { results: {}, error }
   }
 
-  // Check each permission
+  // Check each permission. __admin__ is the full-access flag for administrators
+  // (role column or Administrators team).
+  const isFullAccess = Boolean(permissions.__admin__)
   const results: Record<string, boolean> = {}
   for (const check of checks) {
     const key = `${check.resource}:${check.action}`
+    if (isFullAccess) {
+      results[key] = true
+      continue
+    }
     const resourcePerms = permissions[check.resource] || []
     results[key] = resourcePerms.includes(check.action) || resourcePerms.includes('admin')
   }

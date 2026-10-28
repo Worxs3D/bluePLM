@@ -17,7 +17,7 @@ namespace BluePLM.SolidWorksService
     /// Uses the full SolidWorks API for all operations.
     /// SolidWorks runs in background (hidden) when needed.
     /// </summary>
-    public class SolidWorksAPI : IDisposable
+    public partial class SolidWorksAPI : IDisposable
     {
         private ISldWorks? _swApp;
         private bool _weStartedSW;

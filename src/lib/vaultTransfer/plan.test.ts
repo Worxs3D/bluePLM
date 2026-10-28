@@ -117,6 +117,15 @@ describe('normalizeDestFolder', () => {
     expect(normalizeDestFolder('/')).toBe('')
     expect(normalizeDestFolder('Parts')).toBe('Parts')
     expect(normalizeDestFolder('Parts\\Brackets\\')).toBe('Parts/Brackets')
+    expect(normalizeDestFolder('//Parts/Brackets')).toBe('Parts/Brackets')
+    expect(normalizeDestFolder('Parts/Brackets//')).toBe('Parts/Brackets')
+    expect(normalizeDestFolder('Parts and bits')).toBe('Parts and bits')
+  })
+
+  it('refuses control characters, which Windows cannot put in a name', () => {
+    expect(normalizeDestFolder('Pa\u0000rts')).toBeNull()
+    expect(normalizeDestFolder('Parts/Bra\u001fckets')).toBeNull()
+    expect(normalizeDestFolder('Parts\tTab')).toBeNull()
   })
 
   it('refuses anything that could leave the vault or that Windows cannot name', () => {

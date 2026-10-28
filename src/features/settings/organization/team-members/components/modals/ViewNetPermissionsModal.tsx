@@ -18,6 +18,7 @@ import {
   Settings2,
 } from 'lucide-react'
 import { PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS, ALL_RESOURCES } from '@/types/permissions'
+import { isAdminUser } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
 import { getEffectiveAvatarUrl } from '@/lib/utils'
@@ -55,7 +56,7 @@ export function ViewNetPermissionsModal({
     Record<string, Record<string, PermissionAction[]>>
   >({})
 
-  const isUserAdmin = user.role === 'admin'
+  const isUserAdmin = isAdminUser(user.role, user.teams)
   const hasFullVaultAccess = vaultAccessCount === 0 || isUserAdmin
 
   // Get the list of vaults user has access to

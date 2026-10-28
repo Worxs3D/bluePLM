@@ -30,6 +30,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { usePDMStore, OrphanedCheckout } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { executeCommand } from '@/lib/commands'
 
 type ActionType = 'discard' | 'recheckout' | 'backup' | 'upload'
@@ -170,7 +171,13 @@ export function OrphanedCheckoutDialog({
   onClose,
   onRefresh,
 }: OrphanedCheckoutDialogProps) {
-  const { removeOrphanedCheckout, addToast, vaultPath } = usePDMStore()
+  const { removeOrphanedCheckout, addToast, vaultPath } = usePDMStore(
+    useShallow((s) => ({
+      removeOrphanedCheckout: s.removeOrphanedCheckout,
+      addToast: s.addToast,
+      vaultPath: s.vaultPath,
+    })),
+  )
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingAction, setProcessingAction] = useState<string | null>(null)
 
@@ -454,8 +461,15 @@ export function OrphanedCheckoutsContainer({
 }: {
   onRefresh?: (silent?: boolean) => void
 }) {
-  const { orphanedCheckouts, removeOrphanedCheckout, clearOrphanedCheckouts, addToast, vaultPath } =
-    usePDMStore()
+  const { orphanedCheckouts, removeOrphanedCheckout, clearOrphanedCheckouts, addToast, vaultPath } = usePDMStore(
+    useShallow((s) => ({
+      orphanedCheckouts: s.orphanedCheckouts,
+      removeOrphanedCheckout: s.removeOrphanedCheckout,
+      clearOrphanedCheckouts: s.clearOrphanedCheckouts,
+      addToast: s.addToast,
+      vaultPath: s.vaultPath,
+    })),
+  )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [isProcessing, setIsProcessing] = useState(false)

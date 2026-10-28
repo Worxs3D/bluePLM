@@ -4,6 +4,7 @@ import * as LucideIcons from 'lucide-react'
 import { UserPlus, Users, Shield, Database, Mail, Loader2, UserCheck } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
 import type { TeamWithDetails, WorkflowRoleBasic } from '../../types'
@@ -41,7 +42,7 @@ export function CreateUserDialog({
   apiUrl,
   orgCode,
 }: CreateUserDialogProps) {
-  const { addToast } = usePDMStore()
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')

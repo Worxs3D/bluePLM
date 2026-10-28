@@ -14,6 +14,7 @@ import {
   Send,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import type { FileMetadataColumn, MetadataColumnType } from '@/types/database'
 
@@ -69,7 +70,23 @@ export function MetadataColumnsSettings() {
     loadUserColumnDefaults,
     resetColumnsToDefaults,
     getEffectiveRole,
-  } = usePDMStore()
+  } = usePDMStore(
+    useShallow((s) => ({
+      user: s.user,
+      organization: s.organization,
+      addToast: s.addToast,
+      columns: s.columns,
+      toggleColumnVisibility: s.toggleColumnVisibility,
+      setColumnWidth: s.setColumnWidth,
+      saveOrgColumnDefaults: s.saveOrgColumnDefaults,
+      loadOrgColumnDefaults: s.loadOrgColumnDefaults,
+      forceOrgColumnDefaults: s.forceOrgColumnDefaults,
+      saveUserColumnDefaults: s.saveUserColumnDefaults,
+      loadUserColumnDefaults: s.loadUserColumnDefaults,
+      resetColumnsToDefaults: s.resetColumnsToDefaults,
+      getEffectiveRole: s.getEffectiveRole,
+    })),
+  )
 
   const [columns, setColumns] = useState<FileMetadataColumn[]>([])
   const [isLoading, setIsLoading] = useState(true)

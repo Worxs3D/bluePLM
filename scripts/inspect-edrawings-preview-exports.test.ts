@@ -53,6 +53,14 @@ async function runProbe(options: ProbeOptions) {
       require: (specifier: string) => {
         if (specifier === 'electron') return { app }
         if (specifier === 'node:path') return path
+        if (specifier === 'node:timers') {
+          return {
+            setImmediate: (callback: () => void) => {
+              deferredTasks.push(callback)
+              return deferredTasks.length
+            },
+          }
+        }
         if (options.addonLoadError) throw options.addonLoadError
         return {
           EDrawingsPreview: class {

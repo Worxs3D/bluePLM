@@ -6,6 +6,9 @@ import { ErrorCode } from '../../../utils/errors.js'
 const HTTP_STATUS_CLIENT_ERROR = 400
 const HTTP_STATUS_SERVER_ERROR = 500
 
+/** PostgREST: `.single()` found zero rows (or more than one). */
+const POSTGREST_NO_ROWS = 'PGRST116'
+
 /**
  * The code that goes with each client-error status, so a thrown error reaches
  * the caller under the same vocabulary as `sendError`. Anything else in the 4xx
@@ -29,6 +32,15 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
         message: 'Validation failed',
         details: error.validation,
       })
+    }
+
+    // `.single()` on a query that matched no row returns PostgREST's PGRST116,
+    // and the routes throw it. That is a missing resource, not a server fault:
+    // answered as a 500 it made every `if (!row) return 404` after the throw
+    // unreachable, so `GET /files/<unknown id>` reported an internal error.
+    if (error.code === POSTGREST_NO_ROWS) {
+      request.log.warn({ err: error }, 'No matching row')
+      return reply.status(404).send({ error: ErrorCode.NOT_FOUND, message: 'Not found' })
     }
 
     const statusCode = error.statusCode ?? HTTP_STATUS_SERVER_ERROR
