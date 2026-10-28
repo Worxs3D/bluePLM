@@ -56,6 +56,7 @@ import {
 } from './useLoadFiles/autoDiscard'
 import { runPostLoadBackgroundTasks } from './useLoadFiles/backgroundTasks'
 import { runGhostDirectoryCleanup } from './useLoadFiles/ghostDirectoryCleanup'
+import type { DeletedFolderRecord } from '@/lib/ghostDirectories'
 import { createYieldGate, mapYielding, YIELD_CHECK_STRIDE } from './useLoadFiles/mergeYield'
 import {
   buildMergeLookups,
@@ -256,6 +257,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
       let serverRowCountAtMerge: number | undefined
       let previouslySyncedCountAtMerge = 0
       let serverFoldersErroredAtMerge = false
+      let deletedFoldersAtMerge: DeletedFolderRecord[] = []
 
       try {
         // Run local file scan and server fetch in PARALLEL for faster boot
@@ -342,8 +344,8 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
         // These are explicit folder records, separate from implicit folders derived from file paths
         const serverFoldersPromise =
           shouldFetchServer && currentVaultId
-            ? getVaultFolders(currentVaultId)
-            : Promise.resolve({ folders: [], error: undefined })
+            ? getVaultFolders(currentVaultId, { includeDeleted: true })
+            : Promise.resolve({ folders: [], deletedFolders: [], error: undefined })
 
         // Wait for all to complete
         const [
@@ -537,6 +539,9 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
             serverRowCountAtMerge = pdmFiles.length
             previouslySyncedCountAtMerge = localSyncIndex.size
             serverFoldersErroredAtMerge = Boolean(serverFoldersResult.error)
+            deletedFoldersAtMerge = (serverFoldersResult.deletedFolders ?? []).flatMap((f) =>
+              f.deleted_at ? [{ folder_path: f.folder_path, deleted_at: f.deleted_at }] : [],
+            )
 
             if (!silent) {
               setStatusMessage(`Merging ${pdmFiles.length} files...`)
@@ -1177,7 +1182,7 @@ export function useLoadFiles(sessionContext?: LoadFilesSessionContext) {
           serverRowCountAtMerge !== undefined &&
           !serverFoldersErroredAtMerge
         ) {
-          await runGhostDirectoryCleanup(currentVaultId, loadingForVaultPath)
+          await runGhostDirectoryCleanup(currentVaultId, loadingForVaultPath, deletedFoldersAtMerge)
         }
 
         const { autoDiscardOrphanedFiles, addToast, files: latestFiles } = usePDMStore.getState()

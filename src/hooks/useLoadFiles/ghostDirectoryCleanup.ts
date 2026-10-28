@@ -5,7 +5,6 @@ import {
   type DeletedFolderRecord,
 } from '@/lib/ghostDirectories'
 import { log } from '@/lib/logger'
-import { getDeletedFoldersByPath } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { LocalFile } from '@/stores/types'
 
@@ -89,11 +88,16 @@ export async function removeGhostDirectories({
 }
 
 /**
- * `removeGhostDirectories` against the live store, the server and the main process,
- * called once per committed merge from `useLoadFiles`. Never throws: a failed cleanup
+ * `removeGhostDirectories` against the live store and the main process, called once per
+ * committed merge from `useLoadFiles` with the deleted folder rows its folders request
+ * already returned, so the cleanup adds no round trip. Never throws: a failed cleanup
  * leaves an empty folder, which must not fail the load.
  */
-export async function runGhostDirectoryCleanup(vaultId: string, vaultPath: string): Promise<void> {
+export async function runGhostDirectoryCleanup(
+  vaultId: string,
+  vaultPath: string,
+  deletedFolders: readonly DeletedFolderRecord[],
+): Promise<void> {
   const trash = window.electronAPI?.trashEmptyDirs
   if (!trash) return
 
@@ -103,7 +107,14 @@ export async function runGhostDirectoryCleanup(vaultId: string, vaultPath: strin
       vaultId,
       files,
       serverFolderPaths,
-      fetchDeletedFolders: (paths) => getDeletedFoldersByPath(vaultId, paths),
+      fetchDeletedFolders: async (paths) => {
+        const wanted = new Set(paths.map((path) => path.replace(/\\/g, '/').toLowerCase()))
+        return {
+          folders: deletedFolders.filter((row) =>
+            wanted.has(row.folder_path.replace(/\\/g, '/').toLowerCase()),
+          ),
+        }
+      },
       trashEmptyDirs: trash,
     })
 

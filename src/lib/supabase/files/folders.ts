@@ -212,70 +212,44 @@ async function syncSingleFolder(
 /**
  * Get all active (non-deleted) folders for a vault.
  *
+ * With `includeDeleted`, the same request also returns the vault's soft-deleted rows as
+ * `deletedFolders`: the evidence `ghostDirectories.ts` needs before recycling an empty local
+ * directory. One request whatever the number of candidates (a per-path lookup was 13 round
+ * trips on the 1k load gate); production has at most a few hundred deleted rows per vault.
+ *
  * @param vaultId - Vault ID
  */
 export async function getVaultFolders(
   vaultId: string,
-): Promise<{ folders: FolderRecord[]; error?: string }> {
+  options: { includeDeleted?: boolean } = {},
+): Promise<{ folders: FolderRecord[]; deletedFolders?: FolderRecord[]; error?: string }> {
   const client = getSupabaseClient()
   const logFn = getLogFn()
 
   logFn('debug', '[getVaultFolders] Fetching folders', { vaultId })
 
   try {
-    const { data, error } = await client
-      .from('folders')
-      .select('*')
-      .eq('vault_id', vaultId)
-      .is('deleted_at', null)
-      .order('folder_path', { ascending: true })
+    let query = client.from('folders').select('*').eq('vault_id', vaultId)
+    if (!options.includeDeleted) query = query.is('deleted_at', null)
+    const { data, error } = await query.order('folder_path', { ascending: true })
 
     if (error) {
       logFn('error', '[getVaultFolders] Query error', { vaultId, error: error.message })
       return { folders: [], error: error.message }
     }
 
-    logFn('debug', '[getVaultFolders] Found folders', { vaultId, count: data?.length || 0 })
-    return { folders: (data || []) as FolderRecord[] }
+    const rows = (data || []) as FolderRecord[]
+    logFn('debug', '[getVaultFolders] Found folders', { vaultId, count: rows.length })
+    if (!options.includeDeleted) return { folders: rows }
+    return {
+      folders: rows.filter((row) => !row.deleted_at),
+      deletedFolders: rows.filter((row) => row.deleted_at),
+    }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error)
     logFn('error', '[getVaultFolders] Exception', { vaultId, error: errMsg })
     return { folders: [], error: errMsg }
   }
-}
-
-/** Paths per request, so a long candidate list cannot build an oversized URL. */
-const DELETED_FOLDER_LOOKUP_CHUNK = 100
-
-/**
- * Soft-deleted folder rows for the given paths, the evidence `ghostDirectories.ts` needs
- * before recycling an empty local directory. Exact-match (`in`), not `ilike`: the
- * directories were created on disk with the server's own spelling, and a miss only
- * leaves an empty folder in place.
- */
-export async function getDeletedFoldersByPath(
-  vaultId: string,
-  folderPaths: string[],
-): Promise<{ folders: Array<{ folder_path: string; deleted_at: string }>; error?: string }> {
-  const client = getSupabaseClient()
-  const folders: Array<{ folder_path: string; deleted_at: string }> = []
-
-  for (let i = 0; i < folderPaths.length; i += DELETED_FOLDER_LOOKUP_CHUNK) {
-    const chunk = folderPaths.slice(i, i + DELETED_FOLDER_LOOKUP_CHUNK)
-    const { data, error } = await client
-      .from('folders')
-      .select('folder_path, deleted_at')
-      .eq('vault_id', vaultId)
-      .in('folder_path', chunk)
-      .not('deleted_at', 'is', null)
-
-    if (error) return { folders: [], error: error.message }
-    for (const row of data ?? []) {
-      if (row.deleted_at) folders.push({ folder_path: row.folder_path, deleted_at: row.deleted_at })
-    }
-  }
-
-  return { folders }
 }
 
 // ============================================

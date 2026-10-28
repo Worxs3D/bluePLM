@@ -94,7 +94,6 @@ export { moveFileOnServer, moveFilesOnServer } from './move'
 export {
   syncFolder,
   getVaultFolders,
-  getDeletedFoldersByPath,
   updateFolderServerPath,
   deleteFolderOnServer,
   deleteFolderByPath,

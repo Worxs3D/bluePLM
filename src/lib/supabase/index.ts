@@ -126,7 +126,6 @@ export {
   // Folder operations
   syncFolder,
   getVaultFolders,
-  getDeletedFoldersByPath,
   updateFolderServerPath,
   deleteFolderOnServer,
   deleteFolderByPath,
