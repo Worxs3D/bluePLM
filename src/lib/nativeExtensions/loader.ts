@@ -39,7 +39,6 @@ export interface LoaderDeps {
   removeState(extensionId: string): void
   /** Dispose any workspace still registered by the extension (belt and braces). */
   clearRegistrations(extensionId: string): void
-  prune(keepShas: string[]): Promise<void>
 }
 
 interface ActiveExtension {
@@ -134,12 +133,8 @@ export class NativeExtensionLoader {
     for (const row of wanted.values()) {
       if (!this.active.has(row.extensionId)) await this.activate(row)
     }
-
-    try {
-      await this.deps.prune(rows.map((r) => r.sha256))
-    } catch (error) {
-      log.warn(LOG, 'Pruning the package cache failed', { error: messageOf(error) })
-    }
+    // Pruning the package cache is the session's job (session.ts): only after a
+    // successful fetch of the current org's rows, never on sign-out.
   }
 
   private knownIds = new Set<string>()

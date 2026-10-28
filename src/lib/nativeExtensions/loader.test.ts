@@ -27,7 +27,6 @@ function harness(modules: Record<string, unknown>) {
   const states = new Map<string, NativeExtensionRuntimeState>()
   const disposed: string[] = []
   const cleared: string[] = []
-  const pruned: string[][] = []
   const deps: LoaderDeps = {
     prepare: vi.fn(async (r: OrgNativeExtensionRow) => ({
       clientEntryUrl: `blueplm-ext://${r.sha256}/client/index.js`,
@@ -51,17 +50,14 @@ function harness(modules: Record<string, unknown>) {
     setState: (s) => states.set(s.extensionId, s),
     removeState: (id) => states.delete(id),
     clearRegistrations: (id) => cleared.push(id),
-    prune: async (keep) => {
-      pruned.push(keep)
-    },
   }
-  return { deps, states, disposed, cleared, pruned }
+  return { deps, states, disposed, cleared }
 }
 
 const urlFor = (sha: string) => `blueplm-ext://${sha}/client/index.js`
 
 describe('NativeExtensionLoader', () => {
-  it('activates enabled rows and prunes the cache to the org rows', async () => {
+  it('activates enabled rows and records disabled ones', async () => {
     const activate = vi.fn((host: NativeExtensionHost) => {
       host.registerWorkspace({ id: 'tool', title: 'Tool', icon: 'Box', Workspace: () => null })
     })
@@ -73,7 +69,6 @@ describe('NativeExtensionLoader', () => {
     expect(activate).toHaveBeenCalledTimes(1)
     expect(h.states.get('acme.tool')?.status).toBe('active')
     expect(h.states.get('acme.off')?.status).toBe('disabled')
-    expect(h.pruned.at(-1)).toEqual(['a'.repeat(64), 'b'.repeat(64)])
     expect(loader.activeIds()).toEqual(['acme.tool'])
   })
 

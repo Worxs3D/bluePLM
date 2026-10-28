@@ -94,16 +94,17 @@ function readManifest(dir: string): PackageManifest {
  * Make `.js` files under the extraction root load as ES modules.
  *
  * Packages carry no package.json; without one Node would decide the module
- * type from the nearest package.json above the temp directory, which is not
- * ours to rely on. A package that ships its own package.json still governs
- * its own files, since the nearest one wins.
+ * type from the nearest package.json above the directory, which is not ours to
+ * rely on. Written every time (never trusted from an earlier run). A package
+ * that ships its own package.json still governs its own files, since the
+ * nearest one wins.
  */
 function ensureModuleRoot(root: string): void {
-  fs.mkdirSync(root, { recursive: true })
-  const marker = path.join(root, 'package.json')
-  if (!fs.existsSync(marker)) {
-    fs.writeFileSync(marker, JSON.stringify({ type: 'module', private: true }) + '\n')
-  }
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 })
+  fs.writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({ type: 'module', private: true }) + '\n',
+  )
 }
 
 /**

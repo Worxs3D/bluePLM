@@ -6,7 +6,10 @@
  *
  * Every /ext request is authenticated by core's auth (`fastify.authenticate`)
  * and is under core's global rate limit, the same as any other route. Then:
- * extension not loaded, or the caller's org has no enabled install of it, is
+ * native extensions disabled on this server (NATIVE_EXTENSIONS_ORG_IDS unset)
+ * is 503 NATIVE_EXTENSIONS_DISABLED, the caller's org not in that list is 403
+ * NATIVE_EXTENSIONS_DISABLED, extension not loaded for the caller's org, or the
+ * caller's org has no enabled install of it, is
  * 404; the org's install at a different sha256 from the loaded one is 409
  * `EXTENSION_VERSION_MISMATCH`; an unknown sub-route is core's own
  * `404 NOT_FOUND 'Endpoint not found'`; a route `permission` is checked with
@@ -27,6 +30,11 @@ export const DEFAULT_ROUTE_TIMEOUT_MS = 30_000
 
 /** Same message for "not loaded" and "not installed for your org", so neither leaks the other. */
 const NOT_AVAILABLE = 'Extension is not available'
+
+const DISABLED_ON_SERVER =
+  'Native extensions are disabled on this API server (the operator has not set NATIVE_EXTENSIONS_ORG_IDS)'
+const DISABLED_FOR_ORG =
+  'Native extensions are not enabled for your organization on this API server'
 
 export interface NativeExtensionRoutesOptions {
   /** Null when the API cannot load native extensions (no service-role key). */
@@ -75,10 +83,15 @@ export const nativeExtensionRoutes: FastifyPluginAsync<NativeExtensionRoutesOpti
     if (!user?.org_id) {
       return sendError(reply, 403, 'FORBIDDEN', 'User is not a member of any organization')
     }
-    if (!runtime) return sendError(reply, 404, 'NOT_FOUND', NOT_AVAILABLE)
+    if (!runtime || !runtime.enabled) {
+      return sendError(reply, 503, 'NATIVE_EXTENSIONS_DISABLED', DISABLED_ON_SERVER)
+    }
+    if (!runtime.isOrgAllowed(user.org_id)) {
+      return sendError(reply, 403, 'NATIVE_EXTENSIONS_DISABLED', DISABLED_FOR_ORG)
+    }
 
     await runtime.whenReady()
-    const loaded = runtime.get(extensionId)
+    const loaded = runtime.get(user.org_id, extensionId)
     if (!loaded) return sendError(reply, 404, 'NOT_FOUND', NOT_AVAILABLE)
 
     let install: OrgInstall | null
@@ -162,7 +175,8 @@ export const nativeExtensionRoutes: FastifyPluginAsync<NativeExtensionRoutesOpti
     '/admin/extensions/reload',
     {
       schema: {
-        description: 'Reload native extensions on this API instance without a restart (admin only)',
+        description:
+          "Reload the caller's organization's native extensions on this API instance (admin only, allowed orgs only)",
         tags: ['Extensions'],
         security: [{ bearerAuth: [] }],
       },
@@ -180,8 +194,16 @@ export const nativeExtensionRoutes: FastifyPluginAsync<NativeExtensionRoutesOpti
           'Native extensions are unavailable: SUPABASE_SERVICE_KEY is not configured on the API',
         )
       }
+      const orgId = request.user.org_id
+      if (!orgId) return sendError(reply, 403, 'FORBIDDEN', 'User is not a member of any organization')
+      if (!runtime.enabled) {
+        return sendError(reply, 503, 'NATIVE_EXTENSIONS_DISABLED', DISABLED_ON_SERVER)
+      }
+      if (!runtime.isOrgAllowed(orgId)) {
+        return sendError(reply, 403, 'NATIVE_EXTENSIONS_DISABLED', DISABLED_FOR_ORG)
+      }
       await runtime.whenReady()
-      const report = await runtime.reload()
+      const report = await runtime.reload(orgId)
       return { success: !report.error && report.failed.length === 0, ...report }
     },
   )

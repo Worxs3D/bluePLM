@@ -1,5 +1,6 @@
 /**
- * The app's one native extension loader, wired to the store, main and Supabase.
+ * The app's one native extension loader and session, wired to the store, main
+ * and Supabase.
  */
 
 import { usePDMStore } from '@/stores/pdmStore'
@@ -8,6 +9,7 @@ import type { OrgNativeExtensionRow } from '@/types/nativeExtensions'
 import { createNativeExtensionHost } from './host'
 import { NativeExtensionLoader, type PreparedPackage } from './loader'
 import { createPackageDownloadUrl, fetchOrgNativeExtensions } from './orgExtensions'
+import { NativeExtensionSession } from './session'
 import { installBluePLMGlobal } from './shared'
 
 async function prepare(row: OrgNativeExtensionRow): Promise<PreparedPackage> {
@@ -31,18 +33,11 @@ export const nativeExtensionLoader = new NativeExtensionLoader({
   setState: (state) => usePDMStore.getState().setNativeExtensionState(state),
   removeState: (id) => usePDMStore.getState().removeNativeExtensionState(id),
   clearRegistrations: (id) => usePDMStore.getState().unregisterExtensionWorkspace(id),
-  prune: async (keep) => {
-    await window.electronAPI?.extensions?.nativePrune?.(keep)
-  },
 })
 
 let globalInstalled = false
 
-/**
- * Load the organization's native rows and bring the running extensions in line.
- * Returns the rows (enabled or not) for the settings page.
- */
-export async function reloadNativeExtensions(orgId: string): Promise<OrgNativeExtensionRow[]> {
+async function fetchRows(orgId: string): Promise<OrgNativeExtensionRow[]> {
   if (!globalInstalled) {
     const version = (await window.electronAPI?.getVersion?.()) ?? '0.0.0'
     installBluePLMGlobal(version)
@@ -50,12 +45,29 @@ export async function reloadNativeExtensions(orgId: string): Promise<OrgNativeEx
   }
   const { rows, invalid } = await fetchOrgNativeExtensions(orgId)
   for (const reason of invalid) log.warn('[NativeExt]', 'Ignoring native extension row', { reason })
-  usePDMStore.getState().setOrgNativeExtensionRows(rows)
-  await nativeExtensionLoader.sync(rows)
   return rows
 }
 
+export const nativeExtensionSession = new NativeExtensionSession({
+  fetchRows,
+  sync: (rows) => nativeExtensionLoader.sync(rows),
+  deactivateAll: () => nativeExtensionLoader.deactivateAll(),
+  setRows: (rows) => usePDMStore.getState().setOrgNativeExtensionRows(rows),
+  prune: async (keep) => {
+    await window.electronAPI?.extensions?.nativePrune?.(keep)
+  },
+  onError: (error) =>
+    log.error('[NativeExt]', 'Loading native extensions failed', {
+      error: error instanceof Error ? error.message : String(error),
+    }),
+})
+
+/** Load the organization's native rows and bring the running extensions in line. */
+export function reloadNativeExtensions(orgId: string): Promise<void> {
+  return nativeExtensionSession.activate(orgId)
+}
+
+/** Sign-out or no organization: stop every native extension. Does not prune the cache. */
 export function deactivateAllNativeExtensions(): Promise<void> {
-  usePDMStore.getState().setOrgNativeExtensionRows([])
-  return nativeExtensionLoader.deactivateAll()
+  return nativeExtensionSession.deactivate()
 }

@@ -25,8 +25,11 @@ export interface OrgInstall {
 }
 
 export interface NativeExtensionStore {
-  /** Every enabled native install whose manifest has a `serverMain`, any org. */
-  listNativeInstalls(): Promise<NativeInstallRow[]>
+  /**
+   * Every enabled native install whose manifest has a `serverMain`, for the given
+   * orgs only (the operator's NATIVE_EXTENSIONS_ORG_IDS allowlist). Never "any org".
+   */
+  listNativeInstalls(orgIds: readonly string[]): Promise<NativeInstallRow[]>
   /** The package bytes at `packagePath` in the native package bucket. */
   downloadPackage(packagePath: string): Promise<Buffer>
   /** The caller org's install row for an extension, or null. */
@@ -35,15 +38,19 @@ export interface NativeExtensionStore {
 
 export function createSupabaseNativeExtensionStore(admin: SupabaseClient): NativeExtensionStore {
   return {
-    async listNativeInstalls() {
+    async listNativeInstalls(orgIds) {
+      if (orgIds.length === 0) return []
       const { data, error } = await admin
         .from('org_installed_extensions')
         .select('org_id, extension_id, package_sha256, package_path, installed_at, manifest')
+        .in('org_id', [...orgIds])
         .eq('enabled', true)
         .eq('category', 'native')
         .not('manifest->>serverMain', 'is', null)
       if (error) throw new Error(`Failed to list native extension installs: ${error.message}`)
-      return (data ?? []) as NativeInstallRow[]
+      // Defence in depth: never hand back a row outside the allowlist.
+      const allowed = new Set(orgIds)
+      return ((data ?? []) as NativeInstallRow[]).filter((row) => allowed.has(row.org_id))
     },
 
     async downloadPackage(packagePath) {
@@ -69,20 +76,29 @@ export function createSupabaseNativeExtensionStore(admin: SupabaseClient): Nativ
   }
 }
 
+/** The key a loaded extension is stored under: one per (org, extension). */
+export function installKey(orgId: string, extensionId: string): string {
+  return `${orgId}/${extensionId}`
+}
+
 /**
- * Per extension id, the install with the latest `installed_at`. A latest row
+ * Per (org, extension id), the install with the latest `installed_at`. Orgs never
+ * share a loaded extension, so two orgs cannot 409 each other. A latest row
  * with no package path or sha256 is still picked; the loader refuses it and
  * reports why, rather than silently falling back to an older version.
  */
 export function pickLatestInstalls(rows: NativeInstallRow[]): NativeInstallRow[] {
   const latest = new Map<string, NativeInstallRow>()
   for (const row of rows) {
-    const current = latest.get(row.extension_id)
+    const key = installKey(row.org_id, row.extension_id)
+    const current = latest.get(key)
     if (!current || timeOf(row.installed_at) > timeOf(current.installed_at)) {
-      latest.set(row.extension_id, row)
+      latest.set(key, row)
     }
   }
-  return [...latest.values()].sort((a, b) => a.extension_id.localeCompare(b.extension_id))
+  return [...latest.values()].sort((a, b) =>
+    installKey(a.org_id, a.extension_id).localeCompare(installKey(b.org_id, b.extension_id)),
+  )
 }
 
 function timeOf(value: string | null): number {

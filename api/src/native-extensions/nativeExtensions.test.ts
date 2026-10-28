@@ -30,6 +30,8 @@ beforeAll(async () => {
 })
 
 const ORG_ID = '00000000-0000-0000-0000-0000000000c1'
+const ORG_B = '00000000-0000-0000-0000-0000000000c2'
+const ORG_OUTSIDE = '00000000-0000-0000-0000-0000000000c9'
 const USER_ID = '00000000-0000-0000-0000-0000000000d1'
 const EXT_ID = 'test.fixture'
 
@@ -87,12 +89,21 @@ interface StubStore {
   packages: Map<string, Buffer>
   orgInstalls: Map<string, { enabled: boolean; package_sha256: string | null }>
   downloads: string[]
+  listedOrgs: string[][]
 }
 
 function createStubStore(): StubStore & import('./store.js').NativeExtensionStore {
-  const state: StubStore = { rows: [], packages: new Map(), orgInstalls: new Map(), downloads: [] }
+  const state: StubStore = {
+    rows: [],
+    packages: new Map(),
+    orgInstalls: new Map(),
+    downloads: [],
+    listedOrgs: [],
+  }
   return Object.assign(state, {
-    async listNativeInstalls() {
+    async listNativeInstalls(orgIds: readonly string[]) {
+      state.listedOrgs.push([...orgIds])
+      // Deliberately unfiltered: the runtime must not trust the store to filter.
       return state.rows
     },
     async downloadPackage(packagePath: string) {
@@ -162,9 +173,9 @@ describe('loader', () => {
     const current = await buildPackage()
     store.packages.set('org/new.bpx', current.bytes)
     store.rows = [
-      // Older install with a different (here unloadable) package: must not be picked.
+      // An org outside NATIVE_EXTENSIONS_ORG_IDS: never loaded, whatever the store returns.
       {
-        org_id: 'other-org',
+        org_id: ORG_OUTSIDE,
         extension_id: EXT_ID,
         package_sha256: 'b'.repeat(64),
         package_path: 'org/old.bpx',
@@ -184,6 +195,7 @@ describe('loader', () => {
       store,
       supabaseAdmin: {} as never,
       logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
       extractRoot: tempRoot(),
     })
 
@@ -191,10 +203,12 @@ describe('loader', () => {
 
     expect(report.failed).toEqual([])
     expect(report.loaded).toEqual([
-      { extensionId: EXT_ID, sha256: current.sha, version: '1.0.0', routes: 1, reused: false },
+      { orgId: ORG_ID, extensionId: EXT_ID, sha256: current.sha, version: '1.0.0', routes: 1, reused: false },
     ])
     expect(store.downloads).toEqual(['org/new.bpx'])
-    expect(runtime.get(EXT_ID)?.routes.match('GET', '/hello/world')?.params).toEqual({ name: 'world' })
+    expect(store.listedOrgs).toEqual([[ORG_ID, ORG_B]])
+    expect(runtime.get(ORG_OUTSIDE, EXT_ID)).toBeUndefined()
+    expect(runtime.get(ORG_ID, EXT_ID)?.routes.match('GET', '/hello/world')?.params).toEqual({ name: 'world' })
 
     // Same sha again: reused, not downloaded or imported again.
     const second = await runtime.reload()
@@ -204,8 +218,8 @@ describe('loader', () => {
     // Disabled everywhere: dropped.
     store.rows = []
     const third = await runtime.reload()
-    expect(third.unloaded).toEqual([EXT_ID])
-    expect(runtime.get(EXT_ID)).toBeUndefined()
+    expect(third.unloaded).toEqual([`${ORG_ID}/${EXT_ID}`])
+    expect(runtime.get(ORG_ID, EXT_ID)).toBeUndefined()
   })
 
   it('skips a package whose bytes do not match the recorded sha256, and keeps loading others', async () => {
@@ -237,6 +251,7 @@ describe('loader', () => {
       store,
       supabaseAdmin: {} as never,
       logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
       extractRoot: tempRoot(),
       importModule: async (url) => {
         imported.push(url)
@@ -252,7 +267,7 @@ describe('loader', () => {
     expect(report.failed[0].error).toMatch(/does not match/)
     expect(imported).toHaveLength(1)
     expect(imported[0]).toContain(good.sha)
-    expect(runtime.get('test.tampered')).toBeUndefined()
+    expect(runtime.get(ORG_ID, 'test.tampered')).toBeUndefined()
   })
 
   it('skips an extension whose register throws or which has no register export', async () => {
@@ -269,6 +284,7 @@ describe('loader', () => {
       store,
       supabaseAdmin: {} as never,
       logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
       extractRoot: tempRoot(),
       importModule: async (url) =>
         url.includes(a.sha)
@@ -297,6 +313,7 @@ describe('loader', () => {
       },
       supabaseAdmin: {} as never,
       logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
       extractRoot: tempRoot(),
     })
     const report = await runtime.reload()
@@ -308,6 +325,7 @@ describe('loader', () => {
     const builder = {
       select: (...args: unknown[]) => (calls.push(['select', ...args]), builder),
       eq: (...args: unknown[]) => (calls.push(['eq', ...args]), builder),
+      in: (...args: unknown[]) => (calls.push(['in', ...args]), builder),
       not: (...args: unknown[]) => (calls.push(['not', ...args]), builder),
       then: (resolve: (value: { data: unknown[]; error: null }) => void) => resolve({ data: [], error: null }),
     }
@@ -315,14 +333,106 @@ describe('loader', () => {
       from: (table: string) => (calls.push(['from', table]), builder),
     }
     const store = native.createSupabaseNativeExtensionStore(admin as never)
-    await store.listNativeInstalls()
+    expect(await store.listNativeInstalls([])).toEqual([])
+    expect(calls).toEqual([])
+    await store.listNativeInstalls([ORG_ID])
     expect(calls).toEqual([
       ['from', 'org_installed_extensions'],
       ['select', 'org_id, extension_id, package_sha256, package_path, installed_at, manifest'],
+      ['in', 'org_id', [ORG_ID]],
       ['eq', 'enabled', true],
       ['eq', 'category', 'native'],
       ['not', 'manifest->>serverMain', 'is', null],
     ])
+  })
+})
+
+// ─── Operator allowlist and per-org isolation ────────────────────────────────
+
+describe('NATIVE_EXTENSIONS_ORG_IDS', () => {
+  it('parses comma-separated UUIDs, lowercases and de-duplicates them', () => {
+    expect(native.parseNativeExtensionOrgIds(undefined)).toEqual([])
+    expect(native.parseNativeExtensionOrgIds('  ')).toEqual([])
+    expect(native.parseNativeExtensionOrgIds(` ${ORG_ID.toUpperCase()}, ${ORG_B},${ORG_ID} `)).toEqual([
+      ORG_ID,
+      ORG_B,
+    ])
+  })
+
+  it('refuses anything that is not a UUID', () => {
+    expect(() => native.parseNativeExtensionOrgIds(`${ORG_ID},*`)).toThrow(/UUID/)
+    expect(() => native.parseNativeExtensionOrgIds('all')).toThrow(/UUID/)
+  })
+
+  it('loads nothing, and reads nothing, when the list is empty', async () => {
+    const store = createStubStore()
+    const built = await buildPackage()
+    store.packages.set('p.bpx', built.bytes)
+    store.rows = [
+      { org_id: ORG_ID, extension_id: EXT_ID, package_sha256: built.sha, package_path: 'p.bpx', installed_at: null, manifest: {} },
+    ]
+    const runtime = new native.NativeExtensionRuntime({
+      store,
+      supabaseAdmin: {} as never,
+      logger: silent,
+      allowedOrgIds: [],
+      extractRoot: tempRoot(),
+      importModule: async () => ({ register: () => {} }),
+    })
+    const report = await runtime.reload()
+    expect(runtime.enabled).toBe(false)
+    expect(report.loaded).toEqual([])
+    expect(store.listedOrgs).toEqual([])
+    expect(store.downloads).toEqual([])
+  })
+
+  it('keeps two allowed orgs apart: own module instance, own sha, reload of one leaves the other', async () => {
+    const store = createStubStore()
+    const v1 = await buildPackage()
+    const v2 = await buildPackage({ server: SERVER_SOURCE + '\n// v2\n' })
+    store.packages.set('a.bpx', v1.bytes)
+    store.packages.set('b.bpx', v2.bytes)
+    store.rows = [
+      { org_id: ORG_ID, extension_id: EXT_ID, package_sha256: v1.sha, package_path: 'a.bpx', installed_at: null, manifest: {} },
+      { org_id: ORG_B, extension_id: EXT_ID, package_sha256: v2.sha, package_path: 'b.bpx', installed_at: null, manifest: {} },
+    ]
+    const imported: string[] = []
+    const runtime = new native.NativeExtensionRuntime({
+      store,
+      supabaseAdmin: {} as never,
+      logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
+      extractRoot: tempRoot(),
+      importModule: async (url) => {
+        imported.push(url)
+        return { register: () => {} }
+      },
+    })
+    await runtime.reload()
+    expect(runtime.get(ORG_ID, EXT_ID)?.sha256).toBe(v1.sha)
+    expect(runtime.get(ORG_B, EXT_ID)?.sha256).toBe(v2.sha)
+    expect(imported.some((u) => u.includes(ORG_ID) && u.includes(v1.sha))).toBe(true)
+    expect(imported.some((u) => u.includes(ORG_B) && u.includes(v2.sha))).toBe(true)
+
+    // Reloading org B with B's install gone drops only B.
+    store.rows = store.rows.filter((r) => r.org_id === ORG_ID)
+    const report = await runtime.reload(ORG_B)
+    expect(store.listedOrgs.at(-1)).toEqual([ORG_B])
+    expect(report.unloaded).toEqual([`${ORG_B}/${EXT_ID}`])
+    expect(runtime.get(ORG_ID, EXT_ID)?.sha256).toBe(v1.sha)
+
+    // An org outside the list cannot be reloaded into.
+    const refused = await runtime.reload(ORG_OUTSIDE)
+    expect(refused.error).toMatch(/not enabled/)
+  })
+
+  it('creates a private 0700 extraction directory', () => {
+    const base = tempRoot()
+    const dir = native.createPrivateExtractRoot(base)
+    expect(path.dirname(dir)).toBe(base)
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
+    }
   })
 })
 
@@ -334,6 +444,9 @@ describe('/ext dispatch', () => {
   let permissionAnswer: boolean
   let permissionCalls: Array<Record<string, unknown>>
   let app: FastifyInstance
+  let callerOrg: string
+  let callerIsAdmin: boolean
+  let reloads: Array<string | undefined>
 
   const fixtureModule = {
     register(extensionApp: import('./types.js').ExtensionServerApp) {
@@ -380,11 +493,15 @@ describe('/ext dispatch', () => {
     store.orgInstalls.set(`${ORG_ID}/${EXT_ID}`, { enabled: true, package_sha256: sha })
     permissionAnswer = true
     permissionCalls = []
+    callerOrg = ORG_ID
+    callerIsAdmin = false
+    reloads = []
 
     const runtime = new native.NativeExtensionRuntime({
       store,
       supabaseAdmin: {} as never,
       logger: silent,
+      allowedOrgIds: [ORG_ID, ORG_B],
       extractRoot: tempRoot(),
       importModule: async () => fixtureModule,
     })
@@ -404,8 +521,8 @@ describe('/ext dispatch', () => {
         email: 'someone@example.com',
         full_name: null,
         role: 'engineer',
-        org_id: ORG_ID,
-        isAdmin: false,
+        org_id: callerOrg,
+        isAdmin: callerIsAdmin,
       }
       request.supabase = {
         rpc: async (fn: string, args: Record<string, unknown>) => {
@@ -414,9 +531,15 @@ describe('/ext dispatch', () => {
         },
       } as unknown as NonNullable<FastifyRequest['supabase']>
     })
+    const originalReload = runtime.reload.bind(runtime)
+    runtime.reload = (orgId?: string) => {
+      reloads.push(orgId)
+      return originalReload(orgId)
+    }
     await app.register(native.nativeExtensionRoutes, { runtime, autoLoad: false })
     await app.ready()
     await runtime.start()
+    reloads = []
   })
 
   const get = (url: string, auth = true) =>
@@ -495,5 +618,64 @@ describe('/ext dispatch', () => {
   it('reload is admin only', async () => {
     const res = await app.inject({ method: 'POST', url: '/admin/extensions/reload', headers: { authorization: 'Bearer ok' } })
     expect(res.statusCode).toBe(403)
+    expect(reloads).toEqual([])
+  })
+
+  it("reload acts only on the admin's own org, and only when that org is allowed", async () => {
+    callerIsAdmin = true
+    const res = await app.inject({ method: 'POST', url: '/admin/extensions/reload', headers: { authorization: 'Bearer ok' } })
+    expect(res.statusCode).toBe(200)
+    expect(reloads).toEqual([ORG_ID])
+
+    callerOrg = ORG_OUTSIDE
+    const refused = await app.inject({ method: 'POST', url: '/admin/extensions/reload', headers: { authorization: 'Bearer ok' } })
+    expect(refused.statusCode).toBe(403)
+    expect(refused.json()).toMatchObject({ error: 'NATIVE_EXTENSIONS_DISABLED' })
+    expect(reloads).toEqual([ORG_ID])
+  })
+
+  it('answers 403 NATIVE_EXTENSIONS_DISABLED for an org outside the allowlist', async () => {
+    callerOrg = ORG_OUTSIDE
+    store.orgInstalls.set(`${ORG_OUTSIDE}/${EXT_ID}`, { enabled: true, package_sha256: sha })
+    const res = await get(`/ext/${EXT_ID}/hello/world`)
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toMatchObject({ error: 'NATIVE_EXTENSIONS_DISABLED' })
+  })
+
+  it("does not serve one allowed org another org's loaded extension", async () => {
+    callerOrg = ORG_B
+    store.orgInstalls.set(`${ORG_B}/${EXT_ID}`, { enabled: true, package_sha256: sha })
+    const res = await get(`/ext/${EXT_ID}/hello/world`)
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('answers 503 NATIVE_EXTENSIONS_DISABLED when the server allows no org', async () => {
+    const disabled = Fastify({ logger: false })
+    disabled.decorateRequest('user', null)
+    disabled.decorate('authenticate', async (request: FastifyRequest) => {
+      request.user = {
+        id: USER_ID,
+        email: 'someone@example.com',
+        full_name: null,
+        role: 'admin',
+        org_id: ORG_ID,
+        isAdmin: true,
+      }
+    })
+    const runtime = new native.NativeExtensionRuntime({
+      store: createStubStore(),
+      supabaseAdmin: {} as never,
+      logger: silent,
+      allowedOrgIds: [],
+      extractRoot: tempRoot(),
+    })
+    await disabled.register(native.nativeExtensionRoutes, { runtime, autoLoad: false })
+    await disabled.ready()
+    const res = await disabled.inject({ method: 'GET', url: `/ext/${EXT_ID}/hello/world` })
+    expect(res.statusCode).toBe(503)
+    expect(res.json().message).toMatch(/NATIVE_EXTENSIONS_ORG_IDS/)
+    const reload = await disabled.inject({ method: 'POST', url: '/admin/extensions/reload' })
+    expect(reload.statusCode).toBe(503)
+    await disabled.close()
   })
 })

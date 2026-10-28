@@ -1,14 +1,17 @@
 /**
  * Runs the organization's native extensions for the signed-in user.
  *
- * On sign-in or an org switch it loads the org's native rows and activates the
- * enabled ones; on sign-out (no user or no organization) it deactivates
- * everything, so nothing an extension registered outlives the session it ran in.
+ * On sign-in or an org switch it activates the org's enabled native extensions
+ * (deactivating the previous org's first); on sign-out (no user or no
+ * organization) it deactivates everything. Changes to the org's installed
+ * extensions arrive over realtime and trigger a debounced refresh. The session
+ * (src/lib/nativeExtensions/session.ts) serializes all of this with a generation
+ * token, so a stale fetch can never activate the wrong org's extensions.
  */
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
-import { log } from '@/lib/logger'
 import { deactivateAllNativeExtensions, reloadNativeExtensions } from '@/lib/nativeExtensions/runtime'
+import { subscribeToOrgExtensionChanges } from '@/lib/nativeExtensions/realtime'
 
 export function useNativeExtensions(): void {
   const orgId = usePDMStore((s) => s.organization?.id ?? null)
@@ -20,10 +23,10 @@ export function useNativeExtensions(): void {
       void deactivateAllNativeExtensions()
       return
     }
-    reloadNativeExtensions(orgId).catch((error: unknown) => {
-      log.error('[NativeExt]', 'Loading native extensions failed', {
-        error: error instanceof Error ? error.message : String(error),
-      })
+    void reloadNativeExtensions(orgId)
+    const unsubscribe = subscribeToOrgExtensionChanges(orgId, () => {
+      void reloadNativeExtensions(orgId)
     })
+    return unsubscribe
   }, [orgId, userId])
 }

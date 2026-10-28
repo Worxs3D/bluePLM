@@ -15,6 +15,15 @@ it runs today.
   bytes that match that hash. Native code has full trust; it is not sandboxed. The contract
   (host API v1, request shape, error codes) is in
   `.cursor/plans/extensions-native-runtime.plan.md` until it moves to its own page here.
+- **The API runs native server code only for organizations its operator trusts.** A native
+  extension's `server/index.js` runs in-process with the API's full privileges, including the
+  service-role database client that can read every organization. An org admin installing one
+  is therefore not enough: the API loads native extensions only for the organization ids in
+  `NATIVE_EXTENSIONS_ORG_IDS` (comma-separated UUIDs). Unset means none are loaded and `/ext`
+  answers `503 NATIVE_EXTENSIONS_DISABLED`; an org not in the list gets `403
+  NATIVE_EXTENSIONS_DISABLED`. Each allowed org gets its own copy (keyed by org and extension),
+  extracted into a private 0700 directory under `NATIVE_EXTENSIONS_DIR` (default: the OS temp
+  directory). `POST /admin/extensions/reload` reloads only the calling admin's org.
 - **Store and sideloaded packages do not run.** Per-machine installs (store or file) are
   listed and can be uninstalled, but there is no Extension Host and no client sandbox, and the
   API's V8 isolate pool returns `SANDBOX_UNAVAILABLE` for every sandboxed handler. Native

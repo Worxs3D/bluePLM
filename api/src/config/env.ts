@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseNativeExtensionOrgIds } from '../native-extensions/config.js'
 
 // PORT is the standard env var for Railway/Render/Heroku/Fly.io
 // API_PORT is our custom fallback, 3001 is the local dev default
@@ -94,6 +95,35 @@ const envSchema = z.object({
 
   // Extension system encryption key for secrets
   EXTENSION_ENCRYPTION_KEY: z.string().min(32).optional(),
+
+  /**
+   * Organizations allowed to run native extensions on this API, comma-separated
+   * UUIDs. A native extension's server code runs in-process with this API's full
+   * privileges (the service-role client reads every organization), so an org
+   * admin installing one is not enough: the operator must trust that org too.
+   * Unset means no native extension is loaded and /ext answers
+   * NATIVE_EXTENSIONS_DISABLED. See docs/extensions/index.md.
+   */
+  NATIVE_EXTENSIONS_ORG_IDS: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      try {
+        return parseNativeExtensionOrgIds(value)
+      } catch (err) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: err instanceof Error ? err.message : String(err),
+        })
+        return z.NEVER
+      }
+    }),
+
+  /**
+   * Base directory for extracted native packages (a private 0700 mkdtemp is made
+   * inside it at startup). Defaults to the OS temp directory.
+   */
+  NATIVE_EXTENSIONS_DIR: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
