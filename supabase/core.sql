@@ -115,19 +115,20 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 105 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 106 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Organization color swatches are now stored safely alongside personal swatches. The '
-  'schema adds an organization scope and creator audit field, makes the personal owner '
-  'optional only for organization-owned rows, and enforces that each row belongs to exactly '
-  'one scope. Row-level policies let every organization member read shared colors while '
-  'only an administrator may create, change, or remove them; personal swatches remain '
-  'private to their owner. Existing personal swatches are retained and attributed to their '
-  'existing owner during the idempotent upgrade. check_release_residue() refuses to stamp a '
-  'database that is missing the scope columns or still requires user_id, so the desktop '
-  'client cannot silently call organization color features against an older schema.'
+  'SOLIDWORKS serial numbers are private. An organization admin (is_org_admin()) reads '
+  'every licence and serial; anyone else reads only the licences assigned to them, through '
+  'the new SECURITY DEFINER helper my_solidworks_license_ids(). Licence assignments '
+  'are readable by their own user and by admins, no longer by every member. The policy that '
+  'let a user update any column of their own assignment is withdrawn, because repointing '
+  'license_id exposed another serial; activation still goes through '
+  'activate_solidworks_license() and deactivate_solidworks_license(). Released clients keep '
+  'working: a non-admin licence screen already showed only their own licences. '
+  'check_release_residue() refuses to stamp while a licence or assignment policy without '
+  'is_org_admin() remains.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -286,7 +287,7 @@ LANGUAGE sql IMMUTABLE AS $$
     -- Closing a hole and revoking what the hole produced.
     ('core', NULL, 'table', 'schema_remediation_log', NULL),
     ('core', NULL, 'function', 'record_remediation(text,integer,jsonb,text)', NULL),
-    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns'),
+    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns && sw_licence_policy'),
     ('core', NULL, 'function', 'set_color_swatch_creator()', 'auth.uid'),
     -- The two org-scoped RPCs core.sql owns that used to hand-write the
     -- membership test out of auth.uid().
@@ -462,6 +463,10 @@ LANGUAGE sql IMMUTABLE AS $$
     ('40-integrations', 'webhooks', 'table', 'integration_credentials', NULL),
     -- Trigger-only; its protection is its ACL, which verify-schema.sql checks.
     ('40-integrations', 'webhooks', 'function', 'apply_pending_license_assignments(uuid)', NULL),
+    -- The assignee arm of the solidworks_licenses SELECT policy (schema 106).
+    -- SECURITY DEFINER so that policy can read the assignments without the
+    -- assignment policies, which read solidworks_licenses, recursing.
+    ('40-integrations', 'webhooks', 'function', 'my_solidworks_license_ids()', 'auth.uid'),
     -- Both hand-wrote the membership test out of auth.uid(). Correct, and the
     -- reason check_org_gates() had to treat auth.uid() as evidence of a gate -
     -- which is what let a function with no authorization at all be certified.
@@ -2190,6 +2195,7 @@ DECLARE
   r RECORD;
   color_swatches_scope_columns BOOLEAN;
   color_swatches_scope_controls BOOLEAN;
+  sw_licence_policy RECORD;
 BEGIN
   -- ---------------------------------------------------------------------
   -- Share links handing out a file in an organization somebody involved is not
@@ -2451,6 +2457,37 @@ BEGIN
              || 'and both access policies. Re-run supabase/core.sql before verifying this release.';
       RETURN NEXT;
     END IF;
+  END IF;
+
+  -- SOLIDWORKS serial numbers are readable by admins and by the licence's own
+  -- assignee only (schema 106). A SELECT policy on solidworks_licenses with no
+  -- is_org_admin() arm is a leftover such as the pre-106 "Org members can view"
+  -- policy, which handed every member every serial; an assignment UPDATE policy without is_org_admin() lets a user repoint their
+  -- assignment's license_id at somebody else's licence and read its serial.
+  -- Policies are OR-ed, so one stale permissive policy undoes the release.
+  IF to_regclass('public.solidworks_licenses') IS NOT NULL THEN
+    FOR sw_licence_policy IN
+      SELECT p.tablename, p.policyname
+        FROM pg_policies p
+       WHERE p.schemaname = 'public'
+         AND (
+           (p.tablename = 'solidworks_licenses'
+             AND p.cmd IN ('SELECT', 'ALL')
+             AND p.permissive = 'PERMISSIVE'
+             AND COALESCE(p.qual, '') NOT LIKE '%is_org_admin()%')
+           OR
+           (p.tablename = 'solidworks_license_assignments'
+             AND p.cmd IN ('SELECT', 'UPDATE', 'ALL')
+             AND p.permissive = 'PERMISSIVE'
+             AND COALESCE(p.qual, '') NOT LIKE '%is_org_admin()%')
+         )
+    LOOP
+      residue := 'solidworks_license_policy_too_broad';
+      identity := 'public.' || sw_licence_policy.tablename || ' / ' || sw_licence_policy.policyname;
+      detail := 'This policy lets a non-admin read another user''s SOLIDWORKS serial number. '
+             || 'Re-run supabase/modules/40-integrations.sql, which drops it.';
+      RETURN NEXT;
+    END LOOP;
   END IF;
 END;
 $$;

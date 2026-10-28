@@ -734,11 +734,37 @@ CREATE INDEX IF NOT EXISTS idx_solidworks_license_assignments_user_id ON solidwo
 ALTER TABLE solidworks_licenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE solidworks_license_assignments ENABLE ROW LEVEL SECURITY;
 
--- Licenses: Org members can view
+-- Licenses: admins read every licence in their organization; anyone else reads
+-- only the licences assigned to them (schema 106). Before 106 every member read
+-- every row, serial_number included. The assignment test goes through a
+-- SECURITY DEFINER helper because the assignment policies below read
+-- solidworks_licenses, and a licence policy that read the assignments table
+-- under RLS would recurse.
+--
+-- The helper takes no argument on purpose: it answers only about the caller, so
+-- there is no row id for check_unbound_entity_args() to ask about and nothing
+-- to hand it that reaches another user's assignments.
+CREATE OR REPLACE FUNCTION my_solidworks_license_ids()
+RETURNS SETOF UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT license_id FROM solidworks_license_assignments WHERE user_id = auth.uid()
+$$;
+
+REVOKE ALL ON FUNCTION my_solidworks_license_ids() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION my_solidworks_license_ids() TO authenticated;
+
 DROP POLICY IF EXISTS "Org members can view solidworks licenses" ON solidworks_licenses;
-CREATE POLICY "Org members can view solidworks licenses"
+DROP POLICY IF EXISTS "Admins and assignees can view solidworks licenses" ON solidworks_licenses;
+CREATE POLICY "Admins and assignees can view solidworks licenses"
   ON solidworks_licenses FOR SELECT
-  USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
+  USING (
+    org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
+    AND (is_org_admin() OR id IN (SELECT my_solidworks_license_ids()))
+  );
 
 -- Licenses: Admins can insert
 DROP POLICY IF EXISTS "Admins can insert solidworks licenses" ON solidworks_licenses;
@@ -758,15 +784,18 @@ CREATE POLICY "Admins can delete solidworks licenses"
   ON solidworks_licenses FOR DELETE
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
--- Assignments: Users can view their own or admins can view all in org
+-- Assignments: users read their own, admins read every assignment in the org.
+-- The second arm used to admit any org member (the comment always said admins),
+-- which told every member who held which licence.
 DROP POLICY IF EXISTS "Users can view own license assignments" ON solidworks_license_assignments;
 CREATE POLICY "Users can view own license assignments"
   ON solidworks_license_assignments FOR SELECT
   USING (
-    user_id = auth.uid() OR 
-    license_id IN (
-      SELECT id FROM solidworks_licenses 
-      WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
+    user_id = auth.uid() OR (
+      is_org_admin() AND license_id IN (
+        SELECT id FROM solidworks_licenses
+        WHERE org_id IN (SELECT org_id FROM users WHERE id = auth.uid())
+      )
     )
   );
 
@@ -801,11 +830,13 @@ CREATE POLICY "Admins can delete license assignments"
     ) AND is_org_admin()
   );
 
--- Users can update their own activation status
+-- Withdrawn in schema 106. It let a user UPDATE any column of their own
+-- assignment, license_id included, so pointing it at another licence made that
+-- licence's serial readable through the assignee arm of the licence policy.
+-- Users change their activation through activate_solidworks_license() and
+-- deactivate_solidworks_license(), which are SECURITY DEFINER and touch only
+-- the activation columns; nothing in the app updated the row directly.
 DROP POLICY IF EXISTS "Users can update own assignment activation" ON solidworks_license_assignments;
-CREATE POLICY "Users can update own assignment activation"
-  ON solidworks_license_assignments FOR UPDATE
-  USING (user_id = auth.uid());
 
 -- Helper function: Assign license to user
 DROP FUNCTION IF EXISTS assign_solidworks_license(UUID, UUID);
