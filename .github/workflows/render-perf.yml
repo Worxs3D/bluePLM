@@ -15,7 +15,7 @@ name: Render performance
 # A scheduled run has no inputs; run.ts then uses its defaults (3 repetitions, 30 minutes).
 on:
   schedule:
-    - cron: '41 6 * * *'
+    - cron: '41 4 * * *'
   workflow_dispatch:
     inputs:
       reps:
