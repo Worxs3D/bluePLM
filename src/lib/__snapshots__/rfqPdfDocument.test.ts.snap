@@ -1,0 +1,383 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RFQ PDF document extraction baseline > captures the existing renderer formatter markup for a fixed RFQ fixture 1`] = `
+"
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RFQ RFQ-1042</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11px;
+      color: #1a1a1a;
+      line-height: 1.4;
+      padding: 40px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #0066cc;
+    }
+    
+    .company-info {
+      flex: 1;
+    }
+    
+    .company-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0066cc;
+      margin-bottom: 8px;
+    }
+    
+    .company-address {
+      color: #666;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    
+    .company-contact {
+      margin-top: 8px;
+      color: #666;
+      font-size: 10px;
+    }
+    
+    .rfq-title {
+      text-align: right;
+    }
+    
+    .rfq-number {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+    
+    .rfq-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .logo {
+      max-height: 60px;
+      max-width: 200px;
+      margin-bottom: 10px;
+    }
+    
+    .meta-section {
+      display: flex;
+      gap: 40px;
+      margin-bottom: 25px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    
+    .meta-group {
+      flex: 1;
+    }
+    
+    .meta-label {
+      font-size: 9px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+    }
+    
+    .meta-value {
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .addresses-section {
+      display: flex;
+      gap: 40px;
+      margin-bottom: 25px;
+    }
+    
+    .address-box {
+      flex: 1;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    
+    .address-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    
+    .address-content {
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+    }
+    
+    .items-table th {
+      background: #0066cc;
+      color: white;
+      padding: 10px 8px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .items-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #e5e5e5;
+      vertical-align: top;
+    }
+    
+    .items-table tr:nth-child(even) {
+      background: #fafafa;
+    }
+    
+    .items-table tr:hover {
+      background: #f0f7ff;
+    }
+    
+    .line-num {
+      width: 30px;
+      text-align: center;
+      color: #999;
+    }
+    
+    .part-num {
+      font-weight: 600;
+      color: #0066cc;
+    }
+    
+    .qty {
+      text-align: center;
+      font-weight: 500;
+    }
+    
+    .rev {
+      text-align: center;
+    }
+    
+    .notes-section {
+      margin-bottom: 25px;
+    }
+    
+    .notes-content {
+      padding: 15px;
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 6px 6px 0;
+      font-size: 11px;
+    }
+    
+    .terms-section {
+      margin-bottom: 25px;
+    }
+    
+    .terms-content {
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 10px;
+      color: #666;
+      white-space: pre-wrap;
+    }
+    
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+      text-align: center;
+      font-size: 9px;
+      color: #999;
+    }
+    
+    .signature-section {
+      margin-top: 40px;
+      display: flex;
+      justify-content: space-between;
+      gap: 60px;
+    }
+    
+    .signature-box {
+      flex: 1;
+      border-top: 1px solid #333;
+      padding-top: 8px;
+    }
+    
+    .signature-label {
+      font-size: 10px;
+      color: #666;
+    }
+    
+    @media print {
+      body {
+        padding: 20px;
+      }
+      
+      .items-table {
+        page-break-inside: auto;
+      }
+      
+      .items-table tr {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-info">
+      
+      <div class="company-name">Blue Example Manufacturing</div>
+      
+        <div class="company-address">
+          100 Industrial Way<br>Springfield, Ohio, 45502<br>USA
+        </div>
+      
+      
+        <div class="company-contact">
+          Tel: +1 555 0100 • Email: purchasing@example.invalid • https://example.invalid
+        </div>
+      
+    </div>
+    <div class="rfq-title">
+      <div class="rfq-label">Request for Quote</div>
+      <div class="rfq-number">RFQ-1042</div>
+    </div>
+  </div>
+  
+  <div class="meta-section">
+    <div class="meta-group">
+      <div class="meta-label">RFQ Title</div>
+      <div class="meta-value">Precision bracket</div>
+    </div>
+    <div class="meta-group">
+      <div class="meta-label">Date Issued</div>
+      <div class="meta-value">10/18/2026</div>
+    </div>
+    
+      <div class="meta-group">
+        <div class="meta-label">Quote Due By</div>
+        <div class="meta-value">10/30/2026</div>
+      </div>
+    
+    
+      <div class="meta-group">
+        <div class="meta-label">Delivery Required</div>
+        <div class="meta-value">11/7/2026</div>
+      </div>
+    
+  </div>
+  
+  
+    <div class="notes-section">
+      <div class="section-title">Project Description</div>
+      <div class="notes-content">Quote the listed machined component.</div>
+    </div>
+  
+  
+  
+    <div class="addresses-section">
+      
+        <div class="address-box">
+          <div class="address-label">Bill To:</div>
+          <div class="address-content">
+            ATTN: Accounts Payable<br>100 Industrial Way<br>Springfield, Ohio, 45502
+          </div>
+        </div>
+      
+      
+        <div class="address-box">
+          <div class="address-label">Ship To:</div>
+          <div class="address-content">
+            ATTN: Dock 4<br>200 Receiving Road<br>Springfield, Ohio, 45503
+          </div>
+        </div>
+      
+    </div>
+  
+  
+  <div class="section-title">Items (1)</div>
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Part Number</th>
+        <th>Description</th>
+        <th>Rev</th>
+        <th>Quantity</th>
+        <th>Material</th>
+        <th>Finish</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="line-num">1</td><td class="part-num">BRK-204</td><td class="desc">Mounting bracket</td><td class="rev">B</td><td class="qty">25 pcs</td><td class="material">6061-T6 Aluminum</td><td class="finish">Clear anodize</td><td class="notes">Keep flatness within drawing tolerance.</td></tr>
+    </tbody>
+  </table>
+  
+  
+    <div class="notes-section">
+      <div class="section-title">Notes to Supplier</div>
+      <div class="notes-content">Include material certificate.</div>
+    </div>
+  
+  
+  
+    <div class="terms-section">
+      <div class="section-title">Terms and Conditions</div>
+      <div class="terms-content">Pricing must remain valid for 30 days.</div>
+    </div>
+  
+  
+  <div class="signature-section">
+    <div class="signature-box">
+      <div class="signature-label">Supplier Signature / Date</div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-label">Print Name / Title</div>
+    </div>
+  </div>
+  
+  <div class="footer">
+    Thank you for your quotation.
+  </div>
+</body>
+</html>
+"
+`;
