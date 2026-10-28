@@ -902,6 +902,13 @@ export const es: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      'Esta versión de BluePLM no ejecuta extensiones. Los paquetes instalados se guardan en este equipo, pero no se ejecuta ningún código de extensión: el entorno aislado no está disponible.',
+    installedNotRunning: 'Instalada (sin ejecutar)',
+    adminOnly: 'Solo los administradores pueden instalar o quitar extensiones.',
+    notAdminError: 'Solo los administradores pueden instalar extensiones.',
+  },
   strandedEdits: {
     checkoutLost:
       'Su desprotección de {{name}} se liberó mientras tenía cambios de metadatos sin guardar. Ya no se pueden proteger. Al volver a desproteger el archivo se le preguntará antes de descartarlos - anótelos si los necesita.',

@@ -3,19 +3,23 @@
  *
  * This is the primary UI for the in-app extension store.
  * Provides tabs for browsing the store and managing installed extensions.
+ *
+ * Installed packages are not run: the desktop has no extension runtime, and the
+ * page says so. Install, sideload and uninstall are shown to administrators only
+ * (getEffectiveRole() === 'admin', which includes the Administrators team).
  */
 import { useEffect, useState } from 'react'
-import { Store, Package, RefreshCw, Upload, Bell } from 'lucide-react'
+import { Store, Package, Upload, Info } from 'lucide-react'
 
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useExtensions } from '@/hooks/useExtensions'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 
 import { ExtensionList } from './ExtensionList'
 import { ExtensionDetailsDialog } from './ExtensionDetailsDialog'
 import { InstallDialog } from './InstallDialog'
-import { UpdateDialog } from './UpdateDialog'
 import { SideloadDialog } from './SideloadDialog'
 
 type TabId = 'store' | 'installed'
@@ -25,20 +29,16 @@ export function ExtensionStoreView() {
   const [selectedExtensionId, setSelectedExtensionId] = useState<string | null>(null)
   const [showInstallDialog, setShowInstallDialog] = useState(false)
   const [installExtensionId, setInstallExtensionId] = useState<string | null>(null)
-  const [showUpdateDialog, setShowUpdateDialog] = useState(false)
-  const [updateExtensionId, setUpdateExtensionId] = useState<string | null>(null)
   const [showSideloadDialog, setShowSideloadDialog] = useState(false)
 
-  const { installedExtensions, storeExtensions, availableUpdates, storeLoading, checkingUpdates } =
-    useExtensions()
+  const { installedExtensions, storeExtensions, storeLoading } = useExtensions()
+  const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
 
   const {
     fetchStoreExtensions,
     loadInstalledExtensions,
     uninstallExtension,
-    enableExtension,
-    disableExtension,
-    checkForUpdates,
+    addToast,
     pendingDeepLinkInstall,
     clearPendingDeepLinkInstall,
   } = usePDMStore(
@@ -58,7 +58,6 @@ export function ExtensionStoreView() {
   useEffect(() => {
     loadInstalledExtensions()
     fetchStoreExtensions()
-    checkForUpdates()
   }, [])
 
   // Handle pending deep link install
@@ -70,7 +69,12 @@ export function ExtensionStoreView() {
 
       // Check if extension exists in store
       const storeExt = storeExtensions.find((e) => e.extensionId === extensionId)
-      if (storeExt) {
+      if (!isAdmin) {
+        log.warn('[ExtensionStore]', 'Deep link install refused: not an administrator', {
+          extensionId,
+        })
+        addToast('warning', t('extensionRuntime.adminOnly'))
+      } else if (storeExt) {
         // Open install dialog for this extension
         setInstallExtensionId(extensionId)
         setShowInstallDialog(true)
@@ -81,7 +85,7 @@ export function ExtensionStoreView() {
       // Clear the pending install regardless (don't re-trigger)
       clearPendingDeepLinkInstall()
     }
-  }, [pendingDeepLinkInstall, storeExtensions, clearPendingDeepLinkInstall])
+  }, [pendingDeepLinkInstall, storeExtensions, clearPendingDeepLinkInstall, isAdmin, addToast])
 
   // Convert installed extensions record to array
   const installedArray = Object.values(installedExtensions)
@@ -101,26 +105,12 @@ export function ExtensionStoreView() {
     await uninstallExtension(extensionId)
   }
 
-  const handleUpdate = (extensionId: string) => {
-    setUpdateExtensionId(extensionId)
-    setShowUpdateDialog(true)
-  }
-
-  const handleEnable = async (extensionId: string) => {
-    await enableExtension(extensionId)
-  }
-
-  const handleDisable = async (extensionId: string) => {
-    await disableExtension(extensionId)
-  }
-
   const handleRefresh = () => {
     if (activeTab === 'store') {
       fetchStoreExtensions()
     } else {
       loadInstalledExtensions()
     }
-    checkForUpdates()
   }
 
   return (
@@ -134,40 +124,28 @@ export function ExtensionStoreView() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Updates badge */}
-            {availableUpdates.length > 0 && (
+            {/* Sideload button (administrators only) */}
+            {isAdmin && (
               <button
-                onClick={() => setActiveTab('installed')}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 text-blue-400 
-                  rounded-lg hover:bg-blue-600/30 transition-colors"
+                onClick={() => setShowSideloadDialog(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 text-gray-300 
+                  rounded-lg hover:bg-gray-700 transition-colors"
               >
-                <Bell size={16} />
-                <span className="text-sm font-medium">
-                  {availableUpdates.length} update{availableUpdates.length !== 1 ? 's' : ''}
-                </span>
+                <Upload size={16} />
+                <span className="text-sm">Sideload</span>
               </button>
             )}
+          </div>
+        </div>
 
-            {/* Sideload button */}
-            <button
-              onClick={() => setShowSideloadDialog(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 text-gray-300 
-                rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <Upload size={16} />
-              <span className="text-sm">Sideload</span>
-            </button>
-
-            {/* Check updates button */}
-            <button
-              onClick={() => checkForUpdates()}
-              disabled={checkingUpdates}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 text-gray-300 
-                rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw size={16} className={checkingUpdates ? 'animate-spin' : ''} />
-              <span className="text-sm">Check Updates</span>
-            </button>
+        {/* No runtime: say so rather than imply installed extensions run */}
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+          <Info size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <p>{t('extensionRuntime.notice')}</p>
+            {!isAdmin && (
+              <p className="mt-1 text-amber-400/80">{t('extensionRuntime.adminOnly')}</p>
+            )}
           </div>
         </div>
 
@@ -201,11 +179,6 @@ export function ExtensionStoreView() {
             <span className="ml-1 px-1.5 py-0.5 bg-black/20 rounded text-xs">
               {installedArray.length}
             </span>
-            {availableUpdates.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 bg-blue-500 rounded-full text-xs">
-                {availableUpdates.length}
-              </span>
-            )}
           </button>
         </div>
       </div>
@@ -216,29 +189,21 @@ export function ExtensionStoreView() {
           <ExtensionList
             storeExtensions={storeExtensions}
             installedExtensions={installedArray}
-            updates={availableUpdates}
             loading={storeLoading}
             emptyMessage="No extensions available in the store yet."
             onViewDetails={handleViewDetails}
-            onInstall={handleInstall}
-            onUninstall={handleUninstall}
-            onUpdate={handleUpdate}
-            onEnable={handleEnable}
-            onDisable={handleDisable}
+            onInstall={isAdmin ? handleInstall : undefined}
+            onUninstall={isAdmin ? handleUninstall : undefined}
             onRefresh={handleRefresh}
           />
         ) : (
           <ExtensionList
             installedExtensions={installedArray}
-            updates={availableUpdates}
             loading={false}
             emptyMessage="No extensions installed. Browse the store to find extensions."
             showFilters={false}
             onViewDetails={handleViewDetails}
-            onUninstall={handleUninstall}
-            onUpdate={handleUpdate}
-            onEnable={handleEnable}
-            onDisable={handleDisable}
+            onUninstall={isAdmin ? handleUninstall : undefined}
             onRefresh={handleRefresh}
           />
         )}
@@ -249,22 +214,25 @@ export function ExtensionStoreView() {
         extensionId={selectedExtensionId}
         open={!!selectedExtensionId}
         onClose={() => setSelectedExtensionId(null)}
-        onInstall={() => {
-          if (selectedExtensionId) {
-            handleInstall(selectedExtensionId)
-          }
-        }}
-        onUninstall={() => {
-          if (selectedExtensionId) {
-            handleUninstall(selectedExtensionId)
-            setSelectedExtensionId(null)
-          }
-        }}
-        onUpdate={() => {
-          if (selectedExtensionId) {
-            handleUpdate(selectedExtensionId)
-          }
-        }}
+        onInstall={
+          isAdmin
+            ? () => {
+                if (selectedExtensionId) {
+                  handleInstall(selectedExtensionId)
+                }
+              }
+            : undefined
+        }
+        onUninstall={
+          isAdmin
+            ? () => {
+                if (selectedExtensionId) {
+                  handleUninstall(selectedExtensionId)
+                  setSelectedExtensionId(null)
+                }
+              }
+            : undefined
+        }
       />
 
       <InstallDialog
@@ -276,16 +244,9 @@ export function ExtensionStoreView() {
         }}
       />
 
-      <UpdateDialog
-        extensionId={updateExtensionId}
-        open={showUpdateDialog}
-        onClose={() => {
-          setShowUpdateDialog(false)
-          setUpdateExtensionId(null)
-        }}
-      />
-
-      <SideloadDialog open={showSideloadDialog} onClose={() => setShowSideloadDialog(false)} />
+      {isAdmin && (
+        <SideloadDialog open={showSideloadDialog} onClose={() => setShowSideloadDialog(false)} />
+      )}
     </div>
   )
 }

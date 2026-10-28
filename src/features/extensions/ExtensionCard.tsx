@@ -3,28 +3,22 @@
  *
  * Used in the extension store and installed extensions list.
  * Shows extension metadata, verification status, and action buttons.
+ * Install and uninstall buttons render only when the parent passes their handler,
+ * which it does for administrators only.
  */
 import { useState } from 'react'
-import { Download, Trash2, RefreshCw, Power, PowerOff, ExternalLink, Star } from 'lucide-react'
+import { Download, Trash2, RefreshCw, ExternalLink, Star } from 'lucide-react'
 import { VerificationBadge, NativeBadge } from './VerificationBadge'
-import type {
-  InstalledExtension,
-  StoreExtensionListing,
-  ExtensionUpdateAvailable,
-} from '@/stores/types'
+import type { InstalledExtension, StoreExtensionListing } from '@/stores/types'
 import { usePDMStore } from '@/stores/pdmStore'
 
 interface ExtensionCardProps {
   // Either installed extension or store listing
   extension?: InstalledExtension
   storeExtension?: StoreExtensionListing
-  update?: ExtensionUpdateAvailable
   onViewDetails?: () => void
   onInstall?: () => void
   onUninstall?: () => void
-  onUpdate?: () => void
-  onEnable?: () => void
-  onDisable?: () => void
   compact?: boolean
   className?: string
 }
@@ -32,13 +26,9 @@ interface ExtensionCardProps {
 export function ExtensionCard({
   extension,
   storeExtension,
-  update,
   onViewDetails,
   onInstall,
   onUninstall,
-  onUpdate,
-  onEnable,
-  onDisable,
   compact = false,
   className = '',
 }: ExtensionCardProps) {
@@ -62,15 +52,11 @@ export function ExtensionCard({
   const downloadCount = storeExtension?.downloadCount
   const deprecation = storeExtension?.deprecation
 
-  // Extension state
-  const state = extension?.state || 'not-installed'
-  const isActive = state === 'active'
-  const isDisabled = state === 'disabled'
-  const hasError = state === 'error'
   const verification = extension?.verification || (isVerified ? 'verified' : 'community')
 
   // Check if we can install (not already installed)
-  const canInstall = isFromStore && !isExtensionInstalled(storeExtension.extensionId)
+  const canInstall =
+    isFromStore && !!onInstall && !isExtensionInstalled(storeExtension.extensionId)
 
   // Handle action with loading state
   const handleAction = async (action: string, handler?: () => void | Promise<void>) => {
@@ -108,21 +94,8 @@ export function ExtensionCard({
           <div className="text-xs text-gray-400">v{version}</div>
         </div>
 
-        {/* State indicator */}
-        {isInstalled && (
-          <div
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              isActive
-                ? 'bg-green-500'
-                : isDisabled
-                  ? 'bg-gray-500'
-                  : hasError
-                    ? 'bg-red-500'
-                    : 'bg-yellow-500'
-            }`}
-            title={state}
-          />
-        )}
+        {/* Installed indicator: a package on disk, not a running extension */}
+        {isInstalled && <div className="w-2 h-2 rounded-full shrink-0 bg-gray-500" />}
       </div>
     )
   }
@@ -202,21 +175,6 @@ export function ExtensionCard({
         </div>
       )}
 
-      {/* Update available badge */}
-      {update && (
-        <div className="mt-3 p-2 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs">
-          Update available: v{update.currentVersion} → v{update.newVersion}
-          {update.breaking && <span className="ml-2 text-amber-400">(Breaking changes)</span>}
-        </div>
-      )}
-
-      {/* Error state */}
-      {hasError && extension?.error && (
-        <div className="mt-3 p-2 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-          Error: {extension.error}
-        </div>
-      )}
-
       {/* Actions */}
       <div className="mt-4 flex items-center gap-2">
         {/* View Details */}
@@ -245,60 +203,8 @@ export function ExtensionCard({
           </button>
         )}
 
-        {/* Update button */}
-        {update && (
-          <button
-            onClick={() => handleAction('update', onUpdate)}
-            disabled={actionLoading === 'update'}
-            className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 
-              text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
-          >
-            {actionLoading === 'update' ? (
-              <RefreshCw size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
-            Update
-          </button>
-        )}
-
-        {/* Enable/Disable toggle (for installed extensions) */}
-        {isInstalled && !hasError && (
-          <>
-            {isDisabled ? (
-              <button
-                onClick={() => handleAction('enable', onEnable)}
-                disabled={actionLoading === 'enable'}
-                className="px-3 py-1.5 text-sm rounded-lg bg-green-600/20 hover:bg-green-600/30 
-                  text-green-400 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {actionLoading === 'enable' ? (
-                  <RefreshCw size={14} className="animate-spin" />
-                ) : (
-                  <Power size={14} />
-                )}
-                Enable
-              </button>
-            ) : (
-              <button
-                onClick={() => handleAction('disable', onDisable)}
-                disabled={actionLoading === 'disable'}
-                className="px-3 py-1.5 text-sm rounded-lg bg-gray-700/50 hover:bg-gray-700 
-                  text-gray-400 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {actionLoading === 'disable' ? (
-                  <RefreshCw size={14} className="animate-spin" />
-                ) : (
-                  <PowerOff size={14} />
-                )}
-                Disable
-              </button>
-            )}
-          </>
-        )}
-
         {/* Uninstall button */}
-        {isInstalled && (
+        {isInstalled && onUninstall && (
           <button
             onClick={() => handleAction('uninstall', onUninstall)}
             disabled={actionLoading === 'uninstall'}

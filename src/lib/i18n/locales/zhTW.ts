@@ -864,6 +864,13 @@ export const zhTW: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      '此版本的 BluePLM 不執行擴充功能。已安裝的套件保存在此電腦上，但不會執行任何擴充功能程式碼：沙箱執行環境無法使用。',
+    installedNotRunning: '已安裝（未執行）',
+    adminOnly: '只有管理員可以安裝或移除擴充功能。',
+    notAdminError: '只有管理員可以安裝擴充功能。',
+  },
   strandedEdits: {
     checkoutLost:
       '您對 {{name}} 的簽出已被釋放，而它仍有未儲存的中繼資料編輯。這些編輯已無法簽入。再次簽出該檔案時，會在捨棄它們之前詢問您 - 如有需要請先記下。',

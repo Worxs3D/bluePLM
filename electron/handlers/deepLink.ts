@@ -11,6 +11,8 @@
 
 import { BrowserWindow, ipcMain } from 'electron'
 
+import { isValidExtensionId, isValidExtensionVersion } from './extensions/validation'
+
 // ============================================
 // Types
 // ============================================
@@ -24,6 +26,8 @@ export interface ParsedDeepLink {
   action: 'install' | 'unknown'
   extensionId?: string
   version?: string
+  /** Set when the link was recognised but refused (invalid id or version). */
+  error?: string
   raw: string
 }
 
@@ -45,28 +49,6 @@ let pendingDeepLink: string | null = null
 // ============================================
 // URL Parsing
 // ============================================
-
-/**
- * Validate extension ID format
- * Extension IDs should be lowercase alphanumeric with hyphens, 3-64 chars
- */
-function isValidExtensionId(id: string): boolean {
-  if (!id || typeof id !== 'string') return false
-  // Allow alphanumeric, hyphens, and underscores, 3-64 characters
-  const pattern = /^[a-z0-9][a-z0-9_-]{1,62}[a-z0-9]$/
-  return pattern.test(id)
-}
-
-/**
- * Validate version format (semver-like)
- * Accepts: 1.0.0, 1.0.0-beta.1, etc.
- */
-function isValidVersion(version: string): boolean {
-  if (!version || typeof version !== 'string') return false
-  // Basic semver pattern
-  const pattern = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/
-  return pattern.test(version)
-}
 
 /**
  * Parse a blueplm:// URL into structured data
@@ -96,26 +78,29 @@ export function parseDeepLink(url: string): ParsedDeepLink {
       result.action = 'install'
 
       // Extension ID is the first path segment after action
-      // Could be in pathname (blueplm://install/ext-id) or after hostname
+      // Could be in pathname (blueplm://install/ext-id) or after hostname.
+      // It must be a manifest id (publisher.name, schemas/extension-v1.schema.json);
+      // anything else is refused, never passed on to the renderer.
       const extensionId = pathParts[0] || pathParts[1]
-
-      if (extensionId && isValidExtensionId(extensionId)) {
-        result.extensionId = extensionId
-      } else if (extensionId) {
-        // Log invalid but continue - might be a valid ID we're being too strict about
-        deps?.log(`Deep link extension ID may be invalid: ${extensionId}`)
+      if (extensionId) {
+        if (!isValidExtensionId(extensionId)) {
+          deps?.logError('Deep link refused: invalid extension ID', { extensionId })
+          result.error = 'Invalid extension ID'
+          return result
+        }
         result.extensionId = extensionId
       }
 
       // Version from query params
       const version = parsed.searchParams.get('version')
-      if (version) {
-        if (isValidVersion(version)) {
-          result.version = version
-        } else {
-          deps?.log(`Deep link version may be invalid: ${version}`)
-          result.version = version
+      if (version !== null) {
+        if (!isValidExtensionVersion(version)) {
+          deps?.logError('Deep link refused: invalid version', { version })
+          result.extensionId = undefined
+          result.error = 'Invalid version'
+          return result
         }
+        result.version = version
       }
     }
   } catch (error) {
@@ -147,6 +132,9 @@ export async function handleDeepLink(url: string): Promise<DeepLinkResult> {
   }
 
   if (parsed.action === 'install') {
+    if (parsed.error) {
+      return { success: false, action: 'install', error: parsed.error }
+    }
     if (!parsed.extensionId) {
       deps?.logError('Install deep link missing extension ID', { url })
       return {

@@ -17,6 +17,7 @@ import {
   FolderOpen,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { t } from '@/lib/i18n'
 
 interface SideloadDialogProps {
   open: boolean
@@ -32,7 +33,6 @@ export function SideloadDialog({ open, onClose }: SideloadDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [warningAccepted, setWarningAccepted] = useState(false)
 
-  const installProgress = usePDMStore((s) => s.installProgress)
   const sideloadExtension = usePDMStore((s) => s.sideloadExtension)
   const addToast = usePDMStore((s) => s.addToast)
 
@@ -110,7 +110,11 @@ export function SideloadDialog({ open, onClose }: SideloadDialogProps) {
         setSideloadState('success')
         addToast('success', `Extension installed from ${fileName}`)
       } else {
-        setError(result.error || 'Installation failed')
+        setError(
+          result.adminRequired
+            ? t('extensionRuntime.notAdminError')
+            : result.error || 'Installation failed',
+        )
         setSideloadState('error')
       }
     } catch (error) {
@@ -227,17 +231,7 @@ export function SideloadDialog({ open, onClose }: SideloadDialogProps) {
                 <Upload size={32} className="text-amber-400 animate-bounce" />
               </div>
               <h3 className="text-lg font-semibold text-gray-100 mb-2">Installing...</h3>
-              <p className="text-sm text-gray-400">
-                {installProgress?.message || 'Please wait...'}
-              </p>
-              {installProgress && (
-                <div className="mt-4 w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="h-full bg-amber-500 transition-all duration-300"
-                    style={{ width: `${installProgress.percent}%` }}
-                  />
-                </div>
-              )}
+              <p className="text-sm text-gray-400">Please wait...</p>
             </div>
           )}
 

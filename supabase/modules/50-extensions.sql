@@ -240,11 +240,25 @@ CREATE POLICY "Admins can manage extension config"
   ON org_extension_config FOR ALL
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
--- Extension Storage: Extensions can access their own storage
+-- Extension Storage: written and read by the API on an extension's behalf, never
+-- by a signed-in user directly. The old policy let every member of an org read
+-- and rewrite every extension's storage for that org, so one member could forge
+-- another extension's state. Only service_role now; admins keep DELETE so that
+-- uninstalling an extension (api/src/extensions/loader.ts uninstallExtension,
+-- which runs with the admin's own client) still clears its rows.
 DROP POLICY IF EXISTS "Extension storage access" ON extension_storage;
-CREATE POLICY "Extension storage access"
+DROP POLICY IF EXISTS "Service can manage extension storage" ON extension_storage;
+CREATE POLICY "Service can manage extension storage"
   ON extension_storage FOR ALL
-  USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));
+  TO service_role
+  USING (TRUE)
+  WITH CHECK (TRUE);
+
+DROP POLICY IF EXISTS "Admins can delete extension storage" ON extension_storage;
+CREATE POLICY "Admins can delete extension storage"
+  ON extension_storage FOR DELETE
+  TO authenticated
+  USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
 -- Extension Secrets: Admins can view names, service role can access values
 DROP POLICY IF EXISTS "Admins can view secret names" ON extension_secrets;
@@ -269,9 +283,13 @@ CREATE POLICY "Admins can view secret access log"
   ON extension_secret_access FOR SELECT
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
+-- An audit log any signed-in user can append to is not evidence: the old
+-- policy had no TO clause, so it applied to every role, and WITH CHECK (TRUE)
+-- let anyone insert rows for any org. Only service_role writes it now.
 DROP POLICY IF EXISTS "Service can write secret access log" ON extension_secret_access;
 CREATE POLICY "Service can write secret access log"
   ON extension_secret_access FOR INSERT
+  TO service_role
   WITH CHECK (TRUE);
 
 -- HTTP Log: Admins can view
@@ -280,9 +298,13 @@ CREATE POLICY "Admins can view http log"
   ON extension_http_log FOR SELECT
   USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()) AND is_org_admin());
 
+-- An audit log any signed-in user can append to is not evidence: the old
+-- policy had no TO clause, so it applied to every role, and WITH CHECK (TRUE)
+-- let anyone insert rows for any org. Only service_role writes it now.
 DROP POLICY IF EXISTS "Service can write http log" ON extension_http_log;
 CREATE POLICY "Service can write http log"
   ON extension_http_log FOR INSERT
+  TO service_role
   WITH CHECK (TRUE);
 
 -- ===========================================
@@ -301,7 +323,8 @@ CREATE OR REPLACE FUNCTION get_extension_config(
   p_org_id UUID,
   p_extension_id TEXT
 ) RETURNS JSONB
-LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_config JSONB;
 BEGIN
@@ -323,7 +346,8 @@ CREATE OR REPLACE FUNCTION update_extension_config(
   p_extension_id TEXT,
   p_config JSONB
 ) RETURNS BOOLEAN
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   -- Membership, then admin. The single conjunction this replaces admitted the
   -- same callers and hand-wrote the organization binding out of auth.uid(),
@@ -362,7 +386,8 @@ CREATE OR REPLACE FUNCTION get_extension_stats(
   http_requests_24h BIGINT,
   last_http_request TIMESTAMPTZ
 )
-LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   PERFORM require_org_member(p_org_id);
 
@@ -386,7 +411,8 @@ GRANT EXECUTE ON FUNCTION get_extension_stats(UUID, TEXT) TO authenticated;
 CREATE OR REPLACE FUNCTION cleanup_extension_http_logs(
   p_retention_days INTEGER DEFAULT 30
 ) RETURNS INTEGER
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   deleted_count INTEGER;
 BEGIN
@@ -435,7 +461,8 @@ REVOKE ALL ON FUNCTION cleanup_extension_http_logs(INTEGER) FROM PUBLIC, anon, a
 CREATE OR REPLACE FUNCTION cleanup_extension_secret_access_logs(
   p_retention_days INTEGER DEFAULT 90
 ) RETURNS INTEGER
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   deleted_count INTEGER;
 BEGIN

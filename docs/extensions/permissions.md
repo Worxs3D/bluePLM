@@ -1,5 +1,7 @@
 # Permissions Reference
 
+> **Status:** this page describes the designed extension API. No extension code runs today, on the desktop or on the API server. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 BluePLM extensions use a permission system to control access to APIs. Users see requested permissions before installing an extension. This document covers all available permissions in detail.
 
 ## Overview

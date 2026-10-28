@@ -909,6 +909,13 @@ export const fr: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      "Cette version de BluePLM n'exécute pas les extensions. Les paquets installés sont conservés sur cet ordinateur, mais aucun code d'extension n'est exécuté : l'environnement isolé n'est pas disponible.",
+    installedNotRunning: 'Installée (non exécutée)',
+    adminOnly: 'Seuls les administrateurs peuvent installer ou supprimer des extensions.',
+    notAdminError: 'Seuls les administrateurs peuvent installer des extensions.',
+  },
   strandedEdits: {
     checkoutLost:
       'Votre extraction de {{name}} a été libérée alors qu’il avait des modifications de métadonnées non enregistrées. Elles ne peuvent plus être archivées. En extrayant à nouveau le fichier, vous serez averti avant qu’elles soient supprimées - notez-les si vous en avez besoin.',

@@ -2164,6 +2164,13 @@ export const en: TranslationDict = {
   },
 
   // Unsaved metadata edits left behind when a checkout went away without a check-in
+  extensionRuntime: {
+    notice:
+      'Extensions are not run by this version of BluePLM. Installed packages are kept on this computer, but no extension code is executed: the sandboxed runtime is not available.',
+    installedNotRunning: 'Installed (not running)',
+    adminOnly: 'Only administrators can install or remove extensions.',
+    notAdminError: 'Only administrators can install extensions.',
+  },
   strandedEdits: {
     checkoutLost:
       'Your checkout of {{name}} was released while it had unsaved metadata edits. They can no longer be checked in. Checking the file out again will ask before discarding them — note them down if you need them.',

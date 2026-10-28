@@ -5,7 +5,8 @@
  * - Description and metadata
  * - Permissions required
  * - Changelog
- * - Install/Update/Uninstall actions
+ * - Install/Uninstall actions (shown only when the parent passes a handler,
+ *   which it does for administrators only)
  */
 import { useMemo } from 'react'
 import {
@@ -19,10 +20,10 @@ import {
   Shield,
   Lock,
   Code,
-  Bell,
 } from 'lucide-react'
 import { VerificationBadge, NativeBadge } from './VerificationBadge'
 import { usePDMStore } from '@/stores/pdmStore'
+import { t } from '@/lib/i18n'
 
 interface ExtensionDetailsDialogProps {
   extensionId: string | null
@@ -30,7 +31,6 @@ interface ExtensionDetailsDialogProps {
   onClose: () => void
   onInstall?: () => void
   onUninstall?: () => void
-  onUpdate?: () => void
 }
 
 export function ExtensionDetailsDialog({
@@ -39,22 +39,19 @@ export function ExtensionDetailsDialog({
   onClose,
   onInstall,
   onUninstall,
-  onUpdate,
 }: ExtensionDetailsDialogProps) {
   const installedExtensions = usePDMStore((s) => s.installedExtensions)
   const storeExtensions = usePDMStore((s) => s.storeExtensions)
-  const availableUpdates = usePDMStore((s) => s.availableUpdates)
 
   // Find the extension data
-  const { installed, storeExt, update } = useMemo(() => {
-    if (!extensionId) return { installed: undefined, storeExt: undefined, update: undefined }
+  const { installed, storeExt } = useMemo(() => {
+    if (!extensionId) return { installed: undefined, storeExt: undefined }
 
     const installed = installedExtensions[extensionId]
     const storeExt = storeExtensions.find((e) => e.extensionId === extensionId)
-    const update = availableUpdates.find((u) => u.extensionId === extensionId)
 
-    return { installed, storeExt, update }
-  }, [extensionId, installedExtensions, storeExtensions, availableUpdates])
+    return { installed, storeExt }
+  }, [extensionId, installedExtensions, storeExtensions])
 
   if (!open || !extensionId) return null
 
@@ -78,8 +75,7 @@ export function ExtensionDetailsDialog({
   const deprecation = storeExt?.deprecation
 
   const isInstalled = !!installed
-  const canInstall = !isInstalled && !!storeExt
-  const hasUpdate = !!update
+  const canInstall = !isInstalled && !!storeExt && !!onInstall
 
   return (
     <div
@@ -157,28 +153,6 @@ export function ExtensionDetailsDialog({
                 <p className="text-xs text-red-400 mt-2">
                   Sunset date: {new Date(deprecation.sunsetDate).toLocaleDateString()}
                 </p>
-              )}
-            </div>
-          )}
-
-          {/* Update available */}
-          {update && (
-            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
-              <h3 className="font-semibold text-blue-400 mb-1">Update Available</h3>
-              <p className="text-sm text-blue-300">
-                Version {update.newVersion} is available (currently {update.currentVersion})
-              </p>
-              {update.breaking && (
-                <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
-                  <Bell size={12} />
-                  Contains breaking changes
-                </p>
-              )}
-              {update.changelog && (
-                <div className="mt-3 p-3 rounded bg-gray-800/50 text-sm text-gray-300">
-                  <p className="font-medium mb-1">Changelog:</p>
-                  <p className="whitespace-pre-wrap">{update.changelog}</p>
-                </div>
               )}
             </div>
           )}
@@ -279,28 +253,13 @@ export function ExtensionDetailsDialog({
                 Status
               </h3>
               <div className="flex items-center gap-3">
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    installed.state === 'active'
-                      ? 'bg-green-500'
-                      : installed.state === 'disabled'
-                        ? 'bg-gray-500'
-                        : installed.state === 'error'
-                          ? 'bg-red-500'
-                          : 'bg-yellow-500'
-                  }`}
-                />
-                <span className="text-gray-300 capitalize">{installed.state}</span>
+                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <span className="text-gray-300">{t('extensionRuntime.installedNotRunning')}</span>
               </div>
-              {installed.error && <p className="mt-2 text-sm text-red-400">{installed.error}</p>}
+              <p className="mt-2 text-xs text-gray-500">{t('extensionRuntime.notice')}</p>
               {installed.installedAt && (
                 <p className="mt-2 text-xs text-gray-500">
                   Installed: {new Date(installed.installedAt).toLocaleString()}
-                </p>
-              )}
-              {installed.activatedAt && (
-                <p className="text-xs text-gray-500">
-                  Last activated: {new Date(installed.activatedAt).toLocaleString()}
                 </p>
               )}
             </div>
@@ -318,7 +277,7 @@ export function ExtensionDetailsDialog({
 
           <div className="flex items-center gap-2">
             {/* Uninstall */}
-            {isInstalled && (
+            {isInstalled && onUninstall && (
               <button
                 onClick={onUninstall}
                 className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 
@@ -326,18 +285,6 @@ export function ExtensionDetailsDialog({
               >
                 <Trash2 size={16} />
                 Uninstall
-              </button>
-            )}
-
-            {/* Update */}
-            {hasUpdate && (
-              <button
-                onClick={onUpdate}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white 
-                  rounded-lg transition-colors flex items-center gap-2"
-              >
-                <RefreshCw size={16} />
-                Update to {update.newVersion}
               </button>
             )}
 

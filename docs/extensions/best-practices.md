@@ -1,5 +1,7 @@
 # Best Practices
 
+> **Status:** this page describes the designed extension API. No extension code runs today, on the desktop or on the API server. See [what actually runs](./index.md#status-what-actually-runs-october-2026).
+
 This guide covers patterns, recommendations, and best practices for building high-quality BluePLM extensions.
 
 ## Architecture Patterns

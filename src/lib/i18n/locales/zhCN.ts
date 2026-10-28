@@ -864,6 +864,13 @@ export const zhCN: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      '此版本的 BluePLM 不运行扩展。已安装的包保存在此计算机上，但不会执行任何扩展代码：沙盒运行时不可用。',
+    installedNotRunning: '已安装（未运行）',
+    adminOnly: '只有管理员可以安装或移除扩展。',
+    notAdminError: '只有管理员可以安装扩展。',
+  },
   strandedEdits: {
     checkoutLost:
       '您对 {{name}} 的检出已被释放，而它仍有未保存的元数据编辑。这些编辑已无法检入。再次检出该文件时，会在丢弃它们之前询问您 - 如有需要请先记下。',

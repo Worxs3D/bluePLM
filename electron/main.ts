@@ -18,7 +18,6 @@ import {
   cleanupCli,
   autoStartServiceFromCache,
   cleanupSolidWorksService,
-  cleanupExtensionHost,
   cleanupOAuth,
   cleanupUpdater,
   cleanupFs,
@@ -789,14 +788,6 @@ function initializeApp() {
       // Cleanup child processes and servers
       // ================================================
 
-      // Cleanup Extension Host (has 1 second internal timeout)
-      try {
-        await cleanupExtensionHost()
-        log('✓ Extension Host cleanup complete')
-      } catch (error) {
-        logError('Failed to cleanup Extension Host', { error: String(error) })
-      }
-
       // Cleanup SolidWorks service (can hang if service is stuck)
       try {
         await cleanupSolidWorksService()
@@ -1132,17 +1123,6 @@ function createWindow() {
     }
     mainWindow = null
 
-    // ============================================
-    // CRITICAL: Close the Extension Host window when main window closes
-    // The Extension Host is a hidden BrowserWindow that prevents the
-    // 'window-all-closed' event from firing. We must close it here
-    // to allow the app to quit properly on Windows/Linux.
-    // ============================================
-    if (process.platform !== 'darwin') {
-      // On Windows/Linux, we need to close Extension Host immediately
-      // so window-all-closed fires and triggers app.quit()
-      cleanupExtensionHost()
-    }
   })
 
   // Register all IPC handlers

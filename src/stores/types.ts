@@ -1875,20 +1875,12 @@ export interface IntegrationsSlice {
 // Extensions Slice
 // ============================================================================
 
-// TODO(decompose): Extract to src/types/extensions.ts — ExtensionLifecycleState,
-// ExtensionVerificationStatus, ExtensionCategoryType, ExtensionInstallPhase,
-// InstalledExtension, StoreExtensionListing, ExtensionUpdateAvailable,
-// ExtensionInstallProgress (extension domain models used in extension store,
-// install dialogs, and IPC handlers)
-
-/** Extension lifecycle state */
-export type ExtensionLifecycleState =
-  | 'not-installed'
-  | 'installed'
-  | 'loading'
-  | 'active'
-  | 'error'
-  | 'disabled'
+/**
+ * Extension state as the main process reports it. A package is installed on this
+ * computer or it is not; the desktop has no extension runtime, so there is no
+ * "active", "disabled" or "error" state to report.
+ */
+export type ExtensionLifecycleState = 'not-installed' | 'installed'
 
 /** Extension verification status */
 export type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
@@ -1896,17 +1888,7 @@ export type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded
 /** Extension category */
 export type ExtensionCategoryType = 'sandboxed' | 'native'
 
-/** Install progress phase */
-export type ExtensionInstallPhase =
-  | 'downloading'
-  | 'verifying'
-  | 'extracting'
-  | 'loading'
-  | 'deploying'
-  | 'complete'
-  | 'error'
-
-/** Loaded extension information (from IPC) */
+/** An installed extension package (from IPC) */
 export interface InstalledExtension {
   manifest: {
     id: string
@@ -1916,16 +1898,14 @@ export interface InstalledExtension {
     description?: string
     icon?: string
     repository?: string
-    license: string
+    license?: string
     category?: ExtensionCategoryType
     main?: string
     serverMain?: string
   }
   state: ExtensionLifecycleState
   verification: ExtensionVerificationStatus
-  error?: string
   installedAt?: string
-  activatedAt?: string
 }
 
 /** Store extension listing (from API) */
@@ -1960,23 +1940,12 @@ export interface StoreExtensionListing {
   }
 }
 
-/** Available extension update */
-export interface ExtensionUpdateAvailable {
-  extensionId: string
-  currentVersion: string
-  newVersion: string
-  changelog?: string
-  breaking: boolean
-  minAppVersion?: string
-}
-
-/** Install progress state */
-export interface ExtensionInstallProgress {
-  extensionId: string
-  phase: ExtensionInstallPhase
-  percent: number
-  message: string
+/** Result of an install, sideload or uninstall. */
+export interface ExtensionActionResult {
+  success: boolean
   error?: string
+  /** Refused in the renderer because the user is not an administrator. */
+  adminRequired?: boolean
 }
 
 export interface ExtensionsSlice {
@@ -1987,38 +1956,17 @@ export interface ExtensionsSlice {
   /** Installed extensions keyed by extension ID */
   installedExtensions: Record<string, InstalledExtension>
 
-  /** Extension states for quick lookup */
-  extensionStates: Record<string, ExtensionLifecycleState>
-
   /** Extensions from the store (marketplace) */
   storeExtensions: StoreExtensionListing[]
 
-  /** Available updates for installed extensions */
-  availableUpdates: ExtensionUpdateAvailable[]
-
   /** Whether store is currently loading */
   storeLoading: boolean
-
-  /** Store search query */
-  storeSearchQuery: string
-
-  /** Store category filter */
-  storeCategoryFilter: string | null
 
   /** Store verification filter */
   storeVerifiedOnly: boolean
 
   /** Store sort order */
   storeSort: 'popular' | 'recent' | 'name'
-
-  /** Current install progress (if installing) */
-  installProgress: ExtensionInstallProgress | null
-
-  /** Whether checking for updates */
-  checkingUpdates: boolean
-
-  /** Last update check timestamp */
-  lastUpdateCheck: number | null
 
   // ═══════════════════════════════════════════════════════════════
   // Synchronous Actions
@@ -2027,45 +1975,20 @@ export interface ExtensionsSlice {
   /** Set all installed extensions */
   setInstalledExtensions: (extensions: Record<string, InstalledExtension>) => void
 
-  /** Update a single installed extension */
-  updateInstalledExtension: (extensionId: string, updates: Partial<InstalledExtension>) => void
-
   /** Remove an installed extension from state */
   removeInstalledExtension: (extensionId: string) => void
 
   /** Set store extensions */
   setStoreExtensions: (extensions: StoreExtensionListing[]) => void
 
-  /** Set available updates */
-  setAvailableUpdates: (updates: ExtensionUpdateAvailable[]) => void
-
   /** Set store loading state */
   setStoreLoading: (loading: boolean) => void
 
-  /** Set store search query */
-  setStoreSearchQuery: (query: string) => void
-
-  /** Set store category filter */
-  setStoreCategoryFilter: (category: string | null) => void
-
-  /** Set store verified only filter */
-  setStoreVerifiedOnly: (verified: boolean) => void
-
-  /** Set store sort order */
-  setStoreSort: (sort: 'popular' | 'recent' | 'name') => void
-
-  /** Set install progress */
-  setInstallProgress: (progress: ExtensionInstallProgress | null) => void
-
-  /** Set checking updates state */
-  setCheckingUpdates: (checking: boolean) => void
-
-  /** Handle extension state change event */
-  handleExtensionStateChange: (
-    extensionId: string,
-    state: ExtensionLifecycleState,
-    error?: string,
-  ) => void
+  /**
+   * Apply an `extension:state-change` event from main: 'not-installed' removes the
+   * extension, 'installed' reloads the list from main.
+   */
+  handleExtensionStateChange: (extensionId: string, state: ExtensionLifecycleState) => void
 
   // ═══════════════════════════════════════════════════════════════
   // Async Actions (call IPC via window.electronAPI.extensions)
@@ -2080,38 +2003,17 @@ export interface ExtensionsSlice {
   /** Search store extensions */
   searchStoreExtensions: (query?: string, category?: string) => Promise<void>
 
-  /** Install an extension from the store */
-  installExtension: (
-    extensionId: string,
-    version?: string,
-  ) => Promise<{ success: boolean; error?: string }>
+  /** Install an extension from the store (administrators only) */
+  installExtension: (extensionId: string, version?: string) => Promise<ExtensionActionResult>
 
-  /** Sideload an extension from a .bpx file */
+  /** Sideload an extension from a .bpx file (administrators only) */
   sideloadExtension: (
     bpxPath: string,
     acknowledgeUnsigned?: boolean,
-  ) => Promise<{ success: boolean; error?: string }>
+  ) => Promise<ExtensionActionResult>
 
-  /** Uninstall an extension */
-  uninstallExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Enable an extension */
-  enableExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Disable an extension */
-  disableExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Update an extension to a new version */
-  updateExtension: (
-    extensionId: string,
-    version?: string,
-  ) => Promise<{ success: boolean; error?: string }>
-
-  /** Rollback an extension to a previous version */
-  rollbackExtension: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-  /** Check for available updates */
-  checkForUpdates: () => Promise<void>
+  /** Uninstall an extension (administrators only) */
+  uninstallExtension: (extensionId: string) => Promise<ExtensionActionResult>
 
   // ═══════════════════════════════════════════════════════════════
   // Getters
@@ -2120,17 +2022,8 @@ export interface ExtensionsSlice {
   /** Get extension by ID */
   getExtension: (extensionId: string) => InstalledExtension | undefined
 
-  /** Get all active extensions */
-  getActiveExtensions: () => InstalledExtension[]
-
   /** Check if extension is installed */
   isExtensionInstalled: (extensionId: string) => boolean
-
-  /** Check if update is available for extension */
-  hasUpdate: (extensionId: string) => boolean
-
-  /** Get update info for extension */
-  getUpdateInfo: (extensionId: string) => ExtensionUpdateAvailable | undefined
 
   // ═══════════════════════════════════════════════════════════════
   // Reset

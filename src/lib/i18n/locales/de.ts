@@ -913,6 +913,13 @@ export const de: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      'Erweiterungen werden von dieser BluePLM-Version nicht ausgeführt. Installierte Pakete bleiben auf diesem Computer gespeichert, aber es wird kein Erweiterungscode ausgeführt: Die Sandbox-Laufzeit ist nicht verfügbar.',
+    installedNotRunning: 'Installiert (wird nicht ausgeführt)',
+    adminOnly: 'Nur Administratoren können Erweiterungen installieren oder entfernen.',
+    notAdminError: 'Nur Administratoren können Erweiterungen installieren.',
+  },
   strandedEdits: {
     checkoutLost:
       'Ihr Auschecken von {{name}} wurde aufgehoben, während ungespeicherte Metadatenänderungen offen waren. Sie können nicht mehr eingecheckt werden. Beim erneuten Auschecken werden Sie gefragt, bevor sie verworfen werden - notieren Sie sie, falls Sie sie brauchen.',

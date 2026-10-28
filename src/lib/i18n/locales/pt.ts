@@ -903,6 +903,13 @@ export const pt: TranslationDict = {
     },
   },
 
+  extensionRuntime: {
+    notice:
+      'Esta versão do BluePLM não executa extensões. Os pacotes instalados ficam neste computador, mas nenhum código de extensão é executado: o ambiente isolado não está disponível.',
+    installedNotRunning: 'Instalada (não executada)',
+    adminOnly: 'Somente administradores podem instalar ou remover extensões.',
+    notAdminError: 'Somente administradores podem instalar extensões.',
+  },
   strandedEdits: {
     checkoutLost:
       'O seu check-out de {{name}} foi libertado enquanto tinha alterações de metadados não guardadas. Já não podem ser enviadas por check-in. Ao fazer check-out do ficheiro novamente, será perguntado antes de as descartar - anote-as se precisar delas.',

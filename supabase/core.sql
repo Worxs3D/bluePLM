@@ -113,21 +113,19 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 103 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 104 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Native inspection extraction binds inspection rows to the drawing annotations they came '
-  'from. inspection_characteristics and inspection_characteristic_versions gain source_key, '
-  'source_sheet and source_view (nullable text; NULL on manual rows and on rows from before '
-  'this release), and checkin_file copies all three into each snapshot. source_key is a '
-  'stable hash of the annotation persist reference read through the plain SOLIDWORKS API, '
-  'so a characteristic keeps its balloon number across re-extractions without a SOLIDWORKS '
-  'Inspection license. The three columns are deliberately left out of inspection_hash: '
-  'adding them would change the fingerprint of every existing table and give every drawing '
-  'a spurious version on its next check-in, and a key-only change loses nothing because the '
-  'live row keeps the keys and the snapshot still copies them. The release manifest has no '
-  'column kind, so verification does not see the columns; no function or table was added.'
+  'Extension tables stop trusting every signed-in user. extension_secret_access and '
+  'extension_http_log had INSERT policies with no TO clause and WITH CHECK (TRUE), so any '
+  'authenticated user could append forged audit rows for any organization; both INSERT policies '
+  'are now TO service_role. extension_storage was readable and writable by every member of the '
+  'organization; it is now service_role only, with a DELETE policy for is_org_admin() so '
+  'uninstalling an extension still clears its rows. The five SECURITY DEFINER functions in '
+  '50-extensions (get_extension_config, update_extension_config, get_extension_stats, '
+  'cleanup_extension_http_logs, cleanup_extension_secret_access_logs) now pin SET search_path = '
+  'public. No table or function is added or removed, so schema_release_manifest() is unchanged.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.

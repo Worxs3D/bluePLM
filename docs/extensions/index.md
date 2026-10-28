@@ -2,6 +2,26 @@
 
 Welcome to the BluePLM Extension Development documentation. This comprehensive guide covers everything you need to know to create, test, and publish extensions for BluePLM.
 
+## Status: what actually runs (October 2026)
+
+Read this first. Most of these pages describe the extension API as designed, not as it runs today.
+
+- **No extension code runs on the desktop.** BluePLM installs `.bpx` packages per machine
+  (from the store or a file), lists them and uninstalls them. It does not load or activate
+  them: there is no Extension Host and no client sandbox. Settings > Extensions says so.
+- **No sandboxed code runs on the API server.** The V8 isolate pool returns
+  `SANDBOX_UNAVAILABLE` for every handler.
+- **What install does check:** the package id and version against the manifest schema,
+  every zip entry (no absolute paths, no `..`, no symlinks, size and entry limits), and, for
+  store downloads, the SHA-256 the store states in the `X-Content-SHA256` response header.
+  No stated hash, or a mismatch, refuses the install. `SIGNATURE` files are not verified.
+- **Who can install:** organization administrators only (the `admin` role or the
+  Administrators team). Native packages (`"category": "native"`) are refused on every
+  per-machine path.
+- **Coming:** a native runtime for admin-installed, SHA-256-pinned organization extensions
+  (workspaces in the app, routes in the API). Its contract will be documented here when it
+  ships; until then nothing below describes it.
+
 ## What are BluePLM Extensions?
 
 BluePLM Extensions are modular packages that add functionality to the BluePLM desktop application. Built on an enterprise-grade architecture inspired by VS Code and Atlassian Forge, extensions can:
@@ -14,7 +34,7 @@ BluePLM Extensions are modular packages that add functionality to the BluePLM de
 
 ## Architecture Overview
 
-Extensions run in isolated environments for security:
+The designed architecture (not running today; see Status above):
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -56,7 +76,7 @@ Extensions run in isolated environments for security:
 | Category | Description | Trust Level |
 |----------|-------------|-------------|
 | **Sandboxed** (default) | Runs in isolated Extension Host + V8 sandbox | Community or Verified |
-| **Native** | Runs in main Electron process (SolidWorks, etc.) | Verified only |
+| **Native** | Not available yet; see Status above | Organization admins only |
 
 ## Documentation Sections
 
