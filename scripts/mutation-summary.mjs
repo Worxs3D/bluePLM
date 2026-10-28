@@ -190,3 +190,11 @@ writeFileSync(
 )
 
 console.log(`Mutation score ${pct(score(total))} over ${valid(total)} mutants; ${covered.length} covered survivors.`)
+// The job log is what a reader without artifact access (the nightly maintainer routine) can see:
+// the files with the most covered survivors, and the lines they are on.
+const LOGGED_FILES = 40
+console.log(`Covered survivors by file (top ${LOGGED_FILES}): file, count, lines`)
+for (const [file, list] of [...perFile.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, LOGGED_FILES)) {
+  const lines = [...new Set(list.map((s) => s.line))].sort((a, b) => a - b)
+  console.log(`  ${file}  ${list.length}  ${lines.join(',')}`)
+}
