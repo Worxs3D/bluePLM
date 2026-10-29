@@ -38,6 +38,42 @@ const FOLDER_NOW_LOCAL: Partial<LocalFile> = {
 }
 
 /**
+ * Downloads whose server row was deleted while the bytes were on the way, judged
+ * against the store as it is now. Only positive evidence counts: the store must
+ * still hold the vault the download started in, and must hold files at all, so a
+ * vault switch or a reload that has emptied the store recycles nothing (each would
+ * otherwise make every download look deleted). A file still in the store under
+ * its id is live even if its path changed meanwhile; the path decides only for a
+ * file without an id.
+ */
+export function downloadsWhoseRowWasDeleted<U extends { path: string }>(
+  updates: U[],
+  cloudFiles: LocalFile[],
+  liveFiles: LocalFile[] | null | undefined,
+  startVaultId: string | null | undefined,
+  liveVaultId: string | null | undefined,
+): U[] {
+  if (!liveFiles || liveFiles.length === 0) return []
+  if (startVaultId !== liveVaultId) return []
+
+  const liveIds = new Set<string>()
+  const livePaths = new Set<string>()
+  for (const f of liveFiles) {
+    if (f.pdmData?.id) liveIds.add(f.pdmData.id)
+    livePaths.add(f.path.toLowerCase())
+  }
+  const idByPath = new Map<string, string>()
+  for (const f of cloudFiles) {
+    if (f.pdmData?.id) idByPath.set(f.path, f.pdmData.id)
+  }
+
+  return updates.filter((u) => {
+    const id = idByPath.get(u.path)
+    return id ? !liveIds.has(id) : !livePaths.has(u.path.toLowerCase())
+  })
+}
+
+/**
  * Cloud directories a download has just given local content, so they are no
  * longer server-only. A folder is `cloud` only when it has cloud content and
  * no local content (`useLoadFiles`); the moment a file lands inside it, that
@@ -582,12 +618,15 @@ export const downloadCommand: Command<DownloadParams> = {
     // come back as a new local file that a sync could upload again. Nothing local is lost by
     // undoing it - the bytes are the deleted version's - so it goes to the Recycle Bin and is
     // left out of the store update and the sync index.
-    // No list at all means there is no store to compare against (nothing loaded).
-    const liveFiles = usePDMStore.getState().files
-    const liveStorePaths = new Set((liveFiles ?? []).map((f) => f.path.toLowerCase()))
-    const deletedWhileDownloading = !liveFiles
-      ? []
-      : pendingUpdates.filter((u) => !liveStorePaths.has(u.path.toLowerCase()))
+    // See downloadsWhoseRowWasDeleted for what counts as deleted.
+    const live = usePDMStore.getState()
+    const deletedWhileDownloading = downloadsWhoseRowWasDeleted(
+      pendingUpdates,
+      cloudFiles,
+      live.files,
+      ctx.activeVaultId,
+      live.activeVaultId,
+    )
     for (const update of deletedWhileDownloading) {
       pendingUpdates.splice(pendingUpdates.indexOf(update), 1)
       succeeded--

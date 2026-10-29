@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CommandContext, LocalFile } from '../types'
 import type { PDMFile } from '../../../types/pdm'
-import { cloudFoldersResolvedByDownload } from './download'
+import { cloudFoldersResolvedByDownload, downloadsWhoseRowWasDeleted } from './download'
 
 vi.mock('@/lib/logger', () => ({
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -284,5 +284,38 @@ describe('downloadCommand.execute - cloud folder stays in the store', () => {
     expect(ctx.addExpectedFileChanges).toHaveBeenCalledWith(
       expect.arrayContaining(['Burn Wire Release', file.relativePath]),
     )
+  })
+})
+
+/**
+ * 4.7.6 release review: a vault switch (or a reload) that empties or replaces the
+ * store while a download is in flight made every just-downloaded file look
+ * deleted, so all of them went to the Recycle Bin. Only a row gone from the same
+ * vault's loaded store counts.
+ */
+describe('downloadsWhoseRowWasDeleted', () => {
+  const a = cloudFile('A/a.sldprt')
+  const b = cloudFile('A/b.sldprt')
+  const updates = [{ path: a.path }, { path: b.path }]
+  const deleted = (live: LocalFile[] | null, startVault: string, liveVault: string) =>
+    downloadsWhoseRowWasDeleted(updates, [a, b], live, startVault, liveVault)
+
+  it('recycles a file whose row left the same vault store', () => {
+    expect(deleted([a], 'v1', 'v1')).toEqual([{ path: b.path }])
+  })
+
+  it('recycles nothing when the store is empty (reload in progress)', () => {
+    expect(deleted([], 'v1', 'v1')).toEqual([])
+    expect(deleted(null, 'v1', 'v1')).toEqual([])
+  })
+
+  it('recycles nothing after a vault switch', () => {
+    const other = cloudFile('Other/x.sldprt')
+    expect(deleted([other], 'v1', 'v2')).toEqual([])
+  })
+
+  it('keeps a file that moved during the download (same id, new path)', () => {
+    const moved = { ...b, path: `${VAULT}/B/b.sldprt`, relativePath: 'B/b.sldprt' }
+    expect(deleted([a, moved], 'v1', 'v1')).toEqual([])
   })
 })

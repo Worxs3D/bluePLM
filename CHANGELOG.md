@@ -104,6 +104,10 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 
 ### Fixed
 
+- **Downloads are never recycled after a vault switch or reload.** A file whose server row was
+  deleted mid-download is still sent to the Recycle Bin, but only when the store still holds the same
+  vault and is loaded; before, switching vaults or a reload during a download recycled every file
+  just downloaded (the server copy was safe). A file moved during the download is kept.
 - **Push licence to registry writes what SOLIDWORKS reads.** It wrote the serial as a registry
   value *name* with empty data, which SOLIDWORKS ignores, and checked and removed by that name. It
   now writes value `SolidWorks` = the serial in 4-character groups, as the installer does
