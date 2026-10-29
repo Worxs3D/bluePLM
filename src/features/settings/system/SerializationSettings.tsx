@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { log } from '@/lib/logger'
-import { useTranslation } from '@/lib/i18n'
+import { getTranslation, useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
@@ -243,7 +243,8 @@ export function SerializationSettings() {
       start,
       end_num: end,
       description:
-        newKeepout.description || t('settingsPages.serialization.reservedRange', { start, end }),
+        newKeepout.description ||
+        getTranslation('en', 'settingsPages.serialization.reservedRange', { start, end }),
     }
 
     updateSetting(
