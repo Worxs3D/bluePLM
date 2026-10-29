@@ -2144,9 +2144,13 @@ export const en: TranslationDict = {
   // Unsaved metadata edits left behind when a checkout went away without a check-in
   nativeExtensions: {
     modulesTitle: "Extension modules",
-    modulesDescription: "Workspaces added by your organization's extensions. Toggle to show or hide them in the sidebar; they are placed by their own group.",
+    modulesDescription: "Workspaces added by your organization's extensions. Toggle to show or hide them in the sidebar, and pick where each one sits; by default they are placed by their own group.",
     moduleRestricted: "Restricted by your administrator",
     moduleFrom: "from {{extension}}",
+    modulePosition: "Position of {{workspace}}",
+    modulePositionDefault: "By group",
+    modulePositionTop: "At the top",
+    modulePositionAfter: "After {{module}}",
     crashedTitle: "This extension stopped working",
     crashedBody: "The extension {{id}} hit an error in this area. The rest of BluePLM is unaffected.",
     retry: "Try again",

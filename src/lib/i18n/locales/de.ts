@@ -950,9 +950,13 @@ export const de: TranslationDict = {
 
   nativeExtensions: {
     modulesTitle: "Erweiterungsmodule",
-    modulesDescription: "Arbeitsbereiche aus den Erweiterungen Ihrer Organisation. Umschalten, um sie in der Seitenleiste ein- oder auszublenden; sie werden nach ihrer eigenen Gruppe platziert.",
+    modulesDescription: "Arbeitsbereiche aus den Erweiterungen Ihrer Organisation. Umschalten, um sie in der Seitenleiste ein- oder auszublenden, und die Position jedes einzelnen wählen; standardmäßig werden sie nach ihrer eigenen Gruppe platziert.",
     moduleRestricted: "Von Ihrem Administrator eingeschränkt",
     moduleFrom: "aus {{extension}}",
+    modulePosition: "Position von {{workspace}}",
+    modulePositionDefault: "Nach Gruppe",
+    modulePositionTop: "Ganz oben",
+    modulePositionAfter: "Nach {{module}}",
     crashedTitle: "Diese Erweiterung funktioniert nicht mehr",
     crashedBody: "Die Erweiterung {{id}} hat in diesem Bereich einen Fehler ausgelöst. Der Rest von BluePLM ist nicht betroffen.",
     retry: "Erneut versuchen",

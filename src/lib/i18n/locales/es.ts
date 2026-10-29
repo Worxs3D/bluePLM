@@ -939,9 +939,13 @@ export const es: TranslationDict = {
 
   nativeExtensions: {
     modulesTitle: "Módulos de extensiones",
-    modulesDescription: "Espacios de trabajo añadidos por las extensiones de su organización. Actívelos o desactívelos para mostrarlos u ocultarlos en la barra lateral; se colocan según su propio grupo.",
+    modulesDescription: "Espacios de trabajo añadidos por las extensiones de su organización. Actívelos o desactívelos para mostrarlos u ocultarlos en la barra lateral y elija dónde se coloca cada uno; por defecto se colocan según su propio grupo.",
     moduleRestricted: "Restringido por su administrador",
     moduleFrom: "de {{extension}}",
+    modulePosition: "Posición de {{workspace}}",
+    modulePositionDefault: "Por grupo",
+    modulePositionTop: "Al principio",
+    modulePositionAfter: "Después de {{module}}",
     crashedTitle: "Esta extensión dejó de funcionar",
     crashedBody: "La extensión {{id}} produjo un error en esta área. El resto de BluePLM no se ve afectado.",
     retry: "Reintentar",

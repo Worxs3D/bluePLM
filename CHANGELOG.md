@@ -63,6 +63,14 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 
 ### Added
 
+- **Extension workspaces can be placed in the sidebar.** Module settings (your own, the
+  organization defaults and team defaults) give each extension workspace a position: by its
+  group (the default), at the top, or after any module. The choice is saved in the module order,
+  so it survives restarts and applies to team and org defaults.
+- **The net permissions view lists extension resources.** The read-only view shows the
+  resources installed extensions contribute, in the same Extensions group as the permissions
+  editor; both now build the list from one helper.
+
 - **Your SOLIDWORKS licence in the top bar.** The SOLIDWORKS status panel shows the licence
   BluePLM assigns to you (masked, last 8 characters) and a warning, also on the top-bar glyph,
   when SOLIDWORKS on this computer runs on a different serial or you have none assigned. The

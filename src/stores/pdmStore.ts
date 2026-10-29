@@ -15,6 +15,7 @@ import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { log } from '@/lib/logger'
+import { isExtensionWorkspaceId } from '@/lib/nativeExtensions/registry'
 import { isCadPreviewMode } from '@/types/cadPreviewMode'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
 
@@ -643,12 +644,15 @@ export const usePDMStore = create<PDMStoreState>()(
             // Module order - use persisted if valid, otherwise default
             let moduleOrder = defaults.moduleOrder
             if (persistedConfig.moduleOrder && Array.isArray(persistedConfig.moduleOrder)) {
-              // Validate all modules exist. Ids of modules that moved to a native
-              // extension are kept so the extension's workspace keeps its place.
+              // Validate all modules exist. Native extension workspace ids are kept
+              // (modules that moved to an extension, and workspaces placed in
+              // module settings) so a workspace keeps its place; every order
+              // consumer skips an id with no core definition.
               const validOrder = persistedConfig.moduleOrder.filter(
                 (id: string) =>
                   defaults.enabledModules.hasOwnProperty(id) ||
-                  MODULES_MOVED_TO_EXTENSIONS.includes(id),
+                  MODULES_MOVED_TO_EXTENSIONS.includes(id) ||
+                  isExtensionWorkspaceId(id),
               )
               // Add any new modules that weren't in persisted order
               for (const id of defaults.moduleOrder) {

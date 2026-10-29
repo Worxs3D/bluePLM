@@ -19,6 +19,8 @@ const PLAIN = [
   'modulesTitle',
   'modulesDescription',
   'moduleRestricted',
+  'modulePositionDefault',
+  'modulePositionTop',
   'sectionTitle',
   'sectionDescription',
   'installButton',
@@ -48,6 +50,8 @@ const WITH_PARAMS: Array<[string, Record<string, string>]> = [
   ['nativeExtensions.confirmUninstall', { name: 'Tool' }],
   ['nativeExtensions.error', { message: 'boom' }],
   ['nativeExtensions.moduleFrom', { extension: 'blueplm.customers' }],
+  ['nativeExtensions.modulePosition', { workspace: 'Customers' }],
+  ['nativeExtensions.modulePositionAfter', { module: 'Explorer' }],
 ]
 
 describe('nativeExtensions.* keys exist in every locale', () => {

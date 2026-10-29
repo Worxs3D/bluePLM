@@ -898,9 +898,13 @@ export const zhTW: TranslationDict = {
 
   nativeExtensions: {
     modulesTitle: "擴充模組",
-    modulesDescription: "由組織擴充功能新增的工作區。切換以在側邊欄中顯示或隱藏它們；它們依各自的群組放置。",
+    modulesDescription: "由組織擴充功能新增的工作區。切換以在側邊欄中顯示或隱藏它們，並選擇每個工作區的位置；預設依各自的群組放置。",
     moduleRestricted: "已被管理員限制",
     moduleFrom: "來自 {{extension}}",
+    modulePosition: "{{workspace}} 的位置",
+    modulePositionDefault: "依群組",
+    modulePositionTop: "置頂",
+    modulePositionAfter: "在 {{module}} 之後",
     crashedTitle: "此擴充功能已停止運作",
     crashedBody: "擴充功能 {{id}} 在此區域發生錯誤。BluePLM 的其餘部分不受影響。",
     retry: "重試",

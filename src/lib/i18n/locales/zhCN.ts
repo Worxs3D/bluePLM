@@ -898,9 +898,13 @@ export const zhCN: TranslationDict = {
 
   nativeExtensions: {
     modulesTitle: "扩展模块",
-    modulesDescription: "由组织扩展添加的工作区。切换以在侧边栏中显示或隐藏它们；它们按各自的分组放置。",
+    modulesDescription: "由组织扩展添加的工作区。切换以在侧边栏中显示或隐藏它们，并选择每个工作区的位置；默认按各自的分组放置。",
     moduleRestricted: "已被管理员限制",
     moduleFrom: "来自 {{extension}}",
+    modulePosition: "{{workspace}} 的位置",
+    modulePositionDefault: "按分组",
+    modulePositionTop: "置顶",
+    modulePositionAfter: "在 {{module}} 之后",
     crashedTitle: "此扩展已停止工作",
     crashedBody: "扩展 {{id}} 在此区域出错。BluePLM 的其余部分不受影响。",
     retry: "重试",

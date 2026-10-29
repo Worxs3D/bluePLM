@@ -17,6 +17,11 @@ export const CORE_VIEW_IDS: ReadonlySet<string> = new Set<string>([
   'settings',
 ])
 
+/** Whether `id` could be an extension workspace id (shape only, not that one is loaded). */
+export function isExtensionWorkspaceId(id: string): boolean {
+  return WORKSPACE_ID_PATTERN.test(id) && !id.startsWith('group-') && !CORE_VIEW_IDS.has(id)
+}
+
 const GROUP_IDS: ReadonlySet<string> = new Set(MODULE_GROUPS.map((g) => g.id))
 
 export class WorkspaceRegistrationError extends Error {

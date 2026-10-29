@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { extensionPermissionResources, readContributedPermissions } from './permissions'
+import { ALL_RESOURCES } from '@/types/permissions'
+
+import {
+  extensionPermissionResources,
+  readContributedPermissions,
+  withExtensionPermissionResources,
+} from './permissions'
 
 const manifest = {
   id: 'blueplm.customers',
@@ -47,5 +53,34 @@ describe('extensionPermissionResources', () => {
       (r) => `${r.extensionId}/${r.id}`,
     )
     expect(ids).toEqual(['blueplm.customers/module:customers'])
+  })
+})
+
+describe('withExtensionPermissionResources', () => {
+  const groups = [{ id: 'core', name: 'Core', icon: 'Shield', color: '#000', resources: [] }]
+
+  it('adds one extension group after the core groups', () => {
+    const { allResources, resourceGroups } = withExtensionPermissionResources(
+      ALL_RESOURCES,
+      groups,
+      [{ extensionId: 'blueplm.customers', manifest: { ...manifest, name: 'C', version: '1.0.0' } }],
+      'Extensions',
+    )
+    expect(resourceGroups.map((g) => [g.id, g.name, g.resources])).toEqual([
+      ['core', 'Core', []],
+      ['extensions', 'Extensions', ['module:customers', 'system:customer-enrichment']],
+    ])
+    expect(allResources.length).toBe(ALL_RESOURCES.length + 2)
+  })
+
+  it('returns core unchanged when no extension contributes a resource', () => {
+    const { allResources, resourceGroups } = withExtensionPermissionResources(
+      ALL_RESOURCES,
+      groups,
+      [],
+      'Extensions',
+    )
+    expect(allResources).toEqual(ALL_RESOURCES)
+    expect(resourceGroups).toEqual(groups)
   })
 })

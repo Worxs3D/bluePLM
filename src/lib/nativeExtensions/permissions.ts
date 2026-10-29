@@ -67,3 +67,40 @@ export function extensionPermissionResources(
   }
   return out
 }
+
+/** A titled group of resource ids, as the permission editor and net view list them. */
+export interface PermissionResourceGroup {
+  id: string
+  name: string
+  icon: string
+  color: string
+  resources: string[]
+}
+
+/**
+ * Core's resources and groups plus the installed extensions' resources in one
+ * extra group named `groupName`. Shared by the permissions editor and the
+ * read-only net permissions view so the two always list the same resources.
+ */
+export function withExtensionPermissionResources(
+  coreResources: readonly ResourceDefinition[],
+  coreGroups: readonly PermissionResourceGroup[],
+  rows: readonly Pick<OrgNativeExtensionRow, 'extensionId' | 'manifest'>[],
+  groupName: string,
+): { allResources: ResourceDefinition[]; resourceGroups: PermissionResourceGroup[] } {
+  const extra = extensionPermissionResources(rows, new Set(coreResources.map((r) => r.id)))
+  if (extra.length === 0) return { allResources: [...coreResources], resourceGroups: [...coreGroups] }
+  return {
+    allResources: [...coreResources, ...extra],
+    resourceGroups: [
+      ...coreGroups,
+      {
+        id: 'extensions',
+        name: groupName,
+        icon: 'Puzzle',
+        color: '#a855f7',
+        resources: extra.map((r) => r.id),
+      },
+    ],
+  }
+}

@@ -24,7 +24,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase } from '@/lib/supabase'
 import { t } from '@/lib/i18n'
-import { extensionPermissionResources } from '@/lib/nativeExtensions/permissions'
+import { withExtensionPermissionResources } from '@/lib/nativeExtensions/permissions'
 import type { Team, PermissionPreset, PermissionAction } from '@/types/permissions'
 import {
   PERMISSION_ACTIONS,
@@ -126,26 +126,16 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
   // Resources contributed by the organization's installed native extensions are
   // listed in their own group next to core's.
   const orgNativeExtensionRows = usePDMStore((s) => s.orgNativeExtensionRows)
-  const { allResources, resourceGroups } = useMemo(() => {
-    const extra = extensionPermissionResources(
-      orgNativeExtensionRows,
-      new Set(ALL_RESOURCES.map((r) => r.id)),
-    )
-    if (extra.length === 0) return { allResources: ALL_RESOURCES, resourceGroups: RESOURCE_GROUPS }
-    return {
-      allResources: [...ALL_RESOURCES, ...extra],
-      resourceGroups: [
-        ...RESOURCE_GROUPS,
-        {
-          id: 'extensions',
-          name: t('nativeExtensions.permissionsGroup'),
-          icon: 'Puzzle',
-          color: '#a855f7',
-          resources: extra.map((r) => r.id),
-        },
-      ],
-    }
-  }, [orgNativeExtensionRows])
+  const { allResources, resourceGroups } = useMemo(
+    () =>
+      withExtensionPermissionResources(
+        ALL_RESOURCES,
+        RESOURCE_GROUPS,
+        orgNativeExtensionRows,
+        t('nativeExtensions.permissionsGroup'),
+      ),
+    [orgNativeExtensionRows],
+  )
 
   // State
   const [permissions, setPermissions] = useState<Record<string, PermissionAction[]>>({})

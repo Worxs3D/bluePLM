@@ -19,8 +19,11 @@ export type ExtensionHttpMethod = (typeof EXTENSION_HTTP_METHODS)[number]
 
 /**
  * What a route handler receives: the Fastify request, authenticated by core's
- * auth middleware (`request.user` is core's `UserProfile`), with `params` set
- * to the sub-route's own parameters, and the Fastify reply.
+ * auth middleware (`request.user` is core's `UserProfile`, `request.supabase`
+ * the caller's user-scoped client with RLS applied), with `params` set to the
+ * sub-route's own parameters, and the Fastify reply. Prefer `request.supabase`
+ * for reads the caller may make; use `services.supabaseAdmin` only where RLS
+ * would refuse a write the route must make, and filter it by org.
  */
 export type ExtensionRouteHandler = (
   request: FastifyRequest,

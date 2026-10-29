@@ -18,9 +18,12 @@ import {
   Settings2,
 } from 'lucide-react'
 import { PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS, ALL_RESOURCES } from '@/types/permissions'
+import { t } from '@/lib/i18n'
 import { isAdminUser } from '@/lib/isAdminUser'
 import { log } from '@/lib/logger'
+import { withExtensionPermissionResources } from '@/lib/nativeExtensions/permissions'
 import { supabase } from '@/lib/supabase'
+import { usePDMStore } from '@/stores/pdmStore'
 import { getEffectiveAvatarUrl } from '@/lib/utils'
 import { PERMISSION_RESOURCE_GROUPS } from '../../constants'
 import type { ViewNetPermissionsModalProps } from '../../types'
@@ -52,6 +55,19 @@ export function ViewNetPermissionsModal({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSourceFilesVaultId, setSelectedSourceFilesVaultId] = useState<string | null>(null)
   const [userVaultIds, setUserVaultIds] = useState<string[]>([])
+
+  // Same resource list as the permissions editor, extension resources included.
+  const orgNativeExtensionRows = usePDMStore((s) => s.orgNativeExtensionRows)
+  const { allResources, resourceGroups } = useMemo(
+    () =>
+      withExtensionPermissionResources(
+        ALL_RESOURCES,
+        PERMISSION_RESOURCE_GROUPS,
+        orgNativeExtensionRows,
+        t('nativeExtensions.permissionsGroup'),
+      ),
+    [orgNativeExtensionRows],
+  )
   const [sourceFilesPermsByVault, setSourceFilesPermsByVault] = useState<
     Record<string, Record<string, PermissionAction[]>>
   >({})
@@ -217,7 +233,7 @@ export function ViewNetPermissionsModal({
   }
 
   const expandAll = () => {
-    setExpandedGroups(new Set(PERMISSION_RESOURCE_GROUPS.map((g) => g.id)))
+    setExpandedGroups(new Set(resourceGroups.map((g) => g.id)))
   }
 
   const collapseAll = () => {
@@ -226,7 +242,7 @@ export function ViewNetPermissionsModal({
 
   // Count permissions in a group
   const getGroupStats = (groupId: string) => {
-    const group = PERMISSION_RESOURCE_GROUPS.find((g) => g.id === groupId)
+    const group = resourceGroups.find((g) => g.id === groupId)
     if (!group) return { total: 0, withPerms: 0 }
 
     let withPerms = 0
@@ -242,7 +258,7 @@ export function ViewNetPermissionsModal({
   const filterResources = (resources: string[]): string[] => {
     if (!searchQuery) return resources
     return resources.filter((resourceId) => {
-      const resource = ALL_RESOURCES.find((r) => r.id === resourceId)
+      const resource = allResources.find((r) => r.id === resourceId)
       if (!resource) return false
       return (
         resource.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -464,7 +480,7 @@ export function ViewNetPermissionsModal({
             </div>
           ) : (
             <div className="p-4 space-y-2">
-              {PERMISSION_RESOURCE_GROUPS.map((group) => {
+              {resourceGroups.map((group) => {
                 const filteredResourceIds = filterResources(group.resources)
                 if (filteredResourceIds.length === 0) return null
 
@@ -555,7 +571,7 @@ export function ViewNetPermissionsModal({
                         )}
 
                         {filteredResourceIds.map((resourceId, idx) => {
-                          const resource = ALL_RESOURCES.find((r) => r.id === resourceId)
+                          const resource = allResources.find((r) => r.id === resourceId)
                           if (!resource) return null
 
                           const ResourceIcon =
