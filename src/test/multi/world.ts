@@ -27,6 +27,15 @@ export { VAULT_PATH, VAULT_ID, ORG_ID }
 const QUIET_MS = 3000
 const STEP_MS = 25
 
+/**
+ * Wall-clock budget for one simulator test. Simulated time runs on fake timers, so this measures
+ * nothing about the app: the real cost is evaluating a fresh app module graph for every machine
+ * boot (machine.ts), which takes a few seconds alone and many times that while the full suite
+ * fills every core. Vitest's 5 s default timed these tests out under a full parallel run while
+ * each passed alone.
+ */
+export const MULTI_TEST_TIMEOUT_MS = 60_000
+
 export const USERS: Record<string, SimUser> = {
   A: { id: 'user-a', email: 'a@example.com', full_name: 'Alice A' },
   B: { id: 'user-b', email: 'b@example.com', full_name: 'Bob B' },

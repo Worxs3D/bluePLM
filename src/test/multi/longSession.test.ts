@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
   (await import('@/test/multi/clientMock')).mockMachineClientModule(await importOriginal()),
 )
 
-import { World } from './world'
+import { MULTI_TEST_TIMEOUT_MS, World } from './world'
 
 let world: World | null = null
 afterEach(() => {
@@ -21,7 +21,7 @@ afterEach(() => {
 
 const CYCLES = 20
 
-describe('long session balance', () => {
+describe('long session balance', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   it('holds the same channels, watcher listeners and timers across drops, resubscribes and check-ins', async () => {
     const w = await World.create(['A', 'B'])
     world = w

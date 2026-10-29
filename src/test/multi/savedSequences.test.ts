@@ -10,6 +10,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
 )
 
 import { runSequence, type Op } from './simOps'
+import { MULTI_TEST_TIMEOUT_MS } from './world'
 
 /** `knownFailure`: still failing, with the dated reason it is not fixed yet; runs as `it.fails`. */
 const saved: Array<{ name: string; ops: Op[]; knownFailure?: string }> = [
@@ -225,7 +226,7 @@ const saved: Array<{ name: string; ops: Op[]; knownFailure?: string }> = [
   },
 ]
 
-describe('saved random sequences', () => {
+describe('saved random sequences', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   for (const { name, ops, knownFailure } of saved) {
     ;(knownFailure ? it.fails : it)(name, async () => {
       await runSequence(ops)

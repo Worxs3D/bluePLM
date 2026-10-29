@@ -12,7 +12,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
 )
 
 import type { Machine } from './machine'
-import { USERS, World } from './world'
+import { MULTI_TEST_TIMEOUT_MS, USERS, World } from './world'
 
 let world: World | null = null
 afterEach(() => {
@@ -35,7 +35,7 @@ function expectPendingMove(w: World, m: Machine, from: string, to: string): void
   expect(m.disk.recycleBin, `${m.name} recycled a file another machine moved`).toEqual([])
 }
 
-describe('moves and renames across machines', () => {
+describe('moves and renames across machines', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   it('A cannot rename a folder while B holds a file in it; nothing changes anywhere', async () => {
     const w = (world = await World.create(['A', 'B']))
     w.seed({ path: 'Parts/x.sldprt', checkedOutBy: USERS.B.id })

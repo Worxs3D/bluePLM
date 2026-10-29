@@ -9,7 +9,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
   (await import('@/test/multi/clientMock')).mockMachineClientModule(await importOriginal()),
 )
 
-import { USERS, World } from './world'
+import { MULTI_TEST_TIMEOUT_MS, USERS, World } from './world'
 
 let world: World | null = null
 afterEach(() => {
@@ -17,7 +17,7 @@ afterEach(() => {
   world = null
 })
 
-describe('two machines on one server', () => {
+describe('two machines on one server', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   it('boot separately and agree', async () => {
     world = await World.create(['A', 'B'])
     world.seed({ path: 'Parts/x.sldprt', partNumber: 'BR-1', description: 'Bracket' })

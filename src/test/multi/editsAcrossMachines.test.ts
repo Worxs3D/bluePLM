@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
   (await import('@/test/multi/clientMock')).mockMachineClientModule(await importOriginal()),
 )
 
-import { USERS, World } from './world'
+import { MULTI_TEST_TIMEOUT_MS, USERS, World } from './world'
 
 let world: World | null = null
 afterEach(() => {
@@ -22,7 +22,7 @@ async function edit(w: World, name: 'A' | 'B', path: string, body: string): Prom
   await w.settle()
 }
 
-describe('edits across machines', () => {
+describe('edits across machines', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   // 2026-10-25, known failure, needs a product decision (src/test/multi report, bug "stale base").
   // B's copy is outdated (A checked in version 2). B checks it out: the checkout makes the old
   // bytes writable without fetching version 2 or saying so. B edits and checks in, and version 3

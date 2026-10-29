@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase/client', async (importOriginal) =>
   (await import('@/test/multi/clientMock')).mockMachineClientModule(await importOriginal()),
 )
 
-import { USERS, World } from './world'
+import { MULTI_TEST_TIMEOUT_MS, USERS, World } from './world'
 
 let world: World | null = null
 afterEach(() => {
@@ -32,7 +32,7 @@ async function edit(w: World, name: 'A' | 'B', path: string, body: string): Prom
   await w.settle()
 }
 
-describe('checkout across machines', () => {
+describe('checkout across machines', { timeout: MULTI_TEST_TIMEOUT_MS }, () => {
   it('B checks out right after A checks in: A shows B as the holder (stale checkout owner)', async () => {
     const w = await twoMachines()
     expect((await w.run(w.A.command('checkout', { files: [w.A.file('x.sldprt')] }))).success).toBe(true)
