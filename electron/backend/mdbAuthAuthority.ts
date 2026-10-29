@@ -31,7 +31,8 @@ export interface MdbAuthSnapshot {
 }
 export interface MdbAuthPersistence {
   load(): Promise<MdbAuthSnapshot | null>
-  save(value: MdbAuthSnapshot): Promise<void>
+  /** Return true only after publication, or false if canCommit rejects it before publication. */
+  save(value: MdbAuthSnapshot, canCommit: () => boolean): Promise<boolean>
   clear(): Promise<void>
 }
 
@@ -179,13 +180,13 @@ export function createMdbAuthAuthority(options: {
     await enqueue(async () => {
       current(expected)
       try {
-        await options.persistence.save(next)
-      } catch {
-        try {
-          await options.persistence.clear()
-        } catch {
-          clearFailed = true
+        const committed = await options.persistence.save(next, () => generation === expected)
+        if (!committed) {
+          current(expected)
+          throw new Error('MDB session save was not committed')
         }
+      } catch {
+        current(expected)
         throw new MdbAuthAuthorityError('persistence-save-failed', 'Could not save MDB session.')
       }
       current(expected)

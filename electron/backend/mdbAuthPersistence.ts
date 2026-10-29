@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import { renameSync } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { MdbAuthPersistence, MdbAuthSnapshot } from './mdbAuthAuthority'
@@ -8,11 +9,14 @@ import { normalizeMdbServerUrl } from './mdbAuthTransport'
 /** Auth-only record storage extracted from c8eb49c5 mdbDurableEncryptedRecordStore. */
 export interface MdbEncryptedAuthRecordStore {
   read(): Promise<Uint8Array | null>
-  write(value: Uint8Array): Promise<void>
+  write(value: Uint8Array, canCommit: () => boolean): Promise<boolean>
   clear(): Promise<void>
 }
 
-export function createMdbEncryptedAuthRecordStore(filePath: string): MdbEncryptedAuthRecordStore {
+export function createMdbEncryptedAuthRecordStore(
+  filePath: string,
+  options: { writeTemporary?: (path: string, value: Uint8Array) => Promise<void> } = {},
+): MdbEncryptedAuthRecordStore {
   return {
     async read() {
       try {
@@ -22,14 +26,22 @@ export function createMdbEncryptedAuthRecordStore(filePath: string): MdbEncrypte
         throw error
       }
     },
-    async write(value) {
+    async write(value, canCommit) {
       await fs.mkdir(path.dirname(filePath), { recursive: true })
       const temporaryPath = `${filePath}.${randomUUID()}.tmp`
+      let published = false
       try {
-        await fs.writeFile(temporaryPath, value, { mode: 0o600, flag: 'wx' })
-        await fs.rename(temporaryPath, filePath)
+        if (options.writeTemporary) await options.writeTemporary(temporaryPath, value)
+        else await fs.writeFile(temporaryPath, value, { mode: 0o600, flag: 'wx' })
+        // No event-loop callback can invalidate this authority between the guard
+        // and renameSync. The rename is the filesystem publication point; it is
+        // not a power-loss or cross-process transaction guarantee.
+        if (!canCommit()) return false
+        renameSync(temporaryPath, filePath)
+        published = true
+        return true
       } finally {
-        await fs.rm(temporaryPath, { force: true })
+        if (!published) await fs.rm(temporaryPath, { force: true })
       }
     },
     async clear() {
@@ -95,9 +107,9 @@ export function createSafeStorageMdbAuthPersistence(
         return null
       }
     },
-    async save(snapshot) {
+    async save(snapshot, canCommit) {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('encryption unavailable')
-      await store.write(safeStorage.encryptString(JSON.stringify(snapshot)))
+      return store.write(safeStorage.encryptString(JSON.stringify(snapshot)), canCommit)
     },
     clear: () => store.clear(),
   }
