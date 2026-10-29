@@ -209,6 +209,11 @@ export const de: TranslationDict = {
       rejected: 'abgelehnt',
       cancelled: 'nicht nötig',
     },
+    // Why a reviewer was taken off an open review (schema 108); shown instead of the status.
+    reviewerWithdrawn: {
+      left_org: 'hat die Organisation verlassen',
+      lost_vault_access: 'hat keinen Zugriff mehr auf diesen Tresor',
+    },
     itemOutcome: {
       pending: 'Ausstehend',
       approved: 'Genehmigt',

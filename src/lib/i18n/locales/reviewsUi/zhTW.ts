@@ -209,6 +209,11 @@ export const zhTW: TranslationDict = {
       rejected: '已拒絕',
       cancelled: '無需處理',
     },
+    // Why a reviewer was taken off an open review (schema 108); shown instead of the status.
+    reviewerWithdrawn: {
+      left_org: '已離開組織',
+      lost_vault_access: '已無權存取此庫',
+    },
     itemOutcome: {
       pending: '待定',
       approved: '已核准',

@@ -55,6 +55,8 @@ const DYNAMIC = [
   'reviewDetail.prompt.approve_all',
   'reviewDetail.itemOutcome.pending',
   'reviewDetail.reviewerStatus.cancelled',
+  'reviewDetail.reviewerWithdrawn.left_org',
+  'reviewDetail.reviewerWithdrawn.lost_vault_access',
   'reviewDetail.mode.all',
   'reviewDetail.mode.any',
   'reviewBuilder.mode.any',

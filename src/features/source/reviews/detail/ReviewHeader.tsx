@@ -194,7 +194,9 @@ export function ReviewHeader({ detail, onBack, onResubmit, onChanged }: ReviewHe
           {currentReviewers.map((r, index) => (
             <span key={`${r.user?.id ?? 'unknown'}-${index}`} className={REVIEWER_STATUS_CLASS[r.status]}>
               {r.user?.fullName || r.user?.email || t('reviewDetail.unknownUser')} ·{' '}
-              {t(`reviewDetail.reviewerStatus.${r.status}`)}
+              {r.withdrawnReason
+                ? t(`reviewDetail.reviewerWithdrawn.${r.withdrawnReason}`)
+                : t(`reviewDetail.reviewerStatus.${r.status}`)}
             </span>
           ))}
         </div>
