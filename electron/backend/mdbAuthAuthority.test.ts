@@ -48,6 +48,91 @@ function setup(failClear = false) {
   return { create, persistence, fetchImpl }
 }
 describe('Main auth authority', () => {
+  it('preserves verified and persisted authority on invalid URL or cancelled confirmation', async () => {
+    const { persistence, fetchImpl } = setup()
+    let confirm = true
+    const confirmServer = vi.fn(async () => confirm)
+    const authority = createMdbAuthAuthority({ confirmServer, persistence, fetchImpl })
+    await authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+    await authority.verifyTotp('123456')
+    const saved = await persistence.load()
+    fetchImpl.mockClear()
+    confirmServer.mockClear()
+    await expect(
+      authority.signIn({ serverUrl: 'not a URL', email: 'a', password: 'b' }),
+    ).rejects.toThrow()
+    expect(confirmServer).not.toHaveBeenCalled()
+    confirm = false
+    await expect(
+      authority.signIn({ serverUrl: 'https://other.test/', email: 'a', password: 'b' }),
+    ).rejects.toMatchObject({ code: 'server-not-confirmed' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(authority.state()).toMatchObject({ status: 'verified', principal: user })
+    expect(await persistence.load()).toEqual(saved)
+    await authority.signOut()
+  })
+  it('rejects a stale confirmation after another confirmed sign-in', async () => {
+    const { persistence, fetchImpl } = setup()
+    let release!: (value: boolean) => void
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve
+    })
+    const authority = createMdbAuthAuthority({
+      confirmServer: (url) => (url.includes('old.test') ? gate : Promise.resolve(true)),
+      persistence,
+      fetchImpl,
+    })
+    const old = authority.signIn({ serverUrl: 'https://old.test/', email: 'a', password: 'b' })
+    const rejected = expect(old).rejects.toMatchObject({ code: 'context-invalidated' })
+    await authority.signIn({ serverUrl: 'https://new.test/', email: 'a', password: 'b' })
+    await authority.verifyTotp('123456')
+    const saved = await persistence.load()
+    fetchImpl.mockClear()
+    release(true)
+    await rejected
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(authority.state()).toMatchObject({ status: 'verified' })
+    expect(await persistence.load()).toEqual(saved)
+    await authority.signOut()
+  })
+  it('rejects confirmation returned after sign-out', async () => {
+    const { persistence, fetchImpl } = setup()
+    let release!: (value: boolean) => void
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve
+    })
+    const authority = createMdbAuthAuthority({ confirmServer: () => gate, persistence, fetchImpl })
+    const login = authority.signIn({
+      serverUrl: 'https://example.test/',
+      email: 'a',
+      password: 'b',
+    })
+    const rejected = expect(login).rejects.toMatchObject({ code: 'context-invalidated' })
+    await authority.signOut()
+    release(true)
+    await rejected
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(await persistence.load()).toBeNull()
+  })
+  it('clears the old authority after confirmation and before a failing health check', async () => {
+    const { persistence, fetchImpl } = setup()
+    const authority = createMdbAuthAuthority({
+      confirmServer: async () => true,
+      persistence,
+      fetchImpl,
+    })
+    await authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+    await authority.verifyTotp('123456')
+    fetchImpl.mockClear()
+    fetchImpl.mockImplementation(async () => Response.json({ ok: false }))
+    await expect(
+      authority.signIn({ serverUrl: 'https://other.test/', email: 'a', password: 'b' }),
+    ).rejects.toMatchObject({ code: 'invalid-json' })
+    expect(authority.state()).toEqual({ status: 'signed-out' })
+    expect(await persistence.load()).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect((fetchImpl.mock.calls[0] as unknown as [URL])[0].pathname).toBe('/health')
+  })
   it('keeps pending and verified state free of secrets and clears before a fresh restore', async () => {
     const { create, fetchImpl } = setup()
     const authority = create()
