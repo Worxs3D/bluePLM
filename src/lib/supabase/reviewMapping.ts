@@ -29,6 +29,7 @@ import type {
   ReviewerAssignment,
   ReviewerRoundStatus,
   ReviewerSkipReason,
+  ReviewerWithdrawnReason,
   ReviewHeader,
   ReviewItemDecision,
   ReviewItemDetail,
@@ -139,6 +140,7 @@ export const REVIEW_QUEUE_BUCKETS: readonly ReviewQueueBucket[] = [
 const OUTCOMES: readonly ReviewOutcome[] = ['open', 'approved', 'changes_requested', 'rejected', 'cancelled']
 const ITEM_OUTCOMES: readonly ReviewItemOutcome[] = ['pending', 'approved', 'changes_requested', 'rejected']
 const ROUND_OUTCOMES: readonly ReviewRoundOutcome[] = ['approved', 'changes_requested', 'rejected', 'cancelled']
+const WITHDRAWN_REASONS: readonly ReviewerWithdrawnReason[] = ['left_org', 'lost_vault_access']
 const REVIEWER_STATUSES: readonly ReviewerRoundStatus[] = [
   'pending',
   'approved',
@@ -542,6 +544,7 @@ function mapReviewer(v: unknown): ReviewerAssignment {
     status: o.status === 'kicked_back' ? 'changes_requested' : oneOf(o.status, REVIEWER_STATUSES, 'pending'),
     viaTeamId: strOrNull(o.via_team_id),
     respondedAt: strOrNull(o.responded_at),
+    withdrawnReason: oneOfOrNull(o.withdrawn_reason, WITHDRAWN_REASONS),
   }
 }
 

@@ -6,8 +6,8 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 107 and SolidWorks service 1.26.0. Apply `supabase/core.sql`, then modules 10 to 50 in
-order (106 changes module 40; 107 changes modules 10 and 20); the app expects 107. Install
+Schema 108 and SolidWorks service 1.26.0. Apply `supabase/core.sql`, then modules 10 to 50 in
+order (106 changes module 40; 107 and 108 change modules 10 and 20); the app expects 108. Install
 service 1.26.0 for review package downloads; everything else works on 1.25.0.
 
 ### Drawing reviews, rebuilt for org-wide use (schema 107, service 1.26.0)
@@ -38,6 +38,16 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 - **Rounds.** When changes are requested the requester resubmits only the items that need them,
   at newer versions; approved items carry forward and earlier rounds stay readable. Review
   notifications arrive live and drive the badge.
+- **Reviews no longer wait on someone who cannot answer** (schema 108). A reviewer who leaves
+  the organization, or can no longer see the vault of a drawing they still owe, is withdrawn from
+  the round; the round settles without them and the requester is told (and asked to cancel and
+  re-request when nobody is left). A resubmitted round no longer re-invites them. Hard-deleting a
+  file or version in a review re-settles the review, and cancels it when no file is left.
+- **Recorded references are history** (schema 108). Once a version's references are recorded,
+  only its author may replace them, and only while it is the file's newest version, so a
+  review's dependency set cannot be rewritten afterwards.
+- **Earlier rounds' markups are drawn on the version they were made on**, and J / K move between
+  items for every viewer, not only reviewers who still owe a decision.
 
 ### Security
 

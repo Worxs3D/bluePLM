@@ -5512,8 +5512,10 @@ GRANT EXECUTE ON FUNCTION get_my_pending_reviews() TO authenticated;
 -- The child version is resolved here, not taken from the client: the child's
 -- version whose content hash equals child_content_hash (exact), else the child's
 -- latest version (not exact), else none. A child_file_id outside the caller's
--- organization is treated as unresolved rather than trusted. Replaces whatever
--- was recorded for the version before, so a retried check-in is harmless.
+-- organization is treated as unresolved rather than trusted. Write-once (schema
+-- 108): only the author may replace a recorded set, and only while the version
+-- is the file's newest, so a retried check-in is harmless but history is not
+-- rewritten.
 CREATE OR REPLACE FUNCTION record_version_references(p_file_version_id UUID, p_refs JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -5524,6 +5526,7 @@ DECLARE
   v_actor UUID;
   v_file_id UUID;
   v_created_by UUID;
+  v_recorded_at TIMESTAMPTZ;
   v_org_id UUID;
   v_written INTEGER := 0;
   v_exact INTEGER := 0;
@@ -5556,7 +5559,21 @@ BEGIN
   END IF;
 
   -- One writer per version at a time.
-  PERFORM 1 FROM file_versions fv WHERE fv.id = p_file_version_id FOR UPDATE;
+  SELECT fv.references_recorded_at INTO v_recorded_at
+  FROM file_versions fv WHERE fv.id = p_file_version_id FOR UPDATE;
+
+  -- Schema 108: a recorded set is history (a review's dependency closure was
+  -- built from it), so it is written once. The one exception is the author
+  -- retrying the check-in of the file's newest version.
+  IF v_recorded_at IS NOT NULL AND (
+       v_created_by IS DISTINCT FROM v_actor
+       OR EXISTS (SELECT 1 FROM file_versions nv
+                  WHERE nv.file_id = v_file_id
+                    AND nv.version > (SELECT fv.version FROM file_versions fv WHERE fv.id = p_file_version_id))
+     ) THEN
+    RAISE EXCEPTION 'References for this version are already recorded'
+      USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'REFERENCES_RECORDED';
+  END IF;
 
   DELETE FROM file_version_references r WHERE r.parent_version_id = p_file_version_id;
 

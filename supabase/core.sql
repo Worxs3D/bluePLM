@@ -115,27 +115,20 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 107 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 108 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Drawing reviews become server-owned packages. A review (20-change-control) is a package of '
-  'files pinned to file_versions rows, reviewed in rounds with per-item, per-reviewer decisions '
-  '(approved, approved_with_comments, changes_requested, rejected; a comment is required for all '
-  'but approved) under mode all or any, with priority low|normal|high|urgent and a calendar due '
-  'date. Every write goes through SECURITY DEFINER RPCs that lock the review and write '
-  'notifications in the same transaction: request_review, respond_to_review_items, '
-  'approve_all_remaining, resubmit_review, cancel_review, update_review_meta; reads through '
-  'list_review_queue, get_review_detail and get_review_badge_count. Client policies on the review '
-  'tables are SELECT-only, which closes the forgeable review_responses policy. Existing reviews are '
-  'migrated in place into one-item packages. Gate reviews (10-source-files) are fixed in place: an '
-  'attempt id scopes approval counts, one row per reviewer, no client writes to pending_reviews or '
-  'workflow_review_history, the whole attempt is locked so concurrent approvals advance once, and '
-  'role rules match the effective role (is_org_admin). New: file_version_references with '
-  'record_version_references and get_version_dependency_closure (exact versus approximate), '
-  'drawing_pdf_renders with get_drawing_pdf and record_drawing_pdf, review links on file_comments. '
-  'Comments and notifications can no longer be written across organizations, and '
-  'notify_overdue_reviews is withdrawn from clients.'
+  'Drawing review upkeep (20-change-control, 10-source-files). A reviewer who still owes a '
+  'decision in an open round and leaves the organization, or can no longer see the vault of an '
+  'item they owe, is withdrawn from the round (review_responses.withdrawn_at and '
+  'withdrawn_reason); the round is re-settled without them and the requester is notified. '
+  'Statement triggers on users, team_members, vault_access and team_vault_access run '
+  'review_withdraw_lost_reviewers(), and resubmit_review carries forward only reviewers who can '
+  'still see every item. Hard-deleting a file or file version re-settles every open review that '
+  'lost items and cancels a review left with none (review_items_deleted_resettle). '
+  'record_version_references is write-once: only the author may replace a recorded set, and '
+  'only while the version is the file''s newest.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -464,7 +457,7 @@ LANGUAGE sql IMMUTABLE AS $$
     -- Version-accurate references and the drawing PDF cache (schema 107).
     ('10-source-files', NULL, 'table', 'file_version_references', NULL),
     ('10-source-files', NULL, 'table', 'drawing_pdf_renders', NULL),
-    ('10-source-files', NULL, 'function', 'record_version_references(uuid,jsonb)', 'require_file_access && references_recorded_at'),
+    ('10-source-files', NULL, 'function', 'record_version_references(uuid,jsonb)', 'require_file_access && references_recorded_at && nv.version'),
     ('10-source-files', NULL, 'function', 'version_reference_edges(uuid[],uuid)', 'references_recorded_at'),
     ('10-source-files', NULL, 'function', 'get_version_dependency_closure(uuid)', 'require_file_access && version_reference_edges'),
     ('10-source-files', NULL, 'function', 'get_drawing_pdf(uuid)', 'require_file_access'),
@@ -489,8 +482,11 @@ LANGUAGE sql IMMUTABLE AS $$
     ('20-change-control', 'ecos', 'table', 'review_decisions', NULL),
     ('20-change-control', 'ecos', 'function', 'require_review_access(uuid)',
       'current_actor_id && u.org_id = v_org_id'),
-    ('20-change-control', 'ecos', 'function', 'review_settle(uuid,uuid,boolean)', 'review_notify'),
-    ('20-change-control', 'ecos', 'function', 'review_owed_item_ids(uuid,uuid)', 'review_decisions'),
+    ('20-change-control', 'ecos', 'function', 'review_settle(uuid,uuid,boolean)', 'review_notify && withdrawn_at'),
+    ('20-change-control', 'ecos', 'function', 'review_owed_item_ids(uuid,uuid)', 'review_decisions && withdrawn_at'),
+    ('20-change-control', 'ecos', 'function', 'review_withdraw_lost_reviewers()', 'user_may_access_vault && review_settle'),
+    ('20-change-control', 'ecos', 'function', 'review_withdraw_lost_reviewers_trigger()', 'review_withdraw_lost_reviewers'),
+    ('20-change-control', 'ecos', 'function', 'review_items_deleted_resettle()', 'review_settle && old_items'),
     ('20-change-control', 'ecos', 'function', 'team_reviewer_user_ids(uuid)', 'team_reviewers'),
     ('20-change-control', 'ecos', 'function', 'review_notify(uuid,uuid[],uuid,text,text,text,uuid,text)', 'u.org_id = p_org_id'),
     ('20-change-control', 'ecos', 'function', 'request_review(uuid[],uuid[],uuid[],text,text,text,text,date)',
@@ -500,7 +496,7 @@ LANGUAGE sql IMMUTABLE AS $$
     ('20-change-control', 'ecos', 'function', 'approve_all_remaining(uuid,text)',
       'require_review_access && respond_to_review_items'),
     ('20-change-control', 'ecos', 'function', 'resubmit_review(uuid,jsonb,text)',
-      'require_review_access && is_org_admin'),
+      'require_review_access && is_org_admin && user_may_access_vault'),
     ('20-change-control', 'ecos', 'function', 'cancel_review(uuid,text)', 'require_review_access && is_org_admin'),
     ('20-change-control', 'ecos', 'function', 'update_review_meta(uuid,text,date,boolean)', 'require_review_access && is_org_admin'),
     ('20-change-control', 'ecos', 'function', 'list_review_queue(text,uuid,text,integer,text)',
@@ -2624,6 +2620,43 @@ BEGIN
       RETURN NEXT;
     END LOOP;
   END IF;
+  -- Review upkeep (schema 108). The triggers are what keep a departed reviewer
+  -- or a deleted file from holding an open review forever; the manifest sees
+  -- only their functions, so their presence is checked here.
+  IF to_regclass('public.review_responses') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'review_responses'
+         AND column_name = 'withdrawn_at'
+    ) THEN
+      residue := 'review_withdrawn_column_missing';
+      identity := 'public.review_responses.withdrawn_at';
+      detail := 'Re-run supabase/modules/20-change-control.sql.';
+      RETURN NEXT;
+    END IF;
+
+    FOR r IN
+      SELECT x.tbl, x.tg
+        FROM (VALUES
+          ('users', 'review_withdraw_on_user_change'),
+          ('team_members', 'review_withdraw_on_team_members'),
+          ('vault_access', 'review_withdraw_on_vault_access'),
+          ('team_vault_access', 'review_withdraw_on_team_vault_access'),
+          ('review_items', 'review_items_deleted_resettle')
+        ) AS x(tbl, tg)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM pg_trigger t
+          WHERE t.tgrelid = to_regclass('public.' || x.tbl)
+            AND t.tgname = x.tg
+            AND NOT t.tgisinternal)
+    LOOP
+      residue := 'review_upkeep_trigger_missing';
+      identity := 'public.' || r.tbl || ' / ' || r.tg;
+      detail := 'Without this trigger an open review can wait forever on a reviewer who left or a '
+             || 'file that was deleted. Re-run supabase/modules/20-change-control.sql.';
+      RETURN NEXT;
+    END LOOP;
+  END IF;
 END;
 $$;
 
@@ -2660,7 +2693,9 @@ LANGUAGE sql IMMUTABLE AS $$
     ('50-extensions', 'cleanup_extension_http_logs(integer)'),
     ('50-extensions', 'cleanup_extension_secret_access_logs(integer)'),
     -- Notifies every organization at once; a scheduled caller only (schema 107).
-    ('20-change-control', 'notify_overdue_reviews()')
+    ('20-change-control', 'notify_overdue_reviews()'),
+    -- Withdraws reviewers across every organization; its triggers only (schema 108).
+    ('20-change-control', 'review_withdraw_lost_reviewers()')
 $$;
 
 REVOKE ALL ON FUNCTION withdrawn_execute_manifest() FROM PUBLIC, anon, authenticated;

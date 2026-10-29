@@ -344,7 +344,11 @@ export interface ReviewerAssignment {
   status: ReviewerRoundStatus
   viaTeamId: string | null
   respondedAt: string | null
+  /** Set when the reviewer was withdrawn from the round (schema 108): they left the organization or lost access to a vault the round uses. */
+  withdrawnReason: ReviewerWithdrawnReason | null
 }
+
+export type ReviewerWithdrawnReason = 'left_org' | 'lost_vault_access'
 
 export interface ReviewViewerContext {
   userId: string

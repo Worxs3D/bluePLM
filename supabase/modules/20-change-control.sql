@@ -391,6 +391,19 @@ CREATE INDEX IF NOT EXISTS idx_review_responses_reviewer_id ON review_responses(
 CREATE INDEX IF NOT EXISTS idx_review_responses_status ON review_responses(status);
 CREATE INDEX IF NOT EXISTS idx_review_responses_round ON review_responses(review_id, round_number);
 
+-- Schema 108: a reviewer withdrawn from an open round because they left the
+-- organization or can no longer see a vault the round's items are in
+-- (review_withdraw_lost_reviewers()). A withdrawn reviewer no longer owes
+-- anything and no longer counts toward a mode 'all' round; decisions they made
+-- before stay as recorded.
+ALTER TABLE review_responses ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
+ALTER TABLE review_responses ADD COLUMN IF NOT EXISTS withdrawn_reason TEXT;
+DO $$ BEGIN
+  ALTER TABLE review_responses ADD CONSTRAINT review_responses_withdrawn_reason_check
+    CHECK (withdrawn_reason IS NULL OR withdrawn_reason IN ('left_org', 'lost_vault_access'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- ===========================================
 -- REVIEW DECISIONS
 -- ===========================================
@@ -1231,6 +1244,7 @@ AS $$
   FROM reviews r
   JOIN review_responses rr
     ON rr.review_id = r.id AND rr.round_number = r.current_round AND rr.reviewer_id = p_user_id
+   AND rr.withdrawn_at IS NULL
   JOIN review_round_items rri
     ON rri.review_id = r.id AND rri.round_number = r.current_round
    AND NOT rri.carried_forward AND rri.outcome = 'pending'
@@ -1320,7 +1334,7 @@ BEGIN
 
   v_reviewers := ARRAY(
     SELECT x.reviewer_id FROM review_responses x
-    WHERE x.review_id = p_review_id AND x.round_number = v_round
+    WHERE x.review_id = p_review_id AND x.round_number = v_round AND x.withdrawn_at IS NULL
   );
 
   FOR ri IN
@@ -1364,7 +1378,7 @@ BEGIN
   -- Each reviewer's summary for the round.
   FOR rr IN
     SELECT x.id, x.reviewer_id FROM review_responses x
-    WHERE x.review_id = p_review_id AND x.round_number = v_round
+    WHERE x.review_id = p_review_id AND x.round_number = v_round AND x.withdrawn_at IS NULL
   LOOP
     UPDATE review_responses x
     SET status = s.status,
@@ -1474,6 +1488,205 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION review_settle(UUID, UUID, BOOLEAN) FROM PUBLIC, anon, authenticated;
+
+-- ===========================================
+-- REVIEW UPKEEP (schema 108)
+-- ===========================================
+
+-- Withdraw every reviewer of an open round who still owes a decision but can no
+-- longer give one: they left the review's organization, or can no longer see the
+-- vault of an item they owe. Their assignment closes ('cancelled', with
+-- withdrawn_at and the reason), the round is re-settled without them, and the
+-- requester is told. When nobody is left to decide, the review stays open and
+-- the requester is asked to cancel it and ask again.
+--
+-- Run by statement triggers on every table that decides organization membership
+-- or vault visibility (users, team_members, vault_access, team_vault_access). It
+-- scans only open reviews and does nothing when no reviewer lost access.
+-- Returns the number of assignments withdrawn.
+CREATE OR REPLACE FUNCTION review_withdraw_lost_reviewers()
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  x RECORD;
+  r reviews%ROWTYPE;
+  v_n INTEGER := 0;
+  v_status TEXT;
+  v_left INTEGER;
+  v_title TEXT;
+BEGIN
+  FOR x IN
+    SELECT rr.id AS response_id, rr.review_id, rr.reviewer_id,
+           CASE WHEN u.org_id IS DISTINCT FROM rv.org_id THEN 'left_org' ELSE 'lost_vault_access' END AS reason
+    FROM reviews rv
+    JOIN review_responses rr
+      ON rr.review_id = rv.id AND rr.round_number = rv.current_round AND rr.withdrawn_at IS NULL
+    LEFT JOIN users u ON u.id = rr.reviewer_id
+    WHERE rv.status = 'pending'
+      AND EXISTS (SELECT 1 FROM organizations og WHERE og.id = rv.org_id)
+      AND EXISTS (SELECT 1 FROM review_owed_item_ids(rv.id, rr.reviewer_id))
+      AND (
+        u.org_id IS DISTINCT FROM rv.org_id
+        OR EXISTS (
+          SELECT 1 FROM review_owed_item_ids(rv.id, rr.reviewer_id) AS o(item_id)
+          JOIN review_items i ON i.id = o.item_id
+          WHERE NOT user_may_access_vault(rr.reviewer_id, i.vault_id))
+      )
+    ORDER BY rv.id, rr.reviewer_id
+  LOOP
+    SELECT * INTO r FROM reviews WHERE id = x.review_id FOR UPDATE;
+    IF r.status <> 'pending' THEN
+      CONTINUE;
+    END IF;
+
+    UPDATE review_responses
+    SET withdrawn_at = NOW(), withdrawn_reason = x.reason, status = 'cancelled', updated_at = NOW()
+    WHERE id = x.response_id AND withdrawn_at IS NULL;
+    IF NOT FOUND THEN
+      CONTINUE;
+    END IF;
+    v_n := v_n + 1;
+
+    v_status := review_settle(x.review_id, NULL, true);
+
+    IF v_status = 'pending' THEN
+      SELECT count(*) INTO v_left
+      FROM review_responses rr
+      WHERE rr.review_id = x.review_id AND rr.round_number = r.current_round AND rr.withdrawn_at IS NULL;
+
+      v_title := review_display_title(x.review_id);
+      PERFORM review_notify(
+        r.org_id, ARRAY[r.requested_by], NULL, 'review_reviewer_removed',
+        'Reviewer removed: ' || v_title,
+        COALESCE((SELECT u.full_name FROM users u WHERE u.id = x.reviewer_id), 'A reviewer')
+          || CASE x.reason WHEN 'left_org' THEN ' left the organization'
+                           ELSE ' can no longer see this review''s vault' END
+          || CASE WHEN v_left = 0
+                  THEN '. Nobody is left to decide: cancel the review and ask again.'
+                  ELSE '. The review continues without them.' END,
+        x.review_id, r.priority);
+    END IF;
+  END LOOP;
+
+  RETURN v_n;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION review_withdraw_lost_reviewers() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION review_withdraw_lost_reviewers_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM review_withdraw_lost_reviewers();
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION review_withdraw_lost_reviewers_trigger() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS review_withdraw_on_user_change ON users;
+CREATE TRIGGER review_withdraw_on_user_change
+  AFTER UPDATE OF org_id, role ON users
+  FOR EACH STATEMENT EXECUTE FUNCTION review_withdraw_lost_reviewers_trigger();
+
+DROP TRIGGER IF EXISTS review_withdraw_on_team_members ON team_members;
+CREATE TRIGGER review_withdraw_on_team_members
+  AFTER INSERT OR UPDATE OR DELETE ON team_members
+  FOR EACH STATEMENT EXECUTE FUNCTION review_withdraw_lost_reviewers_trigger();
+
+DROP TRIGGER IF EXISTS review_withdraw_on_vault_access ON vault_access;
+CREATE TRIGGER review_withdraw_on_vault_access
+  AFTER INSERT OR UPDATE OR DELETE ON vault_access
+  FOR EACH STATEMENT EXECUTE FUNCTION review_withdraw_lost_reviewers_trigger();
+
+DROP TRIGGER IF EXISTS review_withdraw_on_team_vault_access ON team_vault_access;
+CREATE TRIGGER review_withdraw_on_team_vault_access
+  AFTER INSERT OR UPDATE OR DELETE ON team_vault_access
+  FOR EACH STATEMENT EXECUTE FUNCTION review_withdraw_lost_reviewers_trigger();
+
+-- Re-settle the open reviews that lost items when a file or file version was
+-- hard-deleted (review_items cascade from both). Settling may complete the
+-- review over the items that are left; a review left with no items is cancelled.
+-- The requester is told either way.
+CREATE OR REPLACE FUNCTION review_items_deleted_resettle()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  x RECORD;
+  r reviews%ROWTYPE;
+  v_status TEXT;
+  v_title TEXT;
+BEGIN
+  FOR x IN
+    SELECT o.review_id, count(*)::integer AS n
+    FROM old_items o
+    GROUP BY o.review_id
+    ORDER BY o.review_id
+  LOOP
+    SELECT * INTO r FROM reviews WHERE id = x.review_id FOR UPDATE;
+    -- Skipped while the organization itself is being deleted (its rows cascade).
+    IF r.id IS NULL OR r.status NOT IN ('pending', 'kicked_back')
+       OR NOT EXISTS (SELECT 1 FROM organizations og WHERE og.id = r.org_id) THEN
+      CONTINUE;
+    END IF;
+
+    v_title := review_display_title(x.review_id);
+
+    IF NOT EXISTS (SELECT 1 FROM review_items i WHERE i.review_id = x.review_id) THEN
+      UPDATE review_responses
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE review_id = x.review_id AND status = 'pending';
+
+      UPDATE review_rounds
+      SET closed_at = COALESCE(closed_at, NOW()), outcome = COALESCE(outcome, 'cancelled')
+      WHERE review_id = x.review_id AND round_number = r.current_round;
+
+      UPDATE reviews
+      SET status = 'cancelled', cancelled_at = NOW(),
+          cancel_reason = 'Every file in this review was deleted.',
+          completed_at = NOW(), updated_at = NOW()
+      WHERE id = x.review_id;
+
+      PERFORM review_notify(
+        r.org_id, ARRAY[r.requested_by], NULL, 'review_cancelled',
+        'Review cancelled: ' || v_title, 'Every file in this review was deleted.',
+        x.review_id, r.priority);
+      CONTINUE;
+    END IF;
+
+    IF r.status = 'pending' THEN
+      v_status := review_settle(x.review_id, NULL, true);
+    ELSE
+      v_status := r.status::text;
+    END IF;
+
+    IF v_status IN ('pending', 'kicked_back') THEN
+      PERFORM review_notify(
+        r.org_id, ARRAY[r.requested_by], NULL, 'review_item_removed',
+        'File removed from review: ' || v_title,
+        x.n || ' file(s) in this review were deleted and removed from it.',
+        x.review_id, r.priority);
+    END IF;
+  END LOOP;
+
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION review_items_deleted_resettle() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS review_items_deleted_resettle ON review_items;
+CREATE TRIGGER review_items_deleted_resettle
+  AFTER DELETE ON review_items
+  REFERENCING OLD TABLE AS old_items
+  FOR EACH STATEMENT EXECUTE FUNCTION review_items_deleted_resettle();
 
 -- ===========================================
 -- REVIEW PACKAGES: RPCs (schema 107)
@@ -1739,6 +1952,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM review_responses rr
     WHERE rr.review_id = p_review_id AND rr.round_number = r.current_round AND rr.reviewer_id = v_actor
+      AND rr.withdrawn_at IS NULL
   ) THEN
     RAISE EXCEPTION 'You are not a reviewer in this round'
       USING ERRCODE = 'insufficient_privilege', HINT = 'NOT_A_REVIEWER';
@@ -1977,7 +2191,11 @@ BEGIN
   SELECT v_org_id, p_review_id, v_new_round, rr.reviewer_id, rr.via_team_id, 'pending'
   FROM review_responses rr
   JOIN users u ON u.id = rr.reviewer_id AND u.org_id = v_org_id
-  WHERE rr.review_id = p_review_id AND rr.round_number = r.current_round;
+  WHERE rr.review_id = p_review_id AND rr.round_number = r.current_round
+    AND rr.withdrawn_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM review_items i
+      WHERE i.review_id = p_review_id AND NOT user_may_access_vault(rr.reviewer_id, i.vault_id));
 
   v_reviewers := ARRAY(
     SELECT rr.reviewer_id FROM review_responses rr
@@ -2193,6 +2411,7 @@ BEGIN
     FROM reviews r
     JOIN review_responses rr
       ON rr.review_id = r.id AND rr.round_number = r.current_round AND rr.reviewer_id = v_actor
+     AND rr.withdrawn_at IS NULL
     JOIN review_round_items rri
       ON rri.review_id = r.id AND rri.round_number = r.current_round
      AND NOT rri.carried_forward AND rri.outcome = 'pending'
@@ -2510,7 +2729,8 @@ BEGIN
                'round_number', rr.round_number,
                'status', CASE rr.status WHEN 'kicked_back' THEN 'changes_requested' ELSE rr.status::text END,
                'via_team_id', rr.via_team_id,
-               'responded_at', rr.responded_at) ORDER BY rr.round_number, rr.created_at, rr.reviewer_id)
+               'responded_at', rr.responded_at,
+               'withdrawn_reason', rr.withdrawn_reason) ORDER BY rr.round_number, rr.created_at, rr.reviewer_id)
       FROM review_responses rr WHERE rr.review_id = r.id), '[]'::jsonb),
     'me', jsonb_build_object(
       'user_id', v_actor,
@@ -2557,6 +2777,7 @@ BEGIN
   FROM reviews r
   JOIN review_responses rr
     ON rr.review_id = r.id AND rr.round_number = r.current_round AND rr.reviewer_id = v_actor
+   AND rr.withdrawn_at IS NULL
   JOIN review_round_items rri
     ON rri.review_id = r.id AND rri.round_number = r.current_round
    AND NOT rri.carried_forward AND rri.outcome = 'pending'
