@@ -359,6 +359,7 @@ function virtualElectronApiProgram(
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     skipLibCheck: true,
+    types: [],
   }
   const host = ts.createCompilerHost(options)
   const originalFileExists = host.fileExists.bind(host)
@@ -389,6 +390,19 @@ describe('window.electronAPI ↔ src/electron.d.ts', () => {
 
   it('every exposed member is declared', () => {
     expect(missingPaths(exposed, declared)).toEqual([])
+  })
+
+  it('isolates the virtual fixture from ambient package types and resolves valid members', () => {
+    const { program, file } = virtualElectronApiProgram(
+      '{ getVersion: () => string }',
+      '__valid_electron_api__.d.ts',
+    )
+    const ambientFiles = program
+      .getSourceFiles()
+      .map((sf) => sf.fileName.replace(/\\/g, '/'))
+      .filter((name) => name.includes('/node_modules/@types/'))
+    expect(ambientFiles).toEqual([])
+    expect([...declaredApiShapeFromProgram(program, file).keys()]).toEqual(['getVersion'])
   })
 
   it('fails closed when an extracted API import cannot be resolved', () => {
