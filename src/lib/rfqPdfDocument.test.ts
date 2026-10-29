@@ -131,6 +131,52 @@ afterEach(() => {
 })
 
 describe('RFQ PDF document extraction baseline', () => {
+  it.each([
+    {
+      name: 'legacy address and optional columns disabled',
+      rfq,
+      items,
+      org: {
+        ...org,
+        billing_address: null,
+        shipping_address: null,
+        rfq_settings: {
+          ...org.rfq_settings,
+          show_revision_column: false,
+          show_material_column: false,
+          show_finish_column: false,
+          show_notes_column: false,
+        },
+      },
+    },
+    {
+      name: 'logo and decimal quantity',
+      rfq,
+      items: [{ ...items[0], quantity: 2.5, unit: 'kg' }],
+      org: { ...org, logo_url: 'https://example.invalid/logo.png' },
+    },
+    {
+      name: 'shipping only and no optional dates',
+      rfq: { ...rfq, due_date: null, required_date: null, valid_until: null },
+      items,
+      org: { ...org, billing_address: null, address_line1: null },
+    },
+  ])('captures formatter markup: $name', ({ rfq, items, org }) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-18T12:00:00.000Z'))
+    vi.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(function (this: Date) {
+      return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(this)
+    })
+    vi.spyOn(Date.prototype, 'toLocaleString').mockImplementation(function (this: Date) {
+      return new Intl.DateTimeFormat('en-US', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }).format(this)
+    })
+    expect(JSON.stringify(buildRFQHtml({ rfq, items, org }))).toMatchSnapshot()
+  })
+
   it('captures the existing renderer formatter markup for a fixed RFQ fixture', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-18T12:00:00.000Z'))

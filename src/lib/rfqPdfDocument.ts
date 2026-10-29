@@ -1,9 +1,5 @@
-// Provider-free RFQ document template shared by renderer and trusted Main callers.
-// Main must adapt authoritative, normalized data before calling this legacy template:
-// rfq_number (title tag), quantity/unit, and logo_url are interpolated without full
-// HTML/URL safety normalization here. Main must escape those text fields and supply
-// only an opaque, verified raster representation under an appropriate restrictive CSP.
-import type { RFQ, RFQItem } from '../types/rfq'
+// Provider-free RFQ document HTML formatter.
+import type { RFQ, RFQItem } from '@/types/rfq'
 export interface AddressInfo {
   label?: string
   attention_to?: string | null
