@@ -39,7 +39,7 @@ function normalizeSavedConfig(value: unknown): TelemetryConfig {
   return {
     sampleRateHz,
     retentionSeconds,
-    enabled: saved.enabled === true,
+    enabled: false,
   }
 }
 
@@ -155,11 +155,8 @@ class TelemetryService {
       }
     }
     this.buffer.resize(this.config.sampleRateHz * this.config.retentionSeconds)
-    // Restore an explicitly enabled recording session after a renderer restart.
-    // Sampling remains opt-in: the default config is disabled and therefore
-    // does not start an interval or an animation-frame loop.
-    if (this.config.enabled && !this.isRunning()) this.start()
-    else if (!this.config.enabled && this.isRunning()) this.stop()
+    // Restoring settings never resumes a recording.
+    this.stop()
     return this.config
   }
 
@@ -172,7 +169,6 @@ class TelemetryService {
     if (this.intervalId) return
 
     this.config.enabled = true
-    this.persistConfig()
 
     // Start FPS counter
     this.startFpsCounter()
@@ -193,7 +189,6 @@ class TelemetryService {
       this.rafId = null
     }
     this.config.enabled = false
-    this.persistConfig()
   }
 
   // Check if running
@@ -258,14 +253,6 @@ class TelemetryService {
       } catch {
         // Listener error - ignore
       }
-    }
-  }
-
-  private persistConfig(): void {
-    try {
-      localStorage.setItem('telemetry.config', JSON.stringify(this.config))
-    } catch {
-      // Keep in-memory telemetry usable when storage is unavailable or full.
     }
   }
 }

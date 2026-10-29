@@ -999,6 +999,5 @@ export const zhCN: TranslationDict = {
     telemetrySettings: '遥测设置',
     sampleRateHz: '采样率 (Hz)',
     retentionSeconds: '保留时间（秒）',
-    fpsOptIn: '仅在录制启用期间收集 FPS。',
   },
 }

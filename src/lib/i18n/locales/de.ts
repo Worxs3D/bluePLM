@@ -1051,6 +1051,5 @@ export const de: TranslationDict = {
     telemetrySettings: 'Telemetrie-Einstellungen',
     sampleRateHz: 'Abtastrate (Hz)',
     retentionSeconds: 'Aufbewahrung (Sekunden)',
-    fpsOptIn: 'FPS-Erfassung ist nur während der Aufzeichnung aktiv.',
   },
 }

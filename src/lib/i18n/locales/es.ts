@@ -1040,6 +1040,5 @@ export const es: TranslationDict = {
     telemetrySettings: 'Ajustes de telemetría',
     sampleRateHz: 'Frecuencia (Hz)',
     retentionSeconds: 'Retención (segundos)',
-    fpsOptIn: 'La captura de FPS solo está activa durante la grabación.',
   },
 }

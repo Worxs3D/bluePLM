@@ -999,6 +999,5 @@ export const zhTW: TranslationDict = {
     telemetrySettings: '遙測設定',
     sampleRateHz: '取樣率 (Hz)',
     retentionSeconds: '保留時間（秒）',
-    fpsOptIn: '僅在錄製啟用期間收集 FPS。',
   },
 }

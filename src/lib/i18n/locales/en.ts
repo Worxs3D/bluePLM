@@ -2245,6 +2245,5 @@ export const en: TranslationDict = {
     telemetrySettings: 'Telemetry Settings',
     sampleRateHz: 'Sample Rate (Hz)',
     retentionSeconds: 'Retention (seconds)',
-    fpsOptIn: 'FPS collection is only active while recording is enabled.',
   },
 }
