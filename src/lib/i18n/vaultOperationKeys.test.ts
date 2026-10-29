@@ -36,6 +36,15 @@ describe('vault operation messages', () => {
     )
   })
 
+  it.each([
+    ['zh-CN', '已删除 2 个本地项目（共 7 个）'],
+    ['zh-TW', '已刪除 2 個本機項目（共 7 個）'],
+  ] as const)('reports deleted and total counts distinctly in %s', (language, expected) => {
+    expect(getTranslation(language, 'vaultOperations.localDeleted', { count: 2, total: 7 })).toBe(
+      expected,
+    )
+  })
+
   it.each<Language>(['en', 'de', 'es', 'fr', 'pt', 'zh-CN', 'zh-TW'])(
     'interpolates counts and errors for %s',
     (language) => {
