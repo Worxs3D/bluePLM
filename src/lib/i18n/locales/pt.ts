@@ -512,6 +512,10 @@ export const pt: TranslationDict = {
     disconnectWarningMovedHint: 'Atualize o cofre para corresponder, ou devolva os ficheiros',
   },
 
+  vaultOperations: {
+    createFailed: 'Não foi possível criar o cofre: {{error}}',
+  },
+
   vaultSetup: {
     title: 'Configurar o seu cofre',
     subtitle: 'Configure como os ficheiros são sincronizados para o seu computador',
