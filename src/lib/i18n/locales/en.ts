@@ -619,6 +619,10 @@ export const en: TranslationDict = {
     disconnectWarningMovedHint: 'Update the vault to match, or put the files back',
   },
 
+  vaultOperations: {
+    createFailed: 'Failed to create vault: {{error}}',
+  },
+
   // Vault Setup Dialog
   vaultSetup: {
     title: 'Set Up Your Vault',

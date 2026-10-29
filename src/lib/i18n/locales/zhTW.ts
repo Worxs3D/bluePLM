@@ -550,6 +550,10 @@ export const zhTW: TranslationDict = {
     disconnectWarningMovedHint: '更新庫以匹配，或將檔案移回原處',
   },
 
+  vaultOperations: {
+    createFailed: '建立保險庫失敗：{{error}}',
+  },
+
   vaultSetup: {
     title: '設定您的保險庫',
     subtitle: '設定檔案如何同步到您的電腦',

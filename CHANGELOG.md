@@ -8,6 +8,11 @@ All notable changes to BluePLM will be documented in this file.
 
 ### Fixed
 
+- Context-menu links into Settings (for example "open settings tab") work again: the app shell
+  listens for the navigation event once more (#87).
+- The installer packages the SolidWorks service once, from the staged `resources/bin/win32`
+  payload, instead of also copying the raw `bin/Release` build output (#84).
+- A failed vault creation shows a translated error in every locale (#89).
 - The embedded eDrawings preview now says the vault is on a network share when it refuses a UNC
   vault, instead of asking you to download a file that is already there.
 

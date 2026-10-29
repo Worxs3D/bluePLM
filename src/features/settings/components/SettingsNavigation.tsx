@@ -1,7 +1,7 @@
 import { usePDMStore } from '@/stores/pdmStore'
 import type { IntegrationStatusValue, IntegrationId, BackupStatusValue } from '@/stores/types'
 import type { SettingsTab } from '@/types/settings'
-import { t } from '@/lib/i18n'
+import { useTranslation } from '@/lib/i18n'
 import { logSettings } from '@/lib/userActionLogger'
 
 interface SettingsNavigationProps {
@@ -23,7 +23,7 @@ interface SettingsSection {
 
 // A function rather than a constant because the labels are translated at render time, and the
 // language can change without the module being re-evaluated.
-const settingsSections = (): SettingsSection[] => [
+const settingsSections = (t: ReturnType<typeof useTranslation>['t']): SettingsSection[] => [
   {
     category: t('settings.account'),
     items: [
@@ -85,6 +85,7 @@ const integrationIds = [
 ] as const
 
 function StatusDot({ status }: { status: IntegrationStatusValue }) {
+  const { t } = useTranslation()
   const colors: Record<IntegrationStatusValue, string> = {
     online: 'bg-plm-success',
     partial: 'bg-yellow-500',
@@ -112,6 +113,7 @@ function StatusDot({ status }: { status: IntegrationStatusValue }) {
 }
 
 function BackupStatusDot({ status }: { status: BackupStatusValue }) {
+  const { t } = useTranslation()
   const colors: Record<BackupStatusValue, string> = {
     online: 'bg-plm-success',
     partial: 'bg-yellow-500',
@@ -135,6 +137,7 @@ function BackupStatusDot({ status }: { status: BackupStatusValue }) {
 }
 
 export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigationProps) {
+  const { t } = useTranslation()
   // ═══════════════════════════════════════════════════════════════════════════
   // INTEGRATION & BACKUP STATUSES - Consumed from centralized store slice
   // ═══════════════════════════════════════════════════════════════════════════
@@ -145,7 +148,7 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
   const backupStatus = usePDMStore((s) => s.backupStatus)
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
 
-  const sections = settingsSections().map((section) => ({
+  const sections = settingsSections(t).map((section) => ({
     ...section,
     items: section.items.filter((item) => !item.adminOnly || isAdmin),
   }))
