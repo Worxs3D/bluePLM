@@ -2,7 +2,8 @@
  * The pinned version of one review item, with its markups. The bytes always come from the stored
  * PDF of that version (`resolveReviewItemPreview`), never the reviewer's local working copy
  * (audit C1/C2). Markups are keyed by (review, round, item); an earlier round's markups are shown
- * read-only.
+ * read-only, drawn on the PDF of the version that round reviewed, which may be older than the
+ * version pinned now.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -54,15 +55,16 @@ export function ItemPreview({ reviewId, item, round, canMarkup }: ItemPreviewPro
   const [attempt, setAttempt] = useState(0)
 
   const roundEntry = item.rounds.find((r) => r.roundNumber === round)
-  /** Markups of an earlier round drawn on a different version cannot be overlaid on this PDF. */
-  const sameVersion = !roundEntry || roundEntry.fileVersionId === item.version.fileVersionId
+  /** The version the shown round reviewed: its PDF is the one the round's markups were made on. */
+  const shownVersionId = roundEntry?.fileVersionId ?? item.version.fileVersionId
+  const sameVersion = shownVersionId === item.version.fileVersionId
   const markupVersion = roundEntry?.version ?? item.version.version
 
   useEffect(() => {
     let cancelled = false
     setPreview(null)
     setError(null)
-    resolveReviewItemPreview(item)
+    resolveReviewItemPreview(item, shownVersionId)
       .then((result) => {
         if (!cancelled) setPreview(result)
       })
@@ -74,14 +76,13 @@ export function ItemPreview({ reviewId, item, round, canMarkup }: ItemPreviewPro
     return () => {
       cancelled = true
     }
-    // The pinned version and its PDF decide the preview; `attempt` retries after generating.
-  }, [item.id, item.version.fileVersionId, item.pdf?.storageHash, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+    // The shown version and its PDF decide the preview; `attempt` retries after generating.
+  }, [item.id, shownVersionId, item.pdf?.storageHash, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Annotations are shared store state: leave none behind for the next surface.
   useEffect(() => () => clearAnnotations(), [clearAnnotations])
 
   const overlays = useMemo<AnnotationOverlay[]>(() => {
-    if (!sameVersion) return []
     const result: AnnotationOverlay[] = []
     for (const ann of annotations) {
       if (ann.position && ann.page_number != null) {
@@ -89,7 +90,7 @@ export function ItemPreview({ reviewId, item, round, canMarkup }: ItemPreviewPro
       }
     }
     return result
-  }, [annotations, sameVersion])
+  }, [annotations])
 
   const handleCreate = useCallback(
     (data: NewAnnotationData) => {
@@ -102,7 +103,7 @@ export function ItemPreview({ reviewId, item, round, canMarkup }: ItemPreviewPro
   const generate = async () => {
     setGenerating(true)
     try {
-      await executeCommand('generate-review-pdfs', { fileVersionIds: [item.version.fileVersionId] })
+      await executeCommand('generate-review-pdfs', { fileVersionIds: [shownVersionId] })
       setAttempt((n) => n + 1)
     } finally {
       setGenerating(false)
@@ -129,7 +130,7 @@ export function ItemPreview({ reviewId, item, round, canMarkup }: ItemPreviewPro
             filePath={preview.localPath}
             readData={readCachedPdf}
             fileName={fileName}
-            fileVersion={item.version.version}
+            fileVersion={markupVersion}
             initialScale="page-fit"
             annotations={overlays}
             hoveredAnnotationId={hoveredAnnotationId}

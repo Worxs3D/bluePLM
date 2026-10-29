@@ -87,5 +87,7 @@ describe('review notifications', () => {
     expect(reviewToastType('review_rejected')).toBe('error')
     expect(reviewToastType('review_completed')).toBe('success')
     expect(reviewToastType('review_decision')).toBe('info')
+    expect(reviewToastType('review_reviewer_removed')).toBe('warning')
+    expect(reviewToastType('review_item_removed')).toBe('info')
   })
 })

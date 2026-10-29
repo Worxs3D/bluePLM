@@ -256,7 +256,7 @@ export const zhTW: TranslationDict = {
       generate: '產生 PDF',
       unsupported: '此檔案類型無預覽',
       unsupportedHint: '下載審閱包，以在 SOLIDWORKS 中依被審閱的版本開啟。',
-      otherVersion: '本輪標註是在 v{{version}} 上做的；僅列出，不繪製。',
+      otherVersion: '本輪標註是在 v{{version}} 上做的；顯示該版本，唯讀。',
     },
     resubmit: {
       button: '以更新的版本重新提交',

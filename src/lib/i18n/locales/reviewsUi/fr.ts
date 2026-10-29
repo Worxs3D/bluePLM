@@ -256,7 +256,7 @@ export const fr: TranslationDict = {
       generate: 'Générer le PDF',
       unsupported: 'Aucun aperçu pour ce type de fichier',
       unsupportedHint: "Téléchargez le dossier pour l'ouvrir dans SOLIDWORKS à la version relue.",
-      otherVersion: 'Les annotations de ce tour ont été faites sur v{{version}} ; elles sont listées, pas dessinées.',
+      otherVersion: 'Les annotations de ce tour ont été faites sur v{{version}} ; cette version est affichée en lecture seule.',
     },
     resubmit: {
       button: 'Soumettre à nouveau avec des versions plus récentes',

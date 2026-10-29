@@ -13,7 +13,12 @@
 
 import { log } from '@/lib/logger'
 import { getDownloadUrl, uploadFile } from '@/lib/storage'
-import { getDrawingPdf, recordDrawingPdf, ReviewRpcError } from '@/lib/supabase/reviews'
+import {
+  getDrawingPdf,
+  getFileVersionContentHash,
+  recordDrawingPdf,
+  ReviewRpcError,
+} from '@/lib/supabase/reviews'
 import {
   checkSwServiceFeature,
   SW_SERVICE_VERSION_RETARGET_REFERENCES,
@@ -270,21 +275,30 @@ export async function downloadPdfToCache(storageHash: string): Promise<string> {
 }
 
 /**
- * What the viewer shows for a review item at its pinned version.
+ * What the viewer shows for a review item at one of its versions: the pinned version by default,
+ * or `fileVersionId`, the version an earlier round reviewed, so that round's markups are drawn on
+ * the PDF they were made on.
  * - The item is a PDF version: that version's content, cached locally.
- * - The item is a drawing with a stored render (`item.pdf`, else looked up): the render, cached.
+ * - The item is a drawing with a stored render (`item.pdf` for the pinned version, else looked
+ *   up): the render, cached.
  * - A drawing without a render: `pdf_pending`.
- * - Anything else: `unsupported`.
+ * - Anything else, or an earlier PDF version that is gone: `unsupported`.
  * Throws when a PDF exists but cannot be downloaded (offline, storage error).
  */
-export async function resolveReviewItemPreview(item: ReviewItemDetail): Promise<ReviewItemPreview> {
+export async function resolveReviewItemPreview(
+  item: ReviewItemDetail,
+  fileVersionId: string = item.version.fileVersionId,
+): Promise<ReviewItemPreview> {
+  const pinned = fileVersionId === item.version.fileVersionId
   const name = item.file.fileName || item.file.filePath
   if (isPdfPath(name)) {
-    return { kind: 'pdf', localPath: await downloadPdfToCache(item.version.contentHash) }
+    const hash = pinned ? item.version.contentHash : await getFileVersionContentHash(fileVersionId)
+    if (!hash) return { kind: 'unsupported' }
+    return { kind: 'pdf', localPath: await downloadPdfToCache(hash) }
   }
   if (!isDrawingPath(name)) return { kind: 'unsupported' }
 
-  const pdf = item.pdf ?? (await getDrawingPdf(item.version.fileVersionId))
+  const pdf = (pinned ? item.pdf : null) ?? (await getDrawingPdf(fileVersionId))
   if (!pdf) return { kind: 'pdf_pending' }
   return { kind: 'pdf', localPath: await downloadPdfToCache(pdf.storageHash) }
 }

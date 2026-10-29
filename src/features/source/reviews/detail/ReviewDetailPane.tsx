@@ -2,8 +2,9 @@
  * The open review in the Reviews view's main area: header, item list with per-item status and
  * per-reviewer decisions, the pinned version's PDF with its markups, and the decision bar.
  *
- * Built for a reviewer working a long queue: J/K move between items, A/C/R decide, and after a
- * decision the view moves to the next item still owed. When none is left the queue reloads.
+ * Built for a reviewer working a long queue: J/K move between items (for anyone viewing the
+ * review), A/C/R decide, and after a decision the view moves to the next item still owed. When
+ * none is left the queue reloads.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -16,6 +17,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import type { ReviewDecision, ReviewUser } from '@/types/reviews'
 
 import { useReviewDetail } from '../hooks/useReviewDetail'
+import { useReviewItemKeys } from '../hooks/useReviewItemKeys'
 import { nextOwedItem, stepItem } from '../lib/decisionKeys'
 import { describeReviewError } from '../lib/reviewErrors'
 import { DecisionBar } from './DecisionBar'
@@ -80,6 +82,7 @@ export function ReviewDetailPane() {
     () => setActiveItemId(stepItem(itemIds, activeItemId, -1)),
     [itemIds, activeItemId, setActiveItemId],
   )
+  useReviewItemKeys(!!detail, goNext, goPrevious)
 
   const decide = useCallback(
     async (decision: ReviewDecision, comment: string | null) => {
@@ -192,8 +195,6 @@ export function ReviewDetailPane() {
               busy={busy}
               onDecide={(decision, comment) => void decide(decision, comment)}
               onApproveAll={(comment) => void approveAll(comment)}
-              onNext={goNext}
-              onPrevious={goPrevious}
             />
           )}
         </div>

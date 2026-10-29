@@ -256,7 +256,7 @@ export const en: TranslationDict = {
       generate: 'Generate PDF',
       unsupported: 'No preview for this file type',
       unsupportedHint: 'Download the package to open it in SOLIDWORKS at the reviewed version.',
-      otherVersion: 'Markups from this round were made on v{{version}}; they are listed, not drawn.',
+      otherVersion: 'Markups from this round were made on v{{version}}; showing that version, read-only.',
     },
     resubmit: {
       button: 'Resubmit with newer versions',

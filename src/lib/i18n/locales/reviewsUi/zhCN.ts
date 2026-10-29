@@ -256,7 +256,7 @@ export const zhCN: TranslationDict = {
       generate: '生成 PDF',
       unsupported: '此文件类型无预览',
       unsupportedHint: '下载审阅包，以在 SOLIDWORKS 中按被审阅的版本打开。',
-      otherVersion: '本轮批注是在 v{{version}} 上做的；仅列出，不绘制。',
+      otherVersion: '本轮批注是在 v{{version}} 上做的；显示该版本，只读。',
     },
     resubmit: {
       button: '用更新的版本重新提交',

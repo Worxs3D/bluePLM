@@ -256,7 +256,7 @@ export const de: TranslationDict = {
       generate: 'PDF erzeugen',
       unsupported: 'Keine Vorschau für diesen Dateityp',
       unsupportedHint: 'Laden Sie das Paket herunter, um es in SOLIDWORKS in der geprüften Version zu öffnen.',
-      otherVersion: 'Markierungen dieser Runde wurden auf v{{version}} erstellt; sie werden aufgelistet, nicht gezeichnet.',
+      otherVersion: 'Markierungen dieser Runde wurden auf v{{version}} erstellt; diese Version wird schreibgeschützt angezeigt.',
     },
     resubmit: {
       button: 'Mit neueren Versionen erneut einreichen',

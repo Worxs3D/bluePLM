@@ -256,7 +256,7 @@ export const es: TranslationDict = {
       generate: 'Generar PDF',
       unsupported: 'Sin vista previa para este tipo de archivo',
       unsupportedHint: 'Descargue el paquete para abrirlo en SOLIDWORKS en la versión revisada.',
-      otherVersion: 'Las marcas de esta ronda se hicieron sobre v{{version}}; se listan, no se dibujan.',
+      otherVersion: 'Las marcas de esta ronda se hicieron sobre v{{version}}; se muestra esa versión, de solo lectura.',
     },
     resubmit: {
       button: 'Reenviar con versiones más recientes',

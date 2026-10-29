@@ -1,7 +1,8 @@
 /**
  * Decide the current item: Approve, Approve with comments, Request changes, Reject. A comment is
  * required for every decision except Approve (decision 2). Keyboard: A, Shift+A, C, R decide;
- * J / K move between items; Ctrl+Enter sends a comment; Escape closes it.
+ * Ctrl+Enter sends a comment; Escape closes it. J / K belong to the detail pane
+ * (`useReviewItemKeys`), so they work for everyone viewing the review, not only reviewers.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -20,8 +21,6 @@ interface DecisionBarProps {
   busy: boolean
   onDecide: (decision: ReviewDecision, comment: string | null) => void
   onApproveAll: (comment: string | null) => void
-  onNext: () => void
-  onPrevious: () => void
 }
 
 const COMMENTED: ReviewDecision[] = ['approved_with_comments', 'changes_requested', 'rejected']
@@ -32,8 +31,6 @@ export function DecisionBar({
   busy,
   onDecide,
   onApproveAll,
-  onNext,
-  onPrevious,
 }: DecisionBarProps) {
   const [pending, setPending] = useState<ReviewDecision | 'approve_all' | null>(null)
   const [comment, setComment] = useState('')
@@ -56,18 +53,16 @@ export function DecisionBar({
         inEditable: isEditableTarget(event.target) || isModalOpen(),
         repeat: event.repeat,
       })
-      if (!action) return
+      if (!action || action.kind !== 'decide') return
       event.preventDefault()
-      if (action.kind === 'next') onNext()
-      else if (action.kind === 'previous') onPrevious()
-      else if (canDecide && !busy) {
+      if (canDecide && !busy) {
         if (action.decision === 'approved') onDecide('approved', null)
         else setPending(action.decision)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [canDecide, busy, pending, onDecide, onNext, onPrevious])
+  }, [canDecide, busy, pending, onDecide])
 
   useEffect(() => {
     if (pending) textRef.current?.focus()

@@ -382,6 +382,21 @@ export async function getLatestCheckedInVersions(
   return out
 }
 
+/**
+ * The content hash of one `file_versions` row, or null when the row is gone or not visible. The
+ * review detail carries the hash of each item's current version only; an earlier round's version
+ * is looked up here when its PDF is shown.
+ */
+export async function getFileVersionContentHash(fileVersionId: string): Promise<string | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('file_versions')
+    .select('content_hash')
+    .eq('id', fileVersionId)
+    .maybeSingle()
+  if (error) throw toReviewRpcError(error)
+  return data?.content_hash || null
+}
+
 // ============================================
 // Teams with members (for the reviewer picker)
 // ============================================

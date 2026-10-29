@@ -10,6 +10,9 @@ const ACTION_TYPES: ReadonlySet<string> = new Set([
   'review_round',
   'review_kicked_back',
   'review_overdue',
+  // A reviewer left the organization or lost vault access (schema 108); with nobody left to
+  // decide, the requester has to cancel and request again.
+  'review_reviewer_removed',
 ])
 
 export function reviewToastType(type: string): ToastType {
