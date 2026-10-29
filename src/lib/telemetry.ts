@@ -27,6 +27,22 @@ const DEFAULT_CONFIG: TelemetryConfig = {
   enabled: false,
 }
 
+function normalizeSavedConfig(value: unknown): TelemetryConfig {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_CONFIG }
+  const saved = value as Partial<TelemetryConfig>
+  const sampleRateHz = Number.isFinite(saved.sampleRateHz)
+    ? Math.min(60, Math.max(1, Math.trunc(saved.sampleRateHz!)))
+    : DEFAULT_CONFIG.sampleRateHz
+  const retentionSeconds = Number.isFinite(saved.retentionSeconds)
+    ? Math.min(300, Math.max(10, Math.trunc(saved.retentionSeconds!)))
+    : DEFAULT_CONFIG.retentionSeconds
+  return {
+    sampleRateHz,
+    retentionSeconds,
+    enabled: saved.enabled === true,
+  }
+}
+
 // Circular buffer for efficient time-series storage
 class CircularBuffer<T> {
   private buffer: T[]
@@ -124,14 +140,26 @@ class TelemetryService {
 
   // Load saved config
   loadConfig(): TelemetryConfig {
-    const saved = localStorage.getItem('telemetry.config')
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem('telemetry.config')
+    } catch {
+      this.config = { ...DEFAULT_CONFIG }
+    }
     if (saved) {
       try {
-        this.config = { ...DEFAULT_CONFIG, ...JSON.parse(saved) }
+        this.config = normalizeSavedConfig(JSON.parse(saved))
       } catch {
         // Ignore parse errors
+        this.config = { ...DEFAULT_CONFIG }
       }
     }
+    this.buffer.resize(this.config.sampleRateHz * this.config.retentionSeconds)
+    // Restore an explicitly enabled recording session after a renderer restart.
+    // Sampling remains opt-in: the default config is disabled and therefore
+    // does not start an interval or an animation-frame loop.
+    if (this.config.enabled && !this.isRunning()) this.start()
+    else if (!this.config.enabled && this.isRunning()) this.stop()
     return this.config
   }
 
@@ -144,6 +172,7 @@ class TelemetryService {
     if (this.intervalId) return
 
     this.config.enabled = true
+    this.persistConfig()
 
     // Start FPS counter
     this.startFpsCounter()
@@ -164,6 +193,7 @@ class TelemetryService {
       this.rafId = null
     }
     this.config.enabled = false
+    this.persistConfig()
   }
 
   // Check if running
@@ -228,6 +258,14 @@ class TelemetryService {
       } catch {
         // Listener error - ignore
       }
+    }
+  }
+
+  private persistConfig(): void {
+    try {
+      localStorage.setItem('telemetry.config', JSON.stringify(this.config))
+    } catch {
+      // Keep in-memory telemetry usable when storage is unavailable or full.
     }
   }
 }
