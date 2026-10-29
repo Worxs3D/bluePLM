@@ -41,7 +41,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 108
+export const EXPECTED_SCHEMA_VERSION = 109
 
 // Minimum schema version that will still work (for soft warnings vs hard errors)
 // Set this to allow some backwards compatibility
@@ -160,6 +160,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Drawing reviews become server-owned packages. A review (20-change-control) is a package of files pinned to file_versions rows, reviewed in rounds with per-item, per-reviewer decisions (approved, approved_with_comments, changes_requested, rejected; a comment is required for all but approved) under mode all or any, with priority low|normal|high|urgent and a calendar due date. Every write goes through SECURITY DEFINER RPCs that lock the review and write notifications in the same transaction: request_review, respond_to_review_items, approve_all_remaining, resubmit_review, cancel_review, update_review_meta; reads through list_review_queue, get_review_detail and get_review_badge_count. Client policies on the review tables are SELECT-only, which closes the forgeable review_responses policy. Existing reviews are migrated in place into one-item packages. Gate reviews (10-source-files) are fixed in place: an attempt id scopes approval counts, one row per reviewer, no client writes to pending_reviews or workflow_review_history, the whole attempt is locked so concurrent approvals advance once, and role rules match the effective role (is_org_admin). New: file_version_references with record_version_references and get_version_dependency_closure (exact versus approximate), drawing_pdf_renders with get_drawing_pdf and record_drawing_pdf, review links on file_comments. Comments and notifications can no longer be written across organizations, and notify_overdue_reviews is withdrawn from clients.",
   108:
     "Drawing review upkeep (20-change-control, 10-source-files). A reviewer who still owes a decision in an open round and leaves the organization, or can no longer see the vault of an item they owe, is withdrawn from the round (review_responses.withdrawn_at and withdrawn_reason); the round is re-settled without them and the requester is notified. Statement triggers on users, team_members, vault_access and team_vault_access run review_withdraw_lost_reviewers(), and resubmit_review carries forward only reviewers who can still see every item. Hard-deleting a file or file version re-settles every open review that lost items and cancels a review left with none (review_items_deleted_resettle). record_version_references is write-once: only the author may replace a recorded set, and only while the version is the file's newest.",
+  109:
+    "Shared color palette changes reach every client live. color_swatches joins the supabase_realtime publication and gets REPLICA IDENTITY FULL. Both are needed: the desktop subscribes to INSERT and DELETE filtered on org_id, and without the full identity a DELETE's old record carries only the primary key, so the org filter never matches and a removed org color stays on other clients until they reload. check_release_residue() refuses to stamp while color_swatches is missing from the publication or its relreplident is not 'f'.",
   // Note: Process templates module (v26+) is optional - see modules/process-templates.sql
 }
 

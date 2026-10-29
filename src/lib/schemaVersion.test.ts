@@ -101,4 +101,19 @@ describe('organization color swatch schema', () => {
     expect(managementPolicy.match(/users\.org_id = color_swatches\.org_id/g)).toHaveLength(2)
     expect(managementPolicy).not.toContain("users.role = 'admin'")
   })
+
+  it('publishes swatch changes with the full old record, and refuses to stamp without it', () => {
+    const core = readFileSync(CORE_SQL, 'utf8')
+    const realtime = core.slice(core.indexOf('-- ENABLE REALTIME'))
+
+    // The renderer's DELETE subscription filters on org_id, which needs the full old record.
+    expect(realtime).toContain('ALTER TABLE color_swatches REPLICA IDENTITY FULL;')
+    expect(realtime).toContain(
+      'BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE color_swatches; EXCEPTION WHEN duplicate_object THEN NULL; END;',
+    )
+    expect(core).toContain("AND tablename = 'color_swatches'")
+    expect(core).toContain("oid = 'public.color_swatches'::regclass) = 'f'")
+    expect(core).toContain("residue := 'color_swatches_not_realtime';")
+    expect(core).toMatch(/'check_release_residue\(\)', '[^']*color_swatches_realtime[^']*'/)
+  })
 })

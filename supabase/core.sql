@@ -115,20 +115,16 @@ ON CONFLICT (id) DO NOTHING;
 -- what a database must contain to be allowed to claim it.
 
 CREATE OR REPLACE FUNCTION schema_release_version() RETURNS INTEGER
-LANGUAGE sql IMMUTABLE AS $$ SELECT 108 $$;
+LANGUAGE sql IMMUTABLE AS $$ SELECT 109 $$;
 
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Drawing review upkeep (20-change-control, 10-source-files). A reviewer who still owes a '
-  'decision in an open round and leaves the organization, or can no longer see the vault of an '
-  'item they owe, is withdrawn from the round (review_responses.withdrawn_at and '
-  'withdrawn_reason); the round is re-settled without them and the requester is notified. '
-  'Statement triggers on users, team_members, vault_access and team_vault_access run '
-  'review_withdraw_lost_reviewers(), and resubmit_review carries forward only reviewers who can '
-  'still see every item. Hard-deleting a file or file version re-settles every open review that '
-  'lost items and cancels a review left with none (review_items_deleted_resettle). '
-  'record_version_references is write-once: only the author may replace a recorded set, and '
-  'only while the version is the file''s newest.'
+  'Shared color palette changes reach every client live. color_swatches joins the '
+  'supabase_realtime publication and gets REPLICA IDENTITY FULL. Both are needed: the desktop '
+  'subscribes to INSERT and DELETE filtered on org_id, and without the full identity a DELETE''s '
+  'old record carries only the primary key, so the org filter never matches and a removed org '
+  'color stays on other clients until they reload. check_release_residue() refuses to stamp '
+  'while color_swatches is missing from the publication or its relreplident is not ''f''.'
 $$;
 
 -- One row per object this release requires, scoped to the module that creates it.
@@ -290,7 +286,7 @@ LANGUAGE sql IMMUTABLE AS $$
     -- review_write_policy since 107: the review migration (policy drops, the
     -- per-round response key, attempt ids, one-item packages) is checked on the
     -- database, so a partial apply cannot stamp.
-    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns && sw_licence_policy && review_write_policy'),
+    ('core', NULL, 'function', 'check_release_residue()', 'color_swatches_scope_columns && color_swatches_realtime && sw_licence_policy && review_write_policy'),
     ('core', NULL, 'function', 'set_color_swatch_creator()', 'auth.uid'),
     -- The two org-scoped RPCs core.sql owns that used to hand-write the
     -- membership test out of auth.uid().
@@ -2250,6 +2246,7 @@ DECLARE
   r RECORD;
   color_swatches_scope_columns BOOLEAN;
   color_swatches_scope_controls BOOLEAN;
+  color_swatches_realtime BOOLEAN;
   sw_licence_policy RECORD;
   review_write_policy RECORD;
 BEGIN
@@ -2511,6 +2508,29 @@ BEGIN
       identity := 'public.color_swatches';
       detail := 'Organization color swatches require the scope constraint, creator trigger, '
              || 'and both access policies. Re-run supabase/core.sql before verifying this release.';
+      RETURN NEXT;
+    END IF;
+
+    -- Shared palette changes reach other clients (schema 109). The renderer's
+    -- DELETE subscription filters on org_id, which only matches when the old
+    -- record carries every column, so publication membership alone is not enough.
+    SELECT EXISTS (
+             SELECT 1 FROM pg_publication_tables
+              WHERE pubname = 'supabase_realtime'
+                AND schemaname = 'public'
+                AND tablename = 'color_swatches'
+           )
+       AND (SELECT relreplident FROM pg_class WHERE oid = 'public.color_swatches'::regclass) = 'f'
+      INTO color_swatches_realtime;
+
+    IF NOT COALESCE(color_swatches_realtime, false) THEN
+      residue := 'color_swatches_not_realtime';
+      identity := 'publication supabase_realtime';
+      detail := 'color_swatches must be in the supabase_realtime publication with REPLICA '
+             || 'IDENTITY FULL, or a shared palette change (a DELETE''s old record carries '
+             || 'only the primary key, so the org_id filter never matches) never reaches '
+             || 'another client. Run: ALTER TABLE color_swatches REPLICA IDENTITY FULL; '
+             || 'ALTER PUBLICATION supabase_realtime ADD TABLE color_swatches;';
       RETURN NEXT;
     END IF;
   END IF;
@@ -6168,6 +6188,7 @@ ALTER TABLE teams REPLICA IDENTITY FULL;
 ALTER TABLE team_members REPLICA IDENTITY FULL;
 ALTER TABLE team_permissions REPLICA IDENTITY FULL;
 ALTER TABLE notifications REPLICA IDENTITY FULL;
+ALTER TABLE color_swatches REPLICA IDENTITY FULL;
 
 DO $$
 BEGIN
@@ -6175,6 +6196,7 @@ BEGIN
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE team_members; EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE team_permissions; EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE notifications; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE color_swatches; EXCEPTION WHEN duplicate_object THEN NULL; END;
 END $$;
 
 -- ===========================================

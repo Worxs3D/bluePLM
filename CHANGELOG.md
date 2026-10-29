@@ -104,6 +104,11 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 
 ### Fixed
 
+- **Shared color palette changes reach other clients live** (schema 109). `color_swatches` was
+  never in the `supabase_realtime` publication, so an org color an admin added or removed showed
+  on other machines only after a reload. It now joins the publication with `REPLICA IDENTITY
+  FULL` (the desktop's DELETE subscription filters on `org_id`, which a primary-key-only old
+  record cannot match), and `check_release_residue()` refuses to stamp 109 without both.
 - The SOLIDWORKS licence registry reader returned the registry value names ("SolidWorks",
   "Inspection") as serial numbers; it now returns the serials.
 - **Organization color swatches work on databases built from `core.sql`** (schema 105, #75 by
