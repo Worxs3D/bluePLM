@@ -38,3 +38,32 @@ export function parseSerialNumbersRegistry(output: string): RegistrySerialEntry[
   }
   return entries
 }
+
+/** The installer's value name for the core SOLIDWORKS serial. */
+export const SOLIDWORKS_CORE_PRODUCT = 'SolidWorks'
+
+/**
+ * Case, whitespace and dashes are not significant in a serial. Same rule as
+ * `normalizeSerial` in src/lib/solidworksLicense/serial.ts, which the main
+ * process cannot import.
+ */
+export function normalizeRegistrySerial(serial: string): string {
+  return serial.replace(/[\s-]+/g, '').toUpperCase()
+}
+
+/**
+ * The serial as the installer writes it: 4-character groups separated by
+ * spaces. Returns null for anything that is not letters and digits once
+ * spacing and dashes are removed, so no other text reaches `reg`.
+ */
+export function formatSerialForRegistry(serial: string): string | null {
+  const clean = normalizeRegistrySerial(serial)
+  if (!/^[A-Z0-9]+$/.test(clean)) return null
+  return (clean.match(/.{1,4}/g) ?? []).join(' ')
+}
+
+/** The products whose registry serial is this serial. */
+export function productsWithSerial(entries: RegistrySerialEntry[], serial: string): string[] {
+  const target = normalizeRegistrySerial(serial)
+  return entries.filter((e) => normalizeRegistrySerial(e.serial) === target).map((e) => e.product)
+}

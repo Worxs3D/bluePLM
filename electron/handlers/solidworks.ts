@@ -9,7 +9,7 @@ import { app, ipcMain, BrowserWindow } from 'electron'
 import fs from 'fs'
 import type * as fsTypes from 'fs'
 import path from 'path'
-import { spawn, ChildProcess, execSync } from 'child_process'
+import { spawn, ChildProcess, execSync, execFileSync } from 'child_process'
 import {
   createServiceHealth,
   createServiceHealthMonitor,
@@ -58,7 +58,13 @@ import {
   requestSwProcessClose,
 } from './swProcess/query'
 import type { LiveSwProcess, SwProcessQuerySource } from './swProcess/types'
-import { parseSerialNumbersRegistry, type RegistrySerialEntry } from './solidworksSerialRegistry'
+import {
+  formatSerialForRegistry,
+  parseSerialNumbersRegistry,
+  productsWithSerial,
+  SOLIDWORKS_CORE_PRODUCT,
+  type RegistrySerialEntry,
+} from './solidworksSerialRegistry'
 
 // ============================================
 // Configuration Constants
@@ -2767,10 +2773,45 @@ function getSolidWorksLicenseFromRegistry(): LicenseRegistryResult {
   }
 }
 
+/** Run `reg` with its arguments passed as-is: no shell, so a serial cannot inject a command. */
+function runReg(args: string[]): string {
+  return execFileSync('reg', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+}
+
+function isAccessDenied(errorStr: string): boolean {
+  return (
+    errorStr.includes('Access is denied') ||
+    errorStr.includes('requires elevation') ||
+    errorStr.includes('administrator')
+  )
+}
+
+function isNotFound(errorStr: string): boolean {
+  return errorStr.includes('unable to find') || errorStr.includes('cannot find')
+}
+
+function maskForLog(serial: string): string {
+  return serial.slice(-4).padStart(serial.length, '*')
+}
+
 /**
- * Write a SOLIDWORKS serial number to the registry.
- * Creates a value with the serial number as the name under:
- * HKLM\Software\SolidWorks\Licenses\Serial Numbers
+ * Delete the value BluePLM before 4.8.0 wrote: the serial as the value NAME with
+ * empty data, which SOLIDWORKS never read. Absent is fine.
+ */
+function removeLegacySerialValue(serialNumber: string): void {
+  try {
+    runReg(['delete', SW_LICENSE_REGISTRY_PATH, '/v', serialNumber.trim().toUpperCase(), '/f'])
+  } catch (error) {
+    if (!isNotFound(String(error))) throw error
+  }
+}
+
+/**
+ * Write a SOLIDWORKS serial number to the registry the way the installer does:
+ * value name "SolidWorks" (the core product), value data = the serial in
+ * 4-character groups, under HKLM\Software\SolidWorks\Licenses\Serial Numbers.
+ * This replaces any core serial already there; add-on products (Inspection,
+ * Simulation, ...) keep their own values.
  *
  * Requires administrator privileges. Returns requiresAdmin: true if elevation needed.
  */
@@ -2779,37 +2820,32 @@ function setSolidWorksLicenseInRegistry(serialNumber: string): LicenseWriteResul
     return { success: false, error: 'SOLIDWORKS license registry is only available on Windows' }
   }
 
-  if (!serialNumber || serialNumber.trim().length === 0) {
-    return { success: false, error: 'Serial number cannot be empty' }
+  const formatted = formatSerialForRegistry(serialNumber ?? '')
+  if (!formatted) {
+    return { success: false, error: 'Serial number must contain only letters and digits' }
   }
 
-  const cleanSerial = serialNumber.trim().toUpperCase()
-
   try {
-    // First, ensure the key exists by creating it (won't error if exists)
-    execSync(`reg add "${SW_LICENSE_REGISTRY_PATH}" /f`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-
-    // Add the serial number as a value name with empty string data
-    execSync(`reg add "${SW_LICENSE_REGISTRY_PATH}" /v "${cleanSerial}" /t REG_SZ /d "" /f`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    runReg([
+      'add',
+      SW_LICENSE_REGISTRY_PATH,
+      '/v',
+      SOLIDWORKS_CORE_PRODUCT,
+      '/t',
+      'REG_SZ',
+      '/d',
+      formatted,
+      '/f',
+    ])
+    removeLegacySerialValue(serialNumber)
 
     log(
-      `[SolidWorks License] Successfully added serial number to registry: ${cleanSerial.slice(-4).padStart(cleanSerial.length, '*')}`,
+      `[SolidWorks License] Wrote ${SOLIDWORKS_CORE_PRODUCT} serial to registry: ${maskForLog(formatted)}`,
     )
     return { success: true }
   } catch (error) {
     const errorStr = String(error)
-    // Check for access denied errors
-    if (
-      errorStr.includes('Access is denied') ||
-      errorStr.includes('requires elevation') ||
-      errorStr.includes('administrator')
-    ) {
+    if (isAccessDenied(errorStr)) {
       log('[SolidWorks License] Admin privileges required to write license registry')
       return {
         success: false,
@@ -2823,9 +2859,8 @@ function setSolidWorksLicenseInRegistry(serialNumber: string): LicenseWriteResul
 }
 
 /**
- * Remove a SOLIDWORKS serial number from the registry.
- * Deletes the value with the given serial number name from:
- * HKLM\Software\SolidWorks\Licenses\Serial Numbers
+ * Remove a SOLIDWORKS serial number from the registry: every product value
+ * whose data is this serial, plus the pre-4.8.0 value named after it.
  *
  * Requires administrator privileges. Returns requiresAdmin: true if elevation needed.
  */
@@ -2838,26 +2873,20 @@ function removeSolidWorksLicenseFromRegistry(serialNumber: string): LicenseWrite
     return { success: false, error: 'Serial number cannot be empty' }
   }
 
-  const cleanSerial = serialNumber.trim().toUpperCase()
+  const current = getSolidWorksLicenseFromRegistry()
+  if (!current.success) return { success: false, error: current.error }
 
   try {
-    execSync(`reg delete "${SW_LICENSE_REGISTRY_PATH}" /v "${cleanSerial}" /f`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    for (const product of productsWithSerial(current.entries ?? [], serialNumber)) {
+      runReg(['delete', SW_LICENSE_REGISTRY_PATH, '/v', product, '/f'])
+    }
+    removeLegacySerialValue(serialNumber)
 
-    log(
-      `[SolidWorks License] Successfully removed serial number from registry: ${cleanSerial.slice(-4).padStart(cleanSerial.length, '*')}`,
-    )
+    log(`[SolidWorks License] Removed serial from registry: ${maskForLog(serialNumber.trim())}`)
     return { success: true }
   } catch (error) {
     const errorStr = String(error)
-    // Check for access denied errors
-    if (
-      errorStr.includes('Access is denied') ||
-      errorStr.includes('requires elevation') ||
-      errorStr.includes('administrator')
-    ) {
+    if (isAccessDenied(errorStr)) {
       log('[SolidWorks License] Admin privileges required to remove license from registry')
       return {
         success: false,
@@ -2865,20 +2894,14 @@ function removeSolidWorksLicenseFromRegistry(serialNumber: string): LicenseWrite
         requiresAdmin: true,
       }
     }
-    // Check if value doesn't exist
-    if (errorStr.includes('unable to find') || errorStr.includes('cannot find')) {
-      log(
-        `[SolidWorks License] Serial number not found in registry: ${cleanSerial.slice(-4).padStart(cleanSerial.length, '*')}`,
-      )
-      return { success: true } // Treat as success - it's already gone
-    }
     logError(`[SolidWorks License] Failed to remove from registry: ${errorStr}`)
     return { success: false, error: errorStr }
   }
 }
 
 /**
- * Check if a specific SOLIDWORKS serial number exists in the registry.
+ * Check whether this serial is a product's serial in the registry: the value
+ * data, which is what SOLIDWORKS reads, not the value name.
  */
 function checkLicenseInRegistry(serialNumber: string): LicenseCheckResult {
   if (process.platform !== 'win32') {
@@ -2893,30 +2916,14 @@ function checkLicenseInRegistry(serialNumber: string): LicenseCheckResult {
     return { success: false, found: false, error: 'Serial number cannot be empty' }
   }
 
-  const cleanSerial = serialNumber.trim().toUpperCase()
+  const current = getSolidWorksLicenseFromRegistry()
+  if (!current.success) return { success: false, found: false, error: current.error }
 
-  try {
-    execSync(`reg query "${SW_LICENSE_REGISTRY_PATH}" /v "${cleanSerial}"`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-
-    log(
-      `[SolidWorks License] Serial number found in registry: ${cleanSerial.slice(-4).padStart(cleanSerial.length, '*')}`,
-    )
-    return { success: true, found: true }
-  } catch (error) {
-    const errorStr = String(error)
-    // Value not found is expected when serial doesn't exist
-    if (errorStr.includes('unable to find') || errorStr.includes('cannot find')) {
-      log(
-        `[SolidWorks License] Serial number not found in registry: ${cleanSerial.slice(-4).padStart(cleanSerial.length, '*')}`,
-      )
-      return { success: true, found: false }
-    }
-    logError(`[SolidWorks License] Failed to check registry: ${errorStr}`)
-    return { success: false, found: false, error: errorStr }
-  }
+  const found = productsWithSerial(current.entries ?? [], serialNumber).length > 0
+  log(
+    `[SolidWorks License] Serial ${found ? 'found' : 'not found'} in registry: ${maskForLog(serialNumber.trim())}`,
+  )
+  return { success: true, found }
 }
 
 export interface SolidWorksHandlerDependencies {

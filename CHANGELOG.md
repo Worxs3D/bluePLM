@@ -104,6 +104,12 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 
 ### Fixed
 
+- **Push licence to registry writes what SOLIDWORKS reads.** It wrote the serial as a registry
+  value *name* with empty data, which SOLIDWORKS ignores, and checked and removed by that name. It
+  now writes value `SolidWorks` = the serial in 4-character groups, as the installer does
+  (replacing the core serial, leaving add-on products alone), checks and removes by value data,
+  and deletes the old empty-data value. `reg` runs without a shell and the serial must be letters
+  and digits.
 - **Shared color palette changes reach other clients live** (schema 109). `color_swatches` was
   never in the `supabase_realtime` publication, so an org color an admin added or removed showed
   on other machines only after a reload. It now joins the publication with `REPLICA IDENTITY
