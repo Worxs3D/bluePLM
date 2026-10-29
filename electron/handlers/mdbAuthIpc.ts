@@ -28,6 +28,7 @@ import {
   createSafeStorageMdbAuthPersistence,
 } from '../backend/mdbAuthPersistence'
 import { isApplicationUrl, isTrustedSender } from './mdbTrustedSender'
+import { mdbAuthDialogStrings } from '../backend/mdbAuthDialogStrings'
 
 let activeDisposer: (() => void) | undefined
 
@@ -48,17 +49,21 @@ export function registerMdbAuthIpc(
     fetchImpl: options?.fetchImpl,
     confirmServer:
       options?.confirmServer ??
-      (async (url) =>
-        (
-          await dialog.showMessageBox(window, {
-            type: 'warning',
-            buttons: ['Cancel', 'Continue'],
-            defaultId: 0,
-            cancelId: 0,
-            message: 'Connect to MDB server?',
-            detail: url,
-          })
-        ).response === 1),
+      (async (url) => {
+        const strings = mdbAuthDialogStrings(app.getLocale())
+        return (
+          (
+            await dialog.showMessageBox(window, {
+              type: 'warning',
+              buttons: [strings.cancel, strings.continue],
+              defaultId: 0,
+              cancelId: 0,
+              message: strings.confirmServer,
+              detail: url,
+            })
+          ).response === 1
+        )
+      }),
   })
   const unsubscribe = authority.subscribe((state) => {
     if (!window.isDestroyed() && isApplicationUrl(window.webContents.mainFrame.url))

@@ -1,3 +1,4 @@
+import dialogStrings from '../../../../electron/backend/mdbAuthDialogStrings.json'
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
@@ -6,6 +7,7 @@ import { securityMonitoringStrings } from './securityMonitoring'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
+  mdbAuth: dialogStrings.zhCN,
   solidworksSettings: {
     previewMode: '预览模式',
     embeddedThumbnail: '嵌入式缩略图',
@@ -61,7 +63,7 @@ export const zhCN: TranslationDict = {
   },
   common: {
     save: '保存',
-    cancel: '取消',
+    cancel: dialogStrings.zhCN.cancel,
     delete: '删除',
     edit: '编辑',
     add: '添加',

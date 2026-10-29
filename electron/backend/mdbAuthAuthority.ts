@@ -210,12 +210,13 @@ export function createMdbAuthAuthority(options: {
       await validateMdbHealth(normalized, options.fetchImpl)
     },
     async signIn(input: { serverUrl: string; email: string; password: string }) {
-      const expected = invalidate()
-      await clear()
-      current(expected)
       const serverUrl = normalizeMdbServerUrl(input.serverUrl).toString()
+      const beforeConfirmation = generation
       if (!(await options.confirmServer(serverUrl)))
         throw new MdbAuthAuthorityError('server-not-confirmed', 'Server not confirmed.')
+      current(beforeConfirmation)
+      const expected = invalidate()
+      await clear()
       current(expected)
       await validateMdbHealth(serverUrl, options.fetchImpl)
       current(expected)

@@ -7,10 +7,17 @@ const mocks = vi.hoisted(() => ({
   listeners: new Map<string, (event: unknown, value: unknown) => void>(),
   sender: {} as Record<string, unknown>,
   frame: { url: 'http://localhost:5173/' },
+  locale: 'en',
+  showMessageBox: vi.fn(async () => ({ response: 0 })),
 }))
 vi.mock('electron', () => ({
-  app: { isPackaged: false, getPath: () => 'test', getAppPath: () => 'test' },
-  dialog: { showMessageBox: vi.fn() },
+  app: {
+    isPackaged: false,
+    getPath: () => 'test',
+    getAppPath: () => 'test',
+    getLocale: () => mocks.locale,
+  },
+  dialog: { showMessageBox: mocks.showMessageBox },
   safeStorage: {},
   ipcMain: {
     handle: (name: string, handler: (event: unknown, input: unknown) => Promise<unknown>) => {
@@ -57,7 +64,38 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
   beforeEach(() => {
     mocks.handlers.clear()
     mocks.listeners.clear()
+    mocks.showMessageBox.mockClear()
   })
+  it.each([
+    ['en-US', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['de-DE', 'Abbrechen', 'Weiter', 'Mit dem MDB-Server verbinden?'],
+    ['fr-FR', 'Annuler', 'Continuer', 'Se connecter au serveur MDB ?'],
+    ['es-ES', 'Cancelar', 'Continuar', '¿Conectarse al servidor MDB?'],
+    ['pt-BR', 'Cancelar', 'Continuar', 'Conectar ao servidor MDB?'],
+    ['zh-CN', '取消', '继续', '连接到 MDB 服务器？'],
+    ['zh-Hant-TW', '取消', '繼續', '連線至 MDB 伺服器？'],
+    ['ja-JP', 'Cancel', 'Continue', 'Connect to MDB server?'],
+  ])(
+    'localizes the native server confirmation for %s',
+    async (locale, cancel, proceed, message) => {
+      mocks.locale = locale
+      const { window: win } = fakeWindow()
+      const dispose = registerMdbAuthIpc(win)
+      const result = await createMdbAuthBridge().validateServer('https://example.test/')
+      expect(result).toMatchObject({ ok: false, code: 'server-not-confirmed' })
+      expect(mocks.showMessageBox).toHaveBeenCalledWith(
+        win,
+        expect.objectContaining({
+          buttons: [cancel, proceed],
+          message,
+          detail: 'https://example.test/',
+          defaultId: 0,
+          cancelId: 0,
+        }),
+      )
+      dispose()
+    },
+  )
   it('runs a local fake transport end to end and rejects a foreign sender', async () => {
     const { window: win } = fakeWindow()
     let saved: MdbAuthSnapshot | null = null
