@@ -40,9 +40,11 @@ const FOLDER_NOW_LOCAL: Partial<LocalFile> = {
 /**
  * Downloads whose server row was deleted while the bytes were on the way, judged
  * against the store as it is now. Only positive evidence counts: the store must
- * still hold the vault the download started in, and must hold files at all, so a
- * vault switch or a reload that has emptied the store recycles nothing (each would
- * otherwise make every download look deleted). A file still in the store under
+ * still hold the vault the download started in, and a load of it must have
+ * finished (`filesLoaded`, which every reset clears), so a vault switch, sign-out
+ * or reopen that has emptied the store recycles nothing (each would otherwise make
+ * every download look deleted). An empty loaded store is real: the vault's last
+ * file was deleted. A file still in the store under
  * its id is live even if its path changed meanwhile; the path decides only for a
  * file without an id.
  */
@@ -50,10 +52,11 @@ export function downloadsWhoseRowWasDeleted<U extends { path: string }>(
   updates: U[],
   cloudFiles: LocalFile[],
   liveFiles: LocalFile[] | null | undefined,
+  liveFilesLoaded: boolean,
   startVaultId: string | null | undefined,
   liveVaultId: string | null | undefined,
 ): U[] {
-  if (!liveFiles || liveFiles.length === 0) return []
+  if (!liveFiles || !liveFilesLoaded) return []
   if (startVaultId !== liveVaultId) return []
 
   const liveIds = new Set<string>()
@@ -624,6 +627,7 @@ export const downloadCommand: Command<DownloadParams> = {
       pendingUpdates,
       cloudFiles,
       live.files,
+      live.filesLoaded,
       ctx.activeVaultId,
       live.activeVaultId,
     )

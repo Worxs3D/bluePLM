@@ -288,7 +288,7 @@ describe('downloadCommand.execute - cloud folder stays in the store', () => {
 })
 
 /**
- * 4.7.6 release review: a vault switch (or a reload) that empties or replaces the
+ * 4.7.6 release review: a vault switch (or a reopen) that empties or replaces the
  * store while a download is in flight made every just-downloaded file look
  * deleted, so all of them went to the Recycle Bin. Only a row gone from the same
  * vault's loaded store counts.
@@ -297,16 +297,24 @@ describe('downloadsWhoseRowWasDeleted', () => {
   const a = cloudFile('A/a.sldprt')
   const b = cloudFile('A/b.sldprt')
   const updates = [{ path: a.path }, { path: b.path }]
-  const deleted = (live: LocalFile[] | null, startVault: string, liveVault: string) =>
-    downloadsWhoseRowWasDeleted(updates, [a, b], live, startVault, liveVault)
+  const deleted = (
+    live: LocalFile[] | null,
+    startVault: string,
+    liveVault: string,
+    loaded = true,
+  ) => downloadsWhoseRowWasDeleted(updates, [a, b], live, loaded, startVault, liveVault)
 
   it('recycles a file whose row left the same vault store', () => {
     expect(deleted([a], 'v1', 'v1')).toEqual([{ path: b.path }])
   })
 
-  it('recycles nothing when the store is empty (reload in progress)', () => {
-    expect(deleted([], 'v1', 'v1')).toEqual([])
+  it('recycles nothing while the store is reset and not yet reloaded', () => {
+    expect(deleted([], 'v1', 'v1', false)).toEqual([])
     expect(deleted(null, 'v1', 'v1')).toEqual([])
+  })
+
+  it('recycles when the loaded store is empty because the last file was deleted', () => {
+    expect(deleted([], 'v1', 'v1')).toEqual(updates)
   })
 
   it('recycles nothing after a vault switch', () => {
