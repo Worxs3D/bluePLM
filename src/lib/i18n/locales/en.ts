@@ -28,6 +28,8 @@ export const en: TranslationDict = {
     previewDocumentLoadFailed: 'The selected document could not be loaded in eDrawings.',
     previewFileUnavailable: 'This file is not available for the embedded eDrawings preview.',
     previewNotLocal: 'Download this file before opening the embedded eDrawings preview.',
+    previewVaultOnNetwork:
+      'This vault is on a network share. The embedded preview opens only files on this computer, so use Open in eDrawings.',
     previewBoundsUnavailable: 'The embedded eDrawings preview could not be positioned.',
     openInEDrawings: 'Open in eDrawings',
     openInEDrawingsFailed: 'The file could not be opened in eDrawings.',

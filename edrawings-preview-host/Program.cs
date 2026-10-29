@@ -66,7 +66,14 @@ internal static class Program
 internal sealed class PreviewHostForm : Form
 {
     private readonly PreviewHostOptions _options;
+#if EDRAWINGS_TEST_SURFACE
+    // CI-only build (edrawings-preview-host-ci/): a plain panel stands in for the eDrawings
+    // control, so the window ownership, positioning and visibility code runs on a machine without
+    // eDrawings. The shipped host is never compiled with this symbol.
+    private readonly Panel _control = new() { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.Magenta };
+#else
     private readonly EDrawingsAxHost _control;
+#endif
     private Delegate? _finishedLoadingHandler;
     private Delegate? _failedLoadingHandler;
     private int _terminalStatusWritten;
@@ -80,7 +87,9 @@ internal sealed class PreviewHostForm : Form
         StartPosition = FormStartPosition.Manual;
         Bounds = new System.Drawing.Rectangle(-32000, -32000, 1, 1);
         BackColor = System.Drawing.Color.Black;
+#if !EDRAWINGS_TEST_SURFACE
         _control = new EDrawingsAxHost(EDrawingsRegistration.ResolveControlClassId()) { Dock = DockStyle.Fill };
+#endif
         Controls.Add(_control);
         Shown += OnShown;
     }
@@ -107,6 +116,10 @@ internal sealed class PreviewHostForm : Form
 
     private void OpenDocument()
     {
+#if EDRAWINGS_TEST_SURFACE
+        _openDocumentResult = "test-surface";
+        PublishTerminalStatus("ready");
+#else
         try
         {
             _control.CreateControl();
@@ -124,6 +137,7 @@ internal sealed class PreviewHostForm : Form
             PublishTerminalStatus("failed");
             BeginInvoke(Close);
         }
+#endif
     }
 
     private void SubscribeToLoadEvents(object activeX)

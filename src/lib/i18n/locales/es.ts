@@ -28,6 +28,8 @@ export const es: TranslationDict = {
     previewDocumentLoadFailed: 'El documento seleccionado no se pudo cargar en eDrawings.',
     previewFileUnavailable: 'Este archivo no está disponible para la vista previa integrada de eDrawings.',
     previewNotLocal: 'Descargue este archivo antes de abrir la vista previa integrada de eDrawings.',
+    previewVaultOnNetwork:
+      'Esta bóveda está en una carpeta compartida de red. La vista previa integrada solo abre archivos de este equipo, así que use Abrir en eDrawings.',
     previewBoundsUnavailable: 'No se pudo colocar la vista previa integrada de eDrawings.',
     openInEDrawings: 'Abrir en eDrawings',
     openInEDrawingsFailed: 'No se pudo abrir el archivo en eDrawings.',

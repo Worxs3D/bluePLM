@@ -28,6 +28,8 @@ export const pt: TranslationDict = {
     previewDocumentLoadFailed: 'Não foi possível carregar o documento selecionado no eDrawings.',
     previewFileUnavailable: 'Este ficheiro não está disponível para a pré-visualização incorporada do eDrawings.',
     previewNotLocal: 'Transfira este ficheiro antes de abrir a pré-visualização incorporada do eDrawings.',
+    previewVaultOnNetwork:
+      'Este cofre está numa partilha de rede. A pré-visualização incorporada só abre ficheiros deste computador, por isso utilize Abrir no eDrawings.',
     previewBoundsUnavailable: 'Não foi possível posicionar a pré-visualização incorporada do eDrawings.',
     openInEDrawings: 'Abrir no eDrawings',
     openInEDrawingsFailed: 'Não foi possível abrir o ficheiro no eDrawings.',

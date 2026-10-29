@@ -40,6 +40,8 @@ edrawings-preview-host/obj/
 edrawings-preview-host/publish/
 edrawings-preview-host-tests/bin/
 edrawings-preview-host-tests/obj/
+edrawings-preview-host-ci/**/bin/
+edrawings-preview-host-ci/**/obj/
 resources/bin/win32/edrawings_preview.node
 resources/bin/win32/edrawings-preview-host/
 

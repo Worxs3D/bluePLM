@@ -25,6 +25,8 @@ export const zhTW: TranslationDict = {
     previewDocumentLoadFailed: '無法在 eDrawings 中載入所選文件。',
     previewFileUnavailable: '此檔案無法用於內嵌 eDrawings 預覽。',
     previewNotLocal: '請先下載此檔案，再開啟內嵌 eDrawings 預覽。',
+    previewVaultOnNetwork:
+      '此保險庫位於網路共用上。內嵌預覽只能開啟本機上的檔案，請使用「在 eDrawings 中開啟」。',
     previewBoundsUnavailable: '無法定位內嵌 eDrawings 預覽。',
     openInEDrawings: '在 eDrawings 中開啟',
     openInEDrawingsFailed: '無法在 eDrawings 中開啟此檔案。',

@@ -6,6 +6,24 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The embedded eDrawings preview now says the vault is on a network share when it refuses a UNC
+  vault, instead of asking you to download a file that is already there.
+
+### Added
+
+- CI checks the embedded eDrawings preview on a real Windows desktop, with no human in the loop
+  (`npm run test:edrawings-system` in the eDrawings Windows job, `scripts/edrawings-ci/`).
+  Covered: a dialog opened over the preview hides it, so Windows reports BluePLM on top there
+  and a real mouse click reaches the dialog's button, and the preview comes back when the
+  dialog closes. Also covered: .NET 8 Desktop Runtime detection, and a vault on a UNC share
+  (the embedded preview refuses it without starting a host, and "Open in eDrawings" starts the
+  viewer on the UNC path, which the viewer can read). The real eDrawings ActiveX control and
+  viewer are not on the runner: a test-surface build of the preview host
+  (`EDRAWINGS_TEST_SURFACE`) and a stub `eDrawings.exe` stand in for them. Whether eDrawings
+  itself draws a model is still not checked.
+
 ## [4.8.0] - 2026-10-29
 
 Schema 109, API 3.0.0, SolidWorks service 1.26.0 (on top of 4.7.6: schema 103, API 2.8.3).

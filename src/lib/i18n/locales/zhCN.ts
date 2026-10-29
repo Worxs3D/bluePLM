@@ -25,6 +25,8 @@ export const zhCN: TranslationDict = {
     previewDocumentLoadFailed: '无法在 eDrawings 中加载所选文档。',
     previewFileUnavailable: '此文件无法用于嵌入式 eDrawings 预览。',
     previewNotLocal: '请先下载此文件，再打开嵌入式 eDrawings 预览。',
+    previewVaultOnNetwork:
+      '此保险库位于网络共享上。嵌入式预览只能打开本机上的文件，请使用“在 eDrawings 中打开”。',
     previewBoundsUnavailable: '无法定位嵌入式 eDrawings 预览。',
     openInEDrawings: '在 eDrawings 中打开',
     openInEDrawingsFailed: '无法在 eDrawings 中打开此文件。',

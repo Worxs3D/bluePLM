@@ -28,6 +28,8 @@ export const fr: TranslationDict = {
     previewDocumentLoadFailed: 'Le document sélectionné n’a pas pu être chargé dans eDrawings.',
     previewFileUnavailable: 'Ce fichier n’est pas disponible pour l’aperçu eDrawings intégré.',
     previewNotLocal: 'Téléchargez ce fichier avant d’ouvrir l’aperçu eDrawings intégré.',
+    previewVaultOnNetwork:
+      'Ce coffre se trouve sur un partage réseau. L’aperçu intégré n’ouvre que les fichiers de cet ordinateur ; utilisez Ouvrir dans eDrawings.',
     previewBoundsUnavailable: 'L’aperçu eDrawings intégré n’a pas pu être positionné.',
     openInEDrawings: 'Ouvrir dans eDrawings',
     openInEDrawingsFailed: 'Le fichier n’a pas pu être ouvert dans eDrawings.',

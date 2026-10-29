@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- CI only: the real preview host with a plain panel in place of the eDrawings control
+       (EDRAWINGS_TEST_SURFACE in Program.cs), for scripts/edrawings-ci/. Never packaged. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BluePLM.EDrawingsPreviewHost</AssemblyName>
+    <RootNamespace>BluePLM.EDrawingsPreviewHost</RootNamespace>
+    <DefineConstants>$(DefineConstants);EDRAWINGS_TEST_SURFACE</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\edrawings-preview-host\Program.cs" Link="Program.cs" />
+    <Compile Include="..\edrawings-preview-host\HostStatusFile.cs" Link="HostStatusFile.cs" />
+  </ItemGroup>
+</Project>

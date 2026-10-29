@@ -28,6 +28,8 @@ export const de: TranslationDict = {
     previewDocumentLoadFailed: 'Das ausgewählte Dokument konnte nicht in eDrawings geladen werden.',
     previewFileUnavailable: 'Diese Datei ist für die eingebettete eDrawings-Vorschau nicht verfügbar.',
     previewNotLocal: 'Laden Sie diese Datei herunter, bevor Sie die eingebettete eDrawings-Vorschau öffnen.',
+    previewVaultOnNetwork:
+      'Dieser Tresor liegt auf einer Netzwerkfreigabe. Die eingebettete Vorschau öffnet nur Dateien auf diesem Computer, verwenden Sie daher „In eDrawings öffnen“.',
     previewBoundsUnavailable: 'Die eingebettete eDrawings-Vorschau konnte nicht positioniert werden.',
     openInEDrawings: 'In eDrawings öffnen',
     openInEDrawingsFailed: 'Die Datei konnte nicht in eDrawings geöffnet werden.',
