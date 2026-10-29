@@ -24,8 +24,10 @@ function setup(failClear = false) {
   let saved: MdbAuthSnapshot | null = null
   const persistence: MdbAuthPersistence = {
     load: async () => saved,
-    save: async (s) => {
+    save: async (s, canCommit) => {
+      if (!canCommit()) return false
       saved = s
+      return true
     },
     clear: async () => {
       if (failClear && saved) throw Error('io')
@@ -176,7 +178,7 @@ describe('Main auth authority', () => {
       const fetchImpl = vi.fn(async () => Response.json(health))
       const persistence: MdbAuthPersistence = {
         load: async () => null,
-        save: async () => {},
+        save: async () => true,
         clear: async () => {},
       }
       const authority = createMdbAuthAuthority({
@@ -207,10 +209,12 @@ describe('Main auth authority', () => {
     })
     const persistence: MdbAuthPersistence = {
       load: async () => stored,
-      save: async (value) => {
+      save: async (value, canCommit) => {
         saving()
         await gate
+        if (!canCommit()) return false
         stored = value
+        return true
       },
       clear: async () => {
         stored = null
@@ -243,11 +247,63 @@ describe('Main auth authority', () => {
     expect(authority.state()).toEqual({ status: 'signed-out' })
     expect(await persistence.load()).toBeNull()
   })
+  it.each(['restore', 'dispose'] as const)(
+    'does not restore a sign-in invalidated by %s while its save is in flight',
+    async (operation) => {
+      let stored: MdbAuthSnapshot | null = null
+      let release!: () => void
+      let saving!: () => void
+      const started = new Promise<void>((resolve) => { saving = resolve })
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      let firstSave = true
+      const persistence: MdbAuthPersistence = {
+        load: async () => stored,
+        save: async (value, canCommit) => {
+          if (firstSave) {
+            firstSave = false
+            saving()
+            await gate
+          }
+          if (!canCommit()) return false
+          stored = value
+          return true
+        },
+        clear: async () => { stored = null },
+      }
+      const fetchImpl = vi.fn(async (url: URL) => {
+        if (url.pathname === '/health')
+          return Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+        if (url.pathname === '/auth/login') return Response.json({ token: 'secret', expiresAt })
+        if (url.pathname === '/auth/me') return Response.json({ user })
+        if (url.pathname === '/organizations/current') return Response.json({ organization })
+        throw Error('unexpected request')
+      })
+      const create = () => createMdbAuthAuthority({ confirmServer: async () => true, persistence, fetchImpl })
+      const authority = create()
+      const login = authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+      const rejected = expect(login).rejects.toMatchObject({ code: 'context-invalidated' })
+      await started
+      let restored = authority
+      let restore: Promise<void> | undefined
+      if (operation === 'restore') restore = authority.restore()
+      else authority.dispose()
+      release()
+      await rejected
+      if (operation === 'dispose') {
+        restored = create()
+        restore = restored.restore()
+      }
+      await restore
+      expect(restored.state()).toEqual({ status: 'signed-out' })
+      expect(await persistence.load()).toBeNull()
+      restored.dispose()
+    },
+  )
   it('expires a TOTP challenge without accepting its code', async () => {
     let now = new Date('2026-01-01T00:00:00Z')
     const persistence: MdbAuthPersistence = {
       load: async () => null,
-      save: async () => {},
+      save: async () => true,
       clear: async () => {},
     }
     const fetchImpl = vi.fn(async (url: URL) =>
@@ -275,7 +331,7 @@ describe('Main auth authority', () => {
   it('rejects an incorrect TOTP code without creating a verified identity', async () => {
     const persistence: MdbAuthPersistence = {
       load: async () => null,
-      save: async () => {},
+      save: async () => true,
       clear: async () => {},
     }
     const fetchImpl = vi.fn(async (url: URL) => {

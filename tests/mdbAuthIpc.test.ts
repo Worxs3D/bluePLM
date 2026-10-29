@@ -101,8 +101,10 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
     let saved: MdbAuthSnapshot | null = null
     const persistence = {
       load: async () => saved,
-      save: async (value: MdbAuthSnapshot) => {
+      save: async (value: MdbAuthSnapshot, canCommit: () => boolean) => {
+        if (!canCommit()) return false
         saved = value
+        return true
       },
       clear: async () => {
         saved = null
@@ -170,7 +172,7 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
   it('disposes the old window before reopening and ignores its late close callback', async () => {
     const first = fakeWindow()
     const second = fakeWindow()
-    const persistence = { load: async () => null, save: async () => {}, clear: async () => {} }
+    const persistence = { load: async () => null, save: async () => true, clear: async () => {} }
     const fetchImpl = vi.fn(async () => Response.json({}))
     const options = { persistence, fetchImpl, confirmServer: async () => true }
     const oldDispose = registerMdbAuthIpc(first.window, options)
@@ -201,7 +203,7 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
           }),
     )
     const dispose = registerMdbAuthIpc(window, {
-      persistence: { load: async () => null, save: async () => {}, clear: async () => {} },
+      persistence: { load: async () => null, save: async () => true, clear: async () => {} },
       fetchImpl,
       confirmServer: async () => true,
     })
