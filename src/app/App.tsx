@@ -16,6 +16,7 @@ import { executeTerminalCommand } from '@/lib/commands/parser'
 import { logUserAction } from '@/lib/userActionLogger'
 import { checkSchemaCompatibility } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
+import { registerSettingsNavigationListener } from '@/lib/settingsNavigation'
 import { getAccessibleVaults } from '@/lib/supabase'
 import { useVaultWatchers } from '@/hooks/useVaultWatchers'
 import { hashCheckoutIdentifier } from '@/types/pdm'
@@ -68,6 +69,14 @@ export function App() {
   // Apply theme and language
   useTheme()
   useLanguage()
+
+  // Context menus dispatch this event from below the application shell.
+  useEffect(() => {
+    return registerSettingsNavigationListener(window, {
+      setActiveView: (view) => usePDMStore.getState().setActiveView(view),
+      setSettingsTab: (tab) => usePDMStore.getState().setSettingsTab(tab),
+    })
+  }, [])
 
   // App startup orchestration - manages splash screen and initialization
   const startup = useAppStartup()
