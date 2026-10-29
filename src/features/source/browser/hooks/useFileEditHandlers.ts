@@ -100,6 +100,13 @@ export function useFileEditHandlers(deps: FileEditHandlersDeps): UseFileEditHand
     saveConfigsToSWFile,
   } = deps
 
+  // Read the file list through a ref, never from a closure. Every closure made in
+  // one render shares that render's context, so a callback here that mentioned
+  // `files` would let handleCreateFolder (whose deps rarely change) hold an old
+  // vault generation alive for the whole session (render-perf retainer probe).
+  const filesRef = useRef(files)
+  filesRef.current = files
+
   const handleCreateFolder = useCallback(async () => {
     if (!newFolderName.trim() || !vaultPath) {
       setIsCreatingFolder(false)
@@ -124,7 +131,7 @@ export function useFileEditHandlers(deps: FileEditHandlersDeps): UseFileEditHand
     // Generate a unique folder name (New Folder, New Folder (2), etc.)
     // Only check folders in the current directory
     const existingFolderNames = new Set(
-      files
+      filesRef.current
         .filter((f) => f.isDirectory)
         .filter((f) => {
           // Only consider folders in the current directory
@@ -150,7 +157,6 @@ export function useFileEditHandlers(deps: FileEditHandlersDeps): UseFileEditHand
       newFolderInputRef.current?.select()
     }, 10)
   }, [
-    files,
     currentPath,
     setEmptyContextMenu,
     setIsCreatingFolder,
@@ -326,11 +332,12 @@ export function useFileEditHandlers(deps: FileEditHandlersDeps): UseFileEditHand
     isSavingCellEdit.current = true
 
     try {
-      const file = files.find((f) => f.path === editingCell.path)
+      const currentFiles = filesRef.current
+      const file = currentFiles.find((f) => f.path === editingCell.path)
       if (!file) {
         log.warn('[FileEdit]', 'handleSaveCellEdit: file not found in files array', {
           path: editingCell.path,
-          filesCount: files.length,
+          filesCount: currentFiles.length,
         })
         setEditingCell(null)
         setEditValue('')
@@ -451,7 +458,6 @@ export function useFileEditHandlers(deps: FileEditHandlersDeps): UseFileEditHand
   }, [
     editingCell,
     user,
-    files,
     editValue,
     setEditingCell,
     setEditValue,
