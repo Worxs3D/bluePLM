@@ -1,5 +1,8 @@
 // Handler registry - registers all IPC handlers
 import { BrowserWindow, ipcMain } from 'electron'
+import { registerMdbAuthIpc } from './mdbAuthIpc'
+
+let disposeMdbAuthIpc: (() => void) | undefined
 
 import {
   registerFsHandlers,
@@ -167,6 +170,8 @@ export interface AllHandlerDependencies {
 }
 
 export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerDependencies): void {
+  disposeMdbAuthIpc?.()
+  disposeMdbAuthIpc = registerMdbAuthIpc(mainWindow)
   restoreMainWindowFocusFn = deps.restoreMainWindowFocus
 
   // Create shared dependencies
@@ -276,6 +281,8 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
 }
 
 export function unregisterAllHandlers(): void {
+  disposeMdbAuthIpc?.()
+  disposeMdbAuthIpc = undefined
   unregisterFsHandlers()
   unregisterBackupHandlers()
   unregisterSolidWorksHandlers()

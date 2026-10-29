@@ -237,6 +237,7 @@ declare global {
 
   interface Window {
     electronAPI?: {
+      mdbAuth: import('./lib/backend/contracts/mdbAuth').MdbAuthCapability
       // OAuth
       openOAuthWindow: (
         url: string,
