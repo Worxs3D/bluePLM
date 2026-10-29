@@ -373,7 +373,9 @@ jobs:
   sql:
     name: SQL schema (install, idempotency, verifier)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Tags and manual runs take the standard tier of negative controls (~34 min at schema 103),
+    # after a ~12 min install at schema 109: 45 minutes cancelled v4.8.0's first release run.
+    timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
