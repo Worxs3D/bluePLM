@@ -514,6 +514,10 @@ export const es: TranslationDict = {
     disconnectWarningMovedHint: 'Actualice el almacén para que coincida, o devuelva los archivos',
   },
 
+  vaultOperations: {
+    createFailed: 'No se pudo crear la bóveda: {{error}}',
+  },
+
   vaultSetup: {
     title: 'Configurar tu bóveda',
     subtitle: 'Configura cómo se sincronizan los archivos a tu computadora',

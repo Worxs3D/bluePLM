@@ -498,6 +498,10 @@ export const zhCN: TranslationDict = {
     disconnectWarningMovedHint: '更新库以匹配，或将文件移回原处',
   },
 
+  vaultOperations: {
+    createFailed: '创建保险库失败：{{error}}',
+  },
+
   vaultSetup: {
     title: '设置您的保险库',
     subtitle: '配置文件如何同步到您的计算机',

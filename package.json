@@ -150,13 +150,6 @@
           "filter": [
             "**/*"
           ]
-        },
-        {
-          "from": "solidworks-service/BluePLM.SolidWorksService/bin/Release",
-          "to": "bin",
-          "filter": [
-            "**/*"
-          ]
         }
       ]
     },

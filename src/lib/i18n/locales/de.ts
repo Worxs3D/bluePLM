@@ -519,6 +519,10 @@ export const de: TranslationDict = {
     disconnectWarningMovedHint: 'Tresor aktualisieren oder Dateien zurückverschieben',
   },
 
+  vaultOperations: {
+    createFailed: 'Tresor konnte nicht erstellt werden: {{error}}',
+  },
+
   vaultSetup: {
     title: 'Tresor einrichten',
     subtitle: 'Konfigurieren Sie, wie Dateien auf Ihren Computer synchronisiert werden',

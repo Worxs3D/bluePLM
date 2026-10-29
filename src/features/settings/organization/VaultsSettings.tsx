@@ -30,6 +30,7 @@ import { log } from '@/lib/logger'
 import { executeCommand } from '@/lib/commands'
 import { VaultSetupDialog, type VaultSyncStats } from '@/components/shared/Dialogs'
 import { calculateVaultSyncStats } from '@/lib/vaultHealthCheck'
+import { useTranslation } from '@/lib/i18n'
 import { RealignSection } from './realign'
 
 // Build vault path based on platform
@@ -54,6 +55,7 @@ interface Vault {
 }
 
 export function VaultsSettings() {
+  const { t } = useTranslation()
   const {
     user,
     organization,
@@ -253,7 +255,7 @@ export function VaultsSettings() {
 
       if (error) {
         log.error('[VaultsSettings]', 'Failed to create vault', { error })
-        addToast('error', `Failed to create vault: ${error.message}`)
+        addToast('error', t('vaultOperations.createFailed', { error: error.message }))
         return
       }
 

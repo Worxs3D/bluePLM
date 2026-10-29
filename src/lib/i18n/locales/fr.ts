@@ -519,6 +519,10 @@ export const fr: TranslationDict = {
       'Mettez à jour le coffre pour correspondre, ou remettez les fichiers à leur place',
   },
 
+  vaultOperations: {
+    createFailed: 'Impossible de créer le coffre : {{error}}',
+  },
+
   vaultSetup: {
     title: 'Configurer votre coffre',
     subtitle: 'Configurez comment les fichiers sont synchronisés sur votre ordinateur',
