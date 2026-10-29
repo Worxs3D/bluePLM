@@ -19,6 +19,7 @@ export default defineConfig({
         items: [
           { text: 'Explorer', link: '/source-files/explorer' },
           { text: 'Vaults', link: '/source-files/vaults' },
+          { text: 'Drawing Reviews', link: '/source-files/reviews' },
         ]
       },
       {

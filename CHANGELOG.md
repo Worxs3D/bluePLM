@@ -6,9 +6,15 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 108 and SolidWorks service 1.26.0. Apply `supabase/core.sql`, then modules 10 to 50 in
-order (106 changes module 40; 107 and 108 change modules 10 and 20); the app expects 108. Install
-service 1.26.0 for review package downloads; everything else works on 1.25.0.
+## [4.8.0] - 2026-10-29
+
+Schema 109, API 3.0.0, SolidWorks service 1.26.0 (on top of 4.7.6: schema 103, API 2.8.3).
+Apply `supabase/core.sql`, then modules 10 to 50 in order, then redeploy the API; the app
+expects schema 109 and API 3.0.0. The installer ships service 1.26.0, which review package
+downloads need. **Customers is no longer part of BluePLM core**: organizations that use it apply
+the `blueplm.customers` extension's `sql/customers.sql`, add the organization to the API's
+`NATIVE_EXTENSIONS_ORG_IDS`, redeploy, and install the extension package (see Changed). This
+release also carries everything from the 4.7.7-beta.1 test build.
 
 ### Drawing reviews, rebuilt for org-wide use (schema 107, service 1.26.0)
 
@@ -49,28 +55,6 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 - **Earlier rounds' markups are drawn on the version they were made on**, and J / K move between
   items for every viewer, not only reviewers who still owe a decision.
 
-### Security
-
-- **Review decisions can no longer be forged** (schema 107). The `review_responses` policy let a
-  requester mark every reviewer's response approved, and anyone add themselves as a reviewer on
-  any review, in any organization. Every review write now goes through server functions that
-  check who is calling; client access to the review tables is read-only and follows vault
-  access. Comments and notifications can no longer be written into another organization.
-- **Workflow gate approvals count the current attempt only** (schema 107). Approvals from earlier
-  rounds counted toward a gate, so an all-must-approve gate could never pass after one
-  rejection, and a gate could pass on approvals of an older version. Gate rows take no direct
-  client writes, and two last approvals arriving together advance the file once.
-- Existing reviews are migrated in place into one-item packages; released 4.8 clients' review
-  writes fail without changing data.
-
-- **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
-  could read every row of `solidworks_licenses`, serial included, and every assignment. Now an
-  administrator (`is_org_admin()`) reads every licence; anyone else reads only the licences
-  assigned to them, and only their own assignments. The policy that let a user update any column
-  of their own assignment is gone: repointing `license_id` exposed another serial. Activation
-  still works through `activate_solidworks_license()`. Released clients keep working: the licence
-  screen already showed a non-admin only their own licences.
-
 ### Added
 
 - **Extension workspaces can be placed in the sidebar.** Module settings (your own, the
@@ -101,6 +85,46 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
   configured vault (UNC roots included) and reports failures. Release builds on
   `windows-2022` must build both payloads (`BLUEPLM_EDRAWINGS_RELEASE_BUILD=1`); development
   builds without the toolchain warn and skip.
+- **Native extensions.** An organization admin can install an extension package (`.bpx`) for
+  the whole organization from Settings > Extensions > Install for organization. The package is
+  uploaded to the private `org-extensions` storage bucket and its sha256 is recorded on the
+  install row. The desktop app and the API run an extension only from a package whose bytes
+  match that hash: nothing else (a per-machine install, the store, a sideload or a deep link)
+  can make native code run. The desktop app verifies, extracts and serves the package over
+  `blueplm-ext://` and activates it with host API v1, which lets it add a workspace to the
+  activity bar, sidebar, main area and right panel, each behind its own error boundary.
+  Extensions can declare team permission resources, which the permissions editor lists. The
+  API loads an extension's server module and serves its routes under `/ext/<extensionId>/`,
+  authenticated, permission-checked and rate limited like core routes, for the organizations
+  named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
+  without a restart. Schema 104 adds the package columns, the bucket and its policies.
+- **Extension workspaces in module settings.** Your modules, the organization defaults and team
+  defaults list each loaded extension workspace with a show/hide toggle (they are placed by
+  their group and cannot be reordered yet), so a Customers module hidden while it was core,
+  where it was off by default, can be turned back on.
+
+### Changed
+
+- **Customers moved to a private extension, `blueplm.customers`.** The Customers workspace, its
+  sidebar navigator and detail panel, the Odoo customer sync routes (`/customers/sync`,
+  `/sync/status`, `/sync/cancel`, now `/ext/blueplm.customers/...`) and
+  `modules/60-customers.sql` (now the extension's `sql/customers.sql`, unchanged in behaviour)
+  are removed from core, along with `recharts`, the read-only Odoo call guard only the sync
+  used, and the `module:customers` and `system:customer-enrichment` permission definitions,
+  which the extension's manifest now declares. Nothing is dropped from existing databases:
+  customer tables, data and saved team permissions stay as they are, and a saved sidebar
+  position for Customers is kept for the extension's workspace. Schema 104 removes the module
+  from the release manifest and the verify and emergency-lockdown tools (`reset.sql` still
+  drops the customer tables when they exist, so a full reset leaves a clean database); API 3.0.0
+  because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
+  `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
+  redeploy, then install `blueplm.customers-<version>.bpx` for the organization.
+- The harness's NC18 control now re-grants the core seeder `create_default_job_titles` instead of
+  `seed_customer_categories`.
+- SOLIDWORKS service 1.25.0: Balloon drawing keeps balloons you moved by hand when it runs again,
+  and the toast counts them.
+- The Pull from / Push to SW Inspection buttons and the add-in service commands are removed.
+  Extract from drawing and Balloon drawing need only SOLIDWORKS, not an Inspection license.
 
 ### Fixed
 
@@ -166,53 +190,27 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
   moved past is now modified whatever the timestamps say. This also turns the known failure "an
   edit saved right after a checkout shows as modified" in `src/test/multi` into a pass.
 
-## [4.8.0] - 2026-10-28
-
-Schema 104 (one release on top of 4.7.6's 103), API 3.0.0. Apply `supabase/core.sql`, then
-modules 10 to 50 in order, then redeploy the API. **Customers is no longer part of
-BluePLM core**: organizations that use it install the `blueplm.customers` extension (see below).
-
-### Added
-
-- **Native extensions.** An organization admin can install an extension package (`.bpx`) for
-  the whole organization from Settings > Extensions > Install for organization. The package is
-  uploaded to the private `org-extensions` storage bucket and its sha256 is recorded on the
-  install row. The desktop app and the API run an extension only from a package whose bytes
-  match that hash: nothing else (a per-machine install, the store, a sideload or a deep link)
-  can make native code run. The desktop app verifies, extracts and serves the package over
-  `blueplm-ext://` and activates it with host API v1, which lets it add a workspace to the
-  activity bar, sidebar, main area and right panel, each behind its own error boundary.
-  Extensions can declare team permission resources, which the permissions editor lists. The
-  API loads an extension's server module and serves its routes under `/ext/<extensionId>/`,
-  authenticated, permission-checked and rate limited like core routes, for the organizations
-  named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
-  without a restart. Schema 104 adds the package columns, the bucket and its policies.
-- **Extension workspaces in module settings.** Your modules, the organization defaults and team
-  defaults list each loaded extension workspace with a show/hide toggle (they are placed by
-  their group and cannot be reordered yet), so a Customers module hidden while it was core,
-  where it was off by default, can be turned back on.
-
-### Changed
-
-- **Customers moved to a private extension, `blueplm.customers`.** The Customers workspace, its
-  sidebar navigator and detail panel, the Odoo customer sync routes (`/customers/sync`,
-  `/sync/status`, `/sync/cancel`, now `/ext/blueplm.customers/...`) and
-  `modules/60-customers.sql` (now the extension's `sql/customers.sql`, unchanged in behaviour)
-  are removed from core, along with `recharts`, the read-only Odoo call guard only the sync
-  used, and the `module:customers` and `system:customer-enrichment` permission definitions,
-  which the extension's manifest now declares. Nothing is dropped from existing databases:
-  customer tables, data and saved team permissions stay as they are, and a saved sidebar
-  position for Customers is kept for the extension's workspace. Schema 104 removes the module
-  from the release manifest and the verify and emergency-lockdown tools (`reset.sql` still
-  drops the customer tables when they exist, so a full reset leaves a clean database); API 3.0.0
-  because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
-  `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
-  redeploy, then install `blueplm.customers-<version>.bpx` for the organization.
-- The harness's NC18 control now re-grants the core seeder `create_default_job_titles` instead of
-  `seed_customer_categories`.
-
 ### Security
 
+- **Review decisions can no longer be forged** (schema 107). The `review_responses` policy let a
+  requester mark every reviewer's response approved, and anyone add themselves as a reviewer on
+  any review, in any organization. Every review write now goes through server functions that
+  check who is calling; client access to the review tables is read-only and follows vault
+  access. Comments and notifications can no longer be written into another organization.
+- **Workflow gate approvals count the current attempt only** (schema 107). Approvals from earlier
+  rounds counted toward a gate, so an all-must-approve gate could never pass after one
+  rejection, and a gate could pass on approvals of an older version. Gate rows take no direct
+  client writes, and two last approvals arriving together advance the file once.
+- Existing reviews are migrated in place into one-item packages; 4.7.x clients' review
+  writes fail without changing data.
+
+- **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
+  could read every row of `solidworks_licenses`, serial included, and every assignment. Now an
+  administrator (`is_org_admin()`) reads every licence; anyone else reads only the licences
+  assigned to them, and only their own assignments. The policy that let a user update any column
+  of their own assignment is gone: repointing `license_id` exposed another serial. Activation
+  still works through `activate_solidworks_license()`. Released clients keep working: the licence
+  screen already showed a non-admin only their own licences.
 - **Extension install paths.** Packages are extracted through a staged, zip-slip-safe path; the
   manifest id and version are validated before any filesystem call; store downloads are
   verified against `X-Content-SHA256` and refused when it is missing or wrong; uninstall removes
@@ -228,17 +226,6 @@ BluePLM core**: organizations that use it install the `blueplm.customers` extens
 - The never-wired extension runtime (`src/lib/extensions/**`, the hidden extension-host window)
   and the stub handlers that reported success without doing anything. Sandboxed extensions can
   still be installed but have no runtime, and the app says so.
-
-## [4.7.7-beta.1] - 2026-10-28
-
-Test build for native inspection ballooning, cut from 4.7.6. Nothing else from main is in it:
-no schema change (still 103), no API change (2.8.3).
-
-### Changed
-- SOLIDWORKS service 1.25.0: Balloon drawing keeps balloons you moved by hand when it runs again,
-  and the toast counts them.
-- The Pull from / Push to SW Inspection buttons and the add-in service commands are removed.
-  Extract from drawing and Balloon drawing need only SOLIDWORKS, not an Inspection license.
 
 ## [4.7.6] - 2026-10-28
 
