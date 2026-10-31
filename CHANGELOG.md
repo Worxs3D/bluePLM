@@ -6,6 +6,10 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-10-31
+
+App only: no schema or API change, so it runs on schema 503 and API 4.2.0 like 5.3.0.
+
 ### Fixed
 
 - **"Later" on the update prompt no longer hides it across restarts.** Dismissing the prompt (or
