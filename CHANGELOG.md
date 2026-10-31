@@ -6,6 +6,20 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Later" on the update prompt no longer hides it across restarts.** Dismissing the prompt (or
+  clicking outside it) used to keep it away for 24 hours even if you restarted BluePLM. It now lasts
+  only until the app is closed, and in a long-running session the prompt comes back after a day.
+  Check for Updates always opens the prompt, even after "Later".
+
+### Changed
+
+- **Settings > Updates.** A page of its own under This computer: when an update is waiting it says
+  which version and offers Update now, even after you chose "Later", and a dot on the page's name in
+  the settings sidebar says an update is available. Check for Updates and Version History (upgrade
+  or roll back) moved here from About.
+
 ## [5.3.0] - 2026-10-31
 
 App and release workflow only: no schema or API change, so it runs on schema 503 and API 4.2.0 like 5.2.2.

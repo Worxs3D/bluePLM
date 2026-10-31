@@ -693,11 +693,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Update event listeners
   onUpdateAvailable: (
-    callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void,
+    callback: (info: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean }) => void,
   ) => {
     const handler = (
       _: unknown,
-      info: { version: string; releaseDate?: string; releaseNotes?: string },
+      info: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean },
     ) => callback(info)
     ipcRenderer.on('updater:available', handler)
     return () => ipcRenderer.removeListener('updater:available', handler)
@@ -1513,7 +1513,7 @@ declare global {
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>
       installUpdate: () => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<{
-        updateAvailable: { version: string; releaseDate?: string; releaseNotes?: string } | null
+        updateAvailable: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean } | null
         updateDownloaded: boolean
         downloadProgress: {
           percent: number
@@ -1527,7 +1527,7 @@ declare global {
 
       // Update event listeners
       onUpdateAvailable: (
-        callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void,
+        callback: (info: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean }) => void,
       ) => () => void
       onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void
       onUpdateDownloadProgress: (

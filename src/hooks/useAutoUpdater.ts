@@ -25,16 +25,19 @@ export function useAutoUpdater() {
 
     const cleanups: (() => void)[] = []
 
-    // Update available - show modal (always update to latest version)
+    // Update available - show modal unless the user chose "Later" in this run of the app. A
+    // postponed update is still recorded so Settings > Updates can offer it.
     cleanups.push(
-      window.electronAPI.onUpdateAvailable((info) => {
-        log.info('[Update]', 'Update available', { version: info.version })
+      window.electronAPI.onUpdateAvailable(({ postponed, ...info }) => {
+        log.info('[Update]', 'Update available', { version: info.version, postponed })
         // Reset download state when switching to a new update version
-        setUpdateDownloading(false)
-        setUpdateDownloaded(false)
-        setUpdateProgress(null)
+        if (usePDMStore.getState().updateAvailable?.version !== info.version) {
+          setUpdateDownloading(false)
+          setUpdateDownloaded(false)
+          setUpdateProgress(null)
+        }
         setUpdateAvailable(info)
-        setShowUpdateModal(true)
+        if (!postponed) setShowUpdateModal(true)
       }),
     )
 
@@ -88,8 +91,9 @@ export function useAutoUpdater() {
       .getUpdateStatus()
       .then((status) => {
         if (status.updateAvailable) {
-          setUpdateAvailable(status.updateAvailable)
-          setShowUpdateModal(true)
+          const { postponed, ...info } = status.updateAvailable
+          setUpdateAvailable(info)
+          if (!postponed) setShowUpdateModal(true)
         }
         if (status.updateDownloaded) {
           setUpdateDownloaded(true)

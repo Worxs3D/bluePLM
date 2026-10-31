@@ -127,63 +127,42 @@ function downloadMandatory(version: string): void {
   })
 }
 
-// Update reminder state
-interface UpdateReminder {
-  version: string
-  postponedAt: number
-}
-
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-function getUpdateReminderFile(): string {
-  return path.join(app.getPath('userData'), 'update-reminder.json')
-}
+// "Later" on the update prompt. It lives in memory only, so the prompt comes back the next time
+// the app starts; within one run it stays quiet for a day, since users leave BluePLM open for
+// weeks. A postponed update is still reported to the renderer (with `postponed: true`) so the
+// Updates settings page can offer it.
+const POSTPONE_DURATION_MS = 24 * 60 * 60 * 1000
+let postponedUpdate: { version: string; postponedAt: number } | null = null
 
-function loadUpdateReminder(): UpdateReminder | null {
+// Releases up to 5.3.0 saved the postponement to disk, which kept the prompt away across
+// restarts. Remove that file so an old postponement cannot outlive this upgrade.
+function removeLegacyReminderFile(): void {
   try {
-    const reminderFile = getUpdateReminderFile()
-    if (fs.existsSync(reminderFile)) {
-      const data = fs.readFileSync(reminderFile, 'utf-8')
-      return JSON.parse(data)
-    }
-  } catch {}
-  return null
-}
-
-function saveUpdateReminder(reminder: UpdateReminder): void {
-  try {
-    fs.writeFileSync(getUpdateReminderFile(), JSON.stringify(reminder, null, 2))
+    fs.rmSync(path.join(app.getPath('userData'), 'update-reminder.json'), { force: true })
   } catch {}
 }
 
-function clearUpdateReminder(): void {
-  try {
-    const reminderFile = getUpdateReminderFile()
-    if (fs.existsSync(reminderFile)) {
-      fs.unlinkSync(reminderFile)
-    }
-  } catch {}
-}
-
-function shouldShowUpdate(version: string): boolean {
-  const reminder = loadUpdateReminder()
-  if (!reminder) return true
-
-  if (reminder.version !== version) {
-    clearUpdateReminder()
-    return true
+function isPostponed(version: string): boolean {
+  if (!postponedUpdate) return false
+  if (
+    postponedUpdate.version !== version ||
+    Date.now() - postponedUpdate.postponedAt >= POSTPONE_DURATION_MS
+  ) {
+    postponedUpdate = null
+    return false
   }
+  return true
+}
 
-  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
-  const timeSincePostponed = Date.now() - reminder.postponedAt
-
-  if (timeSincePostponed >= TWENTY_FOUR_HOURS) {
-    log('Update reminder expired, showing update')
-    clearUpdateReminder()
-    return true
+function updateInfoForRenderer(info: UpdateInfo, postponed: boolean) {
+  return {
+    version: info.version,
+    releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes,
+    postponed,
   }
-
-  return false
 }
 
 async function performAutoUpdateCheck(reason: string): Promise<void> {
@@ -200,6 +179,15 @@ async function performAutoUpdateCheck(reason: string): Promise<void> {
   }
 
   if (updateAvailable && !updateDownloaded) {
+    // A day after "Later", prompt again without waiting for a restart.
+    const wasPostponed = postponedUpdate !== null
+    if (wasPostponed && !mandatoryMinVersion && !isPostponed(updateAvailable.version)) {
+      log(`[Update] Postponement of v${updateAvailable.version} expired, prompting again`)
+      mainWindow?.webContents.send(
+        'updater:available',
+        updateInfoForRenderer(updateAvailable, false),
+      )
+    }
     log(
       `[Update] Skipping check (${reason}) - update already available: v${updateAvailable.version}`,
     )
@@ -228,6 +216,7 @@ export function registerUpdaterHandlers(
   mainWindow = window
   log = deps.log
   logError = deps.logError
+  removeLegacyReminderFile()
 
   // Configure auto-updater
   autoUpdater.autoDownload = false
@@ -252,14 +241,12 @@ export function registerUpdaterHandlers(
     if (mandatoryMinVersion) {
       if (satisfiesMandatory(info.version)) downloadMandatory(info.version)
       else sendMandatory({ phase: 'no-update', version: info.version })
-    } else if (shouldShowUpdate(info.version)) {
-      mainWindow?.webContents.send('updater:available', {
-        version: info.version,
-        releaseDate: info.releaseDate,
-        releaseNotes: info.releaseNotes,
-      })
     } else {
-      log('Update notification suppressed - user postponed recently')
+      // Asking for updates yourself always opens the prompt, even after "Later".
+      if (isUserInitiatedCheck) postponedUpdate = null
+      const postponed = isPostponed(info.version)
+      if (postponed) log('Update prompt suppressed - user postponed it in this session')
+      mainWindow?.webContents.send('updater:available', updateInfoForRenderer(info, postponed))
     }
 
     isUserInitiatedCheck = false
@@ -392,17 +379,10 @@ export function registerUpdaterHandlers(
   })
 
   ipcMain.handle('updater:get-status', () => {
-    const shouldShow = updateAvailable ? shouldShowUpdate(updateAvailable.version) : false
-
     return {
-      updateAvailable:
-        updateAvailable && shouldShow
-          ? {
-              version: updateAvailable.version,
-              releaseDate: updateAvailable.releaseDate,
-              releaseNotes: updateAvailable.releaseNotes,
-            }
-          : null,
+      updateAvailable: updateAvailable
+        ? updateInfoForRenderer(updateAvailable, isPostponed(updateAvailable.version))
+        : null,
       updateDownloaded,
       downloadProgress: downloadProgress
         ? {
@@ -417,19 +397,15 @@ export function registerUpdaterHandlers(
 
   ipcMain.handle('updater:postpone', (_, version: string) => {
     log(`User postponed update for version ${version}`)
-    saveUpdateReminder({
-      version,
-      postponedAt: Date.now(),
-    })
+    postponedUpdate = { version, postponedAt: Date.now() }
     return { success: true }
   })
 
   ipcMain.handle('updater:clear-reminder', () => {
     log('Clearing update reminder')
-    clearUpdateReminder()
+    postponedUpdate = null
     return { success: true }
   })
-
 
   // Download specific version installer
   ipcMain.handle('updater:download-version', async (_, version: string, downloadUrl: string) => {
