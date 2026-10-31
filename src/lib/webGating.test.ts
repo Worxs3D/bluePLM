@@ -31,6 +31,7 @@ const WEB_HIDDEN_TABS: readonly SettingsTab[] = [
   'performance',
   'logs',
   'dev-tools',
+  'updates',
   'about',
 ]
 

@@ -319,6 +319,13 @@ export const en: TranslationDict = {
     updateAvailable: 'Update available! Check the notification.',
     couldNotCheck: 'Could not check for updates',
     checkForNewVersions: 'Check for new versions',
+    installedVersion: 'Installed version {{version}}',
+    updateReadyTitle: 'Version {{version}} is available',
+    updateReadyDesc: 'BluePLM downloads it and restarts to finish installing.',
+    updateDownloadingDesc: 'Downloading... {{percent}}%',
+    updateInstallingDesc: 'Installing. BluePLM will restart.',
+    updateNow: 'Update now',
+    openUpdates: 'Updates',
 
     appearance: 'Appearance',
     themeDark: 'Dark',

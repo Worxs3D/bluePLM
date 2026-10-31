@@ -55,6 +55,10 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
   const integrations = usePDMStore((s) => s.integrations)
   const backupStatus = usePDMStore((s) => s.backupStatus)
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  // The auto-updater's pending update (also after "Later"); a dot on Updates says so.
+  const updateVersion = usePDMStore((s) =>
+    s.updateAvailable && !s.updateAvailable.isManualVersion ? s.updateAvailable.version : null,
+  )
 
   const desktop = hasDesktop()
   const { query, groups } = useSettingsSearch()
@@ -115,6 +119,13 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
                         {item.label}
                       </span>
                       {status && <StatusDot status={status} />}
+                      {item.id === 'updates' && updateVersion && (
+                        <span
+                          className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ui-accent"
+                          title={t('preferences.updateReadyTitle', { version: updateVersion })}
+                          aria-label={t('preferences.updateReadyTitle', { version: updateVersion })}
+                        />
+                      )}
                     </button>
                   </li>
                 )

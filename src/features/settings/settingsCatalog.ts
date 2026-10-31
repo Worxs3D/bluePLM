@@ -1,4 +1,5 @@
 import {
+  ArrowUpCircle,
   Box,
   Braces,
   Building2,
@@ -321,12 +322,20 @@ export const settingsSections = (): SettingsSection[] => [
         keywords: ['developer', 'debug', 'dev tools'],
       },
       {
+        id: 'updates',
+        label: 'Updates',
+        icon: ArrowUpCircle,
+        description: 'Install a new version of BluePLM, or go back to an earlier one.',
+        desktopOnly: true,
+        keywords: ['update', 'upgrade', 'version', 'release', 'rollback', 'downgrade'],
+      },
+      {
         id: 'about',
         label: 'About',
         icon: Info,
-        description: 'Version, updates and licences.',
+        description: 'Version, platform and links.',
         desktopOnly: true,
-        keywords: ['version', 'update', 'license'],
+        keywords: ['version', 'license'],
       },
     ],
   },
@@ -731,9 +740,11 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'File Operation Log', keywords: ['log'] },
     { label: 'BOM Reference Diagnostics', keywords: ['bom', 'references'] },
   ],
-  about: [
+  updates: [
     { label: 'Check for Updates', keywords: ['update', 'upgrade'] },
     { label: 'Version History', keywords: ['changelog', 'releases', 'release notes'] },
+  ],
+  about: [
     { label: 'GitHub Repository', keywords: ['source', 'github', 'code'] },
     { label: 'Report Issues', keywords: ['bug', 'issue', 'feedback'] },
   ],

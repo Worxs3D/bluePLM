@@ -105,6 +105,9 @@ const LogsSettings = lazy(() =>
 const DevToolsSettings = lazy(() =>
   import('../system/DevToolsSettings').then((m) => ({ default: m.DevToolsSettings })),
 )
+const UpdatesSettings = lazy(() =>
+  import('../system/UpdatesSettings').then((m) => ({ default: m.UpdatesSettings })),
+)
 const AboutSettings = lazy(() =>
   import('../system/AboutSettings').then((m) => ({ default: m.AboutSettings })),
 )
@@ -236,6 +239,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <LogsSettings />
       case 'dev-tools':
         return <DevToolsSettings />
+      case 'updates':
+        return <UpdatesSettings />
       case 'about':
         return <AboutSettings />
       case 'delete-account':

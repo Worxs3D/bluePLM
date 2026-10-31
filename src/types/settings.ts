@@ -31,6 +31,7 @@ export const SETTINGS_TABS = [
   'performance',
   'logs',
   'dev-tools',
+  'updates',
   'about',
   'delete-account',
   'extensions',
