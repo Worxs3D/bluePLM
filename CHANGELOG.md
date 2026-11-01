@@ -4,9 +4,9 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.3.2] - 2026-11-01
 
-App only: no schema, API or SolidWorks service change.
+App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.1.
 
 ### Changed
 
