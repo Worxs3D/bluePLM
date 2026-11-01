@@ -1,9 +1,18 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Play, X } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Play, X } from 'lucide-react'
 
-import { Button, FIELD_CLASS } from '@/components/core/ui'
+import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
+import { usePDMStore } from '@/stores/pdmStore'
 import type { VaultAuditScope, VaultAuditScopeKind } from '@/types/vaultAudit'
+
+import { VaultAuditFolderPicker } from './VaultAuditFolderPicker'
+import {
+  buildFolderIndex,
+  folderScopeBlocksRun,
+  folderScopeStatus,
+  type FolderScopeStatus,
+} from './vaultAuditFolders'
 
 interface VaultAuditScopeFormProps {
   scope: VaultAuditScope
@@ -49,6 +58,52 @@ function scopeOptions(): ScopeOption[] {
   ]
 }
 
+/** `t()` has no plural rules, so the `_one` / `_other` key is chosen here. */
+function pluralKey(key: string, count: number): string {
+  return `${key}_${count === 1 ? 'one' : 'other'}`
+}
+
+/** One line under the folder box saying what the scope will match, or why it cannot run. */
+function FolderStatusLine({ status, vaultPath }: { status: FolderScopeStatus; vaultPath: string }) {
+  if (status.kind === 'unknown') return null
+
+  if (status.kind === 'found') {
+    const { modelCount, onDiskCount } = status.folder
+    if (modelCount === 0) {
+      return <StatusText warning>{t('vaultAudit.scope.folderNoModels')}</StatusText>
+    }
+    const notOnDisk = modelCount - onDiskCount
+    return (
+      <StatusText>
+        {t(pluralKey('vaultAudit.scope.folderModels', modelCount), { count: modelCount })}
+        {notOnDisk > 0 &&
+          ` ${t(pluralKey('vaultAudit.scope.folderNotOnDisk', notOnDisk), { count: notOnDisk })}`}
+      </StatusText>
+    )
+  }
+
+  const text =
+    status.kind === 'empty'
+      ? t('vaultAudit.scope.folderRequired')
+      : status.kind === 'outside-vault'
+        ? t('vaultAudit.scope.folderOutsideVault', { vault: vaultPath })
+        : t('vaultAudit.scope.folderNotFound')
+  return <StatusText warning={status.kind !== 'empty'}>{text}</StatusText>
+}
+
+function StatusText({ warning, children }: { warning?: boolean; children: ReactNode }) {
+  return (
+    <p
+      className={`mt-1.5 flex items-start gap-1.5 text-[13px] ${
+        warning ? 'text-ui-warning' : 'text-ui-fg-secondary'
+      }`}
+    >
+      {warning && <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />}
+      <span>{children}</span>
+    </p>
+  )
+}
+
 export function VaultAuditScopeForm({
   scope,
   onScopeChange,
@@ -67,6 +122,20 @@ export function VaultAuditScopeForm({
   const options = scopeOptions()
   const current = options.find((option) => option.kind === scope.kind)
   const Chevron = showOptions ? ChevronDown : ChevronRight
+
+  const vaultPath = usePDMStore((state) => state.vaultPath) ?? ''
+  const files = usePDMStore((state) => state.files)
+  const isFolderScope = scope.kind === 'folder'
+  // Built only while a folder is being chosen: the store's file list changes with every watcher
+  // event, and the other two scopes have no use for it.
+  const folderIndex = useMemo(
+    () => (isFolderScope ? buildFolderIndex(files) : null),
+    [isFolderScope, files],
+  )
+  const folderStatus = folderIndex
+    ? folderScopeStatus(folderIndex, scope.folderPath, vaultPath)
+    : null
+  const folderBlocks = folderStatus !== null && folderScopeBlocksRun(folderStatus)
 
   return (
     <div className="space-y-3">
@@ -96,35 +165,40 @@ export function VaultAuditScopeForm({
         </legend>
 
         {options.map((option) => (
-          <label
-            key={option.kind}
-            className={`flex cursor-pointer gap-3 py-3.5 ${
-              isRunning ? 'cursor-not-allowed opacity-60' : ''
-            }`}
-          >
-            <input
-              type="radio"
-              name="vault-audit-scope"
-              className="mt-1 accent-ui-accent"
-              checked={scope.kind === option.kind}
-              onChange={() => onScopeChange({ ...scope, kind: option.kind })}
-            />
-            <div className="min-w-0">
-              <div className="text-[14px] text-ui-fg">{option.label}</div>
-              <p className="mt-1 text-[14px] leading-[1.4] text-ui-fg-secondary">{option.hint}</p>
-              {option.kind === 'folder' && scope.kind === 'folder' && (
-                <input
-                  type="text"
+          <div key={option.kind} className="py-3.5">
+            <label
+              className={`flex cursor-pointer gap-3 ${
+                isRunning ? 'cursor-not-allowed opacity-60' : ''
+              }`}
+            >
+              <input
+                type="radio"
+                name="vault-audit-scope"
+                className="mt-1 accent-ui-accent"
+                checked={scope.kind === option.kind}
+                onChange={() => onScopeChange({ ...scope, kind: option.kind })}
+              />
+              <div className="min-w-0">
+                <div className="text-[14px] text-ui-fg">{option.label}</div>
+                <p className="mt-1 text-[14px] leading-[1.4] text-ui-fg-secondary">{option.hint}</p>
+              </div>
+            </label>
+            {/* Outside the label: a label around a text box, a list and a tree would forward
+                stray clicks on any of them to the radio. */}
+            {option.kind === 'folder' && folderIndex && folderStatus && (
+              <div className="pl-7">
+                <VaultAuditFolderPicker
                   value={scope.folderPath}
-                  placeholder={t('vaultAudit.scope.folderPlaceholder')}
-                  onChange={(event) =>
-                    onScopeChange({ kind: 'folder', folderPath: event.target.value })
-                  }
-                  className={`${FIELD_CLASS} mt-2 h-7 max-w-md px-2.5`}
+                  onChange={(folderPath) => onScopeChange({ kind: 'folder', folderPath })}
+                  index={folderIndex}
+                  match={folderStatus.kind === 'found' ? folderStatus.folder : null}
+                  vaultPath={vaultPath}
+                  disabled={isRunning}
                 />
-              )}
-            </div>
-          </label>
+                <FolderStatusLine status={folderStatus} vaultPath={vaultPath} />
+              </div>
+            )}
+          </div>
         ))}
       </fieldset>
 
@@ -138,7 +212,7 @@ export function VaultAuditScopeForm({
             variant="primary"
             icon={<Play size={14} />}
             onClick={onStart}
-            disabled={!canScan || blocked}
+            disabled={!canScan || blocked || folderBlocks}
           >
             {hasResult ? t('vaultAudit.rescan') : t('vaultAudit.scan')}
           </Button>
@@ -147,6 +221,12 @@ export function VaultAuditScopeForm({
         {isRunning && <Loader2 size={14} className="animate-spin text-ui-fg-secondary" />}
         {!canScan && (
           <span className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.noVault')}</span>
+        )}
+        {/* With the options folded the folder line is out of sight, so the reason comes here. */}
+        {canScan && folderBlocks && !showOptions && (
+          <span className="text-[13px] text-ui-warning">
+            {t('vaultAudit.scope.folderFixFirst')}
+          </span>
         )}
       </div>
     </div>

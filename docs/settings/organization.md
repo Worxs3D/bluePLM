@@ -140,6 +140,13 @@ metadata they carry with what BluePLM has recorded. It is the in-app view of the
 it finds by what can be done about it: values to copy from the file, values to write into the
 file, conflicts that need a choice, values lost on both sides, and values to leave alone.
 
+To audit one folder, choose **One folder** and type part of the folder's name (or its path), or
+click **Browse** to pick it from the vault's folder tree. Each folder shows how many parts and
+assemblies BluePLM has under it, and the page says how many of those are not on this machine
+before you run. A full path pasted from the browser or from Windows Explorer works too. You can
+also right-click a folder in the file browser and choose **Audit SOLIDWORKS metadata…**, which
+opens this page with that folder as the scope.
+
 **Empty in BluePLM, still in the file** lists parts and assemblies whose item number or
 description is empty in BluePLM while the file still holds one under a key BluePLM writes. Before
 4.4.5, uploading a file or refreshing its metadata from the file could empty these columns, so

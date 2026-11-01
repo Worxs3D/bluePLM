@@ -106,7 +106,9 @@ export function VaultAuditSettings() {
             onCancel={audit.cancel}
           />
 
-          {audit.isRunning && <VaultAuditProgress progress={audit.progress} />}
+          {audit.isRunning && (
+            <VaultAuditProgress progress={audit.progress} startedAt={audit.startedAt} />
+          )}
 
           {audit.runState === 'failed' && audit.error && (
             <Callout tone="error">{audit.error}</Callout>

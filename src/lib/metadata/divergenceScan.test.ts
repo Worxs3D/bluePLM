@@ -92,6 +92,13 @@ describe('inFileScope', () => {
     expect(inFileScope(rowAt('Parts/ORING.SLDPRT'), options)).toBe(false)
   })
 
+  // Explorer's "Copy as path" wraps the path in double quotes.
+  it('accepts a quoted absolute path', () => {
+    const options = optionsWith('"C:\\BluePLM\\br-vault\\0 - SHARED"')
+    expect(inFileScope(rowAt('0 - SHARED/ORING.SLDPRT'), options)).toBe(true)
+    expect(inFileScope(rowAt('Parts/ORING.SLDPRT'), options)).toBe(false)
+  })
+
   it('is case-insensitive about the vault root and its separators', () => {
     const options = optionsWith('c:/bluePLM/BR-VAULT/0 - SHARED')
     expect(inFileScope(rowAt('0 - SHARED/ORING.SLDPRT'), options)).toBe(true)

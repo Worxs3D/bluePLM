@@ -269,7 +269,8 @@ function normalizeSeparators(value: string): string {
  * Lower-cased because the vault is on Windows and the rows' own uniqueness index is on
  * `LOWER(file_path)`; separators folded to `\` because rows written before the forward-slash
  * convention still carry the other kind; stripped at both ends and trimmed so a path pasted with a
- * leading separator or a trailing space still names the folder the operator meant.
+ * leading separator or a trailing space still names the folder the operator meant. Surrounding
+ * double quotes go too: Windows Explorer's "Copy as path" wraps the path in them.
  *
  * It cannot rescue an absolute path. `C:\Vault\Parts` shares no prefix with `Parts`, and the
  * browser's copy-path buttons hand out absolute paths, so that mistake is easy to make and
@@ -277,7 +278,8 @@ function normalizeSeparators(value: string): string {
  * of leaving an empty scope to look like a clean one.
  */
 function normalizeRelativePath(value: string): string {
-  return normalizeSeparators(value.trim())
+  const unquoted = value.trim().replace(/^"(.*)"$/, '$1')
+  return normalizeSeparators(unquoted.trim())
     .replace(/^\\+|\\+$/g, '')
     .toLowerCase()
 }

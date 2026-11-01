@@ -1404,6 +1404,9 @@ export const en: TranslationDict = {
   // Context menu translations
   contextMenu: {
     goToFolder: 'Go to Folder',
+    auditFolderMetadata: 'Audit SOLIDWORKS metadata…',
+    auditFolderMetadataHint:
+      'Open the Metadata Audit with this folder as its scope. Nothing is scanned until you run it.',
     review: {
       request: 'Request review…',
       requestMany: 'Request review of {{count}} files…',
@@ -1634,9 +1637,29 @@ export const en: TranslationDict = {
         'Every part and assembly. Around eight thousand documents and roughly three minutes.',
       folder: 'One folder',
       folderHint:
-        'That folder and everything beneath it. A path inside the vault, or a full path copied from the browser.',
+        'That folder and everything beneath it. Type part of a folder name, browse the vault, or paste a full path.',
       current: 'Scope: {{scope}}',
-      folderPlaceholder: 'e.g. 0 - SHARED\\00 - REGRESSION TESTS',
+      folderPlaceholder: 'Search folders or paste a path',
+      folderBrowse: 'Browse',
+      folderBrowseHide: 'Hide folders',
+      folderTreeLabel: 'Vault folders',
+      folderClear: 'Clear folder',
+      folderIndexEmpty: 'The vault’s folders have not loaded yet.',
+      folderNoSuggestions: 'No folder in the vault matches "{{query}}".',
+      folderCountTitle_one: '{{count}} part or assembly in BluePLM at or below this folder',
+      folderCountTitle_other: '{{count}} parts and assemblies in BluePLM at or below this folder',
+      folderModels_one: '{{count}} part or assembly in BluePLM under this folder.',
+      folderModels_other: '{{count}} parts and assemblies in BluePLM under this folder.',
+      folderNotOnDisk_one:
+        '{{count}} of them is not on this machine and will be listed as not read.',
+      folderNotOnDisk_other:
+        '{{count}} of them are not on this machine and will be listed as not read.',
+      folderNoModels:
+        'BluePLM has no parts or assemblies under this folder, so the audit would compare nothing.',
+      folderRequired: 'Choose a folder to scan.',
+      folderNotFound: 'No folder at this path in the vault.',
+      folderOutsideVault: 'This path is outside the vault ({{vault}}).',
+      folderFixFirst: 'Choose a folder in the vault first.',
       configurationRecorded: 'Multi-configuration files',
       configurationRecordedHint:
         'Only files BluePLM already records per-configuration metadata for, which is where a configuration record can have lost something. Six of seven models have a single configuration, so this costs a fraction of a full scan. It cannot see a multi-configuration file BluePLM never recorded — nothing was lost from a record that never existed.',
@@ -1649,6 +1672,8 @@ export const en: TranslationDict = {
     clear: 'Clear results',
     preparing: 'Asking SOLIDWORKS which documents are open…',
     progressFiles: '{{completed}} of {{total}} files read',
+    progressElapsed: '{{time}} elapsed',
+    progressRemaining: 'about {{time}} left',
 
     result: {
       heading: 'Result',

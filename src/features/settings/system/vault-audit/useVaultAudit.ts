@@ -60,6 +60,8 @@ export interface UseVaultAuditResult {
   setExpectRevisionOnModels: (expect: boolean) => void
   isRunning: boolean
   progress: { completed: number; total: number; message: string }
+  /** When the current run started, for the progress clock. */
+  startedAt: number | null
   /** Null until a run finishes; survives leaving and returning to the tab. */
   view: VaultAuditView | null
   runState: 'running' | 'complete' | 'cancelled' | 'failed' | null
@@ -164,8 +166,7 @@ export function useVaultAudit(): UseVaultAuditResult {
   // revision option is the other key, and it is what makes the toggle instant - the report already
   // holds every comparison, so changing which of them count is a re-read rather than a rescan.
   const view = useMemo(
-    () =>
-      run?.report ? buildVaultAuditView(run.report, { expectRevisionOnModels }) : null,
+    () => (run?.report ? buildVaultAuditView(run.report, { expectRevisionOnModels }) : null),
     [run?.report, expectRevisionOnModels],
   )
 
@@ -178,6 +179,12 @@ export function useVaultAudit(): UseVaultAuditResult {
       return
     }
     if (usePDMStore.getState().vaultAuditRun?.state === 'running') return
+    // A blank folder used to fall through to no prefix at all, so "One folder" scanned the whole
+    // vault. The form disables the button too; this is the guarantee.
+    if (scope.kind === 'folder' && !scope.folderPath.trim()) {
+      addToast('error', t('vaultAudit.scope.folderRequired'))
+      return
+    }
 
     // Re-read rather than trusting the mount-time answer: the service can be stopped, rebuilt and
     // restarted while this page is open, in either direction.
@@ -268,6 +275,7 @@ export function useVaultAudit(): UseVaultAuditResult {
     setScope,
     isRunning,
     progress: run?.progress ?? { completed: 0, total: 0, message: '' },
+    startedAt: run?.startedAt ?? null,
     view,
     runState: run?.state ?? null,
     error: run?.error ?? null,

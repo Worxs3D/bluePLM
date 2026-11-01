@@ -11,7 +11,7 @@ import {
 } from '@/lib/commands'
 import { watchFile, unwatchFile, createShareLink } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
-import { FolderVisibilityMenuItem } from '@/components/shared/HiddenFolder'
+import { AuditFolderMenuItem, FolderVisibilityMenuItem } from '@/components/shared/HiddenFolder'
 
 // Import from local modules
 import { useMenuPosition, useContextMenuState } from './hooks'
@@ -420,11 +420,8 @@ export function FileContextMenu({
         />
 
         {/* Hide folder from non-admins (cosmetic decluttering, not access control) */}
-        <FolderVisibilityMenuItem
-          folder={firstFile}
-          multiSelect={multiSelect}
-          onClose={onClose}
-        />
+        <FolderVisibilityMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
+        <AuditFolderMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
 
         {/* Resolve Moved Files - for a single file that is 'moved' or 'moved_away' (desktop only) */}
         {hasDesktop() && (

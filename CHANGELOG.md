@@ -6,6 +6,30 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+App only: no schema, API or SolidWorks service change.
+
+### Changed
+
+- **Metadata Audit has a folder picker.** "One folder" is no longer a bare text box: typing
+  suggests the vault's folders by name or path, Browse opens a folder tree, and each folder shows
+  how many parts and assemblies BluePLM has under it. Before a run the page says what the scope
+  will match, and how many of those files are not on this machine (they are listed as not read).
+  A full path, including one copied with Explorer's "Copy as path" (in quotes), becomes the
+  folder's vault path.
+- **Audit a folder from the file browser.** Admins get "Audit SOLIDWORKS metadata…" on a folder's
+  right-click menu. It opens Settings > SOLIDWORKS > Metadata Audit scoped to that folder; nothing is
+  scanned until you press Run.
+- **The audit's progress shows a clock.** Time elapsed and an estimate of the time left, measured
+  from the files read so far.
+
+### Fixed
+
+- **"One folder" with no folder no longer scans the whole vault.** A blank folder fell through to
+  no scope at all. Run now stays disabled until the folder box names a folder in the vault, and a
+  path outside the vault or a folder that does not exist says so instead of running a scan that
+  matches nothing. `scan-divergence --path` and `restore-metadata-from-files --path` also accept a
+  quoted path now.
+
 ## [5.3.1] - 2026-10-31
 
 App only: no schema or API change, so it runs on schema 503 and API 4.2.0 like 5.3.0.

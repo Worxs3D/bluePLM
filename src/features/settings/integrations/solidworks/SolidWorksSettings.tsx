@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
@@ -39,6 +39,15 @@ function TabLoading() {
 export function SolidWorksSettings() {
   const [activeTab, setActiveTab] = useState<TabId>('service')
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  const auditRequested = usePDMStore((s) => s.vaultAuditOpenRequested)
+  const consumeAuditRequest = usePDMStore((s) => s.consumeVaultAuditOpenRequest)
+
+  // A folder's "Audit metadata" menu entry opens this page and asks for the audit sub-tab.
+  useEffect(() => {
+    if (!auditRequested) return
+    setActiveTab('metadata-audit')
+    consumeAuditRequest()
+  }, [auditRequested, consumeAuditRequest])
 
   const visibleTabs = tabs().filter((tab) => !tab.adminOnly || isAdmin)
   // A demoted admin must not be left on a tab that has just disappeared.
