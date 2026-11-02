@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
+import { webWorkingVaultState } from '@/lib/webVault'
 
 /**
  * Hook to manage vault operations and state
@@ -49,9 +50,6 @@ export function useVaultManagement() {
       addToast: s.addToast,
     })),
   )
-
-  // Get setSettingsTab from store (added by Agent 2)
-  const setSettingsTab = usePDMStore((s) => s.setSettingsTab)
 
   // Vault not found dialog state
   const [vaultNotFoundPath, setVaultNotFoundPath] = useState<string | null>(null)
@@ -127,12 +125,10 @@ export function useVaultManagement() {
 
   // Handle vault not found - open settings to vaults tab where vaults are managed
   const handleVaultNotFoundSettings = useCallback(() => {
-    const { setActiveView } = usePDMStore.getState()
-    setSettingsTab('vaults')
-    setActiveView('settings')
+    usePDMStore.getState().openSettings('vaults')
     setVaultNotFoundPath(null)
     setVaultNotFoundName(undefined)
-  }, [setSettingsTab])
+  }, [])
 
   // Close vault not found dialog
   const handleCloseVaultNotFound = useCallback(() => {
@@ -143,9 +139,10 @@ export function useVaultManagement() {
   // Open recent vault
   const handleOpenRecentVault = useCallback(
     async (path: string) => {
-      if (!window.electronAPI) return
-
-      const result = await window.electronAPI.setWorkingDir(path)
+      // BluePLM Web has no folder to point at: the vault's virtual path is opened as is.
+      const result = window.electronAPI
+        ? await window.electronAPI.setWorkingDir(path)
+        : { success: true, error: undefined }
       if (result.success) {
         // Clear existing file state to avoid stale data
         setFiles([])
@@ -233,7 +230,13 @@ export function useVaultManagement() {
   // This prevents files from showing as "cloud" on startup before auth completes
   useEffect(() => {
     const initWorkingDir = async () => {
-      if (!window.electronAPI) return
+      // BluePLM Web: the active vault's virtual path is the working vault, connected once signed in.
+      if (!window.electronAPI) {
+        const web = webWorkingVaultState(connectedVaults, activeVaultId, vaultPath, !!user)
+        if (web.vaultPath && web.vaultPath !== vaultPath) setVaultPath(web.vaultPath)
+        if (web.connected) setVaultConnected(true)
+        return
+      }
 
       // Get the path from vaultPath (which is synced from activeVault in store merge)
       // If no vaultPath but we have connected vaults, use the ACTIVE vault's path (matching activeVaultId)

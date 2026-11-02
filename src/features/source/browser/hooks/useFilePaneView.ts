@@ -21,7 +21,6 @@ import { useSorting } from './useSorting'
 import {
   getFileProcessingOperation,
   getFolderProcessingOperation,
-  matchesKeybinding,
 } from '../utils'
 import type { SortColumn, SortDirection } from '../types'
 
@@ -223,7 +222,7 @@ export function useFilePaneView() {
 
       try {
         const { data, error } = await supabase
-          .from('file_metadata_columns')
+          .from('file_metadata_column')
           .select('*')
           .eq('org_id', organization.id)
           .order('sort_order')
@@ -254,24 +253,18 @@ export function useFilePaneView() {
     }
   }, [contextMenuState.contextMenu, user?.id])
 
-  // Helper for keybinding check
-  const checkKeybinding = useCallback((e: KeyboardEvent, action: string): boolean => {
-    const keybindings = usePDMStore.getState().keybindings
-    return matchesKeybinding(e, keybindings[action as keyof typeof keybindings])
-  }, [])
-
   // Combine columns with custom metadata columns
   const allColumns = useMemo(
     () => [
       ...columns,
       ...customMetadataColumns
-        .filter((c) => c.visible)
+        .filter((c) => c.is_visible)
         .map((c) => ({
           id: `custom_${c.name}`,
           label: c.label,
           width: c.width,
-          visible: c.visible,
-          sortable: c.sortable,
+          visible: c.is_visible,
+          sortable: c.is_sortable,
         })),
     ],
     [columns, customMetadataColumns],
@@ -323,9 +316,6 @@ export function useFilePaneView() {
     setWatchingFiles,
     isTogglingWatch,
     setIsTogglingWatch,
-
-    // Keybinding check
-    checkKeybinding,
 
     // Current path
     currentPath: currentFolder,

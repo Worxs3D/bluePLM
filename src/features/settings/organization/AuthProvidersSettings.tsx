@@ -1,76 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, Save, Shield, Users, Truck, Mail, Phone } from 'lucide-react'
-import { log } from '@/lib/logger'
-import { usePDMStore } from '@/stores/pdmStore'
+import { Loader2, Save } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
+
+import { Button, Switch } from '@/components/core/ui'
+import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
+import { usePDMStore } from '@/stores/pdmStore'
 import { DEFAULT_AUTH_PROVIDERS, type AuthProviderSettings } from '@/types/pdm'
 
-// Google icon component
-function GoogleIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <path
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-        fill="#4285F4"
-      />
-      <path
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-        fill="#34A853"
-      />
-      <path
-        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-        fill="#FBBC05"
-      />
-      <path
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-        fill="#EA4335"
-      />
-    </svg>
-  )
-}
-
-interface ProviderToggleProps {
-  label: string
-  icon: React.ReactNode
-  enabled: boolean
-  onChange: (enabled: boolean) => void
-  disabled?: boolean
-}
-
-function ProviderToggle({ label, icon, enabled, onChange, disabled }: ProviderToggleProps) {
-  return (
-    <div
-      className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
-        enabled ? 'border-plm-accent/50 bg-plm-accent/5' : 'border-plm-border bg-plm-highlight/30'
-      } ${disabled ? 'opacity-50' : ''}`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={`p-2 rounded-lg ${enabled ? 'bg-plm-accent/20 text-plm-accent' : 'bg-plm-fg-muted/10 text-plm-fg-muted'}`}
-        >
-          {icon}
-        </div>
-        <span className={`text-sm font-medium ${enabled ? 'text-plm-fg' : 'text-plm-fg-muted'}`}>
-          {label}
-        </span>
-      </div>
-      <button
-        onClick={() => !disabled && onChange(!enabled)}
-        disabled={disabled}
-        className={`relative w-11 h-6 rounded-full transition-colors ${
-          enabled ? 'bg-plm-accent' : 'bg-plm-fg-muted/30'
-        } ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-      >
-        <span
-          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
-          }`}
-        />
-      </button>
-    </div>
-  )
-}
+import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
 
 export function AuthProvidersSettings() {
   const { organization, addToast, getEffectiveRole } = usePDMStore(
@@ -97,7 +35,7 @@ export function AuthProvidersSettings() {
       setLoading(true)
       try {
         const { data, error } = await supabase
-          .from('organizations')
+          .from('organization')
           .select('auth_providers')
           .eq('id', organization.id)
           .single()
@@ -133,9 +71,8 @@ export function AuthProvidersSettings() {
   useEffect(() => {
     if (savingRef.current || loading) return
 
-    const org = organization as any // TODO: type this
-    if (org?.auth_providers) {
-      const authProviders = org.auth_providers as AuthProviderSettings
+    if (organization?.auth_providers) {
+      const authProviders = organization.auth_providers
       setSettings({
         users: {
           google: authProviders?.users?.google ?? true,
@@ -149,7 +86,7 @@ export function AuthProvidersSettings() {
         },
       })
     }
-  }, [(organization as any)?.auth_providers]) // TODO: type this
+  }, [organization?.auth_providers])
 
   // Save settings
   const handleSave = async () => {
@@ -169,7 +106,7 @@ export function AuthProvidersSettings() {
     savingRef.current = true
     try {
       const { error } = await supabase
-        .from('organizations')
+        .from('organization')
         .update({ auth_providers: JSON.parse(JSON.stringify(settings)) })
         .eq('id', organization.id)
 
@@ -202,12 +139,12 @@ export function AuthProvidersSettings() {
   }
 
   if (!organization) {
-    return <div className="text-center py-12 text-plm-fg-muted">No organization connected</div>
+    return <div className="py-12 text-center text-[14px] text-ui-fg-secondary">No organization connected</div>
   }
 
   if (!isAdmin) {
     return (
-      <div className="text-center py-12 text-plm-fg-muted">
+      <div className="py-12 text-center text-[14px] text-ui-fg-secondary">
         Only administrators can manage authentication settings
       </div>
     )
@@ -216,115 +153,63 @@ export function AuthProvidersSettings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-plm-accent" size={24} />
+        <Loader2 className="animate-spin text-ui-fg-secondary" size={20} />
       </div>
     )
   }
 
+  const providers: { key: 'google' | 'email' | 'phone'; label: string }[] = [
+    { key: 'google', label: 'Google Account' },
+    { key: 'email', label: 'Email & Password' },
+    { key: 'phone', label: 'Phone Number (SMS)' },
+  ]
+
+  const renderProviders = (accountType: 'users' | 'suppliers') => (
+    <SettingsGroup>
+      {providers.map((provider) => {
+        const id = `auth-${accountType}-${provider.key}`
+        return (
+          <SettingRow
+            key={provider.key}
+            htmlFor={id}
+            label={provider.label}
+          >
+            <Switch
+              id={id}
+              checked={settings[accountType][provider.key]}
+              onChange={(enabled) => updateProvider(accountType, provider.key, enabled)}
+            />
+          </SettingRow>
+        )
+      })}
+    </SettingsGroup>
+  )
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-plm-accent/20 rounded-lg">
-          <Shield size={24} className="text-plm-accent" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-plm-fg">Sign-In Methods</h2>
-          <p className="text-sm text-plm-fg-muted">
-            Control which authentication methods are available for your organization
-          </p>
-        </div>
-      </div>
+    <SettingsPage>
+      <SettingsSection
+        title="Team Members"
+        description="Choose which sign-in methods your team members can use to access BluePLM."
+      >
+        {renderProviders('users')}
+      </SettingsSection>
 
-      {/* Users Section */}
-      <div className="p-4 bg-plm-bg rounded-lg border border-plm-border">
-        <div className="flex items-center gap-2 mb-4">
-          <Users size={20} className="text-plm-accent" />
-          <h3 className="text-base font-medium text-plm-fg">Team Members</h3>
-        </div>
-        <p className="text-sm text-plm-fg-muted mb-4">
-          Choose which sign-in methods your team members can use to access BluePLM.
+      <SettingsSection
+        title="Suppliers"
+        description="Choose which sign-in methods your suppliers and external partners can use."
+      >
+        {renderProviders('suppliers')}
+      </SettingsSection>
+
+      <div className="flex items-start justify-between gap-12">
+        <p className="text-[14px] leading-[1.4] text-ui-fg-secondary">
+          Disabling a sign-in method will prevent new sign-ins using that method. Existing users who
+          have already signed in will not be affected until their session expires.
         </p>
-
-        <div className="space-y-3">
-          <ProviderToggle
-            label="Google Account"
-            icon={<GoogleIcon size={18} />}
-            enabled={settings.users.google}
-            onChange={(enabled) => updateProvider('users', 'google', enabled)}
-          />
-          <ProviderToggle
-            label="Email & Password"
-            icon={<Mail size={18} />}
-            enabled={settings.users.email}
-            onChange={(enabled) => updateProvider('users', 'email', enabled)}
-          />
-          <ProviderToggle
-            label="Phone Number (SMS)"
-            icon={<Phone size={18} />}
-            enabled={settings.users.phone}
-            onChange={(enabled) => updateProvider('users', 'phone', enabled)}
-          />
-        </div>
+        <Button variant="primary" loading={saving} icon={<Save size={14} />} onClick={handleSave}>
+          Save settings
+        </Button>
       </div>
-
-      {/* Suppliers Section */}
-      <div className="p-4 bg-plm-bg rounded-lg border border-plm-border">
-        <div className="flex items-center gap-2 mb-4">
-          <Truck size={20} className="text-plm-accent" />
-          <h3 className="text-base font-medium text-plm-fg">Suppliers</h3>
-        </div>
-        <p className="text-sm text-plm-fg-muted mb-4">
-          Choose which sign-in methods your suppliers and external partners can use.
-        </p>
-
-        <div className="space-y-3">
-          <ProviderToggle
-            label="Google Account"
-            icon={<GoogleIcon size={18} />}
-            enabled={settings.suppliers.google}
-            onChange={(enabled) => updateProvider('suppliers', 'google', enabled)}
-          />
-          <ProviderToggle
-            label="Email & Password"
-            icon={<Mail size={18} />}
-            enabled={settings.suppliers.email}
-            onChange={(enabled) => updateProvider('suppliers', 'email', enabled)}
-          />
-          <ProviderToggle
-            label="Phone Number (SMS)"
-            icon={<Phone size={18} />}
-            enabled={settings.suppliers.phone}
-            onChange={(enabled) => updateProvider('suppliers', 'phone', enabled)}
-          />
-        </div>
-      </div>
-
-      {/* Info Note */}
-      <div className="p-4 bg-plm-info/10 border border-plm-info/30 rounded-lg">
-        <div className="flex gap-3">
-          <Shield size={20} className="text-plm-info flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-plm-fg-muted">
-            <p className="font-medium text-plm-fg mb-1">Security Note</p>
-            <p>
-              Disabling a sign-in method will prevent new sign-ins using that method. Existing users
-              who have already signed in will not be affected until their session expires.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          Save Settings
-        </button>
-      </div>
-    </div>
+    </SettingsPage>
   )
 }

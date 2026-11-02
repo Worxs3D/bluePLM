@@ -1,12 +1,25 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { SettingsTab } from '@/types/settings'
-import { ExtensionStoreView } from '@/features/extensions'
+import { usePDMStore } from '@/stores/pdmStore'
+import { SettingsSearchResults } from './SettingsSearchResults'
+import { findSettingElement, flashSettingElement } from '../revealSetting'
+import { findSettingsItem, isDesktopOnlySettingsTab } from '../settingsCatalog'
+import { hasDesktop } from '@/lib/platform'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
+const OrgExtensionsPanel = lazy(() =>
+  import('@/features/nativeExtensions/OrgExtensionsPanel').then((m) => ({ default: m.OrgExtensionsPanel })),
+)
 const ProfileSettings = lazy(() =>
   import('../account/ProfileSettings').then((m) => ({ default: m.ProfileSettings })),
+)
+const AppearanceSettings = lazy(() =>
+  import('../account/AppearanceSettings').then((m) => ({ default: m.AppearanceSettings })),
+)
+const SessionsSettings = lazy(() =>
+  import('../account/SessionsSettings').then((m) => ({ default: m.SessionsSettings })),
 )
 const PreferencesSettings = lazy(() =>
   import('../account/PreferencesSettings').then((m) => ({ default: m.PreferencesSettings })),
@@ -45,6 +58,16 @@ const ExportSettings = lazy(() =>
 const RFQSettings = lazy(() =>
   import('../system/RFQSettings').then((m) => ({ default: m.RFQSettings })),
 )
+const FileWorkflowsSettings = lazy(() =>
+  import('../organization/FileWorkflowsSettings').then((m) => ({
+    default: m.FileWorkflowsSettings,
+  })),
+)
+const SecurityMonitoringSettings = lazy(() =>
+  import('../organization/SecurityMonitoringSettings').then((m) => ({
+    default: m.SecurityMonitoringSettings,
+  })),
+)
 const MetadataColumnsSettings = lazy(() =>
   import('../organization/MetadataColumnsSettings').then((m) => ({
     default: m.MetadataColumnsSettings,
@@ -67,9 +90,6 @@ const GoogleDriveSettings = lazy(() =>
 const OdooSettings = lazy(() =>
   import('../integrations/odoo').then((m) => ({ default: m.OdooSettings })),
 )
-const SlackSettings = lazy(() =>
-  import('../integrations/slack').then((m) => ({ default: m.SlackSettings })),
-)
 const WebhooksSettings = lazy(() =>
   import('../integrations/WebhooksSettings').then((m) => ({ default: m.WebhooksSettings })),
 )
@@ -85,6 +105,9 @@ const LogsSettings = lazy(() =>
 const DevToolsSettings = lazy(() =>
   import('../system/DevToolsSettings').then((m) => ({ default: m.DevToolsSettings })),
 )
+const UpdatesSettings = lazy(() =>
+  import('../system/UpdatesSettings').then((m) => ({ default: m.UpdatesSettings })),
+)
 const AboutSettings = lazy(() =>
   import('../system/AboutSettings').then((m) => ({ default: m.AboutSettings })),
 )
@@ -94,9 +117,6 @@ const SupabaseSettings = lazy(() =>
 const RecoveryCodeSettings = lazy(() =>
   import('../system/RecoveryCodeSettings').then((m) => ({ default: m.RecoveryCodeSettings })),
 )
-const DeleteAccountSettings = lazy(() =>
-  import('../account/DeleteAccountSettings').then((m) => ({ default: m.DeleteAccountSettings })),
-)
 interface SettingsContentProps {
   activeTab: SettingsTab
 }
@@ -104,19 +124,71 @@ interface SettingsContentProps {
 // Loading fallback for lazy-loaded settings panels
 function SettingsLoading() {
   return (
-    <div className="flex items-center justify-center h-32 text-plm-fg-muted">
+    <div className="flex h-32 items-center justify-center text-ui-fg-secondary">
       <Loader2 size={20} className="animate-spin" />
     </div>
   )
 }
 
+/** How long to wait for a lazy panel (and the data it loads) to render the setting asked for. */
+const REVEAL_TIMEOUT_MS = 4000
+const REVEAL_POLL_MS = 100
+
+/**
+ * When a search result opened this tab, wait for the panel to render the setting, then scroll
+ * to it and flash it. Gives up quietly if the panel never shows that label.
+ */
+function useRevealSearchedSetting(activeTab: SettingsTab) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const focusTarget = usePDMStore((s) => s.settingsFocusTarget)
+  const clearFocusTarget = usePDMStore((s) => s.clearSettingsFocusTarget)
+
+  useEffect(() => {
+    if (!focusTarget || focusTarget.tab !== activeTab) return
+    const startedAt = performance.now()
+    let timer = 0
+    const tick = () => {
+      const root = containerRef.current
+      const el = root ? findSettingElement(root, focusTarget.label) : null
+      if (root && el) {
+        flashSettingElement(el, root)
+        clearFocusTarget()
+        return
+      }
+      if (performance.now() - startedAt > REVEAL_TIMEOUT_MS) {
+        clearFocusTarget()
+        return
+      }
+      timer = window.setTimeout(tick, REVEAL_POLL_MS)
+    }
+    timer = window.setTimeout(tick, 0)
+    return () => window.clearTimeout(timer)
+  }, [focusTarget, activeTab, clearFocusTarget])
+
+  return containerRef
+}
+
 export function SettingsContent({ activeTab }: SettingsContentProps) {
+  const searchQuery = usePDMStore((s) => s.settingsSearchQuery)
+  const containerRef = useRevealSearchedSetting(activeTab)
+
+  // Each page opens at its top, not at the previous page's scroll position.
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0 })
+  }, [activeTab, containerRef])
+
   const renderContent = () => {
+    // A desktop-only tab (persisted or deep-linked) never renders on the web.
+    if (!hasDesktop() && isDesktopOnlySettingsTab(activeTab)) return <ProfileSettings />
     switch (activeTab) {
       case 'profile':
         return <ProfileSettings />
+      case 'appearance':
+        return <AppearanceSettings />
       case 'preferences':
         return <PreferencesSettings />
+      case 'sessions':
+        return <SessionsSettings />
       case 'keybindings':
         return <KeybindingsSettings />
       case 'modules':
@@ -139,6 +211,10 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <RFQSettings />
       case 'metadata-columns':
         return <MetadataColumnsSettings />
+      case 'file-workflows':
+        return <FileWorkflowsSettings />
+      case 'security-monitoring':
+        return <SecurityMonitoringSettings />
       case 'item-designations':
         return <ItemDesignationsSettings />
       case 'backup':
@@ -149,8 +225,6 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <GoogleDriveSettings />
       case 'odoo':
         return <OdooSettings />
-      case 'slack':
-        return <SlackSettings />
       case 'webhooks':
         return <WebhooksSettings />
       case 'api':
@@ -165,29 +239,39 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <LogsSettings />
       case 'dev-tools':
         return <DevToolsSettings />
+      case 'updates':
+        return <UpdatesSettings />
       case 'about':
         return <AboutSettings />
       case 'delete-account':
-        return <DeleteAccountSettings />
-      case 'extension-store':
-        return <ExtensionStoreView />
+        // Account deletion is the last section of Profile; old links land there.
+        return <ProfileSettings />
+      case 'extensions':
+        return <OrgExtensionsPanel />
       default:
         return <ProfileSettings />
     }
   }
 
-  // Logs view needs full width for the log viewer
-  if (activeTab === 'logs') {
+  if (searchQuery.trim()) {
+    return <SettingsSearchResults />
+  }
+
+  const layout = findSettingsItem(activeTab)?.layout ?? 'default'
+
+  // No page title block: a page opens with its first section heading, as in Claude's settings.
+  // A full page (the log viewer) fills the height and scrolls itself.
+  if (layout === 'full') {
     return (
-      <div className="flex-1 overflow-hidden bg-plm-bg p-4">
+      <div ref={containerRef} className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-4">
         <Suspense fallback={<SettingsLoading />}>{renderContent()}</Suspense>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-plm-bg">
-      <div className="max-w-6xl mx-auto p-6">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div className="px-4 pb-12 pt-4">
         <Suspense fallback={<SettingsLoading />}>{renderContent()}</Suspense>
       </div>
     </div>

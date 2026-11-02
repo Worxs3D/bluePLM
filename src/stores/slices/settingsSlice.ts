@@ -8,8 +8,9 @@ import type {
   ThemeMode,
   Language,
 } from '../types'
-import type { KeybindingAction, Keybinding, KeybindingsConfig } from '../../types/settings'
+import { withBindings, withoutOverride } from '../../lib/keybindings/bindings'
 import { supabase } from '../../lib/supabase'
+import { IS_WEB_BUILD } from '../../lib/platform'
 
 const defaultColumns: ColumnConfig[] = [
   { id: 'name', label: 'Name', width: 280, visible: true, sortable: true },
@@ -41,22 +42,6 @@ const defaultCardViewFields: CardViewFieldConfig[] = [
   { id: 'modifiedTime', label: 'Modified', visible: false },
 ]
 
-const defaultKeybindings: KeybindingsConfig = {
-  navigateUp: { key: 'ArrowUp' },
-  navigateDown: { key: 'ArrowDown' },
-  expandFolder: { key: 'ArrowRight' },
-  collapseFolder: { key: 'ArrowLeft' },
-  selectAll: { key: 'a', ctrlKey: true },
-  copy: { key: 'c', ctrlKey: true },
-  cut: { key: 'x', ctrlKey: true },
-  paste: { key: 'v', ctrlKey: true },
-  delete: { key: 'Delete' },
-  escape: { key: 'Escape' },
-  openFile: { key: 'Enter' },
-  toggleDetailsPanel: { key: 'p', ctrlKey: true },
-  refresh: { key: 'r', ctrlKey: true },
-}
-
 export const createSettingsSlice: StateCreator<
   PDMStoreState,
   [['zustand/persist', unknown]],
@@ -77,7 +62,10 @@ export const createSettingsSlice: StateCreator<
   },
 
   // Initial state - SolidWorks
-  solidworksIntegrationEnabled: true,
+  // BluePLM Web has no SOLIDWORKS: forced off there. The build-time flag (not hasDesktop()) keeps
+  // the store's initial state identical for the desktop app and tests. Web storage is its own
+  // origin, so this never touches the desktop's persisted value.
+  solidworksIntegrationEnabled: !IS_WEB_BUILD,
   solidworksPath: null,
   solidworksDmLicenseKey: null,
   solidworksProgId: null,
@@ -101,9 +89,9 @@ export const createSettingsSlice: StateCreator<
   listRowSize: 16,
   treeRowSize: 18,
   theme: 'dark',
-  autoApplySeasonalThemes: true,
   language: 'en',
-  keybindings: defaultKeybindings,
+  shortcutOverrides: {},
+  quickExportFolder: null,
 
   // Initial state - Tree Filtering
   hideCloudOnlyFolders: false, // Show all folders by default
@@ -170,7 +158,7 @@ export const createSettingsSlice: StateCreator<
 
   // Actions - SolidWorks
   setSolidworksIntegrationEnabled: (solidworksIntegrationEnabled) =>
-    set({ solidworksIntegrationEnabled }),
+    set({ solidworksIntegrationEnabled: solidworksIntegrationEnabled && !IS_WEB_BUILD }),
   setSolidworksPath: (solidworksPath) => set({ solidworksPath }),
   setSolidworksDmLicenseKey: (solidworksDmLicenseKey) => set({ solidworksDmLicenseKey }),
   setSolidworksProgId: (solidworksProgId) => set({ solidworksProgId }),
@@ -194,13 +182,16 @@ export const createSettingsSlice: StateCreator<
   setListRowSize: (listRowSize) => set({ listRowSize: Math.max(16, Math.min(64, listRowSize)) }),
   setTreeRowSize: (treeRowSize) => set({ treeRowSize: Math.max(16, Math.min(64, treeRowSize)) }),
   setTheme: (theme: ThemeMode) => set({ theme }),
-  setAutoApplySeasonalThemes: (autoApplySeasonalThemes) => set({ autoApplySeasonalThemes }),
   setLanguage: (language: Language) => set({ language }),
-  setKeybinding: (action: KeybindingAction, keybinding: Keybinding) =>
+  setShortcutBindings: (actionId, combos) =>
     set((state) => ({
-      keybindings: { ...state.keybindings, [action]: keybinding },
+      shortcutOverrides: withBindings(state.shortcutOverrides, actionId, combos),
     })),
-  resetKeybindings: () => set({ keybindings: defaultKeybindings }),
+  resetShortcut: (actionId) =>
+    set((state) => ({ shortcutOverrides: withoutOverride(state.shortcutOverrides, actionId) })),
+  resetAllShortcuts: () => set({ shortcutOverrides: {} }),
+  replaceShortcutOverrides: (shortcutOverrides) => set({ shortcutOverrides }),
+  setQuickExportFolder: (quickExportFolder) => set({ quickExportFolder }),
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (hideCloudOnlyFolders) => set({ hideCloudOnlyFolders }),
@@ -376,7 +367,7 @@ export const createSettingsSlice: StateCreator<
           }
 
       const { data, error } = await supabase
-        .from('color_swatches')
+        .from('color_swatch')
         .insert(insertData as never)
         .select('id, color, created_at')
         .single()
@@ -428,7 +419,7 @@ export const createSettingsSlice: StateCreator<
 
     // Sync to database
     try {
-      const { error } = await supabase.from('color_swatches').delete().eq('id', swatchId)
+      const { error } = await supabase.from('color_swatch').delete().eq('id', swatchId)
 
       if (error) {
         // Rollback on error
@@ -447,7 +438,7 @@ export const createSettingsSlice: StateCreator<
 
     try {
       const { data, error } = await supabase
-        .from('color_swatches')
+        .from('color_swatch')
         .select('id, color, created_at')
         .eq('org_id', organization.id)
         .order('created_at', { ascending: true })
@@ -473,7 +464,7 @@ export const createSettingsSlice: StateCreator<
     try {
       // Load user's personal swatches
       const { data: userSwatches, error: userError } = await supabase
-        .from('color_swatches')
+        .from('color_swatch')
         .select('id, color, created_at')
         .eq('user_id', user.id)
         .is('org_id', null)
@@ -498,7 +489,7 @@ export const createSettingsSlice: StateCreator<
       // Load org swatches
       if (organization?.id) {
         const { data: orgSwatches, error: orgError } = await supabase
-          .from('color_swatches')
+          .from('color_swatch')
           .select('id, color, created_at')
           .eq('org_id', organization.id)
           .order('created_at', { ascending: true })
@@ -554,7 +545,7 @@ export const createSettingsSlice: StateCreator<
         visible: c.visible,
       }))
 
-      const { error } = await (supabase.rpc as any)('set_org_column_defaults', { // TODO: type this
+      const { error } = await (supabase.rpc as any)('org_set_column_defaults', { // TODO: type this
         p_org_id: organization.id,
         p_column_defaults: columnDefaults,
       })
@@ -573,7 +564,7 @@ export const createSettingsSlice: StateCreator<
     }
 
     try {
-      const { data, error } = await (supabase.rpc as any)('get_org_column_defaults', { // TODO: type this
+      const { data, error } = await (supabase.rpc as any)('org_get_column_defaults', { // TODO: type this
         p_org_id: organization.id,
       })
 
@@ -628,7 +619,7 @@ export const createSettingsSlice: StateCreator<
         visible: c.visible,
       }))
 
-      const { error } = await (supabase.rpc as any)('force_org_column_defaults', { // TODO: type this
+      const { error } = await (supabase.rpc as any)('org_force_column_defaults', { // TODO: type this
         p_org_id: organization.id,
         p_column_defaults: columnDefaults,
       })
@@ -654,7 +645,7 @@ export const createSettingsSlice: StateCreator<
         visible: c.visible,
       }))
 
-      const { error } = await (supabase.rpc as any)('set_user_column_defaults', { // TODO: type this
+      const { error } = await (supabase.rpc as any)('user_set_column_defaults', { // TODO: type this
         p_column_defaults: columnDefaults,
       })
 
@@ -672,7 +663,7 @@ export const createSettingsSlice: StateCreator<
     }
 
     try {
-      const { data, error } = await (supabase.rpc as any)('get_user_column_defaults', {}) // TODO: type this
+      const { data, error } = await (supabase.rpc as any)('user_get_column_defaults', {}) // TODO: type this
 
       if (error) throw error
 
@@ -731,8 +722,8 @@ export const createSettingsSlice: StateCreator<
       // Note: auto-download settings are NOT force-enabled here anymore.
       // They default to false and should only be enabled via VaultSetupDialog or Settings.
       // Previously this was overriding user preferences made during vault setup.
-      autoStartSolidworksService: options?.solidworksIntegrationEnabled ?? true,
-      solidworksIntegrationEnabled: options?.solidworksIntegrationEnabled ?? true,
+      autoStartSolidworksService: (options?.solidworksIntegrationEnabled ?? true) && !IS_WEB_BUILD,
+      solidworksIntegrationEnabled: (options?.solidworksIntegrationEnabled ?? true) && !IS_WEB_BUILD,
     }),
   setLogSharingEnabled: (logSharingEnabled) => set({ logSharingEnabled }),
 

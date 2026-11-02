@@ -18,6 +18,9 @@ import { FileOperationTracker } from '../../fileOperationTracker'
 import { addToSyncIndex } from '../../cache/localSyncIndex'
 import { t } from '@/lib/i18n'
 import { withExpectedParentFolders } from '../expectedFileChanges'
+import { hasDesktop } from '@/lib/platform'
+import { executeWebDownload } from './downloadWeb'
+import { blockedContentHashes } from '@/lib/vaultObjectIssues'
 
 function toastSkippedNoHash(ctx: CommandContext, count: number): void {
   if (count <= 0) return
@@ -35,6 +38,45 @@ const RETRY_BASE_DELAY_MS = 1000
 const FOLDER_NOW_LOCAL: Partial<LocalFile> = {
   diffStatus: undefined,
   isSynced: true,
+}
+
+/**
+ * Downloads whose server row was deleted while the bytes were on the way, judged
+ * against the store as it is now. Only positive evidence counts: the store must
+ * still hold the vault the download started in, and a load of it must have
+ * finished (`filesLoaded`, which every reset clears), so a vault switch, sign-out
+ * or reopen that has emptied the store recycles nothing (each would otherwise make
+ * every download look deleted). An empty loaded store is real: the vault's last
+ * file was deleted. A file still in the store under
+ * its id is live even if its path changed meanwhile; the path decides only for a
+ * file without an id.
+ */
+export function downloadsWhoseRowWasDeleted<U extends { path: string }>(
+  updates: U[],
+  cloudFiles: LocalFile[],
+  liveFiles: LocalFile[] | null | undefined,
+  liveFilesLoaded: boolean,
+  startVaultId: string | null | undefined,
+  liveVaultId: string | null | undefined,
+): U[] {
+  if (!liveFiles || !liveFilesLoaded) return []
+  if (startVaultId !== liveVaultId) return []
+
+  const liveIds = new Set<string>()
+  const livePaths = new Set<string>()
+  for (const f of liveFiles) {
+    if (f.pdmData?.id) liveIds.add(f.pdmData.id)
+    livePaths.add(f.path.toLowerCase())
+  }
+  const idByPath = new Map<string, string>()
+  for (const f of cloudFiles) {
+    if (f.pdmData?.id) idByPath.set(f.path, f.pdmData.id)
+  }
+
+  return updates.filter((u) => {
+    const id = idByPath.get(u.path)
+    return id ? !liveIds.has(id) : !livePaths.has(u.path.toLowerCase())
+  })
 }
 
 /**
@@ -147,6 +189,9 @@ export const downloadCommand: Command<DownloadParams> = {
   },
 
   async execute({ files }, ctx): Promise<CommandResult> {
+    // BluePLM Web has no vault folder: the browser saves the files instead.
+    if (!hasDesktop()) return executeWebDownload(files, ctx)
+
     const organization = ctx.organization!
     const vaultPath = ctx.vaultPath!
     const operationId = `download-${Date.now()}`
@@ -330,6 +375,10 @@ export const downloadCommand: Command<DownloadParams> = {
     })
     const downloadPhaseStart = Date.now()
 
+    // Content an admin marked unrecoverable (schema 503) is refused with a clear message; asked
+    // once for the whole run.
+    const blockedHashes = blockedContentHashes(cloudFiles.map((f) => f.pdmData?.content_hash ?? ''))
+
     // Helper function to download a single file with retry logic
     const downloadWithRetry = async (
       file: LocalFile,
@@ -354,6 +403,10 @@ export const downloadCommand: Command<DownloadParams> = {
           success: false,
           error: `${file.name}: No content hash - file metadata may be corrupted or incomplete`,
         }
+      }
+
+      if ((await blockedHashes).has(file.pdmData.content_hash)) {
+        return { success: false, error: `${file.name}: ${t('damagedFiles.downloadRefused')}` }
       }
 
       const fullPath = buildFullPath(vaultPath, file.relativePath)
@@ -441,8 +494,11 @@ export const downloadCommand: Command<DownloadParams> = {
             return downloadWithRetry(file, attempt + 1)
           }
 
-          // Use user-friendly message for network errors
-          const userMessage = getNetworkErrorMessage(errorMsg)
+          // Use user-friendly message for network errors; a hash mismatch is damaged content on
+          // the server, which retrying does not fix and an admin can.
+          const userMessage = /hash mismatch/i.test(errorMsg)
+            ? t('damagedFiles.downloadDamaged')
+            : getNetworkErrorMessage(errorMsg)
 
           logDownload('error', 'File download failed', {
             operationId,
@@ -582,12 +638,16 @@ export const downloadCommand: Command<DownloadParams> = {
     // come back as a new local file that a sync could upload again. Nothing local is lost by
     // undoing it - the bytes are the deleted version's - so it goes to the Recycle Bin and is
     // left out of the store update and the sync index.
-    // No list at all means there is no store to compare against (nothing loaded).
-    const liveFiles = usePDMStore.getState().files
-    const liveStorePaths = new Set((liveFiles ?? []).map((f) => f.path.toLowerCase()))
-    const deletedWhileDownloading = !liveFiles
-      ? []
-      : pendingUpdates.filter((u) => !liveStorePaths.has(u.path.toLowerCase()))
+    // See downloadsWhoseRowWasDeleted for what counts as deleted.
+    const live = usePDMStore.getState()
+    const deletedWhileDownloading = downloadsWhoseRowWasDeleted(
+      pendingUpdates,
+      cloudFiles,
+      live.files,
+      live.filesLoaded,
+      ctx.activeVaultId,
+      live.activeVaultId,
+    )
     for (const update of deletedWhileDownloading) {
       pendingUpdates.splice(pendingUpdates.indexOf(update), 1)
       succeeded--

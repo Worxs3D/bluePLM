@@ -7,6 +7,14 @@ type PackageManifest = {
   scripts?: {
     build?: string
   }
+  build?: {
+    win?: {
+      extraResources?: Array<{
+        from?: string
+        to?: string
+      }>
+    }
+  }
 }
 
 const repositoryRoot = resolve(__dirname, '..')
@@ -21,6 +29,14 @@ describe('production packaging build contract', () => {
 
     expect(serviceBuildIndex).toBeGreaterThanOrEqual(0)
     expect(electronBuilderIndex).toBe(serviceBuildIndex + 1)
+  })
+
+  it('packages the SolidWorks service from its staged payload exactly once', () => {
+    const servicePayloadSources = packageManifest.build?.win?.extraResources
+      ?.filter(({ to }) => to === 'bin')
+      .map(({ from }) => from)
+
+    expect(servicePayloadSources).toEqual(['resources/bin/win32'])
   })
 
   it('allows the SolidWorks service build to be explicitly skipped', () => {

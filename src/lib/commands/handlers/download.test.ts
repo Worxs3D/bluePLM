@@ -1,5 +1,5 @@
 /**
- * Incident: Zach downloaded a server-only folder in doris (Burn Wire Release).
+ * Incident: a user downloaded a server-only folder.
  * `removeFilesFromStore` prefix-pruned the folder AND its 33 files AND their
  * `serverFiles` rows, so the incremental download updates matched nothing
  * (`matchCount: 0`). The folder vanished; a later folder-scoped Refresh
@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CommandContext, LocalFile } from '../types'
 import type { PDMFile } from '../../../types/pdm'
-import { cloudFoldersResolvedByDownload } from './download'
+import { cloudFoldersResolvedByDownload, downloadsWhoseRowWasDeleted } from './download'
 
 vi.mock('@/lib/logger', () => ({
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -50,6 +50,12 @@ vi.mock('../../fileOperationTracker', () => ({
       endOperation: () => {},
     }),
   },
+}))
+
+// Content an admin marked unrecoverable (schema 503); empty unless a test adds to it.
+const blocked = new Set<string>()
+vi.mock('@/lib/vaultObjectIssues', () => ({
+  blockedContentHashes: async (hashes: string[]) => new Set(hashes.filter((h) => blocked.has(h))),
 }))
 
 const { downloadCommand } = await import('./download')
@@ -236,6 +242,33 @@ describe('downloadCommand.execute - cloud folder stays in the store', () => {
     expect(updates.some((u) => u.path === fail.path)).toBe(false)
   })
 
+  it('refuses content marked unrecoverable without fetching it, and names damaged content', async () => {
+    const parent = folder('Celsius')
+    const lost = cloudFile('Celsius/lost.slddrw')
+    const damaged = cloudFile('Celsius/damaged.slddrw')
+    blocked.add(String(lost.pdmData?.content_hash))
+    downloadUrl.mockImplementation((...args: unknown[]) =>
+      Promise.resolve(
+        String(args[1] ?? '').includes('damaged')
+          ? { success: false, error: 'Download corrupted: hash mismatch (expected aa, got bb)', size: 0, hash: '' }
+          : { success: true, size: 100, hash: 'hash-downloaded' },
+      ),
+    )
+    try {
+      const result = await downloadCommand.execute({ files: [parent] }, makeContext([parent, lost, damaged]))
+      expect(result.failed).toBe(2)
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^lost\.slddrw: .*unrecoverable/),
+          expect.stringMatching(/^damaged\.slddrw: .*damaged/),
+        ]),
+      )
+      expect(downloadUrl.mock.calls.some((c) => String(c[1]).includes('lost'))).toBe(false)
+    } finally {
+      blocked.clear()
+    }
+  })
+
   it('updates an empty cloud folder in place instead of removing it', async () => {
     const empty = folder('Empty Cloud')
     const ctx = makeContext([empty])
@@ -284,5 +317,46 @@ describe('downloadCommand.execute - cloud folder stays in the store', () => {
     expect(ctx.addExpectedFileChanges).toHaveBeenCalledWith(
       expect.arrayContaining(['Burn Wire Release', file.relativePath]),
     )
+  })
+})
+
+/**
+ * 4.7.6 release review: a vault switch (or a reopen) that empties or replaces the
+ * store while a download is in flight made every just-downloaded file look
+ * deleted, so all of them went to the Recycle Bin. Only a row gone from the same
+ * vault's loaded store counts.
+ */
+describe('downloadsWhoseRowWasDeleted', () => {
+  const a = cloudFile('A/a.sldprt')
+  const b = cloudFile('A/b.sldprt')
+  const updates = [{ path: a.path }, { path: b.path }]
+  const deleted = (
+    live: LocalFile[] | null,
+    startVault: string,
+    liveVault: string,
+    loaded = true,
+  ) => downloadsWhoseRowWasDeleted(updates, [a, b], live, loaded, startVault, liveVault)
+
+  it('recycles a file whose row left the same vault store', () => {
+    expect(deleted([a], 'v1', 'v1')).toEqual([{ path: b.path }])
+  })
+
+  it('recycles nothing while the store is reset and not yet reloaded', () => {
+    expect(deleted([], 'v1', 'v1', false)).toEqual([])
+    expect(deleted(null, 'v1', 'v1')).toEqual([])
+  })
+
+  it('recycles when the loaded store is empty because the last file was deleted', () => {
+    expect(deleted([], 'v1', 'v1')).toEqual(updates)
+  })
+
+  it('recycles nothing after a vault switch', () => {
+    const other = cloudFile('Other/x.sldprt')
+    expect(deleted([other], 'v1', 'v2')).toEqual([])
+  })
+
+  it('keeps a file that moved during the download (same id, new path)', () => {
+    const moved = { ...b, path: `${VAULT}/B/b.sldprt`, relativePath: 'B/b.sldprt' }
+    expect(deleted([a, moved], 'v1', 'v1')).toEqual([])
   })
 })

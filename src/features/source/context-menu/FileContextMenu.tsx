@@ -11,11 +11,12 @@ import {
 } from '@/lib/commands'
 import { watchFile, unwatchFile, createShareLink } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
-import { FolderVisibilityMenuItem } from '@/components/shared/HiddenFolder'
+import { AuditFolderMenuItem, FolderVisibilityMenuItem } from '@/components/shared/HiddenFolder'
 
 // Import from local modules
 import { useMenuPosition, useContextMenuState } from './hooks'
 import { getCountLabel } from '@/lib/utils'
+import { hasDesktop } from '@/lib/platform'
 
 // Menu item components
 import { ClipboardItems } from './items/ClipboardItems'
@@ -27,6 +28,7 @@ import { AdminItems } from './items/AdminItems'
 import { DeleteItems } from './items/DeleteItems'
 import { MovedFileItems } from './items/MovedFileItems'
 import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
+import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
 
 // Dialog components
 import { DeleteConfirmDialog } from './dialogs'
@@ -346,6 +348,9 @@ export function FileContextMenu({
           onRefresh={onRefresh}
         />
 
+        {/* Reviews submenu (new review, add to / remove from a review, view reviews) */}
+        <ReviewsSubmenu contextFiles={contextFiles} onClose={onClose} />
+
         {/* File Operation Items */}
         <FileOperationItems
           firstFile={firstFile}
@@ -378,19 +383,23 @@ export function FileContextMenu({
           unpinFolder={unpinFolder}
         />
 
-        {/* Clipboard Items */}
-        <ClipboardItems
-          contextFiles={contextFiles}
-          clipboard={clipboard}
-          userId={user?.id}
-          onCopy={onCopy}
-          onCut={onCut}
-          onPaste={onPaste}
-          onClose={onClose}
-        />
+        {/* Clipboard Items and Copy / Move to another connected vault (hidden when there is none
+            to go to): both move files on disk, so not on BluePLM Web */}
+        {hasDesktop() && (
+          <>
+            <ClipboardItems
+              contextFiles={contextFiles}
+              clipboard={clipboard}
+              userId={user?.id}
+              onCopy={onCopy}
+              onCut={onCut}
+              onPaste={onPaste}
+              onClose={onClose}
+            />
 
-        {/* Copy / Move to another connected vault (hidden when there is none to go to) */}
-        <VaultTransferMenuItems contextFiles={contextFiles} onClose={onClose} />
+            <VaultTransferMenuItems contextFiles={contextFiles} onClose={onClose} />
+          </>
+        )}
 
         {/* Collaboration Items */}
         <CollaborationItems
@@ -411,18 +420,17 @@ export function FileContextMenu({
         />
 
         {/* Hide folder from non-admins (cosmetic decluttering, not access control) */}
-        <FolderVisibilityMenuItem
-          folder={firstFile}
-          multiSelect={multiSelect}
-          onClose={onClose}
-        />
+        <FolderVisibilityMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
+        <AuditFolderMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
 
-        {/* Resolve Moved Files - for a single file that is 'moved' or 'moved_away' */}
-        <MovedFileItems
-          firstFile={firstFile}
-          multiSelect={multiSelect}
-          openDialog={state.openDialog}
-        />
+        {/* Resolve Moved Files - for a single file that is 'moved' or 'moved_away' (desktop only) */}
+        {hasDesktop() && (
+          <MovedFileItems
+            firstFile={firstFile}
+            multiSelect={multiSelect}
+            openDialog={state.openDialog}
+          />
+        )}
 
         {/* Admin Items */}
         <AdminItems

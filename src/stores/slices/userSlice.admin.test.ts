@@ -15,15 +15,15 @@ const ENGINEERS_TEAM = { id: 'team-eng', name: 'Engineers', color: '#3b82f6', ic
 function makeUser(role: User['role']): User {
   return {
     id: 'user-1',
-    email: 'wilson@example.com',
-    full_name: 'Wilson',
+    email: 'user@example.com',
+    full_name: 'Test User',
     avatar_url: null,
     custom_avatar_url: null,
     job_title: null,
     org_id: 'org-1',
     role,
     created_at: '2026-01-01T00:00:00Z',
-    last_sign_in: null,
+    last_sign_in_at: null,
   }
 }
 

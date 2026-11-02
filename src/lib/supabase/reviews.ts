@@ -16,12 +16,16 @@ import type { TeamMember, TeamReviewerConfig, TeamWithMembers } from './reviewTe
 import { log } from '@/lib/logger'
 import type { Json } from '@/types/supabase'
 import type {
+  AddReviewItemsResult,
+  AdvanceReviewedFilesResult,
   CancelResult,
   DependencyClosureRow,
   DrawingPdf,
   ItemDecisionInput,
+  OpenReviewForFiles,
   RecordDrawingPdfResult,
   RecordVersionReferencesResult,
+  RemoveReviewItemsResult,
   RequestReviewInput,
   RequestReviewResult,
   ResubmitItemInput,
@@ -32,21 +36,27 @@ import type {
   ReviewMetaResult,
   ReviewQueuePage,
   ReviewQueueQuery,
+  ReviewWorkflowStatus,
   VersionReferenceInput,
 } from '@/types/reviews'
 import {
   decisionsArg,
+  mapAddReviewItemsResult,
+  mapAdvanceReviewedFilesResult,
   mapCancelResult,
   mapClosureRows,
   mapDrawingPdf,
+  mapOpenReviewsForFiles,
   mapQueuePage,
   mapRecordDrawingPdfResult,
   mapRecordVersionReferencesResult,
+  mapRemoveReviewItemsResult,
   mapRequestReviewResult,
   mapRespondResult,
   mapResubmitResult,
   mapReviewDetail,
   mapReviewMetaResult,
+  mapReviewWorkflowStatus,
   requestReviewArgs,
   resubmitItemsArg,
   reviewMetaArgs,
@@ -114,8 +124,8 @@ function trimmedOrNull(v: string | null | undefined): string | null {
 export async function requestReview(input: RequestReviewInput): Promise<RequestReviewResult> {
   const a = requestReviewArgs(input)
   return mapRequestReviewResult(
-    await callReviewRpc('request_review', (c) =>
-      c.rpc('request_review', {
+    await callReviewRpc('review_request', (c) =>
+      c.rpc('review_request', {
         p_file_version_ids: a.p_file_version_ids,
         p_reviewer_ids: a.p_reviewer_ids,
         p_team_ids: a.p_team_ids,
@@ -135,8 +145,8 @@ export async function respondToItems(
   decisions: ItemDecisionInput[],
 ): Promise<RespondResult> {
   return mapRespondResult(
-    await callReviewRpc('respond_to_review_items', (c) =>
-      c.rpc('respond_to_review_items', {
+    await callReviewRpc('review_item_respond', (c) =>
+      c.rpc('review_item_respond', {
         p_review_id: reviewId,
         p_decisions: decisionsArg(decisions),
       }),
@@ -150,8 +160,8 @@ export async function approveAllRemaining(
   comment?: string | null,
 ): Promise<RespondResult> {
   return mapRespondResult(
-    await callReviewRpc('approve_all_remaining', (c) =>
-      c.rpc('approve_all_remaining', {
+    await callReviewRpc('review_approve_all_remaining', (c) =>
+      c.rpc('review_approve_all_remaining', {
         p_review_id: reviewId,
         p_comment: trimmedOrNull(comment),
       }),
@@ -169,8 +179,8 @@ export async function resubmitReview(
   note?: string | null,
 ): Promise<ResubmitResult> {
   return mapResubmitResult(
-    await callReviewRpc('resubmit_review', (c) =>
-      c.rpc('resubmit_review', {
+    await callReviewRpc('review_resubmit', (c) =>
+      c.rpc('review_resubmit', {
         p_review_id: reviewId,
         p_items: resubmitItemsArg(items),
         p_note: trimmedOrNull(note),
@@ -185,11 +195,71 @@ export async function cancelReview(
   reason?: string | null,
 ): Promise<CancelResult> {
   return mapCancelResult(
-    await callReviewRpc('cancel_review', (c) =>
-      c.rpc('cancel_review', {
+    await callReviewRpc('review_cancel', (c) =>
+      c.rpc('review_cancel', {
         p_review_id: reviewId,
         p_reason: trimmedOrNull(reason),
       }),
+    ),
+  )
+}
+
+/**
+ * Open reviews the caller requested (an administrator also sees every open review holding one of
+ * the files), with which of `fileIds` each already holds. Feeds Reviews > Add to / Remove from.
+ */
+export async function listOpenReviewsForFiles(fileIds: string[]): Promise<OpenReviewForFiles[]> {
+  return mapOpenReviewsForFiles(
+    await callReviewRpc('review_list_open_for_files', (c) =>
+      c.rpc('review_list_open_for_files', { p_file_ids: fileIds }),
+    ),
+  )
+}
+
+/** Add file versions to a review whose round is open; reviewers owe a decision on them. */
+export async function addReviewItems(
+  reviewId: string,
+  fileVersionIds: string[],
+): Promise<AddReviewItemsResult> {
+  return mapAddReviewItemsResult(
+    await callReviewRpc('review_item_add', (c) =>
+      c.rpc('review_item_add', { p_review_id: reviewId, p_file_version_ids: fileVersionIds }),
+    ),
+  )
+}
+
+/** Take files out of an open review. Refuses to remove the last one (`LAST_ITEM`). */
+export async function removeReviewItems(
+  reviewId: string,
+  fileIds: string[],
+): Promise<RemoveReviewItemsResult> {
+  return mapRemoveReviewItemsResult(
+    await callReviewRpc('review_item_remove', (c) =>
+      c.rpc('review_item_remove', { p_review_id: reviewId, p_file_ids: fileIds }),
+    ),
+  )
+}
+
+/** Where each item's file stands in its workflow, with the organization's review-stage settings. */
+export async function getReviewWorkflowStatus(reviewId: string): Promise<ReviewWorkflowStatus> {
+  return mapReviewWorkflowStatus(
+    await callReviewRpc('review_get_workflow_status', (c) =>
+      c.rpc('review_get_workflow_status', { p_review_id: reviewId }),
+    ),
+  )
+}
+
+/**
+ * Move reviewed files out of their review stage. `onlyApproved: false` moves the whole package and
+ * needs the review approved; `true` moves the approved files and leaves the rest.
+ */
+export async function advanceReviewedFiles(
+  reviewId: string,
+  onlyApproved: boolean,
+): Promise<AdvanceReviewedFilesResult> {
+  return mapAdvanceReviewedFilesResult(
+    await callReviewRpc('review_advance_files', (c) =>
+      c.rpc('review_advance_files', { p_review_id: reviewId, p_only_approved: onlyApproved }),
     ),
   )
 }
@@ -201,8 +271,8 @@ export async function updateReviewMeta(
 ): Promise<ReviewMetaResult> {
   const a = reviewMetaArgs(reviewId, patch)
   return mapReviewMetaResult(
-    await callReviewRpc('update_review_meta', (c) =>
-      c.rpc('update_review_meta', {
+    await callReviewRpc('review_update_meta', (c) =>
+      c.rpc('review_update_meta', {
         p_review_id: a.p_review_id,
         p_priority: a.p_priority,
         p_due_date: a.p_due_date,
@@ -220,8 +290,8 @@ export async function updateReviewMeta(
 export async function listReviewQueue(query: ReviewQueueQuery): Promise<ReviewQueuePage> {
   const a = reviewQueueArgs(query)
   return mapQueuePage(
-    await callReviewRpc('list_review_queue', (c) =>
-      c.rpc('list_review_queue', {
+    await callReviewRpc('review_list_queue', (c) =>
+      c.rpc('review_list_queue', {
         p_bucket: a.p_bucket,
         p_team_id: a.p_team_id,
         p_search: a.p_search,
@@ -234,15 +304,15 @@ export async function listReviewQueue(query: ReviewQueueQuery): Promise<ReviewQu
 
 export async function getReviewDetail(reviewId: string): Promise<ReviewDetail> {
   return mapReviewDetail(
-    await callReviewRpc('get_review_detail', (c) =>
-      c.rpc('get_review_detail', { p_review_id: reviewId }),
+    await callReviewRpc('review_get_detail', (c) =>
+      c.rpc('review_get_detail', { p_review_id: reviewId }),
     ),
   )
 }
 
 /** Package items the caller owes plus gate reviews waiting on them. */
 export async function getReviewBadgeCount(): Promise<number> {
-  const data = await callReviewRpc('get_review_badge_count', (c) => c.rpc('get_review_badge_count'))
+  const data = await callReviewRpc('review_count_badge', (c) => c.rpc('review_count_badge'))
   return typeof data === 'number' && Number.isFinite(data) ? data : 0
 }
 
@@ -255,16 +325,16 @@ export async function getVersionDependencyClosure(
   fileVersionId: string,
 ): Promise<DependencyClosureRow[]> {
   return mapClosureRows(
-    await callReviewRpc('get_version_dependency_closure', (c) =>
-      c.rpc('get_version_dependency_closure', { p_file_version_id: fileVersionId }),
+    await callReviewRpc('file_version_get_dependency_closure', (c) =>
+      c.rpc('file_version_get_dependency_closure', { p_file_version_id: fileVersionId }),
     ),
   )
 }
 
 /** The stored PDF of a file version, or null when none has been generated. */
 export async function getDrawingPdf(fileVersionId: string): Promise<DrawingPdf | null> {
-  const data = await callReviewRpc('get_drawing_pdf', (c) =>
-    c.rpc('get_drawing_pdf', { p_file_version_id: fileVersionId }),
+  const data = await callReviewRpc('drawing_pdf_render_get', (c) =>
+    c.rpc('drawing_pdf_render_get', { p_file_version_id: fileVersionId }),
   )
   const first: unknown = Array.isArray(data) ? data[0] : data
   return mapDrawingPdf(first)
@@ -282,8 +352,8 @@ export async function recordDrawingPdf(
   options?: { closureExact?: boolean | null },
 ): Promise<RecordDrawingPdfResult> {
   return mapRecordDrawingPdfResult(
-    await callReviewRpc('record_drawing_pdf', (c) =>
-      c.rpc('record_drawing_pdf', {
+    await callReviewRpc('drawing_pdf_render_record', (c) =>
+      c.rpc('drawing_pdf_render_record', {
         p_file_version_id: fileVersionId,
         p_storage_hash: storageHash,
         p_file_size: size,
@@ -304,8 +374,8 @@ export async function recordVersionReferences(
 ): Promise<RecordVersionReferencesResult> {
   const p_refs: Json = versionReferencesArg(refs)
   return mapRecordVersionReferencesResult(
-    await callReviewRpc('record_version_references', (c) =>
-      c.rpc('record_version_references', { p_file_version_id: fileVersionId, p_refs }),
+    await callReviewRpc('file_version_reference_record', (c) =>
+      c.rpc('file_version_reference_record', { p_file_version_id: fileVersionId, p_refs }),
     ),
   )
 }
@@ -345,7 +415,7 @@ export async function getLatestCheckedInVersions(
   for (let i = 0; i < unique.length; i += VERSION_LOOKUP_CHUNK) {
     const chunk = unique.slice(i, i + VERSION_LOOKUP_CHUNK)
     const { data: files, error: filesError } = await client
-      .from('files')
+      .from('file')
       .select('id, version, file_name, file_path, extension, vault_id, deleted_at')
       .in('id', chunk)
     if (filesError) throw toReviewRpcError(filesError)
@@ -353,7 +423,7 @@ export async function getLatestCheckedInVersions(
     const live = (files ?? []).filter((f) => !f.deleted_at)
     if (live.length === 0) continue
     const { data: versions, error: versionsError } = await client
-      .from('file_versions')
+      .from('file_version')
       .select('id, file_id, version, revision, state')
       .in(
         'file_id',
@@ -389,7 +459,7 @@ export async function getLatestCheckedInVersions(
  */
 export async function getFileVersionContentHash(fileVersionId: string): Promise<string | null> {
   const { data, error } = await getSupabaseClient()
-    .from('file_versions')
+    .from('file_version')
     .select('content_hash')
     .eq('id', fileVersionId)
     .maybeSingle()
@@ -427,7 +497,7 @@ export async function getOrgTeamsWithMembers(
   const client = getSupabaseClient()
 
   const { data, error } = await client
-    .from('teams')
+    .from('team')
     .select(
       `
       id,
@@ -435,8 +505,8 @@ export async function getOrgTeamsWithMembers(
       color,
       icon,
       description,
-      team_members(
-        user:users!team_members_user_id_fkey(id, email, full_name, avatar_url, role)
+      team_member(
+        user:app_user!team_member_user_id_fkey(id, email, full_name, avatar_url, role)
       )
     `,
     )
@@ -455,7 +525,7 @@ export async function getOrgTeamsWithMembers(
   // Fetched separately so the main query does not fail if team_reviewers is unreadable.
   const reviewersByTeam = new Map<string, TeamReviewerConfig[]>()
   const { data: reviewerData, error: reviewerError } = await client
-    .from('team_reviewers')
+    .from('team_reviewer')
     .select('id, team_id, reviewer_type, user_id, workflow_role_id')
   if (reviewerError) {
     log.warn('[Reviews]', 'Loading team reviewer rules failed; teams contribute all members', {
@@ -476,7 +546,7 @@ export async function getOrgTeamsWithMembers(
 
   // Workflow role assignments, to resolve workflow_role reviewer rules to users.
   const { data: wrAssignments } = await client
-    .from('user_workflow_roles')
+    .from('user_workflow_role')
     .select('user_id, workflow_role_id')
   const userWorkflowRoles = new Map<string, Set<string>>()
   for (const a of wrAssignments ?? []) {
@@ -486,7 +556,7 @@ export async function getOrgTeamsWithMembers(
   }
 
   const teams: TeamWithMembers[] = (data ?? []).map((team) => {
-    const teamMembers: unknown = team.team_members
+    const teamMembers: unknown = team.team_member
     const rawMembers: unknown[] = Array.isArray(teamMembers) ? teamMembers : []
     const members = rawMembers
       .map(readTeamMember)

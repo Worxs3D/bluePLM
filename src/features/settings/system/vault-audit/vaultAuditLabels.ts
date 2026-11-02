@@ -60,6 +60,31 @@ export function categoryLabel(kind: VaultAuditCategoryKind): string {
   }
 }
 
+/** The tab name: what is wrong, in two or three words. The heading under it says what to do. */
+export function categoryShortLabel(kind: VaultAuditCategoryKind): string {
+  switch (kind) {
+    case 'lost':
+      return t('vaultAudit.category.lostShort')
+    case 'conflicting':
+      return t('vaultAudit.category.conflictingShort')
+    case 'recoverable':
+      return t('vaultAudit.category.recoverableShort')
+    case 'empty-in-database':
+      return t('vaultAudit.category.emptyInDatabaseShort')
+    case 'absent-from-file':
+      return t('vaultAudit.category.absentFromFileShort')
+    case 'unattributed':
+      return t('vaultAudit.category.unattributedShort')
+  }
+}
+
+export type CountUnit = 'files' | 'values' | 'entries'
+
+/** "1 file", "3 files": `t()` has no plural rules, so the unit picks its own `_one` / `_other` key. */
+export function countOf(unit: CountUnit, count: number): string {
+  return t(`vaultAudit.count.${unit}_${count === 1 ? 'one' : 'other'}`, { count })
+}
+
 export function categoryDescription(kind: VaultAuditCategoryKind): string {
   switch (kind) {
     case 'lost':
@@ -185,8 +210,8 @@ export function resolutionDirection(
 
 /** Text colour per tone. Zero counts are muted by the caller so an empty category reads as calm. */
 export const TONE_TEXT: Record<VaultAuditTone, string> = {
-  critical: 'text-plm-error',
-  warning: 'text-yellow-500',
-  repairable: 'text-plm-accent',
-  neutral: 'text-plm-fg-muted',
+  critical: 'text-ui-danger',
+  warning: 'text-ui-warning',
+  repairable: 'text-ui-accent',
+  neutral: 'text-ui-fg-secondary',
 }

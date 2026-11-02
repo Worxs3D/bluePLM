@@ -23,10 +23,15 @@ export const createUISlice: StateCreator<
   rightPanelWidth: 350,
   rightPanelTab: null,
   rightPanelTabs: [],
+  reviewCommentsVisible: true,
   bottomPanelTabOrder: [],
 
   // Initial state - Settings navigation
+  settingsOpen: false,
   settingsTab: 'profile' as SettingsTab,
+  settingsSearchQuery: '',
+  settingsSearchActiveIndex: 0,
+  settingsFocusTarget: null,
 
   // Initial state - Google Drive
   gdriveCurrentFolderId: null,
@@ -42,7 +47,6 @@ export const createUISlice: StateCreator<
   terminalHistory: [],
 
   // Initial state - Deep Link
-  pendingDeepLinkInstall: null,
 
   // Initial state - Clipboard (unified across FilePane and FileTree)
   clipboard: null,
@@ -82,7 +86,12 @@ export const createUISlice: StateCreator<
   setActivityBarMode: (mode) => set({ activityBarMode: mode }),
 
   setActiveView: (activeView: SidebarView) => {
-    let resolvedView = activeView
+    // Settings is a modal over the current view, so the 'settings' module opens it instead.
+    if (activeView === 'settings') {
+      get().openSettings()
+      return
+    }
+    let resolvedView: SidebarView = activeView
     if ((resolvedView as string).startsWith('group-')) {
       const children = getChildModules(resolvedView as string, getDefaultModuleConfig())
       resolvedView = (children[0]?.id ?? 'explorer') as SidebarView
@@ -153,6 +162,8 @@ export const createUISlice: StateCreator<
       })
     }
   },
+
+  toggleReviewComments: () => set((s) => ({ reviewCommentsVisible: !s.reviewCommentsVisible })),
 
   setRightPanelWidth: (width: number) =>
     set({ rightPanelWidth: Math.max(200, Math.min(1200, width)) }),
@@ -238,11 +249,28 @@ export const createUISlice: StateCreator<
     }),
 
   // Actions - Settings navigation
+  openSettings: (tab?: SettingsTab) =>
+    set((state) => ({
+      settingsOpen: true,
+      settingsTab: tab ?? state.settingsTab,
+      settingsSearchQuery: '',
+      settingsSearchActiveIndex: 0,
+    })),
+  closeSettings: () =>
+    set({ settingsOpen: false, settingsSearchQuery: '', settingsFocusTarget: null }),
   setSettingsTab: (tab: SettingsTab) => set({ settingsTab: tab }),
+  setSettingsSearchQuery: (query: string) =>
+    set({ settingsSearchQuery: query, settingsSearchActiveIndex: 0 }),
+  setSettingsSearchActiveIndex: (index: number) => set({ settingsSearchActiveIndex: index }),
+  openSettingFromSearch: (tab: SettingsTab, label: string) =>
+    set((state) => ({
+      settingsTab: tab,
+      settingsSearchQuery: '',
+      settingsFocusTarget: { tab, label, nonce: (state.settingsFocusTarget?.nonce ?? 0) + 1 },
+    })),
+  clearSettingsFocusTarget: () => set({ settingsFocusTarget: null }),
 
   // Actions - Deep Link
-  setPendingDeepLinkInstall: (data) => set({ pendingDeepLinkInstall: data }),
-  clearPendingDeepLinkInstall: () => set({ pendingDeepLinkInstall: null }),
 
   // Actions - Command confirmation dialog
   setPendingCommandConfirm: (confirm) => set({ pendingCommandConfirm: confirm }),

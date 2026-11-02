@@ -5,9 +5,11 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useLoadFiles, useVaultManagement, useStagedCheckins, useDeniedModules } from '@/hooks'
 import type { ModuleId } from '@/types/modules'
+import { hasDesktop } from '@/lib/platform'
 import { Toast } from '@/components/core'
 import { ChristmasEffects, HalloweenEffects, WeatherEffects } from '@/components/effects/seasonal'
 import { ImpersonationBanner } from '@/components/shared/ImpersonationBanner'
+import { SettingsModal } from '@/features/settings'
 import {
   UpdateModal,
   OrphanedCheckoutsContainer,
@@ -80,6 +82,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
   const activeExtensionWorkspace = extensionWorkspaces.find((w) => w.id === activeView) ?? null
 
   const deniedModules = useDeniedModules()
+  const desktop = hasDesktop()
 
   // activeView is persisted, so someone whose access was revoked while they
   // were away would otherwise reopen the app straight into the restricted
@@ -101,7 +104,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
    */
   const detailOwningViews = ['items', 'workflows']
   const rightPanelOpen =
-    (reviewPackagePaneOpen && activeView !== 'settings') ||
+    reviewPackagePaneOpen ||
     extensionPanelOpen ||
     (activeView === 'items' && !!itemPanel) ||
     (!activeExtensionWorkspace &&
@@ -177,7 +180,11 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       {/* 🌤️ Weather Effects - dynamic theme based on local weather */}
       <WeatherEffects />
 
-      <MenuBar onOpenVault={handleOpenVault} onRefresh={loadFiles} minimal={isSignInScreen} />
+      {/* The desktop keeps a minimal bar on the sign-in screen as its window title bar; a browser
+          tab has its own, so the web sign-in page has none. */}
+      {(hasDesktop() || !isSignInScreen) && (
+        <MenuBar onOpenVault={handleOpenVault} onRefresh={loadFiles} minimal={isSignInScreen} />
+      )}
 
       {/* Role impersonation banner (dev tools) */}
       <ImpersonationBanner />
@@ -189,15 +196,10 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
         {sidebarVisible && !showWelcome && activeView !== 'workflows' && activeView !== 'items' && (
           <>
             <Sidebar />
-            {/* Resize handle for non-settings views, simple border for settings */}
-            {activeView === 'settings' ? (
-              <div className="w-px bg-plm-border flex-shrink-0" />
-            ) : (
-              <ResizeHandle
-                direction="horizontal"
-                onResizeStart={() => setIsResizingSidebar(true)}
-              />
-            )}
+            <ResizeHandle
+              direction="horizontal"
+              onResizeStart={() => setIsResizingSidebar(true)}
+            />
           </>
         )}
 
@@ -230,38 +232,47 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
 
       <Toast />
 
-      {/* Update Modal */}
-      <UpdateModal />
+      {/* Settings: a modal over the current view, opened from anywhere through openSettings() */}
+      {!isSignInScreen && <SettingsModal />}
 
-      {/* SOLIDWORKS version picker (several releases installed, no choice saved) */}
-      <SolidWorksVersionModal />
+      {/* Desktop-only dialogs: app updates, SOLIDWORKS, and the local vault's checkouts. BluePLM
+          Web has none of these. */}
+      {desktop && (
+        <>
+          {/* Update Modal */}
+          <UpdateModal />
 
-      {/* Orphaned Checkouts Dialog */}
-      <OrphanedCheckoutsContainer onRefresh={loadFiles} />
+          {/* SOLIDWORKS version picker (several releases installed, no choice saved) */}
+          <SolidWorksVersionModal />
 
-      {/* Staged Check-in Conflict Dialog */}
-      {stagedConflicts.length > 0 && (
-        <StagedCheckinConflictDialog
-          conflicts={stagedConflicts}
-          onClose={clearStagedConflicts}
-          onRefresh={loadFiles}
-        />
+          {/* Orphaned Checkouts Dialog */}
+          <OrphanedCheckoutsContainer onRefresh={loadFiles} />
+
+          {/* Staged Check-in Conflict Dialog */}
+          {stagedConflicts.length > 0 && (
+            <StagedCheckinConflictDialog
+              conflicts={stagedConflicts}
+              onClose={clearStagedConflicts}
+              onRefresh={loadFiles}
+            />
+          )}
+        </>
       )}
 
       {/* Missing Storage Files Dialog */}
       <MissingStorageFilesContainer onRefresh={loadFiles} />
 
-      {/* Upload Size Warning Dialog */}
-      <UploadSizeWarningContainer />
+      {/* Upload Size Warning Dialog (uploads from disk: desktop only) */}
+      {desktop && <UploadSizeWarningContainer />}
 
       {/* Command Confirmation Dialog (ctx.confirm from command handlers) */}
       <CommandConfirmContainer />
 
-      {/* Copy / Move to Vault (opened from the file context menus) */}
-      <VaultTransferContainer onRefresh={loadFiles} />
+      {/* Copy / Move to Vault (opened from the file context menus; desktop only) */}
+      {desktop && <VaultTransferContainer onRefresh={loadFiles} />}
 
-      {/* Vault Not Found Dialog */}
-      {vaultNotFoundPath && (
+      {/* Vault Not Found Dialog (a local vault folder: desktop only) */}
+      {desktop && vaultNotFoundPath && (
         <VaultNotFoundDialog
           vaultPath={vaultNotFoundPath}
           vaultName={vaultNotFoundName}

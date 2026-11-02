@@ -1,6 +1,7 @@
 // src/features/settings/organization/realign/PendingMovesDecisionList.tsx
 import { ArrowRight } from 'lucide-react'
 
+import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import type { AlignmentItem, PendingMoveAction } from '@/types/realign'
 
@@ -34,30 +35,18 @@ export function PendingMovesDecisionList({
 
   return (
     <div className="mt-3 space-y-2">
-      <p className="text-xs text-plm-fg-muted">{t('realign.pendingMove.keepLocalNote')}</p>
+      <p className="text-[13px] text-ui-fg-secondary">{t('realign.pendingMove.keepLocalNote')}</p>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => onSetAll('adopt')}
-          disabled={disabled}
-          className="btn btn-ghost text-xs disabled:opacity-50"
-        >
+        <Button variant="ghost" size="sm" onClick={() => onSetAll('adopt')} disabled={disabled}>
           {t('realign.pendingMove.keepServerAll')}
-        </button>
-        <button
-          type="button"
-          onClick={() => onSetAll('reconcile')}
-          disabled={disabled}
-          className="btn btn-ghost text-xs disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onSetAll('reconcile')} disabled={disabled}>
           {t('realign.pendingMove.keepLocalAll')}
-        </button>
+        </Button>
       </div>
 
-      <div
-        className={`bg-plm-bg-secondary rounded border border-plm-border p-2 overflow-y-auto ${LIST_MAX_HEIGHT_CLASS}`}
-      >
+      <div className={`divide-y divide-ui-divider overflow-y-auto ${LIST_MAX_HEIGHT_CLASS}`}>
         {decidable.map((item) => {
           const fileId = item.fileId
           const selected = actions[fileId] ?? 'adopt'
@@ -65,21 +54,18 @@ export function PendingMovesDecisionList({
           const localPath = item.movedToRelativePath ?? item.relativePath
 
           return (
-            <div
-              key={item.id}
-              className="py-2 border-b border-plm-border last:border-b-0 space-y-1.5"
-            >
-              <div className="text-sm text-plm-fg truncate">{item.fileName}</div>
-              <div className="flex items-center gap-2 font-mono text-xs text-plm-fg-dim">
+            <div key={item.id} className="space-y-1.5 py-3">
+              <div className="truncate text-[14px] text-ui-fg">{item.fileName}</div>
+              <div className="flex items-center gap-2 text-[13px] text-ui-fg-secondary">
                 <span className="truncate" title={serverPath}>
                   {serverPath}
                 </span>
-                <ArrowRight size={10} className="shrink-0 text-plm-fg-muted" />
-                <span className="truncate text-plm-fg" title={localPath}>
+                <ArrowRight size={10} className="shrink-0 text-ui-fg-secondary" />
+                <span className="truncate" title={localPath}>
                   {localPath}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-3 text-xs">
+              <div className="flex flex-wrap gap-4 text-[13px]">
                 <ActionRadio
                   fileId={fileId}
                   action="adopt"
@@ -102,7 +88,7 @@ export function PendingMovesDecisionList({
         })}
       </div>
 
-      <div className="text-xs text-plm-fg-muted">
+      <div className="text-[13px] text-ui-fg-secondary">
         {t(`realign.pendingMove.adoptSummary${pluralSuffix(adopt)}`, { count: adopt })}
         {' · '}
         {t(`realign.pendingMove.reconcileSummary${pluralSuffix(reconcile)}`, {
@@ -124,14 +110,14 @@ interface ActionRadioProps {
 
 function ActionRadio({ fileId, action, selected, disabled, label, onChange }: ActionRadioProps) {
   return (
-    <label className="flex items-center gap-1.5 text-plm-fg cursor-pointer">
+    <label className="flex items-center gap-1.5 text-ui-fg cursor-pointer">
       <input
         type="radio"
         name={`pending-move-${fileId}`}
         checked={selected === action}
         onChange={() => onChange(fileId, action)}
         disabled={disabled}
-        className="accent-plm-accent"
+        className="accent-ui-accent"
       />
       <span>{label}</span>
     </label>

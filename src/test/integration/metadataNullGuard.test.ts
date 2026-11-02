@@ -76,7 +76,7 @@ function expectUnchanged(columns: readonly Column[] | 'all') {
 async function reupload(metadata: Parameters<typeof syncFile>[9]) {
   const path = h.absolute(PART)
   h.electron.disk.write(path, 'new bytes')
-  const read = await window.electronAPI.readFile(path)
+  const read = await window.electronAPI!.readFile(path)
   const result = await syncFile(
     ORG_ID,
     VAULT_ID,
@@ -180,7 +180,7 @@ describe('check-in leaves a field the user never touched as it was', () => {
   it('an absent pending field (undefined) keeps the committed value, maps included', async () => {
     const row = seedPopulated(USER_ID)
     // checkin_file only honours a checkout it can see.
-    h.db.row('files', row.id).checked_out_at = h.db.tick()
+    h.db.row('file', row.id).checked_out_at = h.db.tick()
     const result = await checkinFile(row.id, USER_ID, {
       pendingMetadata: { part_number: undefined, description: undefined },
       committedCustomProperties: row.custom_properties,
@@ -192,7 +192,7 @@ describe('check-in leaves a field the user never touched as it was', () => {
 
   it('an edit to one configuration does not erase the others', async () => {
     const row = seedPopulated(USER_ID)
-    h.db.row('files', row.id).checked_out_at = h.db.tick()
+    h.db.row('file', row.id).checked_out_at = h.db.tick()
     await checkinFile(row.id, USER_ID, {
       pendingMetadata: { config_tabs: { Blue: '12' } },
       committedCustomProperties: row.custom_properties,

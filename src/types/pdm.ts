@@ -476,7 +476,7 @@ export interface PDMFile {
     color: string
     icon: string
     is_editable: boolean
-    requires_checkout: boolean
+    is_checkout_required: boolean
   } | null
   state_changed_at: string | null
   state_changed_by: string | null
@@ -602,7 +602,7 @@ export interface Organization {
   postal_code?: string | null
   country?: string | null
   // Google Drive integration
-  google_drive_enabled?: boolean
+  is_google_drive_enabled?: boolean
   google_drive_client_id?: string | null
   google_drive_client_secret?: string | null
   // RFQ settings
@@ -706,6 +706,21 @@ export interface OrgSettings {
    * readable through the API, so this is not an access restriction.
    */
   admin_only_folders?: string[]
+  /**
+   * File workflows for the organization (schema 110). Unset or true = on. When false the Workflows
+   * sidebar view and every Change State menu entry are hidden, and the server refuses transitions.
+   */
+  file_workflows_enabled?: boolean
+  /** Files in a review stage, once approved: 'hold' (default) for the requester to move, or 'advance'. */
+  review_stage_on_approval?: 'hold' | 'advance'
+  /** A package moves 'together' (default) once fully approved, or 'approved_only' files move as approved. */
+  review_stage_package_policy?: 'together' | 'approved_only'
+  /**
+   * Who applies schema upgrades: 'in_app' (unset, default) = an admin from the app, which also
+   * applies them on its own with a remembered connection; 'release' = the organization's release
+   * pipeline (release.yml migrate-db) applies them before publishing, and the app does not.
+   */
+  schema_upgrades?: 'in_app' | 'release'
 }
 
 /**
@@ -774,7 +789,7 @@ export interface User {
   org_id: string | null
   role: 'admin' | 'engineer' | 'viewer'
   created_at: string
-  last_sign_in: string | null
+  last_sign_in_at: string | null
 }
 
 // Check-out request/lock

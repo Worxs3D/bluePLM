@@ -4,11 +4,494 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.3.3] - 2026-11-02
 
-Schema 108 and SolidWorks service 1.26.0. Apply `supabase/core.sql`, then modules 10 to 50 in
-order (106 changes module 40; 107 and 108 change modules 10 and 20); the app expects 108. Install
-service 1.26.0 for review package downloads; everything else works on 1.25.0.
+App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.2.
+
+### Changed
+
+- **The Metadata Audit page is redesigned.** The six finding categories are tabs above the list
+  instead of a rail beside it, so the values get the dialog's full width. A run is summarised in
+  three numbers (files with findings, files not read, scan time). The list, its filter and the write
+  button are one card, with the button in a footer that stays in view; the explanations behind each
+  write sit behind "How this works". The resolution column appears only where rows resolve
+  differently or a side has to be picked, and a picked side shows its arrow. An empty value reads
+  "empty" instead of a dash, and counts say "1 file" rather than "1 files". The scope is three cards
+  before a run and one line after it or while it runs. The revision switch sits beside the list it
+  filters, its explanation on hover.
+
+## [5.3.2] - 2026-11-01
+
+App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.1.
+
+### Changed
+
+- **Metadata Audit has a folder picker.** "One folder" is no longer a bare text box: typing
+  suggests the vault's folders by name or path, Browse opens a folder tree, and each folder shows
+  how many parts and assemblies BluePLM has under it. Before a run the page says what the scope
+  will match, and how many of those files are not on this machine (they are listed as not read).
+  A full path, including one copied with Explorer's "Copy as path" (in quotes), becomes the
+  folder's vault path.
+- **Audit a folder from the file browser.** Admins get "Audit SOLIDWORKS metadata…" on a folder's
+  right-click menu. It opens Settings > SOLIDWORKS > Metadata Audit scoped to that folder; nothing is
+  scanned until you press Run.
+- **The audit's progress shows a clock.** Time elapsed and an estimate of the time left, measured
+  from the files read so far.
+
+### Fixed
+
+- **"One folder" with no folder no longer scans the whole vault.** A blank folder fell through to
+  no scope at all. Run now stays disabled until the folder box names a folder in the vault, and a
+  path outside the vault or a folder that does not exist says so instead of running a scan that
+  matches nothing. `scan-divergence --path` and `restore-metadata-from-files --path` also accept a
+  quoted path now.
+
+## [5.3.1] - 2026-10-31
+
+App only: no schema or API change, so it runs on schema 503 and API 4.2.0 like 5.3.0.
+
+### Fixed
+
+- **"Later" on the update prompt no longer hides it across restarts.** Dismissing the prompt (or
+  clicking outside it) used to keep it away for 24 hours even if you restarted BluePLM. It now lasts
+  only until the app is closed, and in a long-running session the prompt comes back after a day.
+  Check for Updates always opens the prompt, even after "Later".
+
+### Changed
+
+- **Settings > Updates.** A page of its own under This computer: when an update is waiting it says
+  which version and offers Update now, even after you chose "Later", and a dot on the page's name in
+  the settings sidebar says an update is available. Check for Updates and Version History (upgrade
+  or roll back) moved here from About.
+
+## [5.3.0] - 2026-10-31
+
+App and release workflow only: no schema or API change, so it runs on schema 503 and API 4.2.0 like 5.2.2.
+
+### Changed
+
+- **A release upgrades the database before it goes out.** When the `PRODUCTION_DATABASE_URL` secret is
+  set, the release workflow applies the pending migrations with the app's own upgrade runner before
+  the installers are published, so people who update are not stopped by "Database upgrade required".
+  Without the secret, an admin upgrades from the app as before. A prerelease tag (`-beta`) never
+  upgrades the production database.
+- **Organizations can hand database upgrades to their release pipeline.** Settings > Connection has a
+  switch for administrators: when it is on, BluePLM never upgrades the database on its own (not even
+  with a remembered connection), and the upgrade screen says the release pipeline does it, with
+  "Upgrade from this computer instead" for when it has not. Off (the default) works as before.
+
+### Fixed
+
+- The database upgrade screen says when the password is still inside the `[YOUR-PASSWORD]` brackets,
+  instead of a bare "password authentication failed".
+- The database upgrade screen can show the connection string you typed, explains a refused password,
+  and says when a failure came from the connection saved on this computer. Settings > Connection no
+  longer tells administrators to run the schema in the Supabase SQL editor.
+- Settings opens larger (up to 1200 by 880), and its sidebar is wide enough for every page name;
+  a name that still does not fit (longer languages) shows in full on hover.
+
+## [5.2.2] - 2026-10-31
+
+App only: no schema or API change; it runs on schema 503 and API 4.2.0 like 5.2.0. The v5.2.1 tag was never published (its release build stopped on a flaky watcher test, fixed here), so this is the first release of its fix.
+
+### Fixed
+
+- The vault watcher reports files written together in one batch again. Each file in a pass carried its own
+  timestamp, so a re-check that fired a moment early could report one file of a burst now and the next a
+  moment later.
+- Editing metadata on a file that is not on disk says why instead of calling it read-only. A file renamed
+  or moved on disk names where it went and asks you to check in the new file; a deleted or never-downloaded
+  row cannot be edited inline; a save to a path with nothing there says the file is missing, not that
+  BluePLM could not tell whether it is read-only.
+
+## [5.2.0] - 2026-10-31
+
+Schema 503 (`supabase/migrations/0503_vault_object_issues.sql`; an organization admin opening 5.2.0 applies it) and API 4.2.0 (redeploys itself).
+
+### Added
+
+- **Every keyboard shortcut can be changed.** Settings > Keyboard shortcuts now lists all of BluePLM's
+  shortcuts, not only the file list's: the app-wide ones (settings, search, sidebar, details, terminal,
+  refresh, open vault), the file list and file tree, review decisions (A, Shift+A, C, R, J, K), PDF zoom
+  and the workflow editor. Search by name, or press keys to see what they do. Keys show as keycaps (⌘ ⌥ ⇧
+  on macOS). Click a key to change it, add a second key, remove one, reset one action or all of them, and
+  show only the ones you changed. A key another action already uses where this one works is flagged, with
+  Reassign or Keep both. Shortcuts can be saved to and loaded from a JSON file. Your custom keys from
+  earlier versions carry over; only the keys you change are stored, so new defaults reach you. The
+  default keys are unchanged.
+- **Shortcuts behave the same everywhere.** One dispatcher now decides which shortcut a key press runs:
+  nothing fires while you type in a field (except the app-wide ones, as before), the focused part of the
+  app wins over the rest, and the file list's keys no longer act on files behind an open dialog. With the
+  file tree focused, Delete and Enter act once, on the tree, instead of also acting on the file list.
+  The arrow keys of the file list now follow the keys set for them (they were fixed before).
+- **Export shortcuts and a quick export folder.** Two new shortcuts in Settings > Keyboard shortcuts queue the selected
+  files for export: Export PDF (Ctrl+Shift+P) exports the selected drawings, and Export STEP (Ctrl+Shift+S) exports
+  the selected parts and assemblies, and for a selected drawing the model it references, named with the drawing's
+  metadata. Exports go to the quick export folder set on this computer (Settings > Export, or under the shortcuts),
+  or next to each file when none is set. Shortcuts can be pressed file after file: exports queue and run one at a
+  time, and a file already waiting for the same export is not queued twice. The context menu's Export submenus
+  share the queue and gain "Export to Quick Export Folder" when one is set. Desktop only.
+
+- **Damaged files: find them, see them, repair them.** Server backups and tests now keep every vault file whose
+  stored bytes do not match their content hash (damaged), or that a version names with nothing in storage
+  (missing), in Settings > Backup > Damaged files: the file, the version, who checked it in and when, and whether it
+  is the current version. An admin can restore it from the server backup, store this computer's copy, roll the file
+  back to its last good version, mark it unrecoverable, or accept it with a note. Every repair that writes storage
+  is checked against the content hash before and after, every finding and decision is logged, and admins are
+  notified of a new finding through the security monitor.
+- **A full restore test runs by itself every 30 days.** Four hours after the nightly backup (06:00 with a 02:00
+  backup), the server reads the whole backup back from the bucket and checks every file. It shows in Recent runs,
+  and a failure notifies admins like any failed run. The first full test of Blue Robotics' backup (2026-10-30)
+  read back all 33,927 files, 94.9 GB, with no problem.
+
+### Changed
+
+- **Settings looks like Claude's settings.** The modal now follows the look of Claude's own settings,
+  measured from it: neutral greys, the system font, a darker navigation column with sentence-case
+  items, a plain header with only a close button, and pages that open on their first heading. Settings
+  sit in flat rows divided by thin lines instead of cards, with 14px text, 28px controls and a softer
+  blue switch, in dark and light themes. This is the first step of a refresh of the whole app.
+- **Deleting your account moved to Profile.** It is no longer in the settings navigation; it is the
+  last section of Profile, and still asks you to type a confirmation.
+
+- **Downloads refuse damaged content with a clear message.** Content marked unrecoverable is refused before it is
+  fetched, and a download whose bytes do not match their hash says the server copy is damaged and where to repair
+  it. BluePLM Web now checks every file's hash in the browser before saving it (files over 512 MB are saved
+  directly).
+
+### Fixed
+
+- **A backup test cut short by a server restart is resumed,** in the same mode, the way an interrupted backup
+  already was. Before, it was closed as interrupted and not run again.
+- **Server backups find content a version names but storage does not have** (missing), not only content whose
+  bytes changed.
+
+## [5.1.2] - 2026-10-30
+
+API 4.1.1 (server backups report their progress); no schema change. Update the app; the API redeploys itself.
+
+### Changed
+
+- **Settings is a modal.** Settings opens over whatever you are doing instead of replacing the
+  sidebar and main view: navigation and search on the left, the page on the right, Esc or the close
+  button to return. Ctrl+, (Cmd+, on macOS) opens and closes it, and it can be maximized. Every way
+  into settings (the activity bar, the user menu, "open vault settings" links, deep links) opens the
+  modal on the right page.
+- **Settings is reorganized and restyled.** The pages are grouped as Account, Organization, Files &
+  Data, Integrations and This Computer, each with an icon, a title and a one-line description.
+  Preferences is split into Appearance (theme, language, tabs), General (sync, updates, privacy,
+  file handling; desktop only) and Devices (signed-in sessions). Every page now uses the same
+  sections, rows, switches, selects and buttons, from new shared controls in
+  `src/components/core/ui` that the rest of the app will move to next.
+- **Theme tints render.** Tailwind dropped every opacity modifier on the theme colours
+  (`bg-plm-accent/20` and the like compiled to nothing), so about 1,300 intended tints across the app
+  never showed. They do now, which subtly changes highlights, badges and hover states everywhere.
+
+- **The backup page no longer looks alarming while things are fine.** A first server backup in progress shows as
+  "First backup in progress" (blue), not "Backups need attention"; a run a server restart cut short shows as
+  "Interrupted, resumed", not a red failure; the selected "Where backups run" option is highlighted and marked
+  Selected (it looked disabled); a running backup or test shows its progress (files and GB so far); the restore
+  command and the old desktop snapshot list are folded away, and that list loads only when opened.
+
+### Fixed
+
+- **Company contact details can be cleared.** Emptying the phone, website or contact email on the
+  Company page and saving now clears it; before, an empty field kept the old value.
+- **Turning Google Drive off can be saved.** The Save button was hidden while the integration was
+  switched off.
+
+- **Server backups now include files not named by their content, such as the organization logo** (the first
+  production backup skipped `_assets/logo.png`).
+- **A damaged vault object is reported once, not every night.** The first production backup found one: version 2
+  of `CELSIUS/DEVELOPMENT/CELSIUS-2/TSYS01 Design/THIN_DIE_CAST_BULKHEAD.SLDDRW` (checked in 2026-01-09) was
+  stored with version 3's bytes, because the file changed between hashing and upload; check-in has used the
+  uploaded bytes' hash since 2026-03-14. Every other object in the vault matched. A problem the previous backup
+  already reported stays listed but no longer makes the run a warning (or an admin notification).
+
+
+## [5.1.1] - 2026-10-30
+
+Renderer only: no schema change (502), no API change (4.1.0). Update the app; nothing to apply or redeploy.
+
+### Changed
+
+- **The backup page is rebuilt.** The top says whether backups are healthy and why not (no computer
+  designated, the computer or the server worker offline, no schedule, or the last good backup over 36 hours
+  old), when the last backup was and when the next one is. Below it, "Where backups run" switches between the
+  BluePLM server and a designated computer in one click, with that runner's controls under it. Restore points
+  and the bucket settings follow. The buttons are ordinary-sized.
+
+### Fixed
+
+- **A desktop schedule only ran while the backup page was open.** The designated computer's backup service
+  started inside the page and stopped when you left it, while the heartbeat kept showing the computer online.
+  It now runs at app level, starts when this computer is designated and stops when it is released, from any
+  computer, without a restart.
+- **Designating or releasing a computer, or saving settings, did not show until the page was refreshed.** The
+  page reloaded only the snapshot list after a change. It now re-reads the configuration after every action,
+  on realtime changes and every 30 seconds, and the settings form keeps unsaved edits.
+- An admin can release the designated computer from any computer, not only from the designated one.
+
+## [5.1.0] - 2026-10-30
+
+Schemas 501 and 502 and API 4.1.0. An organization admin opens 5.1.0 and the app applies both migrations; every
+5.0 client is then asked to update (`client_min_version()` is 5.1.0, because 5.1.0 is the first client that
+reads deletes from realtime tombstones). Redeploy the API (4.1.0) at the same time.
+
+Server backups: schema 501 (`supabase/migrations/0501_server_backups.sql`, applied by the app like every
+migration) and API 4.1.0. Plan and decisions: `.cursor/plans/server-backups.plan.md`.
+
+### Added
+
+- **Security monitoring.** Schema 502 records security events (refused sign-ups, cross-organization
+  probes, backup health) and alerts the organization's admins through notifications, with per-organization
+  settings. Where `pg_cron` is available it runs on a schedule inside your own database.
+- **Sign-ups that have nowhere to belong are refused** by a Supabase "Before User Created" auth hook
+  (`auth_hook_before_user_created`), and new organizations are created with their founder through
+  `org_create_with_founder()` and an invitation (admin setup Step 5).
+- **Backups that run on the server, with no computer on.** Settings > Backup > Where backups run:
+  "BluePLM server" makes the API's backup worker run the schedule and the "Back up now" requests. It
+  backs up the whole vault from storage (every version, including files nobody has downloaded) and the
+  organization's database rows into an encrypted repository in the same bucket
+  (`blueplm-server-backup/`), keeps daily/weekly/monthly/yearly snapshots per the retention settings, and
+  is incremental: content already backed up is never read again.
+- **Test backup.** Quick check (every snapshot opens, every file present), sample restore (25 files
+  restored and re-hashed, plus a hash check of a sample of the live vault) and full restore test. Every
+  scheduled backup also runs a small sample test. Results, problems and the last good backup show in the
+  backup panel; a backup older than 36 hours is called out.
+- **Isolated backup sandbox and tools** (`npm run backup --prefix api -- ...`): `sandbox` rehearses
+  months of daily backups on local disk, damages the repository on purpose and checks every damage is
+  caught and every snapshot restores byte for byte; `dry-run`, `verify`, `list` and `restore` work
+  against the real bucket through a store that refuses every write.
+
+### Fixed
+
+- **Rate limits are per caller again on Railway.** API 4.0.0 saw every request as coming from Railway's
+  proxy, so all callers shared one limit. The API now takes the caller's address from `X-Real-IP` on
+  Railway (`CLIENT_IP_HEADER`, detected automatically there).
+- **Deletes no longer reach other organizations through realtime.** Realtime publishes inserts and updates
+  only; deletes arrive as tombstones that carry only what the receiving organization may see.
+- **Module access checks only answer for the caller's own organization**, email domains are unique across organizations
+  and must match the adding admin's verified address, and schema verification refuses a public function
+  missing from the release inventory.
+- **No third-party font requests.** Plus Jakarta Sans is bundled with the app; the web CSP no longer allows
+  Google Fonts.
+- The upgrade screen lists every pending migration when more than one is due.
+- **A scheduled backup missed while the designated computer was off was skipped for the day.** The
+  schedule only fired if the app happened to poll inside the scheduled minute. Both runners now run the
+  most recent missed slot once when they are back (`last_scheduled_slot`), and daylight-saving changes
+  no longer skip or double a day.
+- A vault object whose bytes no longer match its content hash is now reported by name instead of being
+  backed up as if it were good.
+## [5.0.0] - 2026-10-30
+
+Schema 500 and API 4.0.0. **Every client must update, and the database must be upgraded.** A 4.x client
+cannot use a 5.0 database and a 5.0 client cannot use a 4.x one. 5.0 upgrades the database itself: an
+organization admin opens BluePLM 5.0, gives the database connection string once, and the app applies the
+upgrade (a 4.10 database goes straight to 5.0; an older one is brought to 4.10 first). Everyone else sees
+a "waiting for your admin" screen until then. If your organization runs the private extension
+`blueplm.customers`, apply its 2.0.0 SQL after the upgrade. Redeploy the API (4.0.0) at the same time.
+
+### Changed
+
+- **One naming scheme for the whole database.** Every table, function, policy and index was renamed to
+  one rule: singular tables (`file`, `file_version`, `team_member`; `users` became `app_user`), functions
+  named `<entity>_<verb>` (`file_checkout`, `review_settle`), booleans `is_`/`has_`/`can_`, timestamps
+  `_at`. A test fails on any object that breaks the rule. The old-to-new list is
+  `supabase/rename-map-5.0.json`; your own SQL, reports or scripts that name tables need the new names.
+- **The schema is a clean baseline plus numbered migrations.** `supabase/core.sql` and the modules now
+  define each object once, without a year of compatibility code. Every later change is a numbered file in
+  `supabase/migrations/`, never edited once released.
+- **The app applies database changes itself.** New organizations no longer paste SQL: the app creates the
+  schema the first time an admin connects. Later releases that change the schema are applied the same way,
+  under a lock, each recorded with a checksum so nothing is applied twice or after being altered. "Remember
+  on this computer" lets future upgrades apply automatically for that admin. The connection string is
+  encrypted with the operating system's key store and never leaves the computer.
+- **Forced updates.** The database names the oldest client it accepts; an older client stops with an
+  "update required" screen and installs the update (on macOS, it opens the download page).
+- **File actions take the user from the sign-in.** Check out, check in, move, folder rename and the
+  workflow transition functions no longer accept a user id from the caller.
+- **API 4.0.0.** The REST routes the app never used are gone: `/files`, `/vaults`, `/trash`, `/parts`,
+  `/bom`, `/suppliers`, `/activity`, `/checkouts`, `/auth/login`, `/auth/refresh`, `/auth/me`. They had
+  drifted from the app (no read-only checks, an outdated file state). A future public API will sit on the
+  same database functions the app uses. `TRUST_PROXY` (a list of proxy addresses) replaces
+  `TRUST_PROXY_HOPS`.
+
+### Security
+
+- Every privileged database function pins its `search_path`, and the schema check refuses to stamp
+  a release otherwise.
+- Signed-out (`anon`) access to tables is gone, apart from reading the schema version.
+- Accepting an invitation checks that its teams and vaults belong to the inviting organization.
+- A file must belong to a vault, so a file can never fall outside vault access rules.
+- Leftover functions from older releases that did not check the caller's organization are removed by
+  the upgrade.
+- The Odoo integration keeps each request's data to that request.
+- External links open only `https:` addresses, and the app's windows refuse navigation away from the app.
+- Electron 39.8, electron-updater 6.8 and Fastify 5.12 close their published advisories.
+
+### Removed
+
+- The per-machine Extension Store. Extensions are installed for the whole organization from a `.bpx` in
+  Settings > Extensions.
+- The Slack settings page (its API routes never existed), the unused sandbox-extension tables and API,
+  and code kept only for databases older than 5.0.
+
+### Fixed
+
+- **Search hands off to navigation.** Opening a folder now leaves search, wherever it is opened from
+  (double-click or Enter in the results, the breadcrumb, the sidebar tree, Back, a search result, a
+  reveal-in-browser jump); before, the folder changed underneath while the pane kept showing results.
+  Clicking a result in the top-bar search opens it: a folder opens, a file opens its folder with the
+  file selected and scrolled to (a moved file goes where its content lives). The top-bar filters
+  `file:` and `folder:` now search the pane for the bare term; the pane used to search for the
+  literal text, prefix included, and found nothing. Back during a search returns to the folder searched
+  in, folders opened from outside the pane are kept in Back/Forward history, Left arrow no longer
+  jumps out of search results, and the results banner has a clear button.
+
+## [4.10.0] - 2026-10-30
+
+Schemas 111 and 112 and API 3.0.1. Schemas 111 and 112 are applied to production (2026-10-30);
+another database applies `supabase/core.sql`, then modules 10 to 50 in order. Released 4.9.0
+keeps working against 112, except that members (not admins) no longer see the backup snapshot list.
+
+### Added
+
+- **BluePLM Web at https://blueplm.io.** The same app in a browser: the desktop renderer itself, built
+  for the web, so both evolve together from one code base. Sign in with Google; your vaults connect
+  automatically and load from the server; Download saves through the browser. Everything that needs
+  this computer is hidden on the web: check out and check in, SOLIDWORKS, eDrawings and CAD previews,
+  adding files from disk, backups, the terminal, updates, native extensions. The site sends a strict
+  Content-Security-Policy with Trusted Types. Deploy: `npm run deploy:web` (`web/DEPLOY.md`).
+
+### Security
+
+- **Independent security audit before blueplm.io** (`.cursor/plans/blueplm-web-security-audit.md`).
+  Fixed in schema 111: an account could change its own email and so take over an invitation or join
+  through an email domain; any signed-in account could read, overwrite or delete every organization's
+  files in storage; `join_org_by_slug` let anyone join any organization; every organization, user and
+  vault was readable by any account. Membership now uses the confirmed sign-in address, storage is
+  scoped to your organization (content is never overwritten; only admins delete), and organizations,
+  users and vaults are readable inside your own organization only.
+- Fixed in schema 112: backup credentials and webhook secrets are admin-only (members read a status
+  without secrets); eight functions in production with no source and no caller checks are removed;
+  audit, activity and notification rows must name their real author; check out, check in, move and
+  folder rename need Explorer edit; ECO gate approval checks the organization and ECO edit; workflow,
+  serialization and item-definition changes need admin; share-link deletes stay in your organization.
+- Sign-in hardening: the Site URL is https://blueplm.io instead of localhost, the desktop sign-in
+  callback is listed explicitly, changing a password asks you to sign in again, passwords need 10
+  characters, you get an email when your password, email or MFA changes, and sessions idle for 14
+  days end.
+- API 3.0.1: rate limits count per client again (`TRUST_PROXY_HOPS`); behind the hosting proxy every
+  caller had shared one limit.
+- Rotate the backup storage keys, the restic password and the Google Drive client secret: they were
+  readable by members before schema 112.
+
+## [4.9.0] - 2026-10-29
+
+Schema 110 (no API or SolidWorks service change, so it runs on API 3.0.0 and service 1.26.0 like
+4.8.1). Apply `supabase/core.sql`, then modules 10 to 50 in order. Until it is applied, the new
+review menu entries, the File Workflows settings and the review workflow bar fail with "function
+not found", and saving a workflow state in Edit State fails; everything else keeps working. 4.8.1
+keeps working against schema 110.
+
+### Added
+
+- **Reviews submenu** in the top section of the file context menu (file list and explorer tree):
+  Reviews > New review…, Add to review > (the review being built, then your open reviews), Remove
+  from review > (open reviews holding the file), View reviews. Adding pins the latest checked-in
+  version and joins the open round, so reviewers who had finished owe a decision on the new files;
+  removing never takes out a review's last file (cancel it instead). Server: `add_review_items`,
+  `remove_review_items`, `list_open_reviews_for_files`. Replaces the separate "Request review…",
+  "Add to review package" and "View Reviews" entries.
+- **Settings > File Workflows** (admins change it): turn file workflows off for the organization.
+  While off there is no Workflows view in the sidebar, no Change State in any file menu, and the
+  server refuses transitions (`WORKFLOWS_DISABLED`). Workflows and file states are kept.
+- **Review stages.** A workflow state marked "Review stage" (Edit State) names where an approval
+  sends files ("When approved, move to"; its only exit when it has one). Moving a file into a
+  review stage puts it in the review being built. When a review approves files in a review stage,
+  Settings > File Workflows decides what happens: mark them approved and let the requester move
+  them (default), or move them on by themselves; and for a package that comes back partly
+  approved, move it as one once every file is approved (default) or move each approved file
+  ahead. The review shows where its files stand and, for the requester or an admin, "Move approved
+  files" and "Move package". A file moves only at the version that was approved, when nobody has
+  it checked out, and never through a gated exit (a gate is its own approval). Server:
+  `advance_reviewed_files`, `get_review_workflow_status`, `review_items.advanced_at`.
+- **User profile history names its files.** Recent Activity on a user's profile now shows each
+  entry's file name and folder (the full path on hover); clicking an entry closes the profile and
+  opens that folder in the file browser with the file selected. Clicking a day in the
+  contribution grid lists everything that day, and chips above the list count each action and
+  filter by it. Before, most entries read only "Checked out", because the profile looked for the
+  file name in the activity details, which a checkout does not record.
+- **Search settings.** A search box at the top of the settings sidebar finds individual
+  settings, not just tabs, as you type: the main view lists every match grouped by tab with the
+  matched letters highlighted, and the sidebar narrows to the tabs that have one. The matching
+  is fuzzy (abbreviations such as "autodl", camelCase acronyms such as "sw", synonyms such as
+  "hotkeys", and typos such as "seiral"). Arrow keys and Enter open a result, which jumps to the
+  setting and flashes it; Esc clears, Ctrl+F focuses the box.
+
+### Changed
+
+- **Metadata Audit is a file list.** The SOLIDWORKS > Metadata Audit results are now laid out like
+  the file browser: categories in a rail on the left, and the chosen category's files filling the
+  rest of a wider page, one row per file (icon or thumbnail, name, folder, value count, who holds
+  it) with its values underneath. Values wrap in full with the differing span highlighted, instead
+  of being cut to a few words. A file's box ticks all of its values, files collapse and expand, and
+  the first non-empty category opens on its own. The scope options fold to one line once there is
+  a result, and the configuration-record and field tallies fold into a closed section.
+
+### Fixed
+
+- **Metadata Audit accepts a full folder path.** A folder scope pasted from the browser's Copy Path
+  (for example `C:\BluePLM\<vault>\<project>\development\`) matched nothing and came back blank
+  (user report, 2026-10-29). The scan knows the vault root, so a path inside it is now cut back to its
+  vault-relative part; a path outside the vault still matches nothing and says so. Also applies to
+  `scan-divergence --path` and `restore-metadata-from-files --path`.
+- Every notification in vault settings is translated
+  in all seven languages (#94).
+- Sign-out from Account, Delete Account and Preferences, the welcome screen's sign-in messages
+  and the session heartbeat's "signed out" notice go through the same backend sign-out path and are
+  translated (#91).
+- The top-bar right-pane button hides and shows the comment sidebar in the Reviews view. It used to
+  toggle the file panel, which the Reviews view does not show, so it did nothing there.
+
+## [4.8.1] - 2026-10-29
+
+App only: no schema, API or SolidWorks service change, so it runs on schema 109, API 3.0.0 and
+service 1.26.0 like 4.8.0.
+
+### Fixed
+
+- Context-menu links into Settings (for example "open settings tab") work again: the app shell
+  listens for the navigation event once more (#87).
+- The installer packages the SolidWorks service once, from the staged `resources/bin/win32`
+  payload, instead of also copying the raw `bin/Release` build output (#84).
+- A failed vault creation shows a translated error in every locale (#89).
+- The embedded eDrawings preview now says the vault is on a network share when it refuses a UNC
+  vault, instead of asking you to download a file that is already there.
+
+### Added
+
+- CI checks the embedded eDrawings preview on a real Windows desktop, with no human in the loop
+  (`npm run test:edrawings-system` in the eDrawings Windows job, `scripts/edrawings-ci/`).
+  Covered: a dialog opened over the preview hides it, so Windows reports BluePLM on top there
+  and a real mouse click reaches the dialog's button, and the preview comes back when the
+  dialog closes. Also covered: .NET 8 Desktop Runtime detection, and a vault on a UNC share
+  (the embedded preview refuses it without starting a host, and "Open in eDrawings" starts the
+  viewer on the UNC path, which the viewer can read). The real eDrawings ActiveX control and
+  viewer are not on the runner: a test-surface build of the preview host
+  (`EDRAWINGS_TEST_SURFACE`) and a stub `eDrawings.exe` stand in for them. Whether eDrawings
+  itself draws a model is still not checked.
+
+## [4.8.0] - 2026-10-29
+
+Schema 109, API 3.0.0, SolidWorks service 1.26.0 (on top of 4.7.6: schema 103, API 2.8.3).
+Apply `supabase/core.sql`, then modules 10 to 50 in order, then redeploy the API; the app
+expects schema 109 and API 3.0.0. The installer ships service 1.26.0, which review package
+downloads need. **Customers is no longer part of BluePLM core**: organizations that use it apply
+the `blueplm.customers` extension's `sql/customers.sql`, add the organization to the API's
+`NATIVE_EXTENSIONS_ORG_IDS`, redeploy, and install the extension package (see Changed). This
+release also carries everything from the 4.7.7-beta.1 test build.
 
 ### Drawing reviews, rebuilt for org-wide use (schema 107, service 1.26.0)
 
@@ -49,28 +532,6 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
 - **Earlier rounds' markups are drawn on the version they were made on**, and J / K move between
   items for every viewer, not only reviewers who still owe a decision.
 
-### Security
-
-- **Review decisions can no longer be forged** (schema 107). The `review_responses` policy let a
-  requester mark every reviewer's response approved, and anyone add themselves as a reviewer on
-  any review, in any organization. Every review write now goes through server functions that
-  check who is calling; client access to the review tables is read-only and follows vault
-  access. Comments and notifications can no longer be written into another organization.
-- **Workflow gate approvals count the current attempt only** (schema 107). Approvals from earlier
-  rounds counted toward a gate, so an all-must-approve gate could never pass after one
-  rejection, and a gate could pass on approvals of an older version. Gate rows take no direct
-  client writes, and two last approvals arriving together advance the file once.
-- Existing reviews are migrated in place into one-item packages; released 4.8 clients' review
-  writes fail without changing data.
-
-- **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
-  could read every row of `solidworks_licenses`, serial included, and every assignment. Now an
-  administrator (`is_org_admin()`) reads every licence; anyone else reads only the licences
-  assigned to them, and only their own assignments. The policy that let a user update any column
-  of their own assignment is gone: repointing `license_id` exposed another serial. Activation
-  still works through `activate_solidworks_license()`. Released clients keep working: the licence
-  screen already showed a non-admin only their own licences.
-
 ### Added
 
 - **Extension workspaces can be placed in the sidebar.** Module settings (your own, the
@@ -101,9 +562,59 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
   configured vault (UNC roots included) and reports failures. Release builds on
   `windows-2022` must build both payloads (`BLUEPLM_EDRAWINGS_RELEASE_BUILD=1`); development
   builds without the toolchain warn and skip.
+- **Native extensions.** An organization admin can install an extension package (`.bpx`) for
+  the whole organization from Settings > Extensions > Install for organization. The package is
+  uploaded to the private `org-extensions` storage bucket and its sha256 is recorded on the
+  install row. The desktop app and the API run an extension only from a package whose bytes
+  match that hash: nothing else (a per-machine install, the store, a sideload or a deep link)
+  can make native code run. The desktop app verifies, extracts and serves the package over
+  `blueplm-ext://` and activates it with host API v1, which lets it add a workspace to the
+  activity bar, sidebar, main area and right panel, each behind its own error boundary.
+  Extensions can declare team permission resources, which the permissions editor lists. The
+  API loads an extension's server module and serves its routes under `/ext/<extensionId>/`,
+  authenticated, permission-checked and rate limited like core routes, for the organizations
+  named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
+  without a restart. Schema 104 adds the package columns, the bucket and its policies.
+- **Extension workspaces in module settings.** Your modules, the organization defaults and team
+  defaults list each loaded extension workspace with a show/hide toggle (they are placed by
+  their group and cannot be reordered yet), so a Customers module hidden while it was core,
+  where it was off by default, can be turned back on.
+
+### Changed
+
+- **Customers moved to a private extension, `blueplm.customers`.** The Customers workspace, its
+  sidebar navigator and detail panel, the Odoo customer sync routes (`/customers/sync`,
+  `/sync/status`, `/sync/cancel`, now `/ext/blueplm.customers/...`) and
+  `modules/60-customers.sql` (now the extension's `sql/customers.sql`, unchanged in behaviour)
+  are removed from core, along with `recharts`, the read-only Odoo call guard only the sync
+  used, and the `module:customers` and `system:customer-enrichment` permission definitions,
+  which the extension's manifest now declares. Nothing is dropped from existing databases:
+  customer tables, data and saved team permissions stay as they are, and a saved sidebar
+  position for Customers is kept for the extension's workspace. Schema 104 removes the module
+  from the release manifest and the verify and emergency-lockdown tools (`reset.sql` still
+  drops the customer tables when they exist, so a full reset leaves a clean database); API 3.0.0
+  because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
+  `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
+  redeploy, then install `blueplm.customers-<version>.bpx` for the organization.
+- The harness's NC18 control now re-grants the core seeder `create_default_job_titles` instead of
+  `seed_customer_categories`.
+- SOLIDWORKS service 1.25.0: Balloon drawing keeps balloons you moved by hand when it runs again,
+  and the toast counts them.
+- The Pull from / Push to SW Inspection buttons and the add-in service commands are removed.
+  Extract from drawing and Balloon drawing need only SOLIDWORKS, not an Inspection license.
 
 ### Fixed
 
+- **Downloads are never recycled after a vault switch or reload.** A file whose server row was
+  deleted mid-download is still sent to the Recycle Bin, but only when the store still holds the same
+  vault and is loaded; before, switching vaults or a reload during a download recycled every file
+  just downloaded (the server copy was safe). A file moved during the download is kept.
+- **Push licence to registry writes what SOLIDWORKS reads.** It wrote the serial as a registry
+  value *name* with empty data, which SOLIDWORKS ignores, and checked and removed by that name. It
+  now writes value `SolidWorks` = the serial in 4-character groups, as the installer does
+  (replacing the core serial, leaving add-on products alone), checks and removes by value data,
+  and deletes the old empty-data value. `reg` runs without a shell and the serial must be letters
+  and digits.
 - **Shared color palette changes reach other clients live** (schema 109). `color_swatches` was
   never in the `supabase_realtime` publication, so an org color an admin added or removed showed
   on other machines only after a reload. It now joins the publication with `REPLICA IDENTITY
@@ -156,53 +667,27 @@ service 1.26.0 for review package downloads; everything else works on 1.25.0.
   moved past is now modified whatever the timestamps say. This also turns the known failure "an
   edit saved right after a checkout shows as modified" in `src/test/multi` into a pass.
 
-## [4.8.0] - 2026-10-28
-
-Schema 104 (one release on top of 4.7.6's 103), API 3.0.0. Apply `supabase/core.sql`, then
-modules 10 to 50 in order, then redeploy the API. **Customers is no longer part of
-BluePLM core**: organizations that use it install the `blueplm.customers` extension (see below).
-
-### Added
-
-- **Native extensions.** An organization admin can install an extension package (`.bpx`) for
-  the whole organization from Settings > Extensions > Install for organization. The package is
-  uploaded to the private `org-extensions` storage bucket and its sha256 is recorded on the
-  install row. The desktop app and the API run an extension only from a package whose bytes
-  match that hash: nothing else (a per-machine install, the store, a sideload or a deep link)
-  can make native code run. The desktop app verifies, extracts and serves the package over
-  `blueplm-ext://` and activates it with host API v1, which lets it add a workspace to the
-  activity bar, sidebar, main area and right panel, each behind its own error boundary.
-  Extensions can declare team permission resources, which the permissions editor lists. The
-  API loads an extension's server module and serves its routes under `/ext/<extensionId>/`,
-  authenticated, permission-checked and rate limited like core routes, for the organizations
-  named in `NATIVE_EXTENSIONS_ORG_IDS`; `POST /admin/extensions/reload` picks up a new install
-  without a restart. Schema 104 adds the package columns, the bucket and its policies.
-- **Extension workspaces in module settings.** Your modules, the organization defaults and team
-  defaults list each loaded extension workspace with a show/hide toggle (they are placed by
-  their group and cannot be reordered yet), so a Customers module hidden while it was core,
-  where it was off by default, can be turned back on.
-
-### Changed
-
-- **Customers moved to a private extension, `blueplm.customers`.** The Customers workspace, its
-  sidebar navigator and detail panel, the Odoo customer sync routes (`/customers/sync`,
-  `/sync/status`, `/sync/cancel`, now `/ext/blueplm.customers/...`) and
-  `modules/60-customers.sql` (now the extension's `sql/customers.sql`, unchanged in behaviour)
-  are removed from core, along with `recharts`, the read-only Odoo call guard only the sync
-  used, and the `module:customers` and `system:customer-enrichment` permission definitions,
-  which the extension's manifest now declares. Nothing is dropped from existing databases:
-  customer tables, data and saved team permissions stay as they are, and a saved sidebar
-  position for Customers is kept for the extension's workspace. Schema 104 removes the module
-  from the release manifest and the verify and emergency-lockdown tools (`reset.sql` still
-  drops the customer tables when they exist, so a full reset leaves a clean database); API 3.0.0
-  because the `/customers/*` routes are gone. To keep using Customers: apply the extension's
-  `sql/customers.sql`, add the organization to the API's `NATIVE_EXTENSIONS_ORG_IDS` and
-  redeploy, then install `blueplm.customers-<version>.bpx` for the organization.
-- The harness's NC18 control now re-grants the core seeder `create_default_job_titles` instead of
-  `seed_customer_categories`.
-
 ### Security
 
+- **Review decisions can no longer be forged** (schema 107). The `review_responses` policy let a
+  requester mark every reviewer's response approved, and anyone add themselves as a reviewer on
+  any review, in any organization. Every review write now goes through server functions that
+  check who is calling; client access to the review tables is read-only and follows vault
+  access. Comments and notifications can no longer be written into another organization.
+- **Workflow gate approvals count the current attempt only** (schema 107). Approvals from earlier
+  rounds counted toward a gate, so an all-must-approve gate could never pass after one
+  rejection, and a gate could pass on approvals of an older version. Gate rows take no direct
+  client writes, and two last approvals arriving together advance the file once.
+- Existing reviews are migrated in place into one-item packages; 4.7.x clients' review
+  writes fail without changing data.
+
+- **SOLIDWORKS serial numbers are private** (schema 106). Until now every organization member
+  could read every row of `solidworks_licenses`, serial included, and every assignment. Now an
+  administrator (`is_org_admin()`) reads every licence; anyone else reads only the licences
+  assigned to them, and only their own assignments. The policy that let a user update any column
+  of their own assignment is gone: repointing `license_id` exposed another serial. Activation
+  still works through `activate_solidworks_license()`. Released clients keep working: the licence
+  screen already showed a non-admin only their own licences.
 - **Extension install paths.** Packages are extracted through a staged, zip-slip-safe path; the
   manifest id and version are validated before any filesystem call; store downloads are
   verified against `X-Content-SHA256` and refused when it is missing or wrong; uninstall removes
@@ -218,17 +703,6 @@ BluePLM core**: organizations that use it install the `blueplm.customers` extens
 - The never-wired extension runtime (`src/lib/extensions/**`, the hidden extension-host window)
   and the stub handlers that reported success without doing anything. Sandboxed extensions can
   still be installed but have no runtime, and the app says so.
-
-## [4.7.7-beta.1] - 2026-10-28
-
-Test build for native inspection ballooning, cut from 4.7.6. Nothing else from main is in it:
-no schema change (still 103), no API change (2.8.3).
-
-### Changed
-- SOLIDWORKS service 1.25.0: Balloon drawing keeps balloons you moved by hand when it runs again,
-  and the toast counts them.
-- The Pull from / Push to SW Inspection buttons and the add-in service commands are removed.
-  Extract from drawing and Balloon drawing need only SOLIDWORKS, not an Inspection license.
 
 ## [4.7.6] - 2026-10-28
 
@@ -454,7 +928,7 @@ Renderer only - no schema change, no API change, SolidWorks service unchanged.
   to look up the people holding checkouts. The lookup sent one request listing every checked-out
   file ID (about 750 IDs, a 29 KB URL), and the gateway rejected it with a bare `400 Bad Request`.
   Rows held by someone else then showed no avatar and no checkout or check-in button, so they
-  looked checked in while refusing every checkout (Blake and David). The lookup now asks for the
+  looked checked in while refusing every checkout (two users). The lookup now asks for the
   few distinct owners (11 in that vault, batched at 100) using the `checked_out_by` the load
   already has, and maps each profile back to its files. It works for every role, since any
   signed-in user can read their organization's user list. A batch that fails no longer discards
@@ -473,13 +947,13 @@ Renderer and Electron main only - no schema change, no API change, SolidWorks se
 
 - **Fewer pauses from saving app state.** Every change to the app's state re-serialized and
   rewrote the whole saved-state blob in local storage, even when nothing that gets saved had
-  changed. Wilson's blob was 700 KB (about 13x larger than ours), so each write was a large
+  changed. One user's blob was 700 KB (about 13x larger than ours), so each write was a large
   allocation, and a burst of writes during load and refocus could stall the window for seconds. The
   adapter (`src/stores/persistStorage.ts`) now skips writes when the saved slices are unchanged,
   batches the rest (500 ms) and flushes on window hide and close. Saved slices that were rebuilt
   on every write are now referentially stable. A hard crash can lose up to 500 ms of changes.
-  The cause of Wilson's lag is not yet proven; the diagnostics below are there to confirm it.
-- **A broken IndexedDB repairs itself.** Blake's vault cache stopped working at 20:07 with
+  The cause of that user's lag is not yet proven; the diagnostics below are there to confirm it.
+- **A broken IndexedDB repairs itself.** One user's vault cache stopped working at 20:07 with
   `Internal error opening backing store for indexedDB.open`, and every load after that was a full
   fetch: the failed open was remembered for the life of the window and never retried. A failed open
   is now forgotten so the next call tries again, and on a corrupt-store error the app deletes the
@@ -488,7 +962,7 @@ Renderer and Electron main only - no schema change, no API change, SolidWorks se
   and disk). The load that hits the error still falls back to a full fetch without waiting.
 - **Every load no longer re-reads the whole vault cache.** After each load the checkout-profile
   update read the entire ~27,000-row cache entry back out of IndexedDB even when it had no profiles
-  to write (`profileCount: 0`, 7-20 s in Blake's log). It now returns before touching the database.
+  to write (`profileCount: 0`, 7-20 s in a user's log). It now returns before touching the database.
   A delta of 25 rows or fewer no longer rewrites the full entry either (350-500 ms and a large
   allocation for one changed row); it is written once the entry is ten minutes old or the delta
   grows. A skipped write only means the next load fetches the same few rows again.
@@ -498,7 +972,7 @@ Renderer and Electron main only - no schema change, no API change, SolidWorks se
   in one store update. An event for a file that is still waiting applies the batch first, so the
   order for any one file is unchanged.
 - **Navigating between folders no longer rescans the vault.** `getFilesInFolder` split and
-  lowercased the path of all ~29,000 rows on every call (~240 ms in Blake's log). The explorer now
+  lowercased the path of every row on every call (~240 ms in a user's log). The explorer now
   builds a parent-folder index the second time it is asked about the same file list, so moving
   between folders is a map lookup (about 0.05 ms in the harness against 55-185 ms), with the same
   rows in the same order. The first lookup after the file list changes is still the plain scan, so
@@ -508,7 +982,7 @@ Renderer and Electron main only - no schema change, no API change, SolidWorks se
   auto-download exclusions (about 8,000 in one vault). Each is now a single update. Exclusions for
   files that are on disk again are dropped, so the saved list stops growing without bound.
 - **The causes of failures are logged.** The vault cache open failure was logged as `{}`, and the
-  `Checkout profile lookup failed` warning (133 in Blake's log) as `"[object Object]"`. Both now
+  `Checkout profile lookup failed` warning (133 in a user's log) as `"[object Object]"`. Both now
   carry name, message, code, details, hint and status.
 
 ### Added
@@ -552,7 +1026,7 @@ Renderer, API 2.8.2 and schema 102.
   that still tested the role alone (`update_extension_config`, `update_google_drive_settings`).
   Removing someone from the team removes the access, since nothing writes their role column.
   **Apply `supabase/core.sql` and the two modules, and redeploy the API, for the server-side gates
-  to open for team members.** Reported by Wilson.
+  to open for team members.** Reported by a user.
 
 ## [4.7.0] - 2026-10-08
 
@@ -753,7 +1227,7 @@ Renderer-only release — no schema change, no API change.
   metadata, so they showed as local-only. A later full vault load was the only thing that put
   the badges right. Download now leaves the folder in the store and clears its cloud status in
   the same update as the files, including nested cloud directories that the download just gave
-  local content. Reported from doris: Burn Wire Release, 33 files.
+  local content. Reported from a user's machine: a 33-file folder.
 
 ## [4.4.2] - 2026-09-11
 
@@ -1145,7 +1619,7 @@ cannot discard a checkout at all.
 - **The holder of a share link could repoint it at another organization's file, or re-activate a link that had been revoked**, because the update policy constrained only who owned the row and not what the row became — a weaker rule than the insert path it imitates, reachable by a viewer. The only update a share link now admits is its own revocation. Nothing in BluePLM updates this table, so no user-facing flow changes; this closes a route that was open to anyone holding the publishable key.
 - **Any member of an organization could approve a pending review and record someone else as the reviewer.** The update policy checked organization membership only, while the insert policy directly above it correctly required `module:reviews:create`. Deciding a review now requires `module:reviews:edit`, and `reviewed_by` can only name the caller.
 - **API: a caller-supplied `X-Request-Id` is validated before it is used.** The header was copied verbatim onto every log line for the request and returned in 5xx bodies, so a caller could put newlines into the log stream to forge log entries, or an arbitrarily long payload onto every line of it. The header is now accepted only when it is at most 128 characters of `[A-Za-z0-9._-]`; anything else is replaced with a server-generated id and a warning that records only the rejected value's length. API version 2.7.0.
-- **SOLIDWORKS service: the regression fixture guard no longer authorizes the production vault.** `BLUEPLM_FIXTURE_ROOT=C:\BluePLM\br-vault` satisfied every rule the guard applied and authorized a write to every document in the vault. The minimum root depth is raised, and the vault is now named explicitly so that no folder inside it except the regression fixture root can be a fixture root at all — a depth floor cannot express that, because a production folder in the vault is exactly as deep as a legitimate throwaway sandbox.
+- **SOLIDWORKS service: the regression fixture guard no longer authorizes the production vault.** `BLUEPLM_FIXTURE_ROOT` set to the production vault root satisfied every rule the guard applied and authorized a write to every document in the vault. The minimum root depth is raised, and the vault is now named explicitly so that no folder inside it except the regression fixture root can be a fixture root at all — a depth floor cannot express that, because a production folder in the vault is exactly as deep as a legitimate throwaway sandbox.
 - **SOLIDWORKS service: the fixture guard now refuses a hard link.** A hard link sets no reparse point and reads back as an ordinary file, so a link planted inside the fixture root passed every check while the bytes behind it were a production document with a second directory entry elsewhere on the volume. The guard now asks the volume how many names a file has and refuses anything above one. This is the fourth bypass of this guard; the previous three were closed in `afbd8b8`.
 - **Every release until this one was tested only on a database with no history, and on the upgrade path a fix left the hole's output working** — installing schema 90, attacking it, and then applying 92 over the same database is what the owner's database actually does, and nobody had ever done it. Doing it leaves a share link that one organization's member minted against another organization's file still answering `is_valid: true` to an unauthenticated caller, still returning the victim's file id and organization id, and still spending downloads — and `verify_and_stamp_schema()` reports the schema clean over it. It survives _because_ of the fix: v92 made `validate_share_link` resolve the organization from the file instead of trusting the link, and the file genuinely is in that organization, so the link now reads as a correct one. A fresh install cannot show this, because a fresh install has no history for a fix to fail to undo. **Two things changed.** Applying the schema now revokes what the closed holes produced, in the same file that closes them: cross-tenant share links are deactivated, `workflow_history` rows naming another tenant's workflow are redacted, both are idempotent, both print the rows they acted on by name, and both copy every row verbatim into `schema_remediation_log` before touching it, so nothing an audit might want is destroyed. The history rows are _redacted rather than deleted_ deliberately — the disclosure already happened and deleting the evidence undoes none of it, while leaving the names in place lets it keep happening every time the page is opened. `check_release_residue()` withholds the stamp while any such row is live, which is the durable half: a release that closes a hole and forgets its output can no longer be stamped. And the harness gained a second lane, `harness/upgrade.ps1`, which installs the previous release, runs the full attack suite so the database carries real damage, applies the release under test in place with no teardown, and re-runs everything. A release now has to pass both lanes. Measured on this one, from a schema 81 baseline: **14 of 20 attacks succeed before the upgrade; after it, 0 of 20 succeed and none of the 13 enforced positive controls broke** — which is the half that matters, because a database that refuses everything would also score 0. The residue report is empty, the 103 columns still defaulting to `uuid_generate_v4()` are moved to `gen_random_uuid()`, and verification stamps 95.
 - **`consume_share_link` spent a download on a file `validate_share_link` refused** — with `require_auth = false` and the file soft-deleted after the link was minted, validation answered `is_valid: false, "Link not found"` while consumption answered `true` and incremented the counter. The `deleted_at IS NULL` test existed in only one of the two functions and, in that one, only inside the `require_auth` branch. **Both functions now call a single `share_link_admission()` and neither restates a condition**, because two hand-written lists of conditions that must agree will not stay in agreement — the previous release tried to hold them together by requiring the same words in both and that is exactly what passed while they disagreed. The posture check that was supposed to catch it compared the two on `require_auth` alone; it now walks a matrix of link states (good, expired, deactivated, allowance exhausted, file deleted, token unknown) against each class of caller (anonymous, another organization's member, the owner) and requires the two answers to be identical in all 27, which they are. Nothing in the app calls any share-link function, but all three are reachable over PostgREST by anyone holding the publishable key.
@@ -1489,7 +1963,7 @@ These entries were written for a 3.24.0 that was prepared and then not released;
 ### Fixed
 
 - **Ghost server-only files after move/delete** — moving a file into a subfolder (e.g. `CELSIUS-2/foo.SLDPRT` → `CELSIUS-2/Archive/foo.SLDPRT`) succeeded on disk but the next Refresh resurrected the original location as a synthetic cloud-only entry; an app restart was needed to clear it. Same family of bug caused `delete-server` files to reappear on Refresh. Root cause: the store kept two parallel views of server state (`state.files` with per-file `pdmData`, and a flat `state.serverFiles` array used by `refreshCurrentFolder` to detect cloud-only paths) and only `state.files` was updated on local mutations or realtime echoes — the stale `serverFiles` list still referenced the old path, so step 6 of the refresh pushed a synthetic `diffStatus: 'cloud'` row. Every mutator that touches `state.files` now mirrors the same shape change onto `state.serverFiles`: `renameFileInStore` (file + directory-prefix cases), `batchUpdateFileLocationsFromServer` (realtime move echoes), `updateFileLocationFromServer` (single-file realtime echoes), `removeCloudFile` (drop by id), `removeFilesFromStore` (drop by relative path with directory-prefix support), and `addCloudFile` (idempotent insert by id).
-- **`localHash` / `localVersion` drift causing files to falsely appear "synced"** — Wilson's intermittent symptom (BluePLM showed v2 while disk actually held v1, only fixable by deleting local and repulling) traced to several places where the trust chain for `localHash` and `localVersion` could drift from disk reality:
+- **`localHash` / `localVersion` drift causing files to falsely appear "synced"** — A user's intermittent symptom (BluePLM showed v2 while disk actually held v1, only fixable by deleting local and repulling) traced to several places where the trust chain for `localHash` and `localVersion` could drift from disk reality:
   - `useLoadFiles`: `existingLocalHashes` was seeded by full path but looked up by either full or relative path; IndexedDB hashes from prior sessions never reached the merge. Now seeded and looked up by both.
   - `useLoadFiles`: when a file appeared synced via path/extension match but had no on-disk hash evidence, the merge stamped `localVersion = pdmData.version` optimistically, so a file that was never opened locally was reported as the cloud version. Removed the optimistic fallback — `localVersion` now only advances when we actually have disk evidence.
   - `useLoadFiles`: "first-sight" files (a path that already has `pdmData.content_hash` but no `localHash`/`localVersion`) skipped hash computation when `skipHashComputation` was true, so the file's status was determined by missing data. They now force a single hash on first sight even in the skip path.

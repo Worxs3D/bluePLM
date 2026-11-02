@@ -57,3 +57,10 @@ jobs:
 
       - name: Test eDrawings Windows contracts
         run: npm run test:edrawings-windows
+
+      # The checks that used to be manual: a dialog over the embedded preview is on top and
+      # clickable, no .NET 8 Desktop Runtime means no embedded option, and a UNC vault opens in
+      # eDrawings while the embedded preview says it is not local. Real windows, a real click, a
+      # real SMB share; a stand-in panel and a stub viewer replace eDrawings, which CI lacks.
+      - name: eDrawings system checks
+        run: npm run test:edrawings-system

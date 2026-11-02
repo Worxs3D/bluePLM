@@ -9,7 +9,8 @@
  * nothing here runs SQL.
  */
 import { useState } from 'react'
-import { Check, Copy, Loader2, Power, PowerOff, Puzzle, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Check, Copy, Power, PowerOff, RefreshCw, Trash2, Upload } from 'lucide-react'
+
 import { usePDMStore } from '@/stores/pdmStore'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -21,6 +22,8 @@ import {
 } from '@/lib/nativeExtensions/orgExtensions'
 import { reloadNativeExtensions } from '@/lib/nativeExtensions/runtime'
 import type { NativeExtensionManifest, OrgNativeExtensionRow } from '@/types/nativeExtensions'
+import { Badge, Button, Callout } from '@/components/core/ui'
+import { SettingsGroup, SettingsSection } from '@/features/settings/components/ui'
 
 interface PendingInstall {
   manifest: NativeExtensionManifest
@@ -38,27 +41,27 @@ function SqlFiles({ files }: { files: Array<{ name: string; content: string }> }
   const [copied, setCopied] = useState<string | null>(null)
   if (files.length === 0) return null
   return (
-    <div className="mt-3 rounded-lg border border-plm-warning/40 bg-plm-warning/10 p-3 text-sm">
-      <p className="font-medium text-plm-fg">{t('nativeExtensions.sqlTitle')}</p>
-      <p className="mt-1 text-xs text-plm-fg-muted">{t('nativeExtensions.sqlBody')}</p>
+    <Callout tone="warning" title={t('nativeExtensions.sqlTitle')} className="mt-3">
+      <p>{t('nativeExtensions.sqlBody')}</p>
       <ul className="mt-2 space-y-1">
         {files.map((file) => (
           <li key={file.name} className="flex items-center gap-2">
-            <code className="text-xs text-plm-fg">{file.name}</code>
-            <button
-              className="btn btn-ghost btn-sm flex items-center gap-1"
+            <code className="font-mono text-[13px] text-ui-fg">{file.name}</code>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={async () => {
                 const result = await copyToClipboard(file.content)
                 if (result.success) setCopied(file.name)
               }}
+              icon={copied === file.name ? <Check size={12} /> : <Copy size={12} />}
             >
-              {copied === file.name ? <Check size={12} /> : <Copy size={12} />}
               {copied === file.name ? t('nativeExtensions.copied') : t('nativeExtensions.copy')}
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
-    </div>
+    </Callout>
   )
 }
 
@@ -98,7 +101,9 @@ export function OrgExtensionsPanel() {
 
   const pickPackage = () =>
     run('pick', async () => {
-      const result = await window.electronAPI.extensions.nativeInspect()
+      const api = window.electronAPI
+      if (!api) return
+      const result = await api.extensions.nativeInspect()
       if (!result.success) {
         if (!result.canceled) throw new Error(result.error ?? 'Invalid package')
         return
@@ -165,131 +170,136 @@ export function OrgExtensionsPanel() {
   }
 
   return (
-    <section className="mb-6 rounded-xl border border-plm-border bg-plm-bg-light p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-plm-fg flex items-center gap-2">
-            <Puzzle size={18} className="text-plm-accent" />
-            {t('nativeExtensions.sectionTitle')}
-          </h2>
-          <p className="mt-1 text-xs text-plm-fg-muted max-w-2xl">
-            {t('nativeExtensions.sectionDescription')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            className="btn btn-ghost btn-sm flex items-center gap-1.5"
+    <SettingsSection
+      title={t('nativeExtensions.sectionTitle')}
+      description={t('nativeExtensions.sectionDescription')}
+      actions={
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={!orgId || busy !== null}
             onClick={() => run('reload', reload)}
+            icon={<RefreshCw size={14} className={busy === 'reload' ? 'animate-spin' : ''} />}
           >
-            <RefreshCw size={14} className={busy === 'reload' ? 'animate-spin' : ''} />
             {t('nativeExtensions.reload')}
-          </button>
+          </Button>
           {isAdmin && available && (
-            <button
-              className="btn btn-primary btn-sm flex items-center gap-1.5"
+            <Button
+              variant="primary"
+              size="sm"
               disabled={!orgId || busy !== null}
+              loading={busy === 'pick'}
               onClick={pickPackage}
+              icon={<Upload size={14} />}
             >
-              {busy === 'pick' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {t('nativeExtensions.installButton')}
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
-
-      {error && (
-        <p className="mt-3 text-sm text-plm-error break-words">
-          {t('nativeExtensions.error', { message: error })}
-        </p>
-      )}
+        </>
+      }
+    >
+      {error && <Callout className="mt-3" tone="error">{t('nativeExtensions.error', { message: error })}</Callout>}
 
       {pending && (
-        <div className="mt-4 rounded-lg border border-plm-accent/40 bg-plm-accent/5 p-3">
-          <p className="text-sm font-medium text-plm-fg">
-            {t('nativeExtensions.confirmInstallTitle', {
-              name: pending.manifest.name,
-              version: pending.manifest.version,
-            })}
-          </p>
-          <p className="mt-1 text-xs text-plm-fg-muted">{t('nativeExtensions.confirmInstallBody')}</p>
-          <p className="mt-1 text-xs font-mono text-plm-fg-dim break-all">
+        <Callout
+          className="mt-3"
+          tone="info"
+          title={t('nativeExtensions.confirmInstallTitle', {
+            name: pending.manifest.name,
+            version: pending.manifest.version,
+          })}
+        >
+          <p>{t('nativeExtensions.confirmInstallBody')}</p>
+          <p className="mt-1 break-all font-mono text-[13px] text-ui-fg-secondary">
             {pending.manifest.id} · SHA-256 {pending.sha256}
           </p>
           <SqlFiles files={pending.sqlFiles} />
           <div className="mt-3 flex gap-2">
-            <button
-              className="btn btn-primary btn-sm flex items-center gap-1.5"
+            <Button
+              variant="primary"
+              size="sm"
               disabled={busy !== null}
+              loading={busy === 'install'}
               onClick={confirmInstall}
             >
-              {busy === 'install' && <Loader2 size={14} className="animate-spin" />}
               {t('nativeExtensions.confirm')}
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPending(null)}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPending(null)}>
               {t('nativeExtensions.cancel')}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Callout>
       )}
 
       <SqlFiles files={installedSql} />
 
-      <ul className="mt-4 divide-y divide-plm-border">
+      <SettingsGroup>
         {rows.length === 0 && (
-          <li className="py-3 text-sm text-plm-fg-muted">{t('nativeExtensions.none')}</li>
+          <div className="py-4 text-[14px] text-ui-fg-secondary">
+            {t('nativeExtensions.none')}
+          </div>
         )}
         {rows.map((row) => {
           const state = states[row.extensionId]
           const name = typeof row.manifest.name === 'string' ? row.manifest.name : row.extensionId
           return (
-            <li key={row.extensionId} className="py-3 flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-plm-fg">
-                  {name} <span className="text-plm-fg-muted">{row.version}</span>
-                </p>
-                <p className="text-xs text-plm-fg-muted">
-                  {row.extensionId} · {statusText(row)}
-                </p>
+            <div key={row.extensionId} className="flex items-start gap-3 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[14px] text-ui-fg">
+                  {name}
+                  <span className="text-ui-fg-secondary">{row.version}</span>
+                  <Badge
+                    tone={
+                      row.enabled ? (state?.status === 'error' ? 'error' : 'success') : 'neutral'
+                    }
+                  >
+                    {statusText(row)}
+                  </Badge>
+                </div>
+                <div className="mt-1 text-[14px] text-ui-fg-secondary">{row.extensionId}</div>
                 {row.enabled && state?.status === 'error' && state.error && (
-                  <p className="mt-1 text-xs text-plm-error break-words">{state.error}</p>
+                  <p className="mt-1 break-words text-[13px] text-ui-danger">{state.error}</p>
                 )}
               </div>
               {isAdmin && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    className="btn btn-ghost btn-sm flex items-center gap-1"
+                <div className="flex flex-shrink-0 items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={busy !== null}
                     onClick={() => toggle(row)}
+                    icon={row.enabled ? <PowerOff size={14} /> : <Power size={14} />}
                   >
-                    {row.enabled ? <PowerOff size={14} /> : <Power size={14} />}
                     {row.enabled ? t('nativeExtensions.disable') : t('nativeExtensions.enable')}
-                  </button>
+                  </Button>
                   {confirmUninstall === row.extensionId ? (
-                    <button
-                      className="btn btn-danger btn-sm flex items-center gap-1"
+                    <Button
+                      variant="danger"
+                      size="sm"
                       disabled={busy !== null}
                       onClick={() => uninstall(row)}
+                      icon={<Trash2 size={14} />}
                     >
-                      <Trash2 size={14} />
                       {t('nativeExtensions.confirmUninstall', { name })}
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      className="btn btn-ghost btn-sm flex items-center gap-1 text-plm-error"
+                    <Button
+                      variant="danger-subtle"
+                      size="sm"
                       disabled={busy !== null}
                       onClick={() => setConfirmUninstall(row.extensionId)}
+                      icon={<Trash2 size={14} />}
                     >
-                      <Trash2 size={14} />
                       {t('nativeExtensions.uninstall')}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
-            </li>
+            </div>
           )
         })}
-      </ul>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
   )
 }

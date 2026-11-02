@@ -17,7 +17,7 @@
  */
 import type { DiskEntry, FakeDisk } from './fakeElectron'
 
-type ElectronAPI = Window['electronAPI']
+type ElectronAPI = NonNullable<Window['electronAPI']>
 
 export interface FakeFsOptions {
   /** The vault root, for `listWorkingFiles` and `relativePath`. */
@@ -186,10 +186,6 @@ export function createFakeFsApi(disk: FakeDisk, options: FakeFsOptions): Partial
         disk.removeTree(path)
         return { path, success: true }
       })
-      return { success: results.every((r) => r.success), results, summary: summary(results) }
-    },
-    async trashBatch(paths) {
-      const results = paths.map((path) => trashOne(path, true))
       return { success: results.every((r) => r.success), results, summary: summary(results) }
     },
     async trashEmptyDirs(paths) {

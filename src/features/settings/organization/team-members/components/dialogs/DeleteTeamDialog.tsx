@@ -7,6 +7,7 @@
  * @module team-members/DeleteTeamDialog
  */
 
+import { Button } from '@/components/core/ui'
 import type { TeamWithDetails } from '../../types'
 
 export interface DeleteTeamDialogProps {
@@ -23,25 +24,25 @@ export function DeleteTeamDialog({ team, onConfirm, onClose, isDeleting }: Delet
       onClick={onClose}
     >
       <div
-        className="bg-plm-bg-light border border-plm-border rounded-xl p-6 max-w-md w-full mx-4"
+        className="bg-ui-field border border-ui-divider rounded-xl p-6 max-w-md w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-medium text-plm-fg mb-4">Delete Team</h3>
-        <p className="text-base text-plm-fg-muted mb-4">
+        <h3 className="text-lg font-medium text-ui-fg mb-4">Delete Team</h3>
+        <p className="text-[14px] text-ui-fg-secondary mb-4">
           Are you sure you want to delete <strong>{team.name}</strong>? This will remove all{' '}
           {team.member_count} members from the team and delete all associated permissions.
         </p>
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="btn btn-ghost">
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="danger"
             onClick={onConfirm}
             disabled={isDeleting}
-            className="btn bg-plm-error text-white hover:bg-plm-error/90"
           >
             {isDeleting ? 'Deleting...' : 'Delete Team'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -175,6 +175,53 @@ jobs:
             release/alpha*.yml
           if-no-files-found: error
 
+  # Upgrades the production database with the app's own migration runner (scripts/db-migrate.ts)
+  # before anything is published, so nobody who updates is met by "database upgrade required".
+  # Same plan, lock, transactions and checksums as the in-app upgrade. A migration must keep the
+  # previous release working (database.mdc), since installs update over the following hours.
+  # Without the PRODUCTION_DATABASE_URL secret (the Session pooler string, port 5432) the job
+  # skips and an admin applies the upgrade in the app as before. A refused or failed upgrade
+  # stops the release.
+  migrate-db:
+    needs: [verify, check-release-metadata]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+    steps:
+      - name: Checkout
+        if: ${{ env.DATABASE_URL != '' }}
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        if: ${{ env.DATABASE_URL != '' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # --ignore-scripts: the runner needs pg and tsx, none of the desktop's install scripts, and
+      # none of them should run on a machine holding the database password.
+      - name: Install dependencies
+        if: ${{ env.DATABASE_URL != '' }}
+        run: npm ci --ignore-scripts
+
+      - name: Apply pending migrations
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::PRODUCTION_DATABASE_URL is not set; an admin applies the upgrade in the app."
+            exit 0
+          fi
+          # A prerelease tag (v5.3.0-beta.1) ships to testers, not to everyone: it must not move
+          # the production database ahead of the release the rest of the organization runs.
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "::notice::$GITHUB_REF_NAME is a prerelease; the production database is not upgraded."
+            exit 0
+          fi
+          npx tsx scripts/db-migrate.ts
+
   build-api:
     needs: [verify, check-release-metadata]
     runs-on: ubuntu-latest
@@ -218,7 +265,7 @@ jobs:
             GIT_COMMIT_SHA=${{ github.sha }}
 
   release:
-    needs: [build-windows, build-macos, build-api]
+    needs: [build-windows, build-macos, build-api, migrate-db]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -296,15 +343,77 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      # A major release (X.0.0) can need the database upgraded before older clients may update to it
+      # (5.0.0 renamed the schema), so it is published as a draft and released by hand after the
+      # database upgrade. Every other release publishes at once.
+      - name: Detect major release
+        id: major
+        shell: bash
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          if [[ "${VERSION#v}" =~ ^[0-9]+\.0\.0$ ]]; then
+            echo "IS_MAJOR=true" >> $GITHUB_OUTPUT
+          else
+            echo "IS_MAJOR=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.get_version.outputs.VERSION }}
           body: ${{ steps.changelog.outputs.CHANGELOG }}
-          draft: false
+          draft: ${{ steps.major.outputs.IS_MAJOR }}
           prerelease: ${{ steps.prerelease.outputs.IS_PRERELEASE }}
           files: |
             dist/windows/*
             dist/macos/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # BluePLM Web (blueplm.io) moves with releases, not with every push to main, so the browser app
+  # only ever runs released code. It goes out after the release is published, so the sign-in
+  # page's "Download the desktop app" button finds this release's installers. Same build as
+  # `npm run deploy:web`: the renderer built for the browser, served by the Workers static-assets
+  # service in web/wrangler.jsonc on the route blueplm.io/*. The repository variables carry the
+  # public build values (Supabase URL, anon key, the org's API URL for connect-src).
+  # A major release (X.0.0) is published as a draft and may need the database upgraded first
+  # (5.0.0 renamed the schema), so its web build is deployed by hand (`npm run deploy:web`) in the
+  # cutover window, after the database upgrade, instead of here.
+  deploy-web:
+    needs: [release]
+    if: ${{ !endsWith(github.ref_name, '.0.0') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # --ignore-scripts: the web build needs none of the desktop's install scripts (electron,
+      # native modules), and none of them should run on a machine holding the Cloudflare token.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build BluePLM Web
+        run: npm run build:web
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          BLUEPLM_WEB_API_URLS: ${{ vars.BLUEPLM_WEB_API_URLS }}
+
+      - name: Deploy to blueplm.io
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.156.0'
+          command: deploy --config web/wrangler.jsonc

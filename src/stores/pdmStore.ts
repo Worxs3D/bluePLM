@@ -15,6 +15,7 @@ import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { log } from '@/lib/logger'
+import { IS_WEB_BUILD } from '@/lib/platform'
 import { isExtensionWorkspaceId } from '@/lib/nativeExtensions/registry'
 import { isCadPreviewMode } from '@/types/cadPreviewMode'
 import { STORE_MUTATION_THRESHOLD_MS } from '@/lib/performanceThresholds'
@@ -26,7 +27,8 @@ import {
   MODULES_MOVED_TO_EXTENSIONS,
   getChildModules,
 } from '../types/modules'
-import type { KeybindingsConfig, SettingsTab } from '../types/settings'
+import type { SettingsTab } from '../types/settings'
+import { restorePersistedShortcuts } from '../lib/keybindings/bindings'
 import type {
   PDMStoreState,
   Tab,
@@ -81,6 +83,7 @@ import {
   createItemBrowserSlice,
   createVaultAuditSlice,
   createReviewsSlice,
+  createDbUpgradeSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
 
@@ -96,6 +99,25 @@ function getLocalStorage(): Storage | null {
 
 const persistStorage = createPersistStorage({ getStorage: getLocalStorage })
 flushPersistStorageOnPageHide(persistStorage)
+
+/**
+ * The persisted theme, or dark. Up to 4.10.0 a date check switched the theme to Halloween in
+ * October and Christmas in December and left a `seasonal-theme-applied-<theme>` marker; a theme
+ * that still carries its marker was never picked by the user, so it goes back to dark (once).
+ */
+function restoreTheme(persisted: ThemeMode | undefined): ThemeMode {
+  if (!persisted) return 'dark'
+  if (persisted !== 'halloween' && persisted !== 'christmas') return persisted
+  const storage = getLocalStorage()
+  const marker = `seasonal-theme-applied-${persisted}`
+  try {
+    if (!storage?.getItem(marker)) return persisted
+    storage.removeItem(marker)
+  } catch {
+    return persisted
+  }
+  return 'dark'
+}
 
 /**
  * Remove the persisted store and stop it being written again until the page reloads. Use this
@@ -198,6 +220,7 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createItemBrowserSlice(...a),
       ...createVaultAuditSlice(...a),
       ...createReviewsSlice(...a),
+      ...createDbUpgradeSlice(...a),
     })),
     {
       name: PERSIST_STORAGE_NAME,
@@ -230,6 +253,7 @@ export const usePDMStore = create<PDMStoreState>()(
         detailsPanelHeight: state.detailsPanelHeight,
         rightPanelVisible: state.rightPanelVisible,
         rightPanelWidth: state.rightPanelWidth,
+        reviewCommentsVisible: state.reviewCommentsVisible,
         rightPanelTabs: state.rightPanelTabs,
         bottomPanelTabOrder: state.bottomPanelTabOrder,
 
@@ -266,7 +290,6 @@ export const usePDMStore = create<PDMStoreState>()(
         // Theme & Appearance
         // ═══════════════════════════════════════════════════════════════
         theme: state.theme,
-        autoApplySeasonalThemes: state.autoApplySeasonalThemes,
         language: state.language,
 
         // ═══════════════════════════════════════════════════════════════
@@ -323,7 +346,8 @@ export const usePDMStore = create<PDMStoreState>()(
         logSharingEnabled: state.logSharingEnabled,
         cadPreviewMode: state.cadPreviewMode,
         topbarConfig: state.topbarConfig,
-        keybindings: state.keybindings,
+        shortcutOverrides: state.shortcutOverrides,
+        quickExportFolder: state.quickExportFolder,
         pinnedFolders: state.pinnedFolders,
         pinnedSectionExpanded: state.pinnedSectionExpanded,
         colorSwatches: state.colorSwatches,
@@ -425,7 +449,12 @@ export const usePDMStore = create<PDMStoreState>()(
         const persistedActiveView = persisted.activeView as string | undefined
         const validModuleIds: Set<string> = new Set(MODULES.map((m) => m.id))
         let validActiveView: SidebarView = 'explorer'
-        if (persistedActiveView && validModuleIds.has(persistedActiveView)) {
+        // Settings used to be a sidebar view; it is a modal now, so a persisted 'settings' falls back.
+        if (
+          persistedActiveView &&
+          persistedActiveView !== 'settings' &&
+          validModuleIds.has(persistedActiveView)
+        ) {
           validActiveView = persistedActiveView as SidebarView
         } else if (persistedActiveView?.startsWith('group-')) {
           const children = getChildModules(persistedActiveView, getDefaultModuleConfig())
@@ -460,10 +489,12 @@ export const usePDMStore = create<PDMStoreState>()(
             ...((persisted.topbarConfig as Partial<typeof currentState.topbarConfig>) || {}),
           },
           // Restore SolidWorks settings
+          // Always off on BluePLM Web (no SOLIDWORKS there), whatever the web storage holds.
           solidworksIntegrationEnabled:
-            persisted.solidworksIntegrationEnabled !== undefined
+            !IS_WEB_BUILD &&
+            (persisted.solidworksIntegrationEnabled !== undefined
               ? (persisted.solidworksIntegrationEnabled as boolean)
-              : true, // Default enabled, onboarding will auto-detect
+              : true), // Default enabled, onboarding will auto-detect
           solidworksPath: (persisted.solidworksPath as string | null) || null,
           solidworksDmLicenseKey: (persisted.solidworksDmLicenseKey as string | null) || null,
           solidworksProgId: (persisted.solidworksProgId as string | null) || null,
@@ -504,13 +535,8 @@ export const usePDMStore = create<PDMStoreState>()(
           // Ensure listRowSize has a default
           listRowSize: (persisted.listRowSize as number) || 24,
           treeRowSize: (persisted.treeRowSize as number) || 24,
-          // Ensure theme has a default
-          theme: (persisted.theme as ThemeMode) || 'dark',
-          // Restore autoApplySeasonalThemes (default to true)
-          autoApplySeasonalThemes:
-            persisted.autoApplySeasonalThemes !== undefined
-              ? (persisted.autoApplySeasonalThemes as boolean)
-              : true,
+          // Ensure theme has a default; undo a seasonal theme the removed date-based auto-switch picked
+          theme: restoreTheme(persisted.theme as ThemeMode | undefined),
           // Ensure language has a default
           language: (persisted.language as Language) || 'en',
           // Restore hideCloudOnlyFolders (default to false - show all folders)
@@ -524,25 +550,10 @@ export const usePDMStore = create<PDMStoreState>()(
             (persisted.settingsTab as string) === 'vault-audit'
               ? 'solidworks'
               : (persisted.settingsTab as SettingsTab) || 'profile',
-          // Ensure keybindings has defaults (merge with defaults for new keybindings)
-          keybindings: Object.assign(
-            {
-              navigateUp: { key: 'ArrowUp' },
-              navigateDown: { key: 'ArrowDown' },
-              expandFolder: { key: 'ArrowRight' },
-              collapseFolder: { key: 'ArrowLeft' },
-              selectAll: { key: 'a', ctrlKey: true },
-              copy: { key: 'c', ctrlKey: true },
-              cut: { key: 'x', ctrlKey: true },
-              paste: { key: 'v', ctrlKey: true },
-              delete: { key: 'Delete' },
-              escape: { key: 'Escape' },
-              openFile: { key: 'Enter' },
-              toggleDetailsPanel: { key: 'p', ctrlKey: true },
-              refresh: { key: 'r', ctrlKey: true },
-            },
-            (persisted.keybindings as KeybindingsConfig) || {},
-          ),
+          // Only changed shortcuts are stored; an older install's full `keybindings` record is
+          // migrated to overrides once.
+          shortcutOverrides: restorePersistedShortcuts(persisted.shortcutOverrides, persisted.keybindings),
+          quickExportFolder: (persisted.quickExportFolder as string | null | undefined) ?? null,
           // Ensure onboarding state has defaults
           onboardingComplete: (persisted.onboardingComplete as boolean) || false,
           logSharingEnabled: (persisted.logSharingEnabled as boolean) || false,

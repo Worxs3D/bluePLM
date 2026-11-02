@@ -12,7 +12,7 @@ import { createFakeElectron } from '@/test/fakeElectron'
 
 import type { Misses } from './lenientClient'
 
-type ElectronAPI = Window['electronAPI']
+type ElectronAPI = NonNullable<Window['electronAPI']>
 type Fn = (...args: unknown[]) => unknown
 
 /** Window and log calls with no disk, network or service behind them: answered by the real preload. */
@@ -20,10 +20,7 @@ const REAL_PASSTHROUGH = new Set([
   'log',
   'getVersion',
   'getPlatform',
-  'minimize',
-  'maximize',
   'close',
-  'isMaximized',
   'getZoomFactor',
   'setZoomFactor',
   'onZoomChanged',
@@ -101,9 +98,6 @@ export function createPerfElectron(
   const scan = () => ({ success: true, files: copy(vault.localEntries) })
 
   const own: Record<string, unknown> = {
-    async getWorkingDir() {
-      return root
-    },
     async setWorkingDir(path: string) {
       return { success: true, path }
     },
@@ -130,12 +124,17 @@ export function createPerfElectron(
         results: files.map((f) => ({ relativePath: f.relativePath, hash: hashByPath.get(f.relativePath) ?? '' })),
       }
     },
+    // No crash happened: the inert answer is a truthy object, which the startup hook would read as
+    // a crash notice and toast about.
+    async consumeCrashNotice() {
+      return null
+    },
     async fileExists(path: string) {
       const rel = path.slice(root.length + 1).replace(/\\/g, '/')
       return vault.localEntries.some((e) => e.relativePath === rel)
     },
     extensions: new Proxy(
-      { getAll: async () => [], fetchStore: async () => [] } as Record<string, unknown>,
+      {} as Record<string, unknown>,
       {
         get(obj, prop) {
           if (typeof prop === 'symbol') return undefined

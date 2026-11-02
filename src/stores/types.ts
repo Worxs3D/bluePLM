@@ -9,12 +9,8 @@ import type {
   OrgNativeExtensionRow,
   WorkspaceRegistration,
 } from '../types/nativeExtensions'
-import type {
-  KeybindingsConfig,
-  KeybindingAction,
-  Keybinding,
-  SettingsTab,
-} from '../types/settings'
+import type { SettingsTab } from '../types/settings'
+import type { ShortcutOverrides } from '../lib/keybindings/bindings'
 import type {
   WorkflowTemplate,
   WorkflowState,
@@ -28,6 +24,7 @@ import type {
 } from '../features/settings/organization/team-members/types'
 import type { OperationLogSlice } from './slices/operationLogSlice'
 import type { VaultAuditSlice } from './slices/vaultAuditSlice'
+import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
@@ -591,10 +588,23 @@ export interface UISlice {
   rightPanelWidth: number
   rightPanelTab: DetailsPanelTab | null
   rightPanelTabs: DetailsPanelTab[]
+  /** Reviews view: the comment sidebar beside the drawing (the top-bar right-pane toggle drives it there) */
+  reviewCommentsVisible: boolean
   bottomPanelTabOrder: DetailsPanelTab[]
 
   // Settings navigation
+  /** The settings modal is open. Settings is a modal over the app, never a sidebar view. */
+  settingsOpen: boolean
   settingsTab: SettingsTab
+  /** Live query of the settings sidebar search box; non-empty shows results in the main view. */
+  settingsSearchQuery: string
+  /** Keyboard-highlighted result (index into the flattened results); reset on each query. */
+  settingsSearchActiveIndex: number
+  /**
+   * A setting to scroll to and flash once its panel renders, set when a search result is
+   * opened. `nonce` lets opening the same setting twice fire again.
+   */
+  settingsFocusTarget: { tab: SettingsTab; label: string; nonce: number } | null
 
   // Google Drive navigation
   gdriveCurrentFolderId: string | null
@@ -608,9 +618,6 @@ export interface UISlice {
   terminalVisible: boolean
   terminalHeight: number
   terminalHistory: string[]
-
-  // Deep Link
-  pendingDeepLinkInstall: { extensionId: string; version?: string } | null
 
   // Clipboard (unified across FilePane and FileTree)
   clipboard: { files: LocalFile[]; operation: 'copy' | 'cut' } | null
@@ -655,6 +662,7 @@ export interface UISlice {
   setDetailsPanelHeight: (height: number) => void
   setDetailsPanelTab: (tab: DetailsPanelTab) => void
   toggleRightPanel: () => void
+  toggleReviewComments: () => void
   setRightPanelWidth: (width: number) => void
   setRightPanelTab: (tab: DetailsPanelTab | null) => void
   moveTabToRight: (tab: DetailsPanelTab) => void
@@ -665,11 +673,16 @@ export interface UISlice {
   addTerminalHistory: (command: string) => void
 
   // Settings navigation
+  /** Open the settings modal, on `tab` when given (else the last tab shown). */
+  openSettings: (tab?: SettingsTab) => void
+  closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
+  setSettingsSearchQuery: (query: string) => void
+  setSettingsSearchActiveIndex: (index: number) => void
+  /** Open `tab`, clear the search, and ask the panel to reveal the setting named `label`. */
+  openSettingFromSearch: (tab: SettingsTab, label: string) => void
+  clearSettingsFocusTarget: () => void
 
-  // Deep Link
-  setPendingDeepLinkInstall: (data: { extensionId: string; version?: string } | null) => void
-  clearPendingDeepLinkInstall: () => void
 
   // Clipboard
   setClipboard: (clipboard: { files: LocalFile[]; operation: 'copy' | 'cut' } | null) => void
@@ -729,9 +742,11 @@ export interface SettingsSlice {
   listRowSize: number
   treeRowSize: number
   theme: ThemeMode
-  autoApplySeasonalThemes: boolean
   language: Language
-  keybindings: KeybindingsConfig
+  /** Keyboard shortcuts the user changed: action id -> its keys (empty = no key). Defaults are in the registry. */
+  shortcutOverrides: ShortcutOverrides
+  /** Where the export shortcuts write on this computer; null exports next to each source file */
+  quickExportFolder: string | null
 
   // State - Tree Filtering
   hideCloudOnlyFolders: boolean // Hide folders containing only cloud (non-downloaded) files
@@ -820,10 +835,14 @@ export interface SettingsSlice {
   setListRowSize: (size: number) => void
   setTreeRowSize: (size: number) => void
   setTheme: (theme: ThemeMode) => void
-  setAutoApplySeasonalThemes: (enabled: boolean) => void
   setLanguage: (language: Language) => void
-  setKeybinding: (action: KeybindingAction, keybinding: Keybinding) => void
-  resetKeybindings: () => void
+  /** Sets an action's whole key list (primary first); keys equal to the defaults clear the override. */
+  setShortcutBindings: (actionId: string, combos: readonly string[]) => void
+  resetShortcut: (actionId: string) => void
+  resetAllShortcuts: () => void
+  /** Replaces every override (import). */
+  replaceShortcutOverrides: (overrides: ShortcutOverrides) => void
+  setQuickExportFolder: (folder: string | null) => void
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (enabled: boolean) => void
@@ -1768,7 +1787,6 @@ export type IntegrationId =
   | 'solidworks'
   | 'google-drive'
   | 'odoo'
-  | 'slack'
   | 'webhooks'
   | 'api'
 
@@ -1879,79 +1897,6 @@ export interface IntegrationsSlice {
 // Extensions Slice
 // ============================================================================
 
-/**
- * Extension state as the main process reports it. A package is installed on this
- * computer or it is not; the desktop has no extension runtime, so there is no
- * "active", "disabled" or "error" state to report.
- */
-export type ExtensionLifecycleState = 'not-installed' | 'installed'
-
-/** Extension verification status */
-export type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
-
-/** Extension category */
-export type ExtensionCategoryType = 'sandboxed' | 'native'
-
-/** An installed extension package (from IPC) */
-export interface InstalledExtension {
-  manifest: {
-    id: string
-    name: string
-    version: string
-    publisher: string
-    description?: string
-    icon?: string
-    repository?: string
-    license?: string
-    category?: ExtensionCategoryType
-    main?: string
-    serverMain?: string
-  }
-  state: ExtensionLifecycleState
-  verification: ExtensionVerificationStatus
-  installedAt?: string
-}
-
-/** Store extension listing (from API) */
-export interface StoreExtensionListing {
-  id: string
-  extensionId: string
-  publisher: {
-    id: string
-    name: string
-    slug: string
-    verified: boolean
-  }
-  name: string
-  description?: string
-  iconUrl?: string
-  repositoryUrl: string
-  license: string
-  category: ExtensionCategoryType
-  categories: string[]
-  tags: string[]
-  verified: boolean
-  featured: boolean
-  downloadCount: number
-  latestVersion: string
-  createdAt: string
-  updatedAt: string
-  deprecation?: {
-    deprecatedAt: string
-    reason: string
-    replacementId?: string
-    sunsetDate?: string
-  }
-}
-
-/** Result of an install, sideload or uninstall. */
-export interface ExtensionActionResult {
-  success: boolean
-  error?: string
-  /** Refused in the renderer because the user is not an administrator. */
-  adminRequired?: boolean
-}
-
 export interface ExtensionsSlice {
   // ═══════════════════════════════════════════════════════════════
   // Native extensions (org-installed; never persisted)
@@ -1988,89 +1933,6 @@ export interface ExtensionsSlice {
 
   /** Open (workspace id) or close (null) an extension's right panel. */
   setExtensionRightPanel: (workspaceId: string | null) => void
-
-  // ═══════════════════════════════════════════════════════════════
-  // State
-  // ═══════════════════════════════════════════════════════════════
-
-  /** Installed extensions keyed by extension ID */
-  installedExtensions: Record<string, InstalledExtension>
-
-  /** Extensions from the store (marketplace) */
-  storeExtensions: StoreExtensionListing[]
-
-  /** Whether store is currently loading */
-  storeLoading: boolean
-
-  /** Store verification filter */
-  storeVerifiedOnly: boolean
-
-  /** Store sort order */
-  storeSort: 'popular' | 'recent' | 'name'
-
-  // ═══════════════════════════════════════════════════════════════
-  // Synchronous Actions
-  // ═══════════════════════════════════════════════════════════════
-
-  /** Set all installed extensions */
-  setInstalledExtensions: (extensions: Record<string, InstalledExtension>) => void
-
-  /** Remove an installed extension from state */
-  removeInstalledExtension: (extensionId: string) => void
-
-  /** Set store extensions */
-  setStoreExtensions: (extensions: StoreExtensionListing[]) => void
-
-  /** Set store loading state */
-  setStoreLoading: (loading: boolean) => void
-
-  /**
-   * Apply an `extension:state-change` event from main: 'not-installed' removes the
-   * extension, 'installed' reloads the list from main.
-   */
-  handleExtensionStateChange: (extensionId: string, state: ExtensionLifecycleState) => void
-
-  // ═══════════════════════════════════════════════════════════════
-  // Async Actions (call IPC via window.electronAPI.extensions)
-  // ═══════════════════════════════════════════════════════════════
-
-  /** Load all installed extensions from IPC */
-  loadInstalledExtensions: () => Promise<void>
-
-  /** Fetch store extensions from API */
-  fetchStoreExtensions: () => Promise<void>
-
-  /** Search store extensions */
-  searchStoreExtensions: (query?: string, category?: string) => Promise<void>
-
-  /** Install an extension from the store (administrators only) */
-  installExtension: (extensionId: string, version?: string) => Promise<ExtensionActionResult>
-
-  /** Sideload an extension from a .bpx file (administrators only) */
-  sideloadExtension: (
-    bpxPath: string,
-    acknowledgeUnsigned?: boolean,
-  ) => Promise<ExtensionActionResult>
-
-  /** Uninstall an extension (administrators only) */
-  uninstallExtension: (extensionId: string) => Promise<ExtensionActionResult>
-
-  // ═══════════════════════════════════════════════════════════════
-  // Getters
-  // ═══════════════════════════════════════════════════════════════
-
-  /** Get extension by ID */
-  getExtension: (extensionId: string) => InstalledExtension | undefined
-
-  /** Check if extension is installed */
-  isExtensionInstalled: (extensionId: string) => boolean
-
-  // ═══════════════════════════════════════════════════════════════
-  // Reset
-  // ═══════════════════════════════════════════════════════════════
-
-  /** Clear all extensions state */
-  clearExtensionsState: () => void
 }
 
 // ============================================================================
@@ -2175,7 +2037,8 @@ export type PDMStoreState = ToastsSlice &
   AnnotationsSlice &
   ItemBrowserSlice &
   VaultAuditSlice &
-  ReviewsSlice
+  ReviewsSlice &
+  DbUpgradeSlice
 
 // ============================================================================
 // Store Versioning
@@ -2197,12 +2060,7 @@ export type {
   OrgModuleDefaults,
 } from '../types/modules'
 
-export type {
-  KeybindingAction,
-  KeybindingsConfig,
-  Keybinding,
-  SettingsTab,
-} from '../types/settings'
+export type { SettingsTab } from '../types/settings'
 
 /** Clears session-owned state without removing persisted vault preferences. */
 export interface UserSlice {

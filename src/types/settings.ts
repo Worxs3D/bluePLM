@@ -1,62 +1,45 @@
 // Settings-related type definitions
 
-export type SettingsTab =
-  | 'profile'
-  | 'preferences'
-  | 'keybindings'
-  | 'modules' // Displays as "Sidebar" in UI
-  | 'vaults'
-  | 'team-members'
-  | 'module-access'
-  | 'company-profile'
-  | 'auth-providers'
-  | 'serialization'
-  | 'export'
-  | 'rfq'
-  | 'metadata-columns'
-  | 'item-designations'
-  | 'backup'
-  | 'solidworks'
-  | 'google-drive'
-  | 'odoo'
-  | 'slack' // Hidden from nav, coming soon
-  | 'webhooks'
-  | 'api'
-  | 'supabase'
-  | 'recovery-codes'
-  | 'performance'
-  | 'logs'
-  | 'dev-tools'
-  | 'about'
-  | 'delete-account'
-  | 'extension-store'
+/** Canonical runtime list used by navigation events and SettingsTab. */
+export const SETTINGS_TABS = [
+  'profile',
+  'appearance',
+  'preferences',
+  'sessions',
+  'keybindings',
+  'modules',
+  'vaults',
+  'team-members',
+  'module-access',
+  'company-profile',
+  'auth-providers',
+  'serialization',
+  'export',
+  'rfq',
+  'metadata-columns',
+  'file-workflows',
+  'item-designations',
+  'backup',
+  'solidworks',
+  'google-drive',
+  'odoo',
+  'webhooks',
+  'api',
+  'supabase',
+  'recovery-codes',
+  'security-monitoring',
+  'performance',
+  'logs',
+  'dev-tools',
+  'updates',
+  'about',
+  'delete-account',
+  'extensions',
+] as const
 
-// Keybinding action identifiers
-export type KeybindingAction =
-  | 'navigateUp'
-  | 'navigateDown'
-  | 'expandFolder'
-  | 'collapseFolder'
-  | 'selectAll'
-  | 'copy'
-  | 'cut'
-  | 'paste'
-  | 'delete'
-  | 'escape'
-  | 'openFile'
-  | 'toggleDetailsPanel'
-  | 'refresh'
+export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
-// Keybinding configuration
-export interface Keybinding {
-  key: string // e.g., 'ArrowUp', 'a', 'Delete'
-  ctrlKey?: boolean
-  shiftKey?: boolean
-  altKey?: boolean
-  metaKey?: boolean
-}
-
-export type KeybindingsConfig = Record<KeybindingAction, Keybinding>
+// Keyboard shortcuts: the actions and their keys live in src/lib/keybindings (registry.ts).
 
 // ============================================
 // SOLIDWORKS Template Settings

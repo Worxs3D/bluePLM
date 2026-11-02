@@ -5,6 +5,11 @@ import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 
 import {
+  PREVIEW_MESSAGE_KEYS,
+  type EDrawingsPreviewErrorCode,
+  type EDrawingsPreviewMessageCode,
+} from './edrawingsPreviewMessages'
+import {
   CONTEXT_MENU_CLOSE_EVENT,
   CONTEXT_MENU_OPEN_EVENT,
   createNativePreviewVisibilityController,
@@ -17,38 +22,12 @@ import {
 } from './previewSessionLifecycle'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable' | 'error'
-type EDrawingsPreviewApi = NonNullable<Window['electronAPI']>
-type EDrawingsPreviewErrorCode = Extract<
-  Awaited<ReturnType<EDrawingsPreviewApi['createEDrawingsPreview']>>,
-  { success: false }
->['errorCode']
 
 interface EDrawingsEmbeddedPreviewProps {
   fileName: string
   filePath: string
   hasLocalContent: boolean
   onOpenExternal: () => void
-}
-
-const PREVIEW_ERROR_KEYS: Record<EDrawingsPreviewErrorCode, string> = {
-  'preview-service-unavailable': 'solidworksSettings.previewServiceUnavailable',
-  'preview-session-not-active': 'solidworksSettings.previewSessionUnavailable',
-  'preview-request-not-from-window': 'solidworksSettings.previewSessionUnavailable',
-  'preview-module-unavailable': 'solidworksSettings.previewUnavailable',
-  'preview-host-unavailable': 'solidworksSettings.previewHostUnavailable',
-  'preview-host-handshake-failed': 'solidworksSettings.previewHostUnavailable',
-  'preview-host-timeout': 'solidworksSettings.previewHostTimeout',
-  'preview-host-exited': 'solidworksSettings.previewHostUnavailable',
-  'preview-document-load-failed': 'solidworksSettings.previewDocumentLoadFailed',
-  'preview-file-invalid': 'solidworksSettings.previewFileUnavailable',
-  'preview-vault-unavailable': 'solidworksSettings.previewFileUnavailable',
-  'preview-vault-not-local': 'solidworksSettings.previewNotLocal',
-  'preview-file-not-allowed': 'solidworksSettings.previewFileUnavailable',
-  'preview-file-type-unsupported': 'solidworksSettings.previewFileUnavailable',
-  'preview-file-not-available': 'solidworksSettings.previewFileUnavailable',
-  'preview-file-outside-vault': 'solidworksSettings.previewFileUnavailable',
-  'preview-bounds-invalid': 'solidworksSettings.previewBoundsUnavailable',
-  'preview-operation-failed': 'solidworksSettings.previewStartFailed',
 }
 
 /**
@@ -65,7 +44,7 @@ export function EDrawingsEmbeddedPreview({
   const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<PreviewState>('loading')
-  const [errorCode, setErrorCode] = useState<EDrawingsPreviewErrorCode | null>(null)
+  const [errorCode, setErrorCode] = useState<EDrawingsPreviewMessageCode | null>(null)
 
   useEffect(() => {
     let observer: ResizeObserver | undefined
@@ -173,7 +152,7 @@ export function EDrawingsEmbeddedPreview({
     const start = async () => {
       if (!hasLocalContent) {
         if (!session?.disposed) {
-          setErrorCode('preview-vault-not-local')
+          setErrorCode('file-not-downloaded')
           setState('error')
         }
         return
@@ -302,7 +281,7 @@ export function EDrawingsEmbeddedPreview({
               ? t('solidworksSettings.previewUnavailable')
               : t(
                   errorCode
-                    ? PREVIEW_ERROR_KEYS[errorCode]
+                    ? PREVIEW_MESSAGE_KEYS[errorCode]
                     : 'solidworksSettings.previewStartFailed',
                 )}
           </p>

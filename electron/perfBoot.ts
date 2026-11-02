@@ -21,6 +21,12 @@ export const isPerfBoot = isPerfBootRequested(app.isPackaged, process.env)
 /** A perf boot the soak drives (scripts/render-perf/soak.ts): main-process probes, `?soak=1` page. */
 export const isSoakBoot = isPerfBoot && process.env.BLUEPLM_PERF_SOAK === '1'
 
+/**
+ * A perf boot that `scripts/ui-look` drives to screenshot a screen: the window is never shown and
+ * the page loads with `?look=1` (a small vault and `window.__blueplmLook`, src/perf/app/look.ts).
+ */
+export const isLookBoot = isPerfBoot && process.env.BLUEPLM_PERF_LOOK === '1'
+
 if (isPerfBoot && process.env.BLUEPLM_PERF_USER_DATA) {
   app.setPath('userData', process.env.BLUEPLM_PERF_USER_DATA)
 }
