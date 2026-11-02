@@ -24,9 +24,10 @@
  * rendering, and that is all it decides.
  */
 
-import { useRef, useState } from 'react'
-import { AlertTriangle, Lock, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronRight, ShieldCheck, Trash2 } from 'lucide-react'
 
+import { Button, Callout } from '@/components/core/ui'
 import { SwServiceVersionNotice } from '@/components/shared'
 import { t } from '@/lib/i18n'
 import { SW_SERVICE_VERSION_DOCUMENT_MANAGER_READ } from '@/lib/swServiceVersion'
@@ -37,48 +38,53 @@ import { VaultAuditCategories } from './VaultAuditCategories'
 import { VaultAuditCoverage } from './VaultAuditCoverage'
 import { VaultAuditFieldTable } from './VaultAuditFieldTable'
 import { VaultAuditFindings } from './VaultAuditFindings'
-import { VaultAuditOverview } from './VaultAuditOverview'
+import { VaultAuditOverview, VaultAuditRunNotes } from './VaultAuditOverview'
 import { VaultAuditProgress } from './VaultAuditProgress'
 import { VaultAuditRevisionRule } from './VaultAuditRevisionRule'
 import { VaultAuditScopeForm } from './VaultAuditScopeForm'
+import { SettingsSection } from '../../components/ui'
+import { categoryDescription, categoryLabel } from './vaultAuditLabels'
 import { hasEvidence } from './vaultAuditView'
-
-function AdminOnlyNotice() {
-  return (
-    <div className="flex items-start gap-2 p-3 rounded-md border border-plm-border bg-plm-bg-lighter">
-      <Lock size={14} className="text-plm-fg-muted mt-0.5 flex-shrink-0" />
-      <p className="text-sm text-plm-fg-muted">{t('vaultAudit.adminOnly')}</p>
-    </div>
-  )
-}
 
 export function VaultAuditSettings() {
   const audit = useVaultAudit()
   const [selectedCategory, setSelectedCategory] = useState<VaultAuditCategoryKind | null>(null)
   const findingsRef = useRef<HTMLDivElement>(null)
 
-  // The list is below the cards, and on a short window choosing a card appeared to do nothing.
-  const handleSelectCategory = (kind: VaultAuditCategoryKind | null) => {
-    setSelectedCategory(kind)
-    if (kind) {
-      requestAnimationFrame(() =>
-        findingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+  // A fresh result opens on its worst non-empty category, so the list is there without a click.
+  // A category that emptied (after a re-run, or the revision rule) gives way the same way.
+  const categories = audit.view?.categories
+  useEffect(() => {
+    if (!categories) return
+    setSelectedCategory((current) => {
+      const stillThere = categories.some(
+        (category) => category.kind === current && category.valueCount > 0,
       )
-    }
+      if (stillThere) return current
+      return categories.find((category) => category.valueCount > 0)?.kind ?? null
+    })
+  }, [categories])
+
+  // On a short window the list starts below the fold; bring it up when a category is chosen.
+  const handleSelectCategory = (kind: VaultAuditCategoryKind) => {
+    setSelectedCategory(kind)
+    requestAnimationFrame(() =>
+      findingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }),
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-base font-semibold text-plm-fg mb-1">{t('vaultAudit.title')}</h3>
-        <p className="text-sm text-plm-fg-muted">{t('vaultAudit.description')}</p>
-      </div>
-
+    <SettingsSection title={t('vaultAudit.title')} description={t('vaultAudit.description')}>
       {!audit.isAdmin ? (
-        <AdminOnlyNotice />
+        <p className="text-[14px] text-ui-fg-secondary">{t('vaultAudit.adminOnly')}</p>
       ) : (
-        <>
-          <p className="text-xs text-plm-fg-muted">{t('vaultAudit.readOnlyNote')}</p>
+        <div className="space-y-5 pt-1">
+          {!audit.view && (
+            <p className="flex items-start gap-2 text-[13px] text-ui-fg-secondary">
+              <ShieldCheck size={14} className="mt-0.5 flex-shrink-0 text-ui-success" />
+              {t('vaultAudit.readOnlyNote')}
+            </p>
+          )}
 
           {audit.serviceCheck && (
             <SwServiceVersionNotice
@@ -105,71 +111,101 @@ export function VaultAuditSettings() {
             onCancel={audit.cancel}
           />
 
-          {audit.isRunning && <VaultAuditProgress progress={audit.progress} />}
+          {audit.isRunning && (
+            <VaultAuditProgress progress={audit.progress} startedAt={audit.startedAt} />
+          )}
 
           {audit.runState === 'failed' && audit.error && (
-            <p className="text-sm text-plm-error flex items-start gap-1.5">
-              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-              {audit.error}
-            </p>
+            <Callout tone="error">{audit.error}</Callout>
           )}
 
           {audit.view && (
-            <div className="space-y-6 pt-4 border-t border-plm-border">
-              <VaultAuditOverview view={audit.view} artifactPath={audit.artifactPath} />
+            <div className="space-y-5">
+              <VaultAuditOverview view={audit.view} />
 
               {/*
                 Every section below is a count over files that were read, and every one of them
-                reads as an all-clear at zero - "no findings", "every record describes exactly the
-                configurations its file has", in green. A run that compared nothing earns none of
-                those statements, so it gets the overview's explanation on its own.
+                reads as an all-clear at zero. A run that compared nothing earns none of those
+                statements, so it gets the overview's explanation on its own.
               */}
               {hasEvidence(audit.view) && (
-                <>
-                  <VaultAuditCoverage coverage={audit.view.coverage} />
-
-                  {/* Above the categories because it changes their counts. Reading a total and
-                      then finding the rule that produced it underneath is the wrong order. */}
-                  <VaultAuditRevisionRule
-                    expectRevisionOnModels={audit.expectRevisionOnModels}
-                    hiddenCount={audit.view.revisionOnModelsHidden}
-                    onChange={audit.setExpectRevisionOnModels}
-                  />
-
+                <div className="space-y-3">
                   <VaultAuditCategories
                     categories={audit.view.categories}
                     selected={selectedCategory}
                     onSelect={handleSelectCategory}
                   />
 
-                  <div ref={findingsRef} className="scroll-mt-4">
-                    <VaultAuditFindings findings={audit.view.findings} kind={selectedCategory} />
-                  </div>
+                  {/* All six empty can still hide revision rows, and the switch must stay reachable. */}
+                  {!selectedCategory && audit.view.revisionOnModelsHidden > 0 && (
+                    <VaultAuditRevisionRule
+                      expectRevisionOnModels={audit.expectRevisionOnModels}
+                      hiddenCount={audit.view.revisionOnModelsHidden}
+                      onChange={audit.setExpectRevisionOnModels}
+                    />
+                  )}
 
-                  <VaultAuditFieldTable tallies={audit.view.fieldTallies} />
-                </>
+                  {/* No category is chosen only when all six are empty, which the overview has
+                      already said in words. */}
+                  {selectedCategory && (
+                    <div ref={findingsRef} className="scroll-mt-4 space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-[15px] font-semibold text-ui-fg">
+                            {categoryLabel(selectedCategory)}
+                          </h4>
+                          <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-ui-fg-secondary">
+                            {categoryDescription(selectedCategory)}
+                          </p>
+                        </div>
+                        {/* With the list it filters: it changes which revision rows are counted. */}
+                        <VaultAuditRevisionRule
+                          expectRevisionOnModels={audit.expectRevisionOnModels}
+                          hiddenCount={audit.view.revisionOnModelsHidden}
+                          onChange={audit.setExpectRevisionOnModels}
+                        />
+                      </div>
+                      <VaultAuditFindings findings={audit.view.findings} kind={selectedCategory} />
+                    </div>
+                  )}
+                </div>
               )}
 
-              <div className="flex items-center justify-between pt-2 border-t border-plm-border">
-                <p className="text-xs text-plm-fg-muted max-w-2xl">
-                  {t('vaultAudit.result.notStored')}
-                </p>
-                <button
+              <div className="flex items-start justify-between gap-4 border-t border-ui-divider pt-3">
+                {/* Context for the numbers, not something to act on, so it stays folded. */}
+                <details className="group min-w-0 flex-1">
+                  <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-1 text-[13px] text-ui-fg-secondary hover:text-ui-fg">
+                    <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+                    {t('vaultAudit.details.heading')}
+                  </summary>
+                  <div className="space-y-8 pt-4">
+                    <VaultAuditRunNotes view={audit.view} artifactPath={audit.artifactPath} />
+                    {hasEvidence(audit.view) && (
+                      <>
+                        <VaultAuditCoverage coverage={audit.view.coverage} />
+                        <VaultAuditFieldTable tallies={audit.view.fieldTallies} />
+                      </>
+                    )}
+                  </div>
+                </details>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Trash2 size={13} />}
+                  title={t('vaultAudit.result.notStored')}
                   onClick={() => {
                     setSelectedCategory(null)
                     audit.clear()
                   }}
                   disabled={audit.isRunning}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-plm-fg-muted hover:text-plm-fg bg-plm-bg-lighter hover:bg-plm-bg-light border border-plm-border rounded-md transition-colors disabled:opacity-50 flex-shrink-0"
                 >
-                  <Trash2 size={12} />
                   {t('vaultAudit.clear')}
-                </button>
+                </Button>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </SettingsSection>
   )
 }

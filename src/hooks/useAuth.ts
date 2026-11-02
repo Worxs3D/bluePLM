@@ -280,15 +280,7 @@ export function useAuth() {
             return
           }
 
-          const userProfile = profile as {
-            full_name?: string
-            avatar_url?: string
-            custom_avatar_url?: string
-            job_title?: string
-            org_id?: string
-            role?: string
-            last_sign_in?: string
-          } | null
+          const userProfile = profile
 
           // Set user from profile (includes role) or fallback to session data
           // Note: Google OAuth stores avatar as 'picture' in user_metadata, not 'avatar_url'
@@ -310,7 +302,7 @@ export function useAuth() {
             org_id: userProfile?.org_id || null,
             role: (userProfile?.role || 'engineer') as 'admin' | 'engineer' | 'viewer',
             created_at: session.user.created_at,
-            last_sign_in: userProfile?.last_sign_in || null,
+            last_sign_in_at: userProfile?.last_sign_in_at || null,
           })
           log.info('[Auth]', 'User signed in', {
             email: truncateEmail(session.user.email),

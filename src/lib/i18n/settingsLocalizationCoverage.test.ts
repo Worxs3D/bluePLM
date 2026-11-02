@@ -2,31 +2,61 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
+
 import { en, de, es, fr, pt, zhCN, zhTW } from './locales'
 import type { TranslationDict } from './types'
 import { flattenTranslations } from './utils'
 
 const locales = { en, de, es, fr, pt, zhCN, zhTW }
-const components = [
+const settingsFiles = [
   'account/AccountSettings.tsx',
+  'account/SessionsSettings.tsx',
   'components/SettingsNavigation.tsx',
   'organization/AuthProvidersSettings.tsx',
   'organization/ModuleAccessSettings.tsx',
   'organization/MetadataColumnsSettings.tsx',
+  'organization/MetadataColumnEditor.tsx',
+  'organization/MetadataColumnDialogs.tsx',
   'system/ExportSettings.tsx',
   'system/RFQSettings.tsx',
-  'system/SerializationSettings.tsx',
+  'system/SerializationSettingsPresentation.tsx',
 ]
-const keys = new Set(
-  components.flatMap((file) => {
+const usedKeys = new Set(
+  settingsFiles.flatMap((file) => {
     const source = readFileSync(join(process.cwd(), 'src/features/settings', file), 'utf8')
-    return [...source.matchAll(/\bt\('((?:settings|accountSettings|settingsPages)\.[^']+)'/g)].map(
-      (m) => m[1],
+    const directKeys = source.matchAll(
+      /\b(?:t|translate)\('((?:settings|accountSettings|settingsPages)\.[^']+)'/g,
     )
+    const dataKeys = source.matchAll(
+      /\b(?:translationKey|labelKey|descriptionKey|noteKey)\s*:\s*'((?:settings|accountSettings|settingsPages)\.[^']+)'/g,
+    )
+    return [
+      ...directKeys,
+      ...dataKeys,
+    ].map((match) => match[1])
   }),
 )
+const catalogSource = readFileSync(join(process.cwd(), 'src/features/settings/settingsCatalog.ts'), 'utf8')
+for (const match of catalogSource.matchAll(/:\s*'((?:settings|preferences|accountSettings|sidebar|securityMonitoring)\.[^']+)'/g)) {
+  usedKeys.add(match[1])
+}
+for (const key of [
+  'settings.navigation',
+  'settings.connected',
+  'settings.needsAttention',
+  'settings.offline',
+  'settings.notConfigured',
+  'settings.comingSoon',
+  'settings.checkingStatus',
+  'settings.backupsWorking',
+  'settings.backupFailed',
+  'preferences.updateReadyTitle',
+]) {
+  usedKeys.add(key)
+}
+
 const flat = (dict: TranslationDict) => flattenTranslations(dict)
-const tokens = (value: string) => [...value.matchAll(/\{\{[^{}]+\}\}/g)].map((m) => m[0]).sort()
+const tokens = (value: string) => [...value.matchAll(/\{\{[^{}]+\}\}/g)].map((match) => match[0]).sort()
 
 describe('settings localization coverage', () => {
   it('preserves case and singular forms in English', () => {
@@ -40,27 +70,30 @@ describe('settings localization coverage', () => {
   })
 
   it.each(Object.entries(locales))(
-    'defines used keys and matching placeholders directly for %s',
+    'defines every current Settings key with matching placeholders for %s',
     (_, dict) => {
       const english = flat(en)
       const values = flat(dict)
-      for (const key of keys) {
+      for (const key of usedKeys) {
         expect(values[key], key).toBeTypeOf('string')
         expect(values[key].trim(), key).not.toBe('')
         expect(tokens(values[key]), key).toEqual(tokens(english[key]))
       }
       for (const [key, marker] of [
-        ['settingsPages.metadata.deleteConfirm', '"{{label}}"'],
-        ['settingsPages.metadata.pushConfirm', values['settingsPages.metadata.pushEmphasis']],
+        ['settingsPages.metadata.deleteConfirm', '{{label}}'],
+        ['settingsPages.metadata.pushConfirm', ''],
         ['settingsPages.serialization.scannedFiles', '{{count}}'],
         ['settingsPages.serialization.tabNumbersHelp', '-104'],
         ['settingsPages.export.tokenHelp', '{{examples}}'],
-      ])
-        expect(values[key].split(marker).length, key).toBe(2)
+        ['settingsPages.metadata.removeOption', '{{option}}'],
+        ['settingsPages.metadata.columnDeleted', '{{label}}'],
+      ]) {
+        if (marker) expect(values[key].split(marker).length, key).toBe(2)
+      }
     },
   )
 
-  it.each(Object.keys(locales))('has no duplicate settings keys in %s', (locale) => {
+  it.each(Object.keys(locales))('has no duplicate Settings keys in %s', (locale) => {
     const source = readFileSync(join(process.cwd(), `src/lib/i18n/locales/${locale}.ts`), 'utf8')
     const file = ts.createSourceFile(`${locale}.ts`, source, ts.ScriptTarget.Latest, true)
     const duplicates: string[] = []

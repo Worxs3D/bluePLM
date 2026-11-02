@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Globe, Loader2, Lock, Save, Users, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, Loader2, Lock, Save, X } from 'lucide-react'
 
-import { usePDMStore } from '@/stores/pdmStore'
-import { supabase } from '@/lib/supabase'
+import { Badge, Button, Callout } from '@/components/core/ui'
 import { log } from '@/lib/logger'
-import { useTranslation } from '@/lib/i18n'
+import { t as translate, useTranslation } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
+import { usePDMStore } from '@/stores/pdmStore'
 import { MODULE_GROUPS, MODULES, type ModuleGroupId, type ModuleId } from '@/types/modules'
+
+import { SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
 
 interface OrgTeam {
   id: string
@@ -46,11 +49,11 @@ function sameIds(a: string[], b: string[]): boolean {
  * list of teams.
  */
 export function ModuleAccessSettings() {
+  const { t } = useTranslation()
   const organization = usePDMStore((s) => s.organization)
   const getEffectiveRole = usePDMStore((s) => s.getEffectiveRole)
   const addToast = usePDMStore((s) => s.addToast)
   const loadModuleAccess = usePDMStore((s) => s.loadModuleAccess)
-  const { t } = useTranslation()
 
   const isAdmin = getEffectiveRole() === 'admin'
 
@@ -69,17 +72,17 @@ export function ModuleAccessSettings() {
     try {
       const [teamsResult, membersResult, accessResult] = await Promise.all([
         supabase
-          .from('teams')
+          .from('team')
           .select('id, name, color')
           .eq('org_id', organization.id)
           .order('name'),
         supabase
-          .from('users')
+          .from('app_user')
           .select('id, full_name, email')
           .eq('org_id', organization.id)
           .order('full_name'),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.rpc as any)('get_module_access_config'), // TODO: type this
+        (supabase.rpc as any)('module_access_get_config'), // TODO: type this
       ])
 
       if (teamsResult.error) throw teamsResult.error
@@ -100,7 +103,7 @@ export function ModuleAccessSettings() {
       setDrafts(byModule)
     } catch (error) {
       log.error('[ModuleAccessSettings]', 'Failed to load module access', { error })
-      addToast('error', t('settingsPages.moduleAccess.loadFailed'))
+      addToast('error', translate('settingsPages.moduleAccess.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -148,25 +151,27 @@ export function ModuleAccessSettings() {
     setSavingModuleId(moduleId)
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('set_module_access', {
+      const { data, error } = await (supabase.rpc as any)('module_access_set', {
         // TODO: type this
         p_module_id: moduleId,
         p_team_ids: draft.teamIds,
         p_user_ids: draft.userIds,
       })
       if (error) throw error
-      if (data && data.success === false) throw new Error(data.error || 'Failed to save')
+      if (data && data.success === false) {
+        throw new Error(data.error || translate('settingsPages.moduleAccess.saveFailed'))
+      }
 
       setSaved((previous) => ({ ...previous, [moduleId]: draft }))
       // The admin editing this may themselves be affected once they leave the
       // Administrators team, and impersonation reads the same store value.
       await loadModuleAccess()
-      addToast('success', t('settingsPages.moduleAccess.updated'))
+      addToast('success', translate('settingsPages.moduleAccess.updated'))
     } catch (error) {
       log.error('[ModuleAccessSettings]', 'Failed to save module access', { error })
       addToast(
         'error',
-        error instanceof Error ? error.message : t('settingsPages.moduleAccess.saveFailed'),
+        error instanceof Error ? error.message : translate('settingsPages.moduleAccess.saveFailed'),
       )
     } finally {
       setSavingModuleId(null)
@@ -175,191 +180,182 @@ export function ModuleAccessSettings() {
 
   if (!isAdmin) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-xl font-semibold text-plm-fg">
-          {t('settingsPages.moduleAccess.title')}
-        </h1>
-        <p className="text-sm text-plm-warning">{t('settingsPages.moduleAccess.adminOnly')}</p>
-      </div>
+      <Callout tone="warning">{t('settingsPages.moduleAccess.adminOnly')}</Callout>
     )
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-plm-fg">
-          {t('settingsPages.moduleAccess.title')}
-        </h1>
-        <p className="text-sm text-plm-fg-muted mt-1">
-          {t('settingsPages.moduleAccess.description')}
-        </p>
-      </div>
+  const chipClass = (selected: boolean) =>
+    `inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[13px] transition-colors ${
+      selected
+        ? 'border-ui-selected-border bg-ui-selected text-ui-fg'
+        : 'border-ui-divider text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
+    }`
 
+  return (
+    <SettingsPage>
       {loading ? (
-        <div className="flex items-center justify-center h-32 text-plm-fg-muted">
+        <div className="flex h-32 items-center justify-center text-ui-fg-secondary">
           <Loader2 size={20} className="animate-spin" />
         </div>
       ) : (
-        <div className="space-y-6">
-          {MODULE_GROUPS.map((group) => {
-            const groupModules = modulesByGroup.get(group.id)
-            if (!groupModules || groupModules.length === 0) return null
+        MODULE_GROUPS.map((group) => {
+          const groupModules = modulesByGroup.get(group.id)
+          if (!groupModules || groupModules.length === 0) return null
+          const isFirstGroup =
+            MODULE_GROUPS.find((g) => (modulesByGroup.get(g.id)?.length ?? 0) > 0)?.id === group.id
 
-            return (
-              <section key={group.id}>
-                <h2 className="text-sm text-plm-fg-muted uppercase tracking-wide font-medium mb-2">
-                  {group.name}
-                </h2>
+          return (
+            <SettingsSection
+              key={group.id}
+              title={group.name}
+              description={
+                isFirstGroup
+                  ? t('settingsPages.moduleAccess.description')
+                  : undefined
+              }
+            >
+              <SettingsGroup>
+                {groupModules.map((module) => {
+                  const draft = getDraft(module.id)
+                  const current = getSaved(module.id)
+                  const isRestricted = current.teamIds.length > 0 || current.userIds.length > 0
+                  const isExpanded = expandedModuleId === module.id
+                  const dirty = isDirty(module.id)
 
-                <div className="rounded-lg border border-plm-border bg-plm-bg divide-y divide-plm-border">
-                  {groupModules.map((module) => {
-                    const draft = getDraft(module.id)
-                    const current = getSaved(module.id)
-                    const isRestricted = current.teamIds.length > 0 || current.userIds.length > 0
-                    const isExpanded = expandedModuleId === module.id
-                    const dirty = isDirty(module.id)
+                  return (
+                    <div key={module.id}>
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        onClick={() => setExpandedModuleId(isExpanded ? null : module.id)}
+                        className="flex w-full items-center gap-3 py-3.5 text-left"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown size={14} className="flex-shrink-0 text-ui-fg-secondary" />
+                        ) : (
+                          <ChevronRight size={14} className="flex-shrink-0 text-ui-fg-secondary" />
+                        )}
 
-                    return (
-                      <div key={module.id}>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedModuleId(isExpanded ? null : module.id)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-plm-highlight/40 transition-colors"
-                        >
-                          {isExpanded ? (
-                            <ChevronDown size={14} className="text-plm-fg-muted flex-shrink-0" />
-                          ) : (
-                            <ChevronRight size={14} className="text-plm-fg-muted flex-shrink-0" />
-                          )}
+                        <span className="min-w-0 flex-1 truncate text-[14px] text-ui-fg">
+                          {module.name}
+                        </span>
 
-                          <span className="flex-1 min-w-0 text-sm text-plm-fg truncate">
-                            {module.name}
-                          </span>
+                        {isRestricted ? (
+                          <Badge icon={<Lock size={10} />}>
+                            {current.teamIds.length > 0 &&
+                            t(
+                              current.teamIds.length === 1
+                                ? 'settingsPages.moduleAccess.teamCountOne'
+                                : 'settingsPages.moduleAccess.teamCount',
+                              { count: current.teamIds.length },
+                            )}
+                            {current.teamIds.length > 0 && current.userIds.length > 0 && ' + '}
+                            {current.userIds.length > 0 &&
+                            t(
+                              current.userIds.length === 1
+                                ? 'settingsPages.moduleAccess.personCount'
+                                : 'settingsPages.moduleAccess.peopleCount',
+                              { count: current.userIds.length },
+                            )}
+                          </Badge>
+                        ) : (
+                          <Badge icon={<Globe size={10} />}>{t('settingsPages.moduleAccess.everyone')}</Badge>
+                        )}
+                      </button>
 
-                          {isRestricted ? (
-                            <span className="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full bg-plm-warning/15 text-plm-warning">
-                              <Lock size={10} />
-                              {current.teamIds.length > 0 &&
-                                `${current.teamIds.length} team${current.teamIds.length === 1 ? '' : 's'}`}
-                              {current.teamIds.length > 0 && current.userIds.length > 0 && ' + '}
-                              {current.userIds.length > 0 &&
-                                `${current.userIds.length} ${current.userIds.length === 1 ? 'person' : 'people'}`}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full bg-plm-bg-lighter text-plm-fg-dim">
-                              <Globe size={10} />
-                              {t('settingsPages.moduleAccess.everyone')}
-                            </span>
-                          )}
-                        </button>
-
-                        {isExpanded && (
-                          <div className="px-3 pb-3 pt-1 space-y-4 bg-plm-bg-secondary/40">
-                            <div>
-                              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-plm-fg-muted mb-1.5">
-                                <Users size={11} />
-                                {t('settingsPages.moduleAccess.teams')}
-                              </div>
-                              {teams.length === 0 ? (
-                                <p className="text-xs text-plm-fg-dim">
-                                  {t('settingsPages.moduleAccess.noTeams')}
-                                </p>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {teams.map((team) => {
-                                    const selected = draft.teamIds.includes(team.id)
-                                    return (
-                                      <button
-                                        key={team.id}
-                                        type="button"
-                                        onClick={() => toggleSubject(module.id, 'teamIds', team.id)}
-                                        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border transition-colors ${
-                                          selected
-                                            ? 'border-plm-accent bg-plm-accent/15 text-plm-fg'
-                                            : 'border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight/50'
-                                        }`}
-                                      >
-                                        <span
-                                          className="w-2 h-2 rounded-full"
-                                          style={{ backgroundColor: team.color }}
-                                        />
-                                        {team.name}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              )}
+                      {isExpanded && (
+                        <div className="space-y-4 pb-4 pl-[26px]">
+                          <div>
+                            <div className="mb-1.5 text-[13px] text-ui-fg-secondary">
+                              {t('settingsPages.moduleAccess.teams')}
                             </div>
-
-                            <div>
-                              <div className="text-[11px] uppercase tracking-wide text-plm-fg-muted mb-1.5">
-                                {t('settingsPages.moduleAccess.individualPeople')}
-                              </div>
-                              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-                                {members.map((member) => {
-                                  const selected = draft.userIds.includes(member.id)
+                            {teams.length === 0 ? (
+                              <p className="text-[13px] text-ui-fg-secondary">{t('settingsPages.moduleAccess.noTeams')}</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {teams.map((team) => {
+                                  const selected = draft.teamIds.includes(team.id)
                                   return (
                                     <button
-                                      key={member.id}
+                                      key={team.id}
                                       type="button"
-                                      onClick={() => toggleSubject(module.id, 'userIds', member.id)}
-                                      className={`px-2 py-1 rounded-full text-xs border transition-colors ${
-                                        selected
-                                          ? 'border-plm-accent bg-plm-accent/15 text-plm-fg'
-                                          : 'border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight/50'
-                                      }`}
+                                      aria-pressed={selected}
+                                      onClick={() => toggleSubject(module.id, 'teamIds', team.id)}
+                                      className={chipClass(selected)}
                                     >
-                                      {member.full_name || member.email}
+                                      <span
+                                        className="h-2 w-2 rounded-full"
+                                        style={{ backgroundColor: team.color }}
+                                      />
+                                      {team.name}
                                     </button>
                                   )
                                 })}
                               </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="mb-1.5 text-[13px] text-ui-fg-secondary">
+                              {t('settingsPages.moduleAccess.individualPeople')}
                             </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleSave(module.id)}
-                                disabled={!dirty || savingModuleId === module.id}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-plm-accent text-white hover:bg-plm-accent/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {savingModuleId === module.id ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Save size={14} />
-                                )}
-                                {t('common.save')}
-                              </button>
-
-                              {(draft.teamIds.length > 0 || draft.userIds.length > 0) && (
-                                <button
-                                  type="button"
-                                  onClick={() => clearRestriction(module.id)}
-                                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-lg border border-plm-border text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors"
-                                  title={t('settingsPages.moduleAccess.allowEveryoneHelp')}
-                                >
-                                  <X size={14} />
-                                  {t('settingsPages.moduleAccess.allowEveryone')}
-                                </button>
-                              )}
-
-                              <p className="text-xs text-plm-fg-dim">
-                                {draft.teamIds.length === 0 && draft.userIds.length === 0
-                                  ? t('settingsPages.moduleAccess.visibleToAll')
-                                  : t('settingsPages.moduleAccess.restrictedHelp')}
-                              </p>
+                            <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                              {members.map((member) => {
+                                const selected = draft.userIds.includes(member.id)
+                                return (
+                                  <button
+                                    key={member.id}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => toggleSubject(module.id, 'userIds', member.id)}
+                                    className={chipClass(selected)}
+                                  >
+                                    {member.full_name || member.email}
+                                  </button>
+                                )
+                              })}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </section>
-            )
-          })}
-        </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={<Save size={14} />}
+                              loading={savingModuleId === module.id}
+                              onClick={() => handleSave(module.id)}
+                              disabled={!dirty}
+                            >
+                              {t('settingsPages.saveSettings')}
+                            </Button>
+
+                            {(draft.teamIds.length > 0 || draft.userIds.length > 0) && (
+                              <Button
+                                size="sm"
+                                icon={<X size={14} />}
+                                onClick={() => clearRestriction(module.id)}
+                                title={t('settingsPages.moduleAccess.allowEveryoneHelp')}
+                              >
+                                {t('settingsPages.moduleAccess.allowEveryone')}
+                              </Button>
+                            )}
+
+                            <p className="text-[13px] text-ui-fg-secondary">
+                              {draft.teamIds.length === 0 && draft.userIds.length === 0
+                                ? t('settingsPages.moduleAccess.visibleToAll')
+                                : t('settingsPages.moduleAccess.restrictedHelp')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </SettingsGroup>
+            </SettingsSection>
+          )
+        })
       )}
-    </div>
+    </SettingsPage>
   )
 }

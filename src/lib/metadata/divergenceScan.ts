@@ -269,7 +269,8 @@ function normalizeSeparators(value: string): string {
  * Lower-cased because the vault is on Windows and the rows' own uniqueness index is on
  * `LOWER(file_path)`; separators folded to `\` because rows written before the forward-slash
  * convention still carry the other kind; stripped at both ends and trimmed so a path pasted with a
- * leading separator or a trailing space still names the folder the operator meant.
+ * leading separator or a trailing space still names the folder the operator meant. Surrounding
+ * double quotes go too: Windows Explorer's "Copy as path" wraps the path in them.
  *
  * It cannot rescue an absolute path. `C:\Vault\Parts` shares no prefix with `Parts`, and the
  * browser's copy-path buttons hand out absolute paths, so that mistake is easy to make and
@@ -277,9 +278,28 @@ function normalizeSeparators(value: string): string {
  * of leaving an empty scope to look like a clean one.
  */
 function normalizeRelativePath(value: string): string {
-  return normalizeSeparators(value.trim())
+  const unquoted = value.trim().replace(/^"(.*)"$/, '$1')
+  return normalizeSeparators(unquoted.trim())
     .replace(/^\\+|\\+$/g, '')
     .toLowerCase()
+}
+
+/**
+ * The folder scope as a vault-relative prefix, lower-cased with the ends trimmed.
+ *
+ * The browser's Copy Path buttons hand out absolute paths, and pasting one used to match no row
+ * at all (a user report, 2026-10-29: `C:\BluePLM\<vault>\<project>\development\` came back blank).
+ * The run knows the vault root exactly, so a path inside it is cut back to its relative part. That
+ * is not a guess: a path outside the root keeps its drive letter and still matches nothing, which
+ * the result reports as an unmatched scope rather than a clean run.
+ */
+export function scopePrefixOf(pathPrefix: string, vaultPath: string): string {
+  const prefix = normalizeRelativePath(pathPrefix)
+  const root = normalizeRelativePath(vaultPath)
+  if (!root) return prefix
+  if (prefix === root) return ''
+  if (prefix.startsWith(`${root}\\`)) return prefix.slice(root.length + 1)
+  return prefix
 }
 
 /** Absolute path of a row's file inside the working copy. */
@@ -341,7 +361,7 @@ async function fetchRows(options: DivergenceScanOptions): Promise<ScanRow[]> {
 
   for (let page = 0; ; page++) {
     let query = client
-      .from('files')
+      .from('file')
       .select('id, file_path, file_name, extension, part_number, description, revision, custom_properties')
       .eq('org_id', options.orgId)
       .is('deleted_at', null)
@@ -579,7 +599,7 @@ export function inFileScope(row: ScanRow, options: DivergenceScanOptions): boole
     // The trailing separator is what stops a scope of `Parts` from also claiming `Parts-Old`, for
     // the same reason `isInsideFixtureRoot` above appends one. A bare `startsWith` quietly widened
     // every folder run to its similarly named siblings.
-    const prefix = normalizeRelativePath(options.pathPrefix)
+    const prefix = scopePrefixOf(options.pathPrefix, options.vaultPath)
     if (prefix && !normalizeRelativePath(row.file_path).startsWith(`${prefix}\\`)) return false
   }
 

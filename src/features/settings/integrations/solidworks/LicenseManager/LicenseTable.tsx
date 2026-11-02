@@ -21,15 +21,15 @@ export function LicenseTable({
   onEdit,
 }: LicenseTableProps) {
   return (
-    <div className="overflow-x-auto min-h-[200px]">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+      <table className="w-full text-[14px]">
         <thead>
-          <tr className="border-b border-plm-border text-left">
-            <th className="pb-3 font-medium text-plm-fg-muted">License</th>
-            <th className="pb-3 font-medium text-plm-fg-muted">Serial Number</th>
-            <th className="pb-3 font-medium text-plm-fg-muted">Type</th>
-            <th className="pb-3 font-medium text-plm-fg-muted">Assigned To</th>
-            {isAdmin && <th className="pb-3 font-medium text-plm-fg-muted text-right">Actions</th>}
+          <tr className="border-b border-ui-divider text-left text-[13px]">
+            <th className="py-2 pr-4 font-normal text-ui-fg-secondary">License</th>
+            <th className="py-2 pr-4 font-normal text-ui-fg-secondary">Serial Number</th>
+            <th className="py-2 pr-4 font-normal text-ui-fg-secondary">Type</th>
+            <th className="py-2 pr-4 font-normal text-ui-fg-secondary">Assigned To</th>
+            {isAdmin && <th className="py-2 font-normal text-right text-ui-fg-secondary">Actions</th>}
           </tr>
         </thead>
         <tbody>

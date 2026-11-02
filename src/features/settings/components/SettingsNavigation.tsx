@@ -3,220 +3,147 @@ import type { IntegrationStatusValue, IntegrationId, BackupStatusValue } from '@
 import type { SettingsTab } from '@/types/settings'
 import { useTranslation } from '@/lib/i18n'
 import { logSettings } from '@/lib/userActionLogger'
+import { hasDesktop } from '@/lib/platform'
+
+import { isSettingsTabAvailable, settingsSections } from '../settingsCatalog'
+import { useSettingsSearch } from '../useSettingsSearch'
+import { SettingsSearchBox } from './SettingsSearchBox'
 
 interface SettingsNavigationProps {
   activeTab: SettingsTab
   onTabChange: (tab: SettingsTab) => void
 }
 
-interface SettingsNavigationItem {
-  id: SettingsTab
-  label: string
-  /** Hidden from the navigation for everyone but an admin. The panel gates itself as well. */
-  adminOnly?: boolean
+// Items that show a connection status dot
+const integrationIds = ['supabase', 'solidworks', 'google-drive', 'odoo', 'webhooks', 'api'] as const
+
+type DotStatus = IntegrationStatusValue | BackupStatusValue
+
+const DOT_COLOR: Record<DotStatus, string> = {
+  online: 'bg-ui-success',
+  partial: 'bg-ui-warning',
+  offline: 'bg-ui-danger',
+  'not-configured': '',
+  'coming-soon': '',
+  checking: 'bg-ui-fg-tertiary animate-pulse',
 }
 
-interface SettingsSection {
-  category: string
-  items: SettingsNavigationItem[]
+const DOT_TITLE_KEY: Record<DotStatus, string> = {
+  online: 'settings.connected',
+  partial: 'settings.needsAttention',
+  offline: 'settings.offline',
+  'not-configured': 'settings.notConfigured',
+  'coming-soon': 'settings.comingSoon',
+  checking: 'settings.checkingStatus',
 }
 
-// A function rather than a constant because the labels are translated at render time, and the
-// language can change without the module being re-evaluated.
-const settingsSections = (t: ReturnType<typeof useTranslation>['t']): SettingsSection[] => [
-  {
-    category: t('settings.account'),
-    items: [
-      { id: 'profile', label: t('settings.profile') },
-      { id: 'preferences', label: t('settings.preferences') },
-      { id: 'keybindings', label: t('settings.keybindings') },
-      { id: 'modules', label: t('settings.sidebar') },
-      { id: 'delete-account', label: t('settings.deleteAccount') },
-    ],
-  },
-  {
-    category: t('settings.organization'),
-    items: [
-      { id: 'supabase', label: t('settings.supabase') },
-      { id: 'backup', label: t('settings.backups') },
-      { id: 'vaults', label: t('settings.vaults') },
-      { id: 'team-members', label: t('settings.membersAndTeams') },
-      { id: 'module-access', label: t('settings.moduleAccess') },
-      { id: 'company-profile', label: t('settings.companyProfile') },
-      { id: 'auth-providers', label: t('settings.signInMethods') },
-      { id: 'serialization', label: t('settings.serialization') },
-      { id: 'export', label: t('settings.exportOptions') },
-      { id: 'metadata-columns', label: t('settings.fileMetadata') },
-      { id: 'item-designations', label: t('settings.itemDesignations') },
-      { id: 'rfq', label: t('settings.rfqSettings') },
-      { id: 'recovery-codes', label: t('settings.recoveryCodes') },
-    ],
-  },
-  {
-    category: t('settings.extensions'),
-    items: [
-      { id: 'extension-store', label: t('settings.extensionStore') },
-      { id: 'solidworks', label: t('settings.solidworks') },
-      { id: 'google-drive', label: t('settings.googleDrive') },
-      { id: 'odoo', label: t('settings.odooErp') },
-      { id: 'api', label: t('settings.restApi') },
-      { id: 'webhooks', label: t('settings.webhooks') },
-    ],
-  },
-  {
-    category: t('settings.system'),
-    items: [
-      { id: 'performance', label: t('settings.performance') },
-      { id: 'logs', label: t('settings.logs') },
-      { id: 'dev-tools', label: t('settings.devTools') },
-      { id: 'about', label: t('settings.about') },
-    ],
-  },
-]
-
-// Items that show status dots (integrations + Supabase which is now in Organization)
-const integrationIds = [
-  'supabase',
-  'solidworks',
-  'google-drive',
-  'odoo',
-  'webhooks',
-  'api',
-] as const
-
-function StatusDot({ status }: { status: IntegrationStatusValue }) {
-  const { t } = useTranslation()
-  const colors: Record<IntegrationStatusValue, string> = {
-    online: 'bg-plm-success',
-    partial: 'bg-yellow-500',
-    offline: 'bg-plm-error',
-    'not-configured': 'bg-plm-fg-muted/40',
-    'coming-soon': 'bg-plm-fg-muted/40',
-    checking: 'bg-plm-accent',
-  }
-
-  const titles: Record<IntegrationStatusValue, string> = {
-    online: t('settings.connected'),
-    partial: t('settings.partiallyConnected'),
-    offline: t('settings.offline'),
-    'not-configured': t('settings.notConfigured'),
-    'coming-soon': t('settings.comingSoon'),
-    checking: t('settings.checkingStatus'),
-  }
-
+/** A status dot; nothing for a service that is not set up, so the list stays quiet. */
+function StatusDot({ status, title }: { status: DotStatus; title: string }) {
+  if (!DOT_COLOR[status]) return null
   return (
     <span
-      className={`w-2.5 h-2.5 rounded-full ${colors[status]} flex-shrink-0 ${status === 'checking' ? 'animate-pulse' : ''}`}
-      title={titles[status]}
-    />
-  )
-}
-
-function BackupStatusDot({ status }: { status: BackupStatusValue }) {
-  const { t } = useTranslation()
-  const colors: Record<BackupStatusValue, string> = {
-    online: 'bg-plm-success',
-    partial: 'bg-yellow-500',
-    offline: 'bg-plm-error',
-    'not-configured': 'bg-plm-fg-muted/40',
-  }
-
-  const titles: Record<BackupStatusValue, string> = {
-    online: t('settings.backupsWorking'),
-    partial: t('settings.needsAttention'),
-    offline: t('settings.backupFailed'),
-    'not-configured': t('settings.notConfigured'),
-  }
-
-  return (
-    <span
-      className={`w-2.5 h-2.5 rounded-full ${colors[status]} flex-shrink-0`}
-      title={titles[status]}
+      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${DOT_COLOR[status]}`}
+      title={title}
+      aria-label={title}
     />
   )
 }
 
 export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigationProps) {
   const { t } = useTranslation()
-  // ═══════════════════════════════════════════════════════════════════════════
-  // INTEGRATION & BACKUP STATUSES - Consumed from centralized store slice
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Subscribe to integration statuses from the store (no local state needed)
-  // The useIntegrationStatus hook in App.tsx handles the status check orchestration
+  // Statuses come from the store; useIntegrationStatus in App.tsx keeps them current.
   const integrations = usePDMStore((s) => s.integrations)
   const backupStatus = usePDMStore((s) => s.backupStatus)
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  // The auto-updater's pending update (also after "Later"); a dot on Updates says so.
+  const updateVersion = usePDMStore((s) =>
+    s.updateAvailable && !s.updateAvailable.isManualVersion ? s.updateAvailable.version : null,
+  )
 
-  const sections = settingsSections(t).map((section) => ({
-    ...section,
-    items: section.items.filter((item) => !item.adminOnly || isAdmin),
-  }))
+  const desktop = hasDesktop()
+  const { query, groups } = useSettingsSearch()
+  const matchedTabs = new Set(groups.map((g) => g.tab))
 
-  const isIntegration = (id: SettingsTab): boolean => {
-    return (integrationIds as readonly string[]).includes(id)
-  }
+  // While searching, the navigation narrows to the tabs that have a match.
+  const sections = settingsSections(t)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) =>
+          isSettingsTabAvailable(item, isAdmin, desktop) && (!query || matchedTabs.has(item.id)),
+      ),
+    }))
+    .filter((section) => section.items.length > 0)
 
-  // Get integration status from store, with fallback for initial load
-  const getIntegrationStatus = (id: SettingsTab): IntegrationStatusValue => {
-    if (!isIntegration(id)) return 'not-configured'
-    const integration = integrations[id as IntegrationId]
-    return integration?.status || 'checking'
+  const statusFor = (id: SettingsTab): DotStatus | null => {
+    if (id === 'backup') return backupStatus
+    if (!(integrationIds as readonly string[]).includes(id)) return null
+    return integrations[id as IntegrationId]?.status || 'checking'
   }
 
   return (
-    <div className="flex flex-col h-full bg-plm-sidebar">
-      {/* Scrollable navigation */}
+    <div className="flex h-full flex-col">
+      <SettingsSearchBox />
+
       <nav
-        className="flex-1 overflow-y-auto hide-scrollbar"
-        role="menu"
+        className="flex-1 overflow-y-auto px-[17px] pb-4 hide-scrollbar"
         aria-label={t('settings.navigation')}
       >
-        <div className="flex flex-col py-1">
-          {sections.map((section, sectionIndex) => (
-            <div key={section.category}>
-              {/* Section */}
-              <div className="mt-4 mb-1 mx-3">
-                {/* Category header - uppercase mono, faded */}
-                <div className="px-3 mb-1">
-                  <span className="text-[13px] font-mono uppercase text-plm-fg-muted/45">
-                    {section.category}
-                  </span>
-                </div>
-
-                {/* Menu items - tighter spacing */}
-                <div>
-                  {section.items.map((item) => (
+        {sections.map((section) => (
+          <div key={section.category} className="pt-5">
+            <div className="pb-1.5 text-[14px] leading-5 text-ui-fg-tertiary">{section.category}</div>
+            <ul>
+              {section.items.map((item) => {
+                const selected = activeTab === item.id && !query
+                const status = statusFor(item.id)
+                const Icon = item.icon
+                return (
+                  <li key={item.id}>
                     <button
-                      key={item.id}
-                      role="menuitem"
+                      type="button"
+                      aria-current={selected ? 'page' : undefined}
                       onClick={() => {
                         logSettings(`Changed settings tab to ${item.label}`, { tabId: item.id })
-                        onTabChange(item.id)
+                        if (query) {
+                          usePDMStore.getState().openSettingFromSearch(item.id, item.label)
+                        } else {
+                          onTabChange(item.id)
+                        }
                       }}
-                      className={`w-full flex items-center justify-between px-3 py-1 rounded-lg text-[13px] font-sans transition-colors outline-none focus-visible:ring-1 focus-visible:ring-plm-accent ${
-                        activeTab === item.id
-                          ? 'bg-plm-highlight text-plm-fg font-semibold'
-                          : 'text-plm-fg-dim hover:text-plm-fg'
+                      className={`flex h-8 w-full items-center gap-3 rounded-lg px-[9px] text-left text-[14px] text-ui-fg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ui-accent/50 ${
+                        selected ? 'bg-ui-selected font-medium' : 'hover:bg-ui-hover'
                       }`}
                     >
-                      <span>{item.label}</span>
-                      {isIntegration(item.id) && (
-                        <StatusDot status={getIntegrationStatus(item.id)} />
+                      <Icon size={18} strokeWidth={1.6} aria-hidden className="flex-shrink-0" />
+                      <span className="min-w-0 flex-1 truncate" title={item.label}>
+                        {item.label}
+                      </span>
+                      {status && (
+                        <StatusDot
+                          status={status}
+                          title={t(
+                            item.id === 'backup' && status === 'online'
+                              ? 'settings.backupsWorking'
+                              : item.id === 'backup' && status === 'offline'
+                                ? 'settings.backupFailed'
+                                : DOT_TITLE_KEY[status],
+                          )}
+                        />
                       )}
-                      {item.id === 'backup' && <BackupStatusDot status={backupStatus} />}
+                      {item.id === 'updates' && updateVersion && (
+                        <span
+                          className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ui-accent"
+                          title={t('preferences.updateReadyTitle', { version: updateVersion })}
+                          aria-label={t('preferences.updateReadyTitle', { version: updateVersion })}
+                        />
+                      )}
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Divider between sections (except after last) */}
-              {sectionIndex < sections.length - 1 && (
-                <div className="h-px w-full bg-plm-border/50 mt-3" />
-              )}
-            </div>
-          ))}
-        </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
     </div>
   )

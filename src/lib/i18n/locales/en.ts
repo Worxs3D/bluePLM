@@ -1,6 +1,9 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
+import { dbUpgradeStrings } from './dbUpgrade'
+import { securityMonitoringStrings } from './securityMonitoring'
+import { shortcutsStrings } from './shortcuts'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
@@ -36,6 +39,9 @@ export const en: TranslationDict = {
   },
   ...reviewsUiStrings.en,
   reviewPackage: reviewPackageStrings.en,
+  dbUpgrade: dbUpgradeStrings.en,
+  securityMonitoring: securityMonitoringStrings.en,
+  shortcuts: shortcutsStrings,
   app: {
     recoveredFromCrash: 'BluePLM stopped responding and reloaded. Your vault is being re-read.',
   },
@@ -57,6 +63,11 @@ export const en: TranslationDict = {
   fileReadonly: {
     blocked: 'This file is read-only on disk, so nothing was written.',
     unknown: 'Could not tell whether this file is read-only, so nothing was written.',
+    missing:
+      "This file isn't on disk at its recorded path. It may have been renamed or moved, so nothing was written.",
+    notOnDisk: 'This row has no file on disk, so it cannot be edited.',
+    movedTo:
+      'This file was renamed or moved to {{path}}. Check in the new file to update its path, then edit it there.',
     stillCheckedOut: 'Checked out, but still read-only on disk: {{names}}',
     madeWritable: '{{count}} file(s) were already checked out and are now writable.',
     solidWorksStillReadonly:
@@ -148,27 +159,28 @@ export const en: TranslationDict = {
 
   // Welcome/Auth Screen
   welcome: {
+    downloadDesktop: 'Download the desktop app',
+    downloadDesktopFor: 'Download the desktop app ({{os}})',
+    signedOutFromAnotherDevice: 'You were signed out from another device',
+    credentialsRequired: 'Please enter email and password',
+    confirmEmail: 'Please check your email to confirm your account',
+    authenticationFailed: 'Authentication failed. Please try again.',
+    phoneRequired: 'Please enter your phone number',
+    sendCodeFailed: 'Failed to send verification code. Please try again.',
+    codeRequired: 'Please enter the verification code',
+    verificationFailed: 'Verification failed. Please try again.',
     title: 'BluePLM',
     tagline: 'Open-source Product Lifecycle Management',
-    selectAccountType: 'Select your account type',
-    teamMember: 'Team Member',
-    teamMemberDesc: 'Engineers, admins, and viewers',
-    supplier: 'Supplier',
-    supplierDesc: 'Vendor portal access',
     workOffline: 'Work Offline',
     offlineMode: 'Offline Mode',
 
     // Team member auth
-    teamSignIn: 'Team Member Sign In',
-    signInWithOrg: 'Sign in with your organization account',
     signInWithGoogle: 'Sign In with Google',
     tryAgain: 'Try Again',
     connecting: 'Connecting...',
     roleSetByOrg: 'Your role (Admin, Engineer, Viewer) is set by your organization',
 
     // Supplier auth
-    supplierPortal: 'Supplier Portal',
-    createAccount: 'Create your supplier account',
     signInToAccount: 'Sign in to your account',
     email: 'Email',
     password: 'Password',
@@ -189,8 +201,6 @@ export const en: TranslationDict = {
     useDifferentNumber: 'Use a different number',
     verificationSent: 'A verification code was sent to',
     includeCountryCode: 'Include country code (e.g., +86 for China, +1 for US)',
-    supplierInviteNote:
-      'Suppliers are invited by organizations. Contact your buyer if you need access.',
 
     // Vault connection
     connectingToOrg: 'Connecting to your organization...',
@@ -206,6 +216,15 @@ export const en: TranslationDict = {
 
   // Setup Screen
   setup: {
+    joinTarget:
+      'This link connects BluePLM to {{org}} ({{host}}). Connect only if you trust whoever sent it.',
+    webJoinLink: 'Web join link',
+    webJoinLinkDesc: 'Opens BluePLM in a browser, connected to this organization',
+    copyWebJoinLink: 'Copy the web join link',
+    webHostedOnly:
+      'BluePLM Web connects to hosted Supabase projects (*.supabase.co) only. Use the desktop app for a self-hosted backend.',
+    webRedirectHint:
+      'Google sign-in returns here only if your Supabase project lists https://blueplm.io under Authentication > URL Configuration > Redirect URLs. Ask your administrator to add it.',
     welcome: 'Welcome to BluePLM',
     connectToBackend: "Connect to your organization's Supabase backend to get started",
     imAdmin: 'Set Up an Organization',
@@ -218,7 +237,7 @@ export const en: TranslationDict = {
     adminSetup: 'Admin Setup',
     enterCredentials: "Enter your Supabase credentials from your project's API settings",
     projectId: 'Project ID',
-    projectIdHelp: 'Found at the top of your Supabase Dashboard (e.g., vvyhpdzqdizvorrhjhvq)',
+    projectIdHelp: 'Found at the top of your Supabase Dashboard (e.g., abcdefghijklmnopqrst)',
     anonKey: 'Anon (Public) Key',
     orgSlug: 'Organization Slug',
     orgSlugHelp: 'This helps identify your organization in the generated code',
@@ -267,7 +286,19 @@ export const en: TranslationDict = {
     api: 'API',
     logs: 'Logs',
     about: 'About',
-    navigation: 'Settings navigation',
+    searchPlaceholder: 'Search settings',
+    searchClear: 'Clear search',
+    searchResultCount: '{{count}} settings',
+    searchResultCountOne: '1 setting',
+    searchNoResults: 'No settings match "{{query}}"',
+    searchNoResultsHint: 'Try fewer letters or a different word.',
+    searchKeyboardHint: '↑ ↓ to move · Enter to open · Esc to clear',
+    searchMatchedKeyword: 'matches "{{keyword}}"',
+    navigation: 'Settings sections',
+    maximize: 'Maximize',
+    restoreSize: 'Restore size',
+    close: 'Close settings (Esc)',
+
     profile: 'Profile',
     keybindings: 'Keybindings',
     sidebar: 'Sidebar',
@@ -294,6 +325,9 @@ export const en: TranslationDict = {
     system: 'System',
     performance: 'Performance',
     devTools: 'Dev Tools',
+    filesAndData: 'Files and data',
+    thisComputer: 'This computer',
+    connection: 'Connection',
     connected: 'Connected',
     partiallyConnected: 'Partially connected',
     offline: 'Offline',
@@ -303,25 +337,7 @@ export const en: TranslationDict = {
     backupsWorking: 'Backups working',
     needsAttention: 'Needs attention',
     backupFailed: 'Backup failed',
-  },
-
-  accountSettings: {
-    notSignedIn: 'Not signed in',
-    profile: 'Profile',
-    noName: 'No name',
-    role: 'Role',
-    sessions: 'Sessions',
-    sessionsDescription: "Devices where you're currently signed in",
-    loadingSessions: 'Loading sessions...',
-    noActiveSessions: 'No active sessions',
-    thisDevice: 'This device',
-    unknown: 'Unknown',
-    unknownLastSeen: 'unknown',
-    justNow: 'Just now',
-    minutesAgo: '{{count}}m ago',
-    signOut: 'Sign out',
-    signOutDevice: 'Sign out this device',
-  },
+    },
 
   // Log viewer
   logs: {
@@ -342,6 +358,13 @@ export const en: TranslationDict = {
     updateAvailable: 'Update available! Check the notification.',
     couldNotCheck: 'Could not check for updates',
     checkForNewVersions: 'Check for new versions',
+    installedVersion: 'Installed version {{version}}',
+    updateReadyTitle: 'Version {{version}} is available',
+    updateReadyDesc: 'BluePLM downloads it and restarts to finish installing.',
+    updateDownloadingDesc: 'Downloading... {{percent}}%',
+    updateInstallingDesc: 'Installing. BluePLM will restart.',
+    updateNow: 'Update now',
+    openUpdates: 'Updates',
 
     appearance: 'Appearance',
     themeDark: 'Dark',
@@ -461,6 +484,7 @@ export const en: TranslationDict = {
     modified: 'Modified',
     noFilesFound: 'No files found',
     dropFilesHere: 'Drop files here to upload',
+    clearSearch: 'Clear search',
   },
 
   // File operations
@@ -499,6 +523,13 @@ export const en: TranslationDict = {
     download: 'Download',
     downloadSkippedNoHash_one: '1 file had no downloadable hash',
     downloadSkippedNoHash_other: '{{count}} files had no downloadable hash',
+    webDownloadTooMany:
+      '{{count}} files selected. A browser download holds at most {{max}} files; select fewer.',
+    webDownloadTooLarge:
+      'The selection is {{size}} GB. A browser download holds at most {{max}} GB; select less, or use the desktop app.',
+    webDownloadZipping: 'Zipping {{count}} files...',
+    webDownloadFailed: 'Could not download {{name}}: {{error}}',
+    downloadVersion: 'Download this version',
     getLatest: 'Get Latest',
     upload: 'Upload',
     delete: 'Delete',
@@ -620,6 +651,36 @@ export const en: TranslationDict = {
   },
 
   vaultOperations: {
+    created: 'Vault "{{name}}" created',
+    createError: 'Failed to create vault',
+    renameErrorDetails: 'Failed to rename vault: {{error}}',
+    renamed: 'Vault renamed to "{{name}}"',
+    renameError: 'Failed to rename vault',
+    defaultError: 'Failed to set default vault',
+    defaultUpdated: 'Default vault updated',
+    deleteErrorDetails: 'Failed to delete vault: {{error}}',
+    deleted: 'Vault "{{name}}" permanently deleted',
+    deleteError: 'Failed to delete vault',
+    clearingDb: 'Clearing database records...',
+    clearFilesError: 'Failed to clear vault files: {{error}}',
+    clearingLocal: 'Clearing local files...',
+    localDeleted: 'Deleted {{count}} of {{total}} local items',
+    noLocal: 'No local files to delete',
+    clearLocalWarning: 'Could not clear some local files',
+    clearingCloud: 'Clearing cloud storage...',
+    cloudDeleted: 'Deleted {{count}} files from cloud storage',
+    noCloud: 'No cloud storage files to delete',
+    clearCloudWarning: 'Could not clear cloud storage files',
+    cleared: 'Vault "{{name}}" cleared successfully',
+    clearError: 'Failed to clear vault',
+    electronUnavailable: 'Electron API not available',
+    folderError: 'Failed to create vault folder: {{error}}',
+    connectError: 'Failed to connect vault',
+    connected: 'Connected to "{{name}}"',
+    disconnected: 'Vault disconnected (local files preserved)',
+    wipeError: 'Failed to wipe local files',
+    autoDiscardOne: 'Auto-discarded {{count}} orphaned file',
+    autoDiscardMany: 'Auto-discarded {{count}} orphaned files',
     createFailed: 'Failed to create vault: {{error}}',
   },
 
@@ -697,9 +758,6 @@ export const en: TranslationDict = {
     inspection: {
       title: 'Inspection Table',
       notSynced: 'Sync this drawing to bluePLM to manage its inspection table.',
-      notInstalledTitle: 'Inspection tables not set up',
-      notInstalledBody:
-        'Your database does not have the inspection module yet. Ask your admin to run the latest schema (modules/15-inspection.sql) to enable inspection tables.',
       version: 'Version',
       current: 'Current',
       saving: 'Saving…',
@@ -1021,6 +1079,44 @@ export const en: TranslationDict = {
   // Workflows
   workflows: {
     layoutSaveFailed: 'Could not save the diagram layout',
+    reviewStage: {
+      toggle: 'Review stage',
+      hint: 'Files entering this state go to a review. Settings > File Workflows decides whether an approval moves them on by itself.',
+      onApproval: 'When approved, move to',
+      onlyExit: 'Its only exit ({{state}})',
+      chooseExit: 'Choose a state',
+      needsExit: 'Choose where approved files go: this state has more than one exit.',
+    },
+    settings: {
+      title: 'File Workflows',
+      intro: 'Workflows move files through states such as WIP, In Review and Released.',
+      adminOnly: 'Only administrators can change these settings.',
+      enable: 'Use file workflows',
+      enabledHint:
+        'Files follow their workflows. Change State is in the file menus and Workflows in the sidebar.',
+      disabledHint:
+        'Workflows are off: no Workflows view, no Change State in the file menus, and no state changes. Workflows and file states are kept.',
+      onApprovalTitle: 'When a review approves files in a review stage',
+      onApprovalIntro:
+        'A review stage is a workflow state marked "Review stage". Files in it are reviewed in a review package.',
+      hold: 'Mark them approved; the requester moves them',
+      holdHint:
+        'The review shows the files as approved and offers the move. Nothing moves until the requester (or an administrator) does it.',
+      advance: 'Move them to the next stage',
+      advanceHint:
+        'Approved files move to the state the review stage names, without anyone acting.',
+      packageTitle: 'When a package comes back partly approved',
+      packageIntro:
+        'Applies to automatic moves. The requester can always move the approved files or the whole package from the review.',
+      together: 'Move the package as one',
+      togetherHint: 'Nothing moves until every file in the package is approved.',
+      approvedOnly: 'Move approved files ahead',
+      approvedOnlyHint:
+        'Each file moves as soon as it is approved; the rest stay in review or go back for changes.',
+      saved: 'File workflow settings saved',
+      saveFailed: 'Could not save the file workflow settings: {{message}}',
+      noPermission: 'Update failed: you may not have permission',
+    },
     transition: {
       moved: 'Moved to {{state}}',
       failed: 'Failed to change state',
@@ -1347,11 +1443,32 @@ export const en: TranslationDict = {
   // Context menu translations
   contextMenu: {
     goToFolder: 'Go to Folder',
+    auditFolderMetadata: 'Audit SOLIDWORKS metadata…',
+    auditFolderMetadataHint:
+      'Open the Metadata Audit with this folder as its scope. Nothing is scanned until you run it.',
     review: {
       request: 'Request review…',
       requestMany: 'Request review of {{count}} files…',
       addToPackage: 'Add to review package',
       addToPackageHint: 'Add to the review package being built (files in it: {{count}})',
+      reviews: 'Reviews',
+      newReview: 'New review…',
+      newReviewMany: 'New review of {{count}} files…',
+      addTo: 'Add to review',
+      removeFrom: 'Remove from review',
+      draft: 'Review being built ({{count}} files)',
+      reviewHint: '{{count}} files in this review',
+      loading: 'Loading reviews…',
+      loadFailed: 'Could not load open reviews',
+      noneToAdd: 'No open review to add to',
+      noneToRemove: 'Not in an open review',
+      view: 'View reviews',
+      toastAdded: 'Added {{count}} to {{title}}',
+      toastAlreadyInReview: 'Already in {{title}}',
+      toastAddFailed: 'Could not add to the review: {{message}}',
+      toastRemoved: 'Removed {{count}} from {{title}}',
+      toastRemoveFailed: 'Could not remove from the review: {{message}}',
+      toastRemovedFromDraft: 'Removed {{count}} from the review being built',
     },
     assembly: {
       title: 'Assembly',
@@ -1501,6 +1618,42 @@ export const en: TranslationDict = {
       dialogMoveButton: 'Move {{files}}',
       dialogFailed: 'Could not prepare the transfer: {{error}}',
     },
+    export: {
+      noFiles: 'No files to export as {{format}}',
+      noDrawings: 'No drawing files selected',
+      progress: 'Exporting {{format}}...',
+      progressMany: 'Exporting {{format}} ({{count}} files)...',
+      progressFromDrawing: 'Exporting STEP from drawing...',
+      progressFromDrawings: 'Exporting STEP from drawings ({{count}})...',
+      done: 'Exported {{count}} {{format}} file(s)',
+      doneFromDrawings: 'Exported {{count}} STEP file(s) from drawings',
+      partial: 'Exported {{succeeded}}, failed {{failed}}',
+      failed: 'Failed to export {{format}}',
+      failedFromDrawings: 'Failed to export STEP from drawing references',
+      error: 'Export failed: {{error}}',
+      startSolidWorks: 'Start SolidWorks to export STEP from drawings',
+      itemNumberMismatch:
+        '{{name}} has item number {{fileNumber}} in its file properties but {{pdmNumber}} in BluePLM. The export used {{fileNumber}}. Run Sync Metadata to correct the file.',
+    },
+    quickExport: {
+      toFolder: 'Export to Quick Export Folder',
+      sectionTitle: 'Quick Export',
+      sectionDescription:
+        'The Export PDF and Export STEP shortcuts (Settings > Keyboard shortcuts) queue the selected files for export to this folder.',
+      folderLabel: 'Quick export folder',
+      folderDescription: 'Where the export shortcuts write on this computer.',
+      folderChoose: 'Choose...',
+      folderClear: 'Export next to each file instead',
+      nextToFiles: 'next to each file',
+      queued: 'Queued {{format}} export of {{count}} file(s) to {{destination}}',
+      queuedBehind:
+        'Queued {{format}} export of {{count}} file(s) to {{destination}}, behind {{ahead}} running or waiting',
+      skipped: '{{count}} selected file(s) skipped.',
+      alreadyQueued: 'The selection is already queued for {{format}} export',
+      nothingPdf: 'Select one or more drawings to export PDF',
+      nothingStep: 'Select parts, assemblies or drawings to export STEP',
+      serviceNotRunning: 'The SolidWorks service is not running, so nothing was exported',
+    },
   },
 
   // Admin-only Vault Audit page - presents the read-only divergence scan
@@ -1522,8 +1675,37 @@ export const en: TranslationDict = {
       wholeVaultHint:
         'Every part and assembly. Around eight thousand documents and roughly three minutes.',
       folder: 'One folder',
-      folderHint: 'That folder and everything beneath it.',
-      folderPlaceholder: 'e.g. 0 - SHARED\\00 - REGRESSION TESTS',
+      folderHint:
+        'That folder and everything beneath it. Type part of a folder name, browse the vault, or paste a full path.',
+      current: 'Scope: {{scope}}',
+      label: 'Scope',
+      change: 'Change',
+      done: 'Done',
+      configurationRecordedShort:
+        'Files BluePLM records per configuration, where a record can have lost something. A fraction of a full scan.',
+      folderShort: 'One folder and everything beneath it.',
+      wholeVaultShort: 'Every part and assembly in the vault. The slowest scan.',
+      folderPlaceholder: 'Search folders or paste a path',
+      folderBrowse: 'Browse',
+      folderBrowseHide: 'Hide folders',
+      folderTreeLabel: 'Vault folders',
+      folderClear: 'Clear folder',
+      folderIndexEmpty: 'The vault’s folders have not loaded yet.',
+      folderNoSuggestions: 'No folder in the vault matches "{{query}}".',
+      folderCountTitle_one: '{{count}} part or assembly in BluePLM at or below this folder',
+      folderCountTitle_other: '{{count}} parts and assemblies in BluePLM at or below this folder',
+      folderModels_one: '{{count}} part or assembly in BluePLM under this folder.',
+      folderModels_other: '{{count}} parts and assemblies in BluePLM under this folder.',
+      folderNotOnDisk_one:
+        '{{count}} of them is not on this machine and will be listed as not read.',
+      folderNotOnDisk_other:
+        '{{count}} of them are not on this machine and will be listed as not read.',
+      folderNoModels:
+        'BluePLM has no parts or assemblies under this folder, so the audit would compare nothing.',
+      folderRequired: 'Choose a folder to scan.',
+      folderNotFound: 'No folder at this path in the vault.',
+      folderOutsideVault: 'This path is outside the vault ({{vault}}).',
+      folderFixFirst: 'Choose a folder in the vault first.',
       configurationRecorded: 'Multi-configuration files',
       configurationRecordedHint:
         'Only files BluePLM already records per-configuration metadata for, which is where a configuration record can have lost something. Six of seven models have a single configuration, so this costs a fraction of a full scan. It cannot see a multi-configuration file BluePLM never recorded — nothing was lost from a record that never existed.',
@@ -1536,6 +1718,8 @@ export const en: TranslationDict = {
     clear: 'Clear results',
     preparing: 'Asking SOLIDWORKS which documents are open…',
     progressFiles: '{{completed}} of {{total}} files read',
+    progressElapsed: '{{time}} elapsed',
+    progressRemaining: 'about {{time}} left',
 
     result: {
       heading: 'Result',
@@ -1553,6 +1737,10 @@ export const en: TranslationDict = {
         'No parts or assemblies matched this scope, so nothing was compared. This is not an all-clear.',
       folderMatchedNothing:
         'No file’s path begins with “{{path}}”. The folder is relative to the vault root, like “0 - SHARED\\00 - REGRESSION TESTS” — the browser’s Copy Path buttons give a full path starting with a drive letter, which never matches.',
+      // Replaces the line above: a full path inside the vault is now accepted. A new key, so other
+      // locales fall back to this English rather than keep telling users full paths never match.
+      folderMatchedNothingAnywhere:
+        'No part or assembly is inside “{{path}}”. Check the folder name, or that a full path starts with this vault’s folder ({{vault}}).',
       comparedNothing:
         '{{rows}} files matched this scope and none of them could be read, so nothing was compared. See below for why.',
       filesWithFindings: '{{files}} of {{compared}} files have at least one finding',
@@ -1580,6 +1768,10 @@ export const en: TranslationDict = {
       noConfigurationRecord:
         '{{count}} carry no configuration record, so a scan of this scope never opens them',
       beyondLimit: '{{count}} were beyond the run’s limit',
+    },
+
+    details: {
+      heading: 'Configuration records and field totals',
     },
 
     integrity: {
@@ -1632,6 +1824,34 @@ export const en: TranslationDict = {
         'The file holds a value BluePLM never owned. Adopting one would invent a record rather than restore it, and erasing it is not BluePLM’s to do.',
       values: '{{count}} values',
       files: '{{count}} files',
+      // Tab names: what is wrong, short enough for six to sit in one row. The full name above is
+      // the heading under the tabs and says what resolving it consists of.
+      lostShort: 'Lost on both sides',
+      conflictingShort: 'Conflicts',
+      recoverableShort: 'Restore from file',
+      emptyInDatabaseShort: 'Empty in BluePLM',
+      absentFromFileShort: 'Missing from file',
+      unattributedShort: 'Leave alone',
+    },
+
+    // Counted nouns, picked by `countOf()` (t() has no plural rules). Strings that show a count
+    // take these as ready-made phrases.
+    count: {
+      files_one: '{{count}} file',
+      files_other: '{{count}} files',
+      values_one: '{{count}} value',
+      values_other: '{{count}} values',
+      entries_one: '{{count}} entry',
+      entries_other: '{{count}} entries',
+    },
+
+    summary: {
+      withFindings: 'Files with findings',
+      ofCompared: 'of {{count}} compared',
+      notRead: 'Not read',
+      notReadNone: 'every file opened',
+      duration: 'Scan time',
+      clean: 'Clean',
     },
 
     resolution: {
@@ -1666,6 +1886,8 @@ export const en: TranslationDict = {
       hint: 'Leave this off if your drawings drive revisions and the model never states one — a model file without a revision is expected and the difference is not a finding. Turning it on shows those comparisons; revision remains driven by the file and the audit never writes BluePLM’s revision into a document. Drawings always own their own revision, and changing this re-reads the scan you already have rather than running a new one.',
       hidden:
         '{{count}} revision comparisons on parts and assemblies are not counted above, because your drawings own revision.',
+      short: 'Models carry their own revision',
+      hiddenShort: '{{count}} revision comparisons hidden',
     },
 
     blocked: {
@@ -1697,6 +1919,11 @@ export const en: TranslationDict = {
       receiptRefused:
         '{{refused}} values were not allowed by the database and {{failed}} files failed. Nothing else changed for them.',
       appliedToast: 'Filled {{count}} values from files.',
+      selectPromptShort: 'Tick the values to fill',
+      selectedPhrase: '{{values}} selected in {{files}}',
+      reviewPhrase: 'Review {{values}}',
+      reviewNone: 'Review',
+      applyPhrase: 'Fill {{values}}',
     },
 
     difference: {
@@ -1713,6 +1940,7 @@ export const en: TranslationDict = {
       guaranteeLabel: 'What this can and cannot change',
       fileWriteLabel: 'How writing into documents works',
       conflictLabel: 'How conflicts are resolved',
+      howItWorks: 'How this works',
     },
 
     push: {
@@ -1729,6 +1957,10 @@ export const en: TranslationDict = {
       selectedSummary: '{{files}} files selected.',
       apply: 'Write {{count}} files',
       running: 'Writing…',
+      selectPromptShort: 'Tick the files to write',
+      selectedPhrase: '{{files}} selected',
+      applyPhrase: 'Write {{files}}',
+      applyNone: 'Write files',
     },
 
     conflict: {
@@ -1748,6 +1980,11 @@ export const en: TranslationDict = {
       noUser: 'No signed-in user is available to apply this choice.',
       appliedToast: 'Applied {{values}} file values to BluePLM.',
       updateFailed: 'Metadata update failed',
+      selectPromptShort: 'Choose a side on each row',
+      fileChoice: 'Use file: {{values}}',
+      bluePlmChoice: 'Use BluePLM: {{files}}',
+      applyFilePhrase: 'Copy {{values}} into BluePLM',
+      applyBluePlmPhrase: 'Write {{files}}',
     },
 
     findings: {
@@ -1786,13 +2023,23 @@ export const en: TranslationDict = {
       empty: '—',
       reveal: 'Show in file browser',
       revealUnavailable: 'This file has no local copy to show.',
+      expandFile: 'Show this file’s values',
+      collapseFile: 'Hide this file’s values',
+      selectFile: 'Select or clear every value of this file',
+      expandAll: 'Expand all',
+      collapseAll: 'Collapse all',
+      emptyValue: 'empty',
+      totalPhrase: '{{values}} in {{files}}',
+      showingPhrase: '{{shown}} of {{total}} shown',
+      selectedPhrase: '{{selected}} of {{total}} selected',
+      selectAllPhrase: 'Select all {{items}}',
+      selectOnePhrase: 'Select {{items}}',
+      noneAvailableShort: 'Nothing here can be written from the audit.',
     },
 
     repair: {
       guarantee:
         'This can only add entries your record is missing. Every value BluePLM already holds wins over the one proposed here, including entries added since the scan, and entries for configurations that no longer exist are left alone. That is enforced by the database, not by this screen — the merge puts your record on the winning side, so an overwrite or a deletion cannot be expressed.',
-      notInstalled:
-        'Your database does not have the repair function yet. It ships in schema 94; ask your admin to apply the latest schema (core.sql, then the modules, then tools/verify-schema.sql) and the repair appears here. The audit above works either way.',
       noOrganization: 'No organization is loaded, so there is nothing to repair against.',
 
       includeDerived: 'Also reconstruct tabs from each configuration’s Number',
@@ -1804,6 +2051,11 @@ export const en: TranslationDict = {
         '{{entries}} entries across {{files}} files selected, {{derived}} of them reconstructed.',
       apply: 'Write {{count}} entries',
       applying: 'Writing…',
+      selectPromptShort: 'Tick the entries to restore',
+      selectedPhrase: '{{entries}} selected in {{files}}',
+      derivedPhrase: '{{count}} reconstructed',
+      applyPhrase: 'Restore {{entries}}',
+      applyNone: 'Restore entries',
       appliedToast: 'Restored {{entries}} entries across {{files}} files.',
 
       receiptHeading: '{{entries}} entries restored across {{files}} files.',
@@ -2241,13 +2493,6 @@ export const en: TranslationDict = {
     none: "No organization extensions installed.",
     error: "Error: {{message}}",
   },
-  extensionRuntime: {
-    notice:
-      "Extensions from the store or a file are kept on this computer but not run: the sandboxed runtime is not available. Organization extensions, installed by an administrator above, do run.",
-    installedNotRunning: 'Installed (not running)',
-    adminOnly: 'Only administrators can install or remove extensions.',
-    notAdminError: 'Only administrators can install extensions.',
-  },
   strandedEdits: {
     checkoutLost:
       'Your checkout of {{name}} was released while it had unsaved metadata edits. They can no longer be checked in. Checking the file out again will ask before discarding them — note them down if you need them.',
@@ -2281,6 +2526,150 @@ export const en: TranslationDict = {
     askAdmin: 'Ask an administrator to check your license assignment.',
     warningBadge: 'License warning',
   },
+  serverBackup: {
+    runLocationLabel: 'Where backups run',
+    runLocationServer: 'BluePLM server (recommended)',
+    runLocationServerHint:
+      'The API backs up the whole vault, every version and the database on schedule, with no computer on. Needs API 4.1.0 or later with the service key set.',
+    runLocationDesktop: 'Designated computer',
+    runLocationDesktopHint:
+      'One computer backs up its local copy of the vault with restic. Only runs while that computer is on and signed in, and only covers files downloaded there.',
+    title: 'Server backups',
+    workerOnline: 'Server backup worker online (last seen {{ago}})',
+    workerOffline: 'No server backup worker has checked in. Deploy API 4.1.0 or later with SUPABASE_SERVICE_KEY set.',
+    workerStale: 'The server backup worker was last seen {{ago}}.',
+    nextRun: 'Next scheduled backup: {{when}}',
+    scheduleOff: 'No schedule: backups run only when requested.',
+    running: 'Running since {{when}}',
+    backupRequested: 'Backup requested, waiting for the server',
+    testRequested: 'Test requested, waiting for the server',
+    backupNow: 'Back up now',
+    testBackup: 'Test backup',
+    testQuick: 'Quick check',
+    testQuickHint: 'Every snapshot opens and every file is present. Downloads almost nothing.',
+    testSample: 'Sample restore',
+    testSampleHint: 'Quick check, plus restores 25 random files and a sample of the live vault and checks their hashes.',
+    testFull: 'Full restore test',
+    testFullHint: 'Restores every file in every kept snapshot and checks each one. Slow, and downloads the whole backup.',
+    requestFailed: 'Could not send the request: {{error}}',
+    backupRequestSent: 'Backup requested. The server starts it within a minute.',
+    testRequestSent: 'Test requested. The server starts it within a minute.',
+    recentRuns: 'Recent runs',
+    noRuns: 'No server backup has run yet.',
+    kindBackup: 'Backup',
+    kindVerify: 'Test',
+    triggerScheduled: 'scheduled',
+    triggerManual: 'requested',
+    statusCompleted: 'OK',
+    statusWarning: 'Warning',
+    statusFailed: 'Failed',
+    statusRunning: 'Running',
+    backupSummary: '{{files}} files, {{uploaded}} new ({{size}} uploaded)',
+    verifySummary: '{{blobs}} files restored and checked, {{problems}} problem(s)',
+    lastGood: 'Last successful backup: {{when}}',
+    lastGoodNever: 'No successful server backup yet.',
+    staleWarning: 'The last successful backup is more than {{hours}} hours old.',
+    lastTest: 'Last test: {{when}}, {{result}}',
+    lastTestPassed: 'passed',
+    lastTestFailed: 'failed',
+    restoreHint:
+      'To restore from a server backup, run: npm run backup --prefix api -- restore --org {{orgId}} --to <folder>. It writes only to that folder.',
+    adminOnly: 'Only administrators can start backups and tests.',
+    progressReadingDatabase: "Reading the database…",
+    progressUploading: "{{done}} of {{total}} files, {{size}} uploaded",
+    progressChecking: "{{done}} of {{total}} files checked",
+    statusInterrupted: "Interrupted, resumed",
+    interruptedDetail: "The server restarted during this run (an update), so it carried on in the run above. Nothing was lost.",
+    howToRestore: "How to restore a server backup",
+    fullTestSchedule: "A full restore test runs automatically every 30 days, 4 hours after the nightly backup.",
+  },
+  backupPanel: {
+    title: "Backup & Restore",
+    refresh: "Refresh",
+    notConfigured: "Backups are not set up",
+    notConfiguredAdmin: "Connect a bucket in Backup settings below to start.",
+    notConfiguredMember: "An administrator needs to set up backups.",
+    openSettings: "Open settings",
+    healthy: "Backups are healthy",
+    attention: "Backups need attention",
+    runsOnServer: "Run on the BluePLM server",
+    runsOnComputer: "Run on {{name}}",
+    runsOnNobody: "No computer is set to run backups",
+    thisComputer: "this computer",
+    lastBackup: "Last backup",
+    nextBackup: "Next backup",
+    never: "Never",
+    notScheduled: "Not scheduled",
+    reasonWorkerOffline: "The server backup worker has not checked in. Deploy the API with SUPABASE_SERVICE_KEY set.",
+    reasonNoComputer: "No computer is designated to run backups.",
+    reasonComputerOffline: "{{name}} is offline, so its backups do not run.",
+    reasonNeverBackedUp: "No backup has completed yet.",
+    reasonStale: "The last successful backup is more than {{hours}} hours old.",
+    reasonNoSchedule: "No schedule is set: backups run only when someone starts one.",
+    adminChooses: "An administrator chooses where backups run.",
+    online: "Online",
+    offline: "Offline",
+    lastSeen: "last seen {{ago}}",
+    noComputer: "No computer is designated.",
+    takeOver: "Use this computer instead",
+    useThisComputer: "Use this computer",
+    release: "Release",
+    noVaultsSelected: "Select at least one vault",
+    computerOffline: "The designated computer is offline",
+    requestBackup: "Request backup",
+    backupRunning: "Backup running",
+    backupRequestedBy: "Backup requested by {{who}}",
+    nowServer: "Backups now run on the BluePLM server.",
+    nowDesktop: "Backups now run on the designated computer.",
+    restoreHintServer: "Restore points below are the designated computer's snapshots. Server backups are restored with the command shown in Server backups.",
+    rateLimited: "The backup bucket is rate limiting requests. Retry in {{seconds}} s.",
+    firstBackupRunning: "First backup in progress",
+    inProgress: "In progress",
+    selected: "Selected",
+    desktopSnapshots: "Desktop snapshots (restic)",
+  },
+  damagedFiles: {
+    title: "Damaged files",
+    none: "No damaged or missing files.",
+    showClosed: "Show {{count}} resolved",
+    hideClosed: "Hide resolved",
+    kindDamaged: "Damaged",
+    kindMissing: "Missing",
+    foundOn: "found {{when}}",
+    status_open: "Open",
+    status_repaired: "Repaired",
+    status_unrecoverable: "Unrecoverable",
+    status_accepted: "Accepted",
+    version: "version {{version}}",
+    current: "current version",
+    deleted: "file deleted",
+    checkedIn: "checked in by {{who}} on {{when}}",
+    noRefs: "No file version names this content any more.",
+    expected: "should be {{hash}}",
+    actual: "holds {{hash}}",
+    resolved: "Resolved by {{who}} on {{when}}",
+    checkBackup: "Check the server backup",
+    restore: "Restore from server backup ({{count}} snapshots)",
+    backupLacks: "The server backup does not hold this content.",
+    useLocal: "Use this computer's copy",
+    localMissing: "This computer has no copy of this file.",
+    localNoMatch: "This computer's copy does not match either.",
+    uploadDone: "Stored this computer's copy.",
+    restoreDone: "Restored from the server backup.",
+    rollBack: "Roll back to the last good version",
+    rollbackDone: "Rolled back to the last good version.",
+    markUnrecoverable: "Mark unrecoverable",
+    accept: "Accept",
+    unrecoverableHint: "Downloads of this version will be refused with a message instead of handing out bad bytes.",
+    acceptHint: "Accept when nobody needs this version. Say why.",
+    notePlaceholder: "Note",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    decisionSaved: "Saved.",
+    downloadRefused: "This version's stored content is damaged and an administrator marked it unrecoverable.",
+    downloadDamaged: "The copy stored on the server is damaged (it does not match its hash). An administrator can repair it under Settings > Backup > Damaged files.",
+  },
+
   settingsPages: {
     export: {
       title: 'Export Settings',
@@ -2424,6 +2813,8 @@ export const en: TranslationDict = {
       optional: 'Optional',
       dropdownOptions: 'Dropdown Options',
       addOptionPlaceholder: 'Add an option...',
+      addOption: 'Add option',
+      removeOption: 'Remove {{option}}',
       visibleByDefault: 'Visible by default',
       sortable: 'Sortable',
       required: 'Required',
@@ -2543,6 +2934,22 @@ export const en: TranslationDict = {
       noKeepoutZones: 'No keepout zones defined. All numbers will be available for assignment.',
       numberCount: '({{count}} numbers)',
       removeZone: 'Remove zone',
+      removeExtension: 'Remove {{extension}}',
+      extensionLabels: {
+        solidworksPart: 'SolidWorks Part',
+        solidworksAssembly: 'SolidWorks Assembly',
+        solidworksDrawing: 'SolidWorks Drawing',
+        step: 'STEP',
+        stp: 'STP',
+        iges: 'IGES',
+        igs: 'IGS',
+        creoNxPart: 'Creo/NX Part',
+        creoAssembly: 'Creo Assembly',
+        inventorPart: 'Inventor Part',
+        inventorAssembly: 'Inventor Assembly',
+        catiaPart: 'CATIA Part',
+        catiaAssembly: 'CATIA Assembly',
+      },
       examplePatterns: 'Example Patterns',
       examplePrefixDigits: 'Prefix: "PN-", 5 digits',
       examplePrefixLetters: 'Prefix: "BR-", Letters: "AB"',
@@ -2560,6 +2967,10 @@ export const en: TranslationDict = {
       loadFailed: 'Failed to load module access',
       saveFailed: 'Failed to save module access',
       updated: 'Module access updated',
+      teamCountOne: '{{count}} team',
+      teamCount: '{{count}} teams',
+      personCount: '{{count}} person',
+      peopleCount: '{{count}} people',
       everyone: 'Everyone',
       teams: 'Teams',
       noTeams: 'No teams yet.',
@@ -2599,6 +3010,7 @@ export const en: TranslationDict = {
       incoterms: 'Incoterms',
       validDays: 'Quote Valid (days)',
       documentColumns: 'RFQ Document Columns',
+      documentText: 'Document text',
       showLogo: 'Show company logo',
       showRevision: 'Show revision column',
       showMaterial: 'Show material column',
@@ -2609,5 +3021,23 @@ export const en: TranslationDict = {
       footer: 'Footer Text',
       footerPlaceholder: 'Custom footer text for RFQ documents',
     },
+  },
+
+  accountSettings: {
+    notSignedIn: 'Not signed in',
+    profile: 'Profile',
+    noName: 'No name',
+    role: 'Role',
+    sessions: 'Sessions',
+    sessionsDescription: "Devices where you're currently signed in",
+    loadingSessions: 'Loading sessions...',
+    noActiveSessions: 'No active sessions',
+    thisDevice: 'This device',
+    unknown: 'Unknown',
+    unknownLastSeen: 'unknown',
+    justNow: 'Just now',
+    minutesAgo: '{{count}}m ago',
+    signOut: 'Sign out',
+    signOutDevice: 'Sign out this device',
   },
 }

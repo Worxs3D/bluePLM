@@ -140,6 +140,13 @@ metadata they carry with what BluePLM has recorded. It is the in-app view of the
 it finds by what can be done about it: values to copy from the file, values to write into the
 file, conflicts that need a choice, values lost on both sides, and values to leave alone.
 
+To audit one folder, choose **One folder** and type part of the folder's name (or its path), or
+click **Browse** to pick it from the vault's folder tree. Each folder shows how many parts and
+assemblies BluePLM has under it, and the page says how many of those are not on this machine
+before you run. A full path pasted from the browser or from Windows Explorer works too. You can
+also right-click a folder in the file browser and choose **Audit SOLIDWORKS metadata…**, which
+opens this page with that folder as the scope.
+
 **Empty in BluePLM, still in the file** lists parts and assemblies whose item number or
 description is empty in BluePLM while the file still holds one under a key BluePLM writes. Before
 4.4.5, uploading a file or refreshing its metadata from the file could empty these columns, so
@@ -174,14 +181,28 @@ Configure request-for-quote workflow:
 
 ## Backups
 
-### Manual Backup
-Export your organization's data:
-- Files metadata
-- User data
-- Settings
+Settings → Backup. The top of the page says whether backups are healthy, and if not why (no computer
+designated, the computer or the server worker offline, no schedule, or no successful backup in 36 hours),
+when the last backup was and when the next one is.
 
-### Scheduled Backups
-Configure automatic backups (coming soon)
+### Where backups run
+
+An administrator chooses, in one click:
+
+- **BluePLM server (recommended).** The API backs up the whole vault, every version, and the organization's
+  database rows, encrypted, into your bucket on the schedule, with no computer on. Needs API 4.1.0 or later
+  with `SUPABASE_SERVICE_KEY` set. **Back up now** and **Test backup** (quick check, sample restore, or full
+  restore test) are on the page; every scheduled backup also test-restores a sample. Restoring a server
+  backup: `npm run backup --prefix api -- restore --org <org id> --to <folder>` (writes only to that folder).
+- **Designated computer.** One computer backs up its local copy of the vault with restic. It runs while that
+  computer is on and signed in to BluePLM (the settings page does not need to be open), and covers only the
+  files downloaded there. **Use this computer** designates it; **Release** clears it from any computer.
+
+### Bucket and schedule
+
+Under **Backup Configuration** (administrators): the storage provider, bucket and keys, the backup password,
+how many daily / weekly / monthly / yearly snapshots to keep, and the daily backup time. A backup missed
+while the runner was off runs once when it is back.
 
 ## Recovery Codes
 

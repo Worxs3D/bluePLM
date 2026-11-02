@@ -16,7 +16,7 @@ export type Language =
   | 'ko'
   | 'sindarin'
 
-// Translation value can be a string or nested object (up to 3 levels)
+// Translation values can be strings or recursively nested objects.
 export type TranslationValue = string | { [key: string]: TranslationValue }
 
 // Translation dictionary structure

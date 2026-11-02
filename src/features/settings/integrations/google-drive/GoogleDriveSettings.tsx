@@ -1,9 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { HardDrive, Loader2, Check, Eye, EyeOff, Puzzle } from 'lucide-react'
-import { log } from '@/lib/logger'
-import { usePDMStore } from '@/stores/pdmStore'
+import { Loader2, Check, Eye, EyeOff } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
+
+import { Badge, Button, Switch, TextInput } from '@/components/core/ui'
+import {
+  SettingRow,
+  SettingsGroup,
+  SettingsPage,
+  SettingsSection,
+} from '@/features/settings/components/ui'
+import { log } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
+import { usePDMStore } from '@/stores/pdmStore'
 
 export function GoogleDriveSettings() {
   const { organization, addToast, getEffectiveRole } = usePDMStore(
@@ -35,7 +43,7 @@ export function GoogleDriveSettings() {
 
     setIsLoading(true)
     try {
-      const { data, error } = await (supabase.rpc as any)('get_google_drive_settings', { // TODO: type this
+      const { data, error } = await (supabase.rpc as any)('org_get_google_drive_settings', { // TODO: type this
         p_org_id: organization.id,
       })
 
@@ -48,12 +56,12 @@ export function GoogleDriveSettings() {
         const settings = data[0] as {
           client_id?: string
           client_secret?: string
-          enabled?: boolean
+          is_enabled?: boolean
           inspection_template_folder_id?: string
         }
         setClientId(settings.client_id || '')
         setClientSecret(settings.client_secret || '')
-        setEnabled(settings.enabled || false)
+        setEnabled(settings.is_enabled || false)
         setInspectionTemplateFolderId(settings.inspection_template_folder_id || '')
       }
     } catch (error) {
@@ -73,8 +81,8 @@ export function GoogleDriveSettings() {
     // Sync Google Drive fields from realtime organization object
     const org = organization as any // TODO: type this
     if (org) {
-      if (org.google_drive_enabled !== undefined) {
-        setEnabled(org.google_drive_enabled)
+      if (org.is_google_drive_enabled !== undefined) {
+        setEnabled(org.is_google_drive_enabled)
       }
       if (org.google_drive_client_id !== undefined) {
         setClientId(org.google_drive_client_id || '')
@@ -88,7 +96,7 @@ export function GoogleDriveSettings() {
     }
   }, [
     isLoading,
-    (organization as any)?.google_drive_enabled, // TODO: type this
+    (organization as any)?.is_google_drive_enabled, // TODO: type this
     (organization as any)?.google_drive_client_id, // TODO: type this
     (organization as any)?.google_drive_client_secret, // TODO: type this
     (organization as any)?.google_drive_inspection_template_folder_id, // TODO: type this
@@ -100,7 +108,7 @@ export function GoogleDriveSettings() {
     setIsSaving(true)
     savingRef.current = true
     try {
-      const { error } = await (supabase.rpc as any)('update_google_drive_settings', { // TODO: type this
+      const { error } = await (supabase.rpc as any)('org_update_google_drive_settings', { // TODO: type this
         p_org_id: organization.id,
         p_client_id: clientId || null,
         p_client_secret: clientSecret || null,
@@ -127,141 +135,152 @@ export function GoogleDriveSettings() {
     }
   }
 
+  const configured = enabled && clientId.trim() !== '' && clientSecret.trim() !== ''
+
   return (
-    <div className="space-y-6">
-      {/* Admin notice for non-admins */}
-      {!isAdmin && (
-        <div className="flex items-center gap-2 p-3 bg-plm-info/10 border border-plm-info/30 rounded-lg text-sm text-plm-info">
-          <Puzzle size={16} className="flex-shrink-0" />
-          <span>Only administrators can edit integration settings.</span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-lg bg-plm-sidebar flex items-center justify-center">
-          <HardDrive size={24} className="text-plm-accent" />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-base font-medium text-plm-fg">Google Drive</h3>
-          <p className="text-sm text-plm-fg-muted">
-            Allow org members to connect their Google Drive
-          </p>
-        </div>
-        {isLoading && <Loader2 size={16} className="animate-spin text-plm-fg-muted" />}
-      </div>
-
-      <div className="space-y-4 p-4 bg-plm-bg rounded-lg border border-plm-border">
-        {/* Enable toggle */}
-        <div className="flex items-center justify-between">
-          <span className="text-base text-plm-fg">Enable Google Drive</span>
-          <button
-            onClick={() => isAdmin && setEnabled(!enabled)}
-            disabled={!isAdmin}
-            className={`w-11 h-6 rounded-full transition-colors relative ${
-              enabled ? 'bg-plm-accent' : 'bg-plm-border'
-            } ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+    <SettingsPage>
+      <SettingsSection
+        title="Connection"
+        description={
+          isAdmin ? undefined : 'Only administrators can edit integration settings.'
+        }
+      >
+        <SettingsGroup>
+          <SettingRow
+            label="Google Drive"
+            description={
+              isLoading
+                ? 'Loading settings...'
+                : configured
+                  ? 'Org members can connect their Google Drive.'
+                  : enabled
+                    ? 'Enabled, but the OAuth client ID and secret are missing.'
+                    : 'Not enabled for this organization.'
+            }
           >
-            <div
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                enabled ? 'translate-x-6' : 'translate-x-1'
-              }`}
+            {isLoading ? (
+              <Loader2 size={14} className="animate-spin text-ui-fg-secondary" />
+            ) : configured ? (
+              <Badge tone="success">Configured</Badge>
+            ) : enabled ? (
+              <Badge tone="warning">Needs credentials</Badge>
+            ) : (
+              <Badge>Off</Badge>
+            )}
+          </SettingRow>
+          <SettingRow
+            label="Enable Google Drive"
+            description="Allow org members to connect their Google Drive"
+            htmlFor="google-drive-enabled"
+          >
+            <Switch
+              id="google-drive-enabled"
+              checked={enabled}
+              onChange={(next) => isAdmin && setEnabled(next)}
+              disabled={!isAdmin}
             />
-          </button>
-        </div>
+          </SettingRow>
+        </SettingsGroup>
+      </SettingsSection>
 
-        {enabled && (
-          <>
-            {/* Client ID */}
-            <div className="space-y-2">
-              <label className="text-sm text-plm-fg-muted">Client ID</label>
-              <input
+      {enabled && (
+        <SettingsSection title="OAuth credentials">
+          <SettingsGroup>
+            <SettingRow label="Client ID" htmlFor="google-drive-client-id" stacked>
+              <TextInput
+                id="google-drive-client-id"
                 type="text"
                 value={clientId}
                 onChange={(e) => isAdmin && setClientId(e.target.value)}
                 placeholder="xxxxxxx.apps.googleusercontent.com"
                 readOnly={!isAdmin}
-                className={`w-full px-3 py-2 text-base bg-plm-sidebar border border-plm-border rounded-lg focus:outline-none focus:border-plm-accent font-mono ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className="font-mono"
               />
-            </div>
-
-            {/* Client Secret */}
-            <div className="space-y-2">
-              <label className="text-sm text-plm-fg-muted">Client Secret</label>
+            </SettingRow>
+            <SettingRow label="Client Secret" htmlFor="google-drive-client-secret" stacked>
               <div className="relative">
-                <input
+                <TextInput
+                  id="google-drive-client-secret"
                   type={showSecret ? 'text' : 'password'}
                   value={clientSecret}
                   onChange={(e) => isAdmin && setClientSecret(e.target.value)}
                   placeholder="GOCSPX-xxxxxxxxxxxx"
                   readOnly={!isAdmin}
-                  className={`w-full px-3 py-2 pr-10 text-base bg-plm-sidebar border border-plm-border rounded-lg focus:outline-none focus:border-plm-accent font-mono ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  className="pr-9 font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setShowSecret(!showSecret)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-plm-fg-muted hover:text-plm-fg"
+                  aria-label={showSecret ? 'Hide secret' : 'Show secret'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ui-fg-secondary hover:text-ui-fg"
                 >
-                  {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-            </div>
-
-            {/* Inspection template folder */}
-            <div className="space-y-2">
-              <label className="text-sm text-plm-fg-muted">Inspection template folder ID</label>
-              <input
+            </SettingRow>
+            <SettingRow
+              label="Inspection template folder ID"
+              htmlFor="google-drive-inspection-folder"
+              stacked
+              description={
+                <>
+                  Google Sheets in this folder appear in the "Generate template" dropdown on the
+                  inspection tab. Use tokens like {'{{BR_NUMBER}}'}, {'{{PART_PREVIEW}}'} and{' '}
+                  {'{{INSPECTION_TABLE}}'} in your templates. Paste the folder ID from its Drive URL
+                  (the part after <span className="font-mono">/folders/</span>).
+                </>
+              }
+            >
+              <TextInput
+                id="google-drive-inspection-folder"
                 type="text"
                 value={inspectionTemplateFolderId}
                 onChange={(e) => isAdmin && setInspectionTemplateFolderId(e.target.value)}
                 placeholder="Google Drive folder ID containing inspection template sheets"
                 readOnly={!isAdmin}
-                className={`w-full px-3 py-2 text-base bg-plm-sidebar border border-plm-border rounded-lg focus:outline-none focus:border-plm-accent font-mono ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className="font-mono"
               />
-              <p className="text-xs text-plm-fg-muted">
-                Google Sheets in this folder appear in the "Generate template" dropdown on the
-                inspection tab. Use tokens like {'{{BR_NUMBER}}'}, {'{{PART_PREVIEW}}'} and{' '}
-                {'{{INSPECTION_TABLE}}'} in your templates. Paste the folder ID from its Drive URL
-                (the part after <span className="font-mono">/folders/</span>).
-              </p>
-            </div>
+            </SettingRow>
+          </SettingsGroup>
 
-            {/* Help text */}
-            <div className="p-4 bg-plm-sidebar rounded-lg">
-              <p className="text-sm text-plm-fg-muted font-medium mb-2">Setup instructions:</p>
-              <ol className="text-sm text-plm-fg-muted space-y-1 list-decimal list-inside">
-                <li>
-                  Go to{' '}
-                  <a
-                    href="https://console.cloud.google.com/apis/credentials"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-plm-accent hover:underline"
-                  >
-                    Google Cloud Console
-                  </a>
-                </li>
-                <li>Create or select a project</li>
-                <li>Enable the Google Drive API and the Google Sheets API</li>
-                <li>Create OAuth 2.0 credentials (Desktop app type)</li>
-                <li>Copy the Client ID and Client Secret here</li>
-              </ol>
-            </div>
+        </SettingsSection>
+      )}
 
-            {/* Save button - only show for admins */}
-            {isAdmin && (
-              <button
-                onClick={saveSettings}
-                disabled={isSaving}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-base bg-plm-accent text-white rounded-lg hover:bg-plm-accent/90 transition-colors disabled:opacity-50"
+      {enabled && (
+        <SettingsSection title="Setup instructions">
+          <ol className="list-decimal list-inside space-y-1 pt-2 text-[14px] leading-[1.4] text-ui-fg-secondary">
+            <li>
+              Go to{' '}
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ui-accent hover:underline"
               >
-                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                Save Google Drive Settings
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+                Google Cloud Console
+              </a>
+            </li>
+            <li>Create or select a project</li>
+            <li>Enable the Google Drive API and the Google Sheets API</li>
+            <li>Create OAuth 2.0 credentials (Desktop app type)</li>
+            <li>Copy the Client ID and Client Secret here</li>
+          </ol>
+        </SettingsSection>
+      )}
+
+      {/* Outside the credentials section, so turning Google Drive off can be saved too */}
+      {isAdmin && (
+        <div className="flex justify-end">
+          <Button
+            variant="primary"
+            onClick={saveSettings}
+            loading={isSaving}
+            icon={<Check size={14} />}
+          >
+            Save Google Drive Settings
+          </Button>
+        </div>
+      )}
+    </SettingsPage>
   )
 }

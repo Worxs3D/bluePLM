@@ -1,11 +1,23 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Loader2, Package, FileOutput, Eye, RotateCcw, User, Building2, Box } from 'lucide-react'
-import { log } from '@/lib/logger'
-import { usePDMStore } from '@/stores/pdmStore'
+import { Building2, Eye, Loader2, RotateCcw, User } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
-import { supabase } from '@/lib/supabase'
+
+import {
+  Button,
+  SegmentedControl,
+  Switch,
+  TextInput,
+  type SegmentedOption,
+} from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
+import { log } from '@/lib/logger'
+import { hasDesktop } from '@/lib/platform'
+import { supabase } from '@/lib/supabase'
+import { usePDMStore } from '@/stores/pdmStore'
 import { ExportSettings as ExportSettingsType, DEFAULT_EXPORT_SETTINGS } from '@/types/pdm'
+
+import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
+import { QuickExportFolderRow } from './QuickExportFolderRow'
 
 // LocalStorage key for user preferences
 const USER_EXPORT_SETTINGS_KEY = 'blueplm_export_settings'
@@ -14,95 +26,126 @@ const USER_EXPORT_SETTINGS_KEY = 'blueplm_export_settings'
 const FILENAME_TOKENS = [
   {
     token: '{filename}',
-    labelKey: 'fileName',
-    descriptionKey: 'fileNameDescription',
+    labelKey: 'settingsPages.export.tokens.fileName',
+    descriptionKey: 'settingsPages.export.tokens.fileNameDescription',
     example: 'Part1',
   },
   {
     token: '{config}',
-    labelKey: 'configuration',
-    descriptionKey: 'configurationDescription',
+    labelKey: 'settingsPages.export.tokens.configuration',
+    descriptionKey: 'settingsPages.export.tokens.configurationDescription',
     example: 'Default',
   },
   {
     token: '{partNumber}',
-    labelKey: 'partNumber',
-    descriptionKey: 'partNumberDescription',
+    labelKey: 'settingsPages.export.tokens.partNumber',
+    descriptionKey: 'settingsPages.export.tokens.partNumberDescription',
     example: 'BR-101011-394',
   },
   {
     token: '{number}',
-    labelKey: 'numberAlternate',
-    descriptionKey: 'sameAsPartNumber',
+    labelKey: 'settingsPages.export.tokens.numberAlternate',
+    descriptionKey: 'settingsPages.export.tokens.sameAsPartNumber',
     example: 'BR-101011-394',
   },
   {
     token: '{tab}',
-    labelKey: 'tabNumber',
-    descriptionKey: 'tabNumberDescription',
+    labelKey: 'settingsPages.export.tokens.tabNumber',
+    descriptionKey: 'settingsPages.export.tokens.tabNumberDescription',
     example: '394',
   },
-  { token: '{tabNumber}', labelKey: 'tabAlternate', descriptionKey: 'sameAsTab', example: '394' },
+  {
+    token: '{tabNumber}',
+    labelKey: 'settingsPages.export.tokens.tabAlternate',
+    descriptionKey: 'settingsPages.export.tokens.sameAsTab',
+    example: '394',
+  },
   {
     token: '{revision}',
-    labelKey: 'revision',
-    descriptionKey: 'revisionDescription',
+    labelKey: 'settingsPages.export.tokens.revision',
+    descriptionKey: 'settingsPages.export.tokens.revisionDescription',
     example: 'A',
   },
-  { token: '{rev}', labelKey: 'revisionAlternate', descriptionKey: 'sameAsRevision', example: 'A' },
+  {
+    token: '{rev}',
+    labelKey: 'settingsPages.export.tokens.revisionAlternate',
+    descriptionKey: 'settingsPages.export.tokens.sameAsRevision',
+    example: 'A',
+  },
   {
     token: '{description}',
-    labelKey: 'description',
-    descriptionKey: 'descriptionDescription',
+    labelKey: 'settingsPages.export.tokens.description',
+    descriptionKey: 'settingsPages.export.tokens.descriptionDescription',
     example: 'Thruster Housing',
   },
   {
     token: '{desc}',
-    labelKey: 'descriptionAlternate',
-    descriptionKey: 'sameAsDescription',
+    labelKey: 'settingsPages.export.tokens.descriptionAlternate',
+    descriptionKey: 'settingsPages.export.tokens.sameAsDescription',
     example: 'Thruster Housing',
   },
   {
     token: '{date}',
-    labelKey: 'date',
-    descriptionKey: 'dateDescription',
+    labelKey: 'settingsPages.export.tokens.date',
+    descriptionKey: 'settingsPages.export.tokens.dateDescription',
     example: '2026-01-01',
   },
-  { token: '{time}', labelKey: 'time', descriptionKey: 'timeDescription', example: '14-30-00' },
+  {
+    token: '{time}',
+    labelKey: 'settingsPages.export.tokens.time',
+    descriptionKey: 'settingsPages.export.tokens.timeDescription',
+    example: '14-30-00',
+  },
   {
     token: '{datetime}',
-    labelKey: 'dateTime',
-    descriptionKey: 'dateTimeDescription',
+    labelKey: 'settingsPages.export.tokens.dateTime',
+    descriptionKey: 'settingsPages.export.tokens.dateTimeDescription',
     example: '2026-01-01_14-30-00',
   },
 ]
 
 // Preset patterns for quick selection
 const PRESET_PATTERNS = [
-  { pattern: '{filename}_{config}', labelKey: 'fileAndConfig', description: 'Part1_Default.step' },
-  { pattern: '{partNumber}', labelKey: 'partNumberOnly', description: 'BR-101011-394.step' },
+  { pattern: '{filename}_{config}', labelKey: 'settingsPages.export.presets.fileAndConfig', description: 'Part1_Default.step' },
+  { pattern: '{partNumber}', labelKey: 'settingsPages.export.presets.partNumberOnly', description: 'BR-101011-394.step' },
   {
     pattern: '{partNumber}_Rev{rev}',
-    labelKey: 'partAndRevision',
+    labelKey: 'settingsPages.export.presets.partAndRevision',
     description: 'BR-101011-394_RevA.step',
   },
-  { pattern: '{partNumber}-{tab}', labelKey: 'partAndTab', description: 'BR-101011-394.step' },
+  { pattern: '{partNumber}-{tab}', labelKey: 'settingsPages.export.presets.partAndTab', description: 'BR-101011-394.step' },
   {
     pattern: '{partNumber}-{tab}_Rev{rev}',
-    labelKey: 'partTabAndRevision',
+    labelKey: 'settingsPages.export.presets.partTabAndRevision',
     description: 'BR-101011-394_RevA.step',
   },
   {
     pattern: '{partNumber}_{config}',
-    labelKey: 'partAndConfig',
+    labelKey: 'settingsPages.export.presets.partAndConfig',
     description: 'BR-101011-394_Default.step',
   },
   {
     pattern: '{partNumber}_{config}_Rev{rev}',
-    labelKey: 'partConfigAndRevision',
+    labelKey: 'settingsPages.export.presets.partConfigAndRevision',
     description: 'BR-101011-394_Default_RevA.step',
   },
-  { pattern: '{filename}_{date}', labelKey: 'fileAndDate', description: 'Part1_2026-01-01.step' },
+  { pattern: '{filename}_{date}', labelKey: 'settingsPages.export.presets.fileAndDate', description: 'Part1_2026-01-01.step' },
+]
+
+// '' stands for a stored setting that has no value yet: no segment is selected.
+type ExportFormatChoice = NonNullable<ExportSettingsType['default_export_format']> | ''
+type StlResolutionChoice = NonNullable<ExportSettingsType['stl_resolution']> | ''
+
+const EXPORT_FORMAT_OPTIONS: SegmentedOption<ExportFormatChoice>[] = [
+  { value: 'step', label: 'STEP' },
+  { value: 'iges', label: 'IGES' },
+  { value: 'stl', label: 'STL' },
+]
+
+const STL_RESOLUTION_OPTIONS: { value: StlResolutionChoice; translationKey: string }[] = [
+  { value: 'coarse', translationKey: 'settingsPages.export.resolution.coarse' },
+  { value: 'fine', translationKey: 'settingsPages.export.resolution.fine' },
+  { value: 'custom', translationKey: 'settingsPages.export.resolution.custom' },
 ]
 
 // Get user's export settings from localStorage
@@ -248,7 +291,7 @@ export function ExportSettings() {
         export_settings: settings,
       }
 
-      const { error } = await (supabase.from('organizations') as any) // TODO: type this
+      const { error } = await (supabase.from('organization') as any) // TODO: type this
         .update({ settings: newSettings })
         .eq('id', organization.id)
         .select()
@@ -265,7 +308,7 @@ export function ExportSettings() {
       log.error('[ExportSettings]', 'Failed to save org export settings', { error: error })
       addToast(
         'error',
-        `${t('settingsPages.export.saveFailed')}: ${error instanceof Error ? error.message : t('settingsPages.export.unknownError')}`,
+        `Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`,
       )
     } finally {
       setSaving(false)
@@ -282,7 +325,7 @@ export function ExportSettings() {
 
   if (!organization) {
     return (
-      <div className="p-6 text-center text-plm-fg-muted">
+      <div className="py-12 text-center text-[14px] text-ui-fg-secondary">
         {t('settingsPages.noOrganizationSelected')}
       </div>
     )
@@ -290,276 +333,196 @@ export function ExportSettings() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center gap-2">
-        <Loader2 className="animate-spin" size={20} />
+      <div className="flex items-center justify-center gap-2 py-12 text-[14px] text-ui-fg-secondary">
+        <Loader2 className="animate-spin" size={16} />
         <span>{t('settingsPages.export.loading')}</span>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-8 max-w-4xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <Package className="text-emerald-400" size={24} />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-plm-fg">{t('settingsPages.export.title')}</h2>
-            <p className="text-sm text-plm-fg-muted">{t('settingsPages.export.description')}</p>
-          </div>
-        </div>
-
-        {/* Save buttons */}
-        <div className="flex items-center gap-2">
-          {hasUserOverride && (
-            <button
-              onClick={handleResetToOrgDefault}
-              className="flex items-center gap-2 px-3 py-2 bg-plm-bg border border-plm-border hover:bg-plm-bg-light rounded-lg text-plm-fg-muted hover:text-plm-fg text-sm transition-colors"
-              title={t('settingsPages.export.resetOrganization')}
-            >
-              <RotateCcw size={14} />
-              {t('settingsPages.export.resetDefault')}
-            </button>
-          )}
-
-          <button
-            onClick={handleSaveUserPreference}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-white text-sm font-medium transition-colors"
-          >
-            <User size={16} />
-            {t('settingsPages.export.saveForMe')}
-          </button>
-
-          {isAdmin && (
-            <button
-              onClick={handleSaveOrgDefault}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors"
-              title={t('settingsPages.export.organizationWideDefault')}
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />}
-              {t('settingsPages.export.saveOrganizationDefault')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Current mode indicator */}
-      <div
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${
+    <SettingsPage>
+      <SettingsSection
+        title={t('settingsPages.export.title')}
+        description={
           hasUserOverride
-            ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400'
-            : 'bg-plm-bg-light/30 border border-plm-border/30 text-plm-fg-muted'
-        }`}
+            ? 'Configure how exported files are named. Using your personal preference.'
+            : 'Configure how exported files are named. Using the organization default.'
+        }
+        actions={
+          <>
+            {hasUserOverride && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<RotateCcw size={14} />}
+                onClick={handleResetToOrgDefault}
+                title={t('settingsPages.export.resetOrganization')}
+              >
+                {t('settingsPages.export.resetDefault')}
+              </Button>
+            )}
+            {isAdmin && (
+              <Button
+                size="sm"
+                icon={<Building2 size={14} />}
+                loading={saving}
+                onClick={handleSaveOrgDefault}
+                title={t('settingsPages.export.organizationWideDefault')}
+              >
+                {t('settingsPages.export.saveOrganizationDefault')}
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<User size={14} />}
+              onClick={handleSaveUserPreference}
+            >
+              {t('settingsPages.export.saveForMe')}
+            </Button>
+          </>
+        }
       >
-        {hasUserOverride ? (
-          <>
-            <User size={16} />
-            <span>{t('settingsPages.export.usingPersonal')}</span>
-          </>
-        ) : (
-          <>
-            <Building2 size={16} />
-            <span>{t('settingsPages.export.usingOrganization')}</span>
-          </>
-        )}
-      </div>
-
-      {/* Filename Pattern */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-plm-fg mb-2">
-            {t('settingsPages.export.filenamePattern')}
-          </label>
-          <input
-            type="text"
-            value={settings.filename_pattern}
-            onChange={(e) => setSettings((prev) => ({ ...prev, filename_pattern: e.target.value }))}
-            placeholder="{filename}_{config}"
-            className="w-full px-4 py-2.5 bg-plm-bg border border-plm-border rounded-lg text-plm-fg 
-              focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20
-              font-mono text-sm"
-          />
-          <p className="mt-1.5 text-xs text-plm-fg-muted">
-            {
-              t('settingsPages.export.tokenHelp', { examples: '__EXAMPLES__' }).split(
-                '__EXAMPLES__',
-              )[0]
+        <SettingsGroup>
+          <SettingRow
+            label={t('settingsPages.export.filenamePattern')}
+            htmlFor="export-filename-pattern"
+            description={
+              <>
+                Use tokens like {'{partNumber}'}, {'{config}'}, {'{rev}'} to build dynamic filenames
+              </>
             }
-            {'{partNumber}'}, {'{config}'}, {'{rev}'}
-            {
-              t('settingsPages.export.tokenHelp', { examples: '__EXAMPLES__' }).split(
-                '__EXAMPLES__',
-              )[1]
-            }
-          </p>
-        </div>
+            stacked
+          >
+            <TextInput
+              id="export-filename-pattern"
+              value={settings.filename_pattern}
+              onChange={(e) =>
+                setSettings((prev) => ({ ...prev, filename_pattern: e.target.value }))
+              }
+              placeholder="{filename}_{config}"
+              className="font-mono"
+            />
+            <div className="mt-2 flex items-center gap-2 text-[13px] text-ui-fg-secondary">
+              <Eye size={14} />
+              <span>{t('settingsPages.export.preview')}</span>
+              <span className="truncate font-mono text-ui-fg">{livePreview}</span>
+            </div>
+          </SettingRow>
 
-        {/* Live Preview */}
-        <div className="bg-plm-bg-light/30 border border-plm-border/50 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-xs text-plm-fg-muted mb-2">
-            <Eye size={14} />
-            <span>{t('settingsPages.export.preview')}</span>
-          </div>
-          <div className="font-mono text-sm text-cyan-400">{livePreview}</div>
-        </div>
-
-        {/* Preset Patterns */}
-        <div>
-          <label className="block text-xs text-plm-fg-muted mb-2">
-            {t('settingsPages.export.quickPresets')}
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {PRESET_PATTERNS.map((preset) => (
-              <button
-                key={preset.pattern}
-                onClick={() =>
-                  setSettings((prev) => ({ ...prev, filename_pattern: preset.pattern }))
-                }
-                className={`px-3 py-1.5 rounded text-xs transition-colors
-                  ${
+          <SettingRow label={t('settingsPages.export.quickPresets')} stacked>
+            <div className="flex flex-wrap gap-1.5">
+              {PRESET_PATTERNS.map((preset) => (
+                <button
+                  type="button"
+                  key={preset.pattern}
+                  onClick={() =>
+                    setSettings((prev) => ({ ...prev, filename_pattern: preset.pattern }))
+                  }
+                  aria-pressed={settings.filename_pattern === preset.pattern}
+                  className={`h-7 rounded-lg border px-2.5 text-[13px] text-ui-fg transition-colors ${
                     settings.filename_pattern === preset.pattern
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                      : 'bg-plm-bg border border-plm-border/50 text-plm-fg-muted hover:bg-plm-bg-light/50 hover:text-plm-fg'
+                      ? 'border-ui-selected-border bg-ui-selected'
+                      : 'border-ui-field-border bg-ui-field hover:bg-ui-hover'
                   }`}
-                title={preset.description}
-              >
-                {t(`settingsPages.export.presets.${preset.labelKey}`)}
-              </button>
-            ))}
-          </div>
-        </div>
+                  title={preset.description}
+                >
+                  {t(preset.labelKey)}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
 
-        {/* Available Tokens */}
-        <div>
-          <label className="block text-xs text-plm-fg-muted mb-2">
-            {t('settingsPages.export.availableTokens')}
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {FILENAME_TOKENS.map(({ token, labelKey, descriptionKey, example }) => (
-              <button
-                key={token}
-                onClick={() => insertToken(token)}
-                className="flex flex-col items-start p-2 rounded bg-plm-bg border border-plm-border/50 
-                  hover:bg-plm-bg-light/50 hover:border-plm-border text-left transition-colors group"
-                title={`${t(`settingsPages.export.tokens.${descriptionKey}`)} (${t('settingsPages.export.exampleAbbreviation')}: ${example})`}
-              >
-                <span className="text-xs font-mono text-cyan-400 group-hover:text-cyan-300">
-                  {token}
-                </span>
-                <span className="text-[10px] text-plm-fg-muted truncate w-full">
-                  {t(`settingsPages.export.tokens.${labelKey}`)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+          <SettingRow label={t('settingsPages.export.availableTokens')} stacked>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4">
+              {FILENAME_TOKENS.map(({ token, labelKey, descriptionKey, example }) => (
+                <button
+                  type="button"
+                  key={token}
+                  onClick={() => insertToken(token)}
+                  className="flex flex-col items-start rounded-lg border border-ui-field-border bg-ui-field px-2.5 py-1.5 text-left transition-colors hover:bg-ui-hover"
+                  title={`${t(descriptionKey)} (${t('settingsPages.export.exampleAbbreviation')} ${example})`}
+                >
+                  <span className="font-mono text-[13px] text-ui-fg">{token}</span>
+                  <span className="w-full truncate text-[12px] text-ui-fg-secondary">{t(labelKey)}</span>
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+        </SettingsGroup>
+      </SettingsSection>
 
-      {/* Additional Options */}
-      <div className="space-y-4 border-t border-plm-border/50 pt-6">
-        <h3 className="text-sm font-medium text-plm-fg">
-          {t('settingsPages.export.additionalOptions')}
-        </h3>
+      <SettingsSection title={t('settingsPages.export.additionalOptions')}>
+        <SettingsGroup>
+          <SettingRow
+            label={t('settingsPages.export.includeConfiguration')}
+            description={t('settingsPages.export.includeConfigurationHelp')}
+          >
+            <Switch
+              checked={settings.include_config_in_filename}
+              onChange={(checked) =>
+                setSettings((prev) => ({ ...prev, include_config_in_filename: checked }))
+              }
+              aria-label={t('settingsPages.export.includeConfiguration')}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t('settingsPages.export.defaultFormat')}
+            description={t('settingsPages.export.defaultFormatHelp')}
+          >
+            <SegmentedControl<ExportFormatChoice>
+              value={settings.default_export_format ?? ''}
+              onChange={(format) => {
+                if (!format) return
+                const next = format
+                setSettings((prev) => ({ ...prev, default_export_format: next }))
+              }}
+              options={EXPORT_FORMAT_OPTIONS}
+              aria-label={t('settingsPages.export.defaultFormat')}
+            />
+          </SettingRow>
+        </SettingsGroup>
+      </SettingsSection>
 
-        {/* Include config name checkbox */}
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.include_config_in_filename}
-            onChange={(e) =>
-              setSettings((prev) => ({ ...prev, include_config_in_filename: e.target.checked }))
+      <SettingsSection title={t('settingsPages.export.stlOptions')}>
+        <SettingsGroup>
+          <SettingRow
+            label={t('settingsPages.export.resolutionQuality')}
+            description={
+              <>
+                {settings.stl_resolution === 'coarse' &&
+                  t('settingsPages.export.resolution.coarseHelp')}
+                {settings.stl_resolution === 'fine' &&
+                  t('settingsPages.export.resolution.fineHelp')}
+                {settings.stl_resolution === 'custom' &&
+                  t('settingsPages.export.resolution.customHelp')}
+              </>
             }
-            className="w-4 h-4 rounded border-plm-border bg-plm-bg text-cyan-500 
-              focus:ring-cyan-500/20 focus:ring-offset-0"
-          />
-          <div>
-            <div className="text-sm text-plm-fg">
-              {t('settingsPages.export.includeConfiguration')}
-            </div>
-            <div className="text-xs text-plm-fg-muted">
-              {t('settingsPages.export.includeConfigurationHelp')}
-            </div>
-          </div>
-        </label>
+          >
+            <SegmentedControl<StlResolutionChoice>
+              value={settings.stl_resolution ?? ''}
+              onChange={(res) => {
+                if (!res) return
+                const next = res
+                setSettings((prev) => ({ ...prev, stl_resolution: next }))
+              }}
+              options={STL_RESOLUTION_OPTIONS.map(({ value, translationKey }) => ({
+                value,
+                label: t(translationKey),
+              }))}
+              aria-label={t('settingsPages.export.resolutionQuality')}
+            />
+          </SettingRow>
 
-        {/* Default export format */}
-        <div>
-          <label className="block text-sm text-plm-fg mb-2">
-            {t('settingsPages.export.defaultFormat')}
-          </label>
-          <div className="flex gap-2">
-            {(['step', 'iges', 'stl'] as const).map((format) => (
-              <button
-                key={format}
-                onClick={() => setSettings((prev) => ({ ...prev, default_export_format: format }))}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                  ${
-                    settings.default_export_format === format
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
-                      : 'bg-plm-bg border border-plm-border/50 text-plm-fg-muted hover:bg-plm-bg-light/50'
-                  }`}
-              >
-                <FileOutput size={14} />
-                {format.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-xs text-plm-fg-muted">
-            {t('settingsPages.export.defaultFormatHelp')}
-          </p>
-        </div>
-      </div>
-
-      {/* STL Export Options */}
-      <div className="space-y-4 border-t border-plm-border/50 pt-6">
-        <div className="flex items-center gap-2">
-          <Box size={16} className="text-violet-400" />
-          <h3 className="text-sm font-medium text-plm-fg">
-            {t('settingsPages.export.stlOptions')}
-          </h3>
-        </div>
-
-        {/* Resolution dropdown */}
-        <div>
-          <label className="block text-sm text-plm-fg mb-2">
-            {t('settingsPages.export.resolutionQuality')}
-          </label>
-          <div className="flex gap-2">
-            {(['coarse', 'fine', 'custom'] as const).map((res) => (
-              <button
-                key={res}
-                onClick={() => setSettings((prev) => ({ ...prev, stl_resolution: res }))}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize
-                  ${
-                    settings.stl_resolution === res
-                      ? 'bg-violet-500/20 text-violet-300 border border-violet-500/50'
-                      : 'bg-plm-bg border border-plm-border/50 text-plm-fg-muted hover:bg-plm-bg-light/50'
-                  }`}
-              >
-                {t(`settingsPages.export.resolution.${res}`)}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-xs text-plm-fg-muted">
-            {settings.stl_resolution === 'coarse' &&
-              t('settingsPages.export.resolution.coarseHelp')}
-            {settings.stl_resolution === 'fine' && t('settingsPages.export.resolution.fineHelp')}
-            {settings.stl_resolution === 'custom' &&
-              t('settingsPages.export.resolution.customHelp')}
-          </p>
-        </div>
-
-        {/* Custom resolution settings (only visible when custom is selected) */}
-        {settings.stl_resolution === 'custom' && (
-          <div className="grid grid-cols-2 gap-4 p-4 bg-plm-bg-light/20 rounded-lg border border-plm-border/30">
-            <div>
-              <label className="block text-xs text-plm-fg-muted mb-1.5">
-                {t('settingsPages.export.deviation')}
-              </label>
-              <input
+          {settings.stl_resolution === 'custom' && (
+            <SettingRow
+              label={t('settingsPages.export.deviation')}
+              htmlFor="export-stl-deviation"
+              description={t('settingsPages.export.deviationHelp')}
+            >
+              <TextInput
+                id="export-stl-deviation"
                 type="number"
                 step="0.01"
                 min="0.001"
@@ -571,18 +534,18 @@ export function ExportSettings() {
                     stl_custom_deviation: parseFloat(e.target.value) || 0.1,
                   }))
                 }
-                className="w-full px-3 py-2 bg-plm-bg border border-plm-border rounded-lg text-plm-fg text-sm
-                  focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                className="!w-28"
               />
-              <p className="mt-1 text-[10px] text-plm-fg-muted">
-                {t('settingsPages.export.deviationHelp')}
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs text-plm-fg-muted mb-1.5">
-                {t('settingsPages.export.angleTolerance')}
-              </label>
-              <input
+            </SettingRow>
+          )}
+          {settings.stl_resolution === 'custom' && (
+            <SettingRow
+              label={t('settingsPages.export.angleTolerance')}
+              htmlFor="export-stl-angle"
+              description={t('settingsPages.export.angleToleranceHelp')}
+            >
+              <TextInput
+                id="export-stl-angle"
                 type="number"
                 step="1"
                 min="1"
@@ -594,70 +557,65 @@ export function ExportSettings() {
                     stl_custom_angle: parseFloat(e.target.value) || 10,
                   }))
                 }
-                className="w-full px-3 py-2 bg-plm-bg border border-plm-border rounded-lg text-plm-fg text-sm
-                  focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                className="!w-28"
               />
-              <p className="mt-1 text-[10px] text-plm-fg-muted">
-                {t('settingsPages.export.angleToleranceHelp')}
-              </p>
-            </div>
-          </div>
-        )}
+            </SettingRow>
+          )}
 
-        {/* Binary format toggle */}
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.stl_binary_format ?? true}
-            onChange={(e) =>
-              setSettings((prev) => ({ ...prev, stl_binary_format: e.target.checked }))
-            }
-            className="w-4 h-4 rounded border-plm-border bg-plm-bg text-violet-500 
-              focus:ring-violet-500/20 focus:ring-offset-0"
-          />
-          <div>
-            <div className="text-sm text-plm-fg">{t('settingsPages.export.binaryFormat')}</div>
-            <div className="text-xs text-plm-fg-muted">
-              {t('settingsPages.export.binaryFormatHelp')}
-            </div>
-          </div>
-        </label>
-      </div>
+          <SettingRow
+            label={t('settingsPages.export.binaryFormat')}
+            description={t('settingsPages.export.binaryFormatHelp')}
+          >
+            <Switch
+              checked={settings.stl_binary_format ?? true}
+              onChange={(checked) =>
+                setSettings((prev) => ({ ...prev, stl_binary_format: checked }))
+              }
+              aria-label={t('settingsPages.export.binaryFormat')}
+            />
+          </SettingRow>
+        </SettingsGroup>
+      </SettingsSection>
 
-      {/* Token Reference */}
-      <div className="border-t border-plm-border/50 pt-6">
-        <h3 className="text-sm font-medium text-plm-fg mb-4">
-          {t('settingsPages.export.tokenReference')}
-        </h3>
-        <div className="bg-plm-bg-light/20 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+      {hasDesktop() && (
+        <SettingsSection
+          title={t('contextMenu.quickExport.sectionTitle')}
+          description={t('contextMenu.quickExport.sectionDescription')}
+        >
+          <SettingsGroup>
+            <QuickExportFolderRow />
+          </SettingsGroup>
+        </SettingsSection>
+      )}
+
+      <SettingsSection title={t('settingsPages.export.tokenReference')}>
+        <SettingsGroup>
+          <table className="w-full text-[14px]">
             <thead>
-              <tr className="border-b border-plm-border/30">
-                <th className="text-left px-4 py-2 text-plm-fg-muted font-medium">
+              <tr className="border-b border-ui-divider">
+                <th className="pb-2 pr-4 pt-3 text-left text-[13px] font-normal text-ui-fg-secondary">
                   {t('settingsPages.export.token')}
                 </th>
-                <th className="text-left px-4 py-2 text-plm-fg-muted font-medium">
+                <th className="pb-2 pr-4 pt-3 text-left text-[13px] font-normal text-ui-fg-secondary">
                   {t('settingsPages.export.tokenDescription')}
                 </th>
-                <th className="text-left px-4 py-2 text-plm-fg-muted font-medium">
+                <th className="pb-2 pt-3 text-left text-[13px] font-normal text-ui-fg-secondary">
                   {t('settingsPages.export.example')}
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-ui-divider">
               {FILENAME_TOKENS.map(({ token, descriptionKey, example }) => (
-                <tr key={token} className="border-b border-plm-border/20 last:border-0">
-                  <td className="px-4 py-2 font-mono text-cyan-400 text-xs">{token}</td>
-                  <td className="px-4 py-2 text-plm-fg-muted text-xs">
-                    {t(`settingsPages.export.tokens.${descriptionKey}`)}
-                  </td>
-                  <td className="px-4 py-2 text-plm-fg text-xs">{example}</td>
+                <tr key={token}>
+                  <td className="py-3 pr-4 font-mono text-ui-fg">{token}</td>
+                  <td className="py-3 pr-4 text-ui-fg-secondary">{t(descriptionKey)}</td>
+                  <td className="py-3 text-ui-fg">{example}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
-    </div>
+        </SettingsGroup>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

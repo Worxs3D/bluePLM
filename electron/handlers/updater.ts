@@ -29,63 +29,140 @@ let startupCheckTimer: ReturnType<typeof setTimeout> | null = null
 // which prevents garbage collection and keeps the event loop alive on quit
 let focusHandler: (() => void) | null = null
 
-// Update reminder state
-interface UpdateReminder {
-  version: string
-  postponedAt: number
+// Mandatory update (5.0): the renderer found this app below the database's client_min_version().
+// The update downloads on its own and installs after a short countdown; postponing is ignored.
+let mandatoryMinVersion: string | null = null
+let mandatoryInstallTimer: ReturnType<typeof setTimeout> | null = null
+const MANDATORY_INSTALL_COUNTDOWN_SECONDS = 10
+
+export type MandatoryUpdatePhase =
+  | 'checking'
+  | 'downloading'
+  | 'installing'
+  | 'no-update'
+  | 'error'
+  /** The macOS build is unsigned and cannot install itself: the user downloads it. */
+  | 'manual'
+
+/** Where a user installs a release by hand (macOS, or when the updater fails). */
+export const RELEASES_URL = 'https://github.com/bluerobotics/bluePLM/releases/latest'
+
+export interface MandatoryUpdateState {
+  phase: MandatoryUpdatePhase
+  minVersion: string
+  version?: string
+  percent?: number
+  seconds?: number
+  message?: string
+  downloadUrl?: string
+}
+
+/** Compares dotted numeric versions (prerelease suffixes ignored). Negative when a < b. */
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string) =>
+    v
+      .replace(/^v/i, '')
+      .split(/[-+]/)[0]
+      .split('.')
+      .map((n) => Number.parseInt(n, 10) || 0)
+  const pa = parts(a)
+  const pb = parts(b)
+  for (let i = 0; i < Math.max(pa.length, pb.length, 3); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d !== 0) return d
+  }
+  return 0
+}
+
+function sendMandatory(state: Omit<MandatoryUpdateState, 'minVersion'>): void {
+  if (!mandatoryMinVersion) return
+  mainWindow?.webContents.send('updater:mandatory-state', {
+    ...state,
+    minVersion: mandatoryMinVersion,
+  })
+}
+
+function satisfiesMandatory(version: string): boolean {
+  return !!mandatoryMinVersion && compareVersions(version, mandatoryMinVersion) >= 0
+}
+
+function installNow(): void {
+  setImmediate(() => {
+    try {
+      if (process.platform === 'darwin') {
+        log('[Update] macOS: Using app.relaunch + app.exit for update installation')
+        autoUpdater.autoInstallOnAppQuit = true
+        app.relaunch()
+        app.exit(0)
+      } else {
+        autoUpdater.quitAndInstall(false, true)
+      }
+    } catch (error) {
+      logError('[Update] quitAndInstall failed, trying fallback', { error: String(error) })
+      try {
+        app.relaunch()
+        app.exit(0)
+      } catch {
+        app.quit()
+      }
+    }
+  })
+}
+
+function startMandatoryCountdown(version: string): void {
+  if (mandatoryInstallTimer) return
+  log(`[Update] Mandatory update ${version} downloaded; installing in ${MANDATORY_INSTALL_COUNTDOWN_SECONDS}s`)
+  sendMandatory({ phase: 'installing', version, seconds: MANDATORY_INSTALL_COUNTDOWN_SECONDS })
+  mandatoryInstallTimer = setTimeout(() => {
+    mandatoryInstallTimer = null
+    installNow()
+  }, MANDATORY_INSTALL_COUNTDOWN_SECONDS * 1000)
+}
+
+function downloadMandatory(version: string): void {
+  sendMandatory({ phase: 'downloading', version, percent: 0 })
+  autoUpdater.downloadUpdate().catch((error: unknown) => {
+    logError('[Update] Mandatory download failed', { error: String(error) })
+    sendMandatory({ phase: 'error', version, message: String(error) })
+  })
 }
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-function getUpdateReminderFile(): string {
-  return path.join(app.getPath('userData'), 'update-reminder.json')
-}
+// "Later" on the update prompt. It lives in memory only, so the prompt comes back the next time
+// the app starts; within one run it stays quiet for a day, since users leave BluePLM open for
+// weeks. A postponed update is still reported to the renderer (with `postponed: true`) so the
+// Updates settings page can offer it.
+const POSTPONE_DURATION_MS = 24 * 60 * 60 * 1000
+let postponedUpdate: { version: string; postponedAt: number } | null = null
 
-function loadUpdateReminder(): UpdateReminder | null {
+// Releases up to 5.3.0 saved the postponement to disk, which kept the prompt away across
+// restarts. Remove that file so an old postponement cannot outlive this upgrade.
+function removeLegacyReminderFile(): void {
   try {
-    const reminderFile = getUpdateReminderFile()
-    if (fs.existsSync(reminderFile)) {
-      const data = fs.readFileSync(reminderFile, 'utf-8')
-      return JSON.parse(data)
-    }
-  } catch {}
-  return null
-}
-
-function saveUpdateReminder(reminder: UpdateReminder): void {
-  try {
-    fs.writeFileSync(getUpdateReminderFile(), JSON.stringify(reminder, null, 2))
+    fs.rmSync(path.join(app.getPath('userData'), 'update-reminder.json'), { force: true })
   } catch {}
 }
 
-function clearUpdateReminder(): void {
-  try {
-    const reminderFile = getUpdateReminderFile()
-    if (fs.existsSync(reminderFile)) {
-      fs.unlinkSync(reminderFile)
-    }
-  } catch {}
-}
-
-function shouldShowUpdate(version: string): boolean {
-  const reminder = loadUpdateReminder()
-  if (!reminder) return true
-
-  if (reminder.version !== version) {
-    clearUpdateReminder()
-    return true
+function isPostponed(version: string): boolean {
+  if (!postponedUpdate) return false
+  if (
+    postponedUpdate.version !== version ||
+    Date.now() - postponedUpdate.postponedAt >= POSTPONE_DURATION_MS
+  ) {
+    postponedUpdate = null
+    return false
   }
+  return true
+}
 
-  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
-  const timeSincePostponed = Date.now() - reminder.postponedAt
-
-  if (timeSincePostponed >= TWENTY_FOUR_HOURS) {
-    log('Update reminder expired, showing update')
-    clearUpdateReminder()
-    return true
+function updateInfoForRenderer(info: UpdateInfo, postponed: boolean) {
+  return {
+    version: info.version,
+    releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes,
+    postponed,
   }
-
-  return false
 }
 
 async function performAutoUpdateCheck(reason: string): Promise<void> {
@@ -102,6 +179,15 @@ async function performAutoUpdateCheck(reason: string): Promise<void> {
   }
 
   if (updateAvailable && !updateDownloaded) {
+    // A day after "Later", prompt again without waiting for a restart.
+    const wasPostponed = postponedUpdate !== null
+    if (wasPostponed && !mandatoryMinVersion && !isPostponed(updateAvailable.version)) {
+      log(`[Update] Postponement of v${updateAvailable.version} expired, prompting again`)
+      mainWindow?.webContents.send(
+        'updater:available',
+        updateInfoForRenderer(updateAvailable, false),
+      )
+    }
     log(
       `[Update] Skipping check (${reason}) - update already available: v${updateAvailable.version}`,
     )
@@ -130,6 +216,7 @@ export function registerUpdaterHandlers(
   mainWindow = window
   log = deps.log
   logError = deps.logError
+  removeLegacyReminderFile()
 
   // Configure auto-updater
   autoUpdater.autoDownload = false
@@ -151,14 +238,15 @@ export function registerUpdaterHandlers(
     log('Update available: ' + info.version)
     updateAvailable = info
 
-    if (shouldShowUpdate(info.version)) {
-      mainWindow?.webContents.send('updater:available', {
-        version: info.version,
-        releaseDate: info.releaseDate,
-        releaseNotes: info.releaseNotes,
-      })
+    if (mandatoryMinVersion) {
+      if (satisfiesMandatory(info.version)) downloadMandatory(info.version)
+      else sendMandatory({ phase: 'no-update', version: info.version })
     } else {
-      log('Update notification suppressed - user postponed recently')
+      // Asking for updates yourself always opens the prompt, even after "Later".
+      if (isUserInitiatedCheck) postponedUpdate = null
+      const postponed = isPostponed(info.version)
+      if (postponed) log('Update prompt suppressed - user postponed it in this session')
+      mainWindow?.webContents.send('updater:available', updateInfoForRenderer(info, postponed))
     }
 
     isUserInitiatedCheck = false
@@ -168,6 +256,7 @@ export function registerUpdaterHandlers(
     log('No update available, current version is latest')
     updateAvailable = null
     isUserInitiatedCheck = false
+    sendMandatory({ phase: 'no-update', version: info.version })
     mainWindow?.webContents.send('updater:not-available', {
       version: info.version,
     })
@@ -175,6 +264,11 @@ export function registerUpdaterHandlers(
 
   autoUpdater.on('download-progress', (progress: ProgressInfo) => {
     downloadProgress = progress
+    sendMandatory({
+      phase: 'downloading',
+      version: updateAvailable?.version,
+      percent: progress.percent,
+    })
     mainWindow?.webContents.send('updater:download-progress', {
       percent: progress.percent,
       bytesPerSecond: progress.bytesPerSecond,
@@ -192,11 +286,13 @@ export function registerUpdaterHandlers(
       releaseDate: info.releaseDate,
       releaseNotes: info.releaseNotes,
     })
+    if (satisfiesMandatory(info.version)) startMandatoryCountdown(info.version)
   })
 
   autoUpdater.on('error', (error: Error) => {
     logError('Auto-updater error', { error: error.message })
     downloadProgress = null
+    sendMandatory({ phase: 'error', message: error.message })
     if (isUserInitiatedCheck) {
       mainWindow?.webContents.send('updater:error', {
         message: error.message,
@@ -241,43 +337,52 @@ export function registerUpdaterHandlers(
       return { success: false, error: 'No update downloaded' }
     }
     log('Installing update and restarting...')
+    installNow()
+    return { success: true }
+  })
 
-    setImmediate(() => {
-      try {
-        if (process.platform === 'darwin') {
-          log('[Update] macOS: Using app.relaunch + app.exit for update installation')
-          autoUpdater.autoInstallOnAppQuit = true
-          app.relaunch()
-          app.exit(0)
-        } else {
-          autoUpdater.quitAndInstall(false, true)
-        }
-      } catch (error) {
-        logError('[Update] quitAndInstall failed, trying fallback', { error: String(error) })
-        try {
-          app.relaunch()
-          app.exit(0)
-        } catch {
-          app.quit()
-        }
-      }
-    })
+  // Mandatory update: the renderer calls this when the app is below client_min_version().
+  ipcMain.handle('updater:set-mandatory', async (_, minVersion: unknown) => {
+    if (typeof minVersion !== 'string' || !/^v?\d+\.\d+\.\d+/.test(minVersion)) {
+      return { success: false, error: 'Invalid version' }
+    }
+    if (compareVersions(app.getVersion(), minVersion) >= 0) {
+      return { success: false, error: 'Already at or above the required version' }
+    }
+    if (isDev) {
+      return { success: false, error: 'Updates disabled in development' }
+    }
+    const first = mandatoryMinVersion === null
+    mandatoryMinVersion = minVersion
+    if (first) log(`[Update] Mandatory update required: this app is below ${minVersion}`)
 
+    // The macOS build is not signed, so Squirrel.Mac refuses to install it: send the user to the
+    // release page instead of downloading something that cannot be installed.
+    if (process.platform === 'darwin') {
+      sendMandatory({ phase: 'manual', downloadUrl: RELEASES_URL })
+      return { success: true, manual: true, downloadUrl: RELEASES_URL }
+    }
+
+    if (updateDownloaded && updateAvailable && satisfiesMandatory(updateAvailable.version)) {
+      startMandatoryCountdown(updateAvailable.version)
+    } else if (updateAvailable && satisfiesMandatory(updateAvailable.version)) {
+      if (!downloadProgress) downloadMandatory(updateAvailable.version)
+    } else {
+      sendMandatory({ phase: 'checking' })
+      lastUpdateCheck = Date.now()
+      autoUpdater.checkForUpdates().catch((error: unknown) => {
+        logError('[Update] Mandatory check failed', { error: String(error) })
+        sendMandatory({ phase: 'error', message: String(error) })
+      })
+    }
     return { success: true }
   })
 
   ipcMain.handle('updater:get-status', () => {
-    const shouldShow = updateAvailable ? shouldShowUpdate(updateAvailable.version) : false
-
     return {
-      updateAvailable:
-        updateAvailable && shouldShow
-          ? {
-              version: updateAvailable.version,
-              releaseDate: updateAvailable.releaseDate,
-              releaseNotes: updateAvailable.releaseNotes,
-            }
-          : null,
+      updateAvailable: updateAvailable
+        ? updateInfoForRenderer(updateAvailable, isPostponed(updateAvailable.version))
+        : null,
       updateDownloaded,
       downloadProgress: downloadProgress
         ? {
@@ -292,21 +397,14 @@ export function registerUpdaterHandlers(
 
   ipcMain.handle('updater:postpone', (_, version: string) => {
     log(`User postponed update for version ${version}`)
-    saveUpdateReminder({
-      version,
-      postponedAt: Date.now(),
-    })
+    postponedUpdate = { version, postponedAt: Date.now() }
     return { success: true }
   })
 
   ipcMain.handle('updater:clear-reminder', () => {
     log('Clearing update reminder')
-    clearUpdateReminder()
+    postponedUpdate = null
     return { success: true }
-  })
-
-  ipcMain.handle('updater:get-reminder', () => {
-    return loadUpdateReminder()
   })
 
   // Download specific version installer
@@ -461,9 +559,9 @@ export function unregisterUpdaterHandlers(): void {
     'updater:get-status',
     'updater:postpone',
     'updater:clear-reminder',
-    'updater:get-reminder',
     'updater:download-version',
     'updater:run-installer',
+    'updater:set-mandatory',
   ]
 
   for (const handler of handlers) {
@@ -487,6 +585,11 @@ export function cleanupUpdater(): void {
     log('[Update] Clearing update check timer')
     clearInterval(updateCheckTimer)
     updateCheckTimer = null
+  }
+
+  if (mandatoryInstallTimer) {
+    clearTimeout(mandatoryInstallTimer)
+    mandatoryInstallTimer = null
   }
 
   // Clear startup check timer if still pending

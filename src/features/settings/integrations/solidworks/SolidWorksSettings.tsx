@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from 'react'
-import { Activity, FolderOpen, Key, Loader2, ScanSearch, Settings } from 'lucide-react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -16,22 +16,21 @@ type TabId = 'service' | 'licenses' | 'templates' | 'settings' | 'metadata-audit
 interface Tab {
   id: TabId
   label: string
-  icon: typeof Activity
   /** Only shown to administrators. The panel itself re-checks the role. */
   adminOnly?: boolean
 }
 
 const tabs = (): Tab[] => [
-  { id: 'service', label: 'Service', icon: Activity },
-  { id: 'licenses', label: 'Licenses', icon: Key },
-  { id: 'templates', label: 'Templates', icon: FolderOpen },
-  { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'metadata-audit', label: t('vaultAudit.tabLabel'), icon: ScanSearch, adminOnly: true },
+  { id: 'service', label: 'Service' },
+  { id: 'licenses', label: 'Licenses' },
+  { id: 'templates', label: 'Templates' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'metadata-audit', label: t('vaultAudit.tabLabel'), adminOnly: true },
 ]
 
 function TabLoading() {
   return (
-    <div className="flex items-center justify-center h-32 text-plm-fg-muted">
+    <div className="flex items-center justify-center h-32 text-ui-fg-secondary">
       <Loader2 size={20} className="animate-spin" />
     </div>
   )
@@ -40,6 +39,15 @@ function TabLoading() {
 export function SolidWorksSettings() {
   const [activeTab, setActiveTab] = useState<TabId>('service')
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
+  const auditRequested = usePDMStore((s) => s.vaultAuditOpenRequested)
+  const consumeAuditRequest = usePDMStore((s) => s.consumeVaultAuditOpenRequest)
+
+  // A folder's "Audit metadata" menu entry opens this page and asks for the audit sub-tab.
+  useEffect(() => {
+    if (!auditRequested) return
+    setActiveTab('metadata-audit')
+    consumeAuditRequest()
+  }, [auditRequested, consumeAuditRequest])
 
   const visibleTabs = tabs().filter((tab) => !tab.adminOnly || isAdmin)
   // A demoted admin must not be left on a tab that has just disappeared.
@@ -66,32 +74,37 @@ export function SolidWorksSettings() {
     }
   }
 
+  // The audit is a file list and uses the full width it is given; the forms read better narrow.
+  const width = currentTab === 'metadata-audit' ? '' : 'max-w-3xl'
+
   return (
-    <div className="space-y-6">
-      {/* Tab Navigation */}
-      <div className="border-b border-plm-border">
-        <nav className="flex gap-1" aria-label="SolidWorks Settings Tabs">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = currentTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-plm-accent text-plm-accent'
-                    : 'border-transparent text-plm-fg-muted hover:text-plm-fg hover:border-plm-fg-dim'
-                }`}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <Icon size={16} />
-                {tab.label}
-              </button>
-            )
-          })}
-        </nav>
-      </div>
+    <div className={`space-y-8 ${width}`}>
+      {/* Tab navigation: a quiet underline bar, text only */}
+      <nav
+        className="flex gap-6 border-b border-ui-divider"
+        role="tablist"
+        aria-label="SolidWorks Settings Tabs"
+      >
+        {visibleTabs.map((tab) => {
+          const isActive = currentTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTab(tab.id)}
+              className={`-mb-px border-b-2 pb-2.5 text-[14px] transition-colors outline-none focus-visible:text-ui-fg ${
+                isActive
+                  ? 'border-ui-fg font-medium text-ui-fg'
+                  : 'border-transparent text-ui-fg-secondary hover:text-ui-fg'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </nav>
 
       {/* Tab Content */}
       <div className="min-h-[400px]">{renderTabContent()}</div>

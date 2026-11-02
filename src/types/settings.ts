@@ -3,7 +3,9 @@
 /** Canonical runtime list used by navigation events and SettingsTab. */
 export const SETTINGS_TABS = [
   'profile',
+  'appearance',
   'preferences',
+  'sessions',
   'keybindings',
   'modules',
   'vaults',
@@ -15,52 +17,29 @@ export const SETTINGS_TABS = [
   'export',
   'rfq',
   'metadata-columns',
+  'file-workflows',
   'item-designations',
   'backup',
   'solidworks',
   'google-drive',
   'odoo',
-  'slack',
   'webhooks',
   'api',
   'supabase',
   'recovery-codes',
+  'security-monitoring',
   'performance',
   'logs',
   'dev-tools',
+  'updates',
   'about',
   'delete-account',
-  'extension-store',
+  'extensions',
 ] as const
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
-// Keybinding action identifiers
-export type KeybindingAction =
-  | 'navigateUp'
-  | 'navigateDown'
-  | 'expandFolder'
-  | 'collapseFolder'
-  | 'selectAll'
-  | 'copy'
-  | 'cut'
-  | 'paste'
-  | 'delete'
-  | 'escape'
-  | 'openFile'
-  | 'toggleDetailsPanel'
-  | 'refresh'
-
-// Keybinding configuration
-export interface Keybinding {
-  key: string // e.g., 'ArrowUp', 'a', 'Delete'
-  ctrlKey?: boolean
-  shiftKey?: boolean
-  altKey?: boolean
-  metaKey?: boolean
-}
-
-export type KeybindingsConfig = Record<KeybindingAction, Keybinding>
+// Keyboard shortcuts: the actions and their keys live in src/lib/keybindings (registry.ts).
 
 // ============================================
 // SOLIDWORKS Template Settings

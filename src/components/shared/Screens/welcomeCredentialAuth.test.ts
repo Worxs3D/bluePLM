@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createWelcomeCredentialAuthHandlers } from './welcomeCredentialAuth'
+import { createWelcomeCredentialAuthHandlers, signInMethods } from './welcomeCredentialAuth'
+import { en } from '@/lib/i18n/locales/en'
 
 const fixture = vi.hoisted(() => ({
   createClient: vi.fn(),
@@ -18,7 +19,6 @@ vi.mock('@/lib/logger', () => ({
 
 function createState() {
   return {
-    accountType: 'user' as const,
     authEmail: 'person@example.test',
     authPassword: 'password',
     authPasswordConfirm: 'password',
@@ -57,6 +57,13 @@ afterEach(() => {
 async function loadHandlers(state: ReturnType<typeof createState>) {
   const { createWelcomeCredentialAuthHandlers } = await import('./welcomeCredentialAuth')
   return createWelcomeCredentialAuthHandlers(state)
+}
+
+function translateEnglish(key: string): string {
+  const name = key.startsWith('welcome.') ? key.slice('welcome.'.length) : ''
+  const welcome = en.welcome
+  const translated = typeof welcome === 'object' ? welcome[name] : undefined
+  return typeof translated === 'string' ? translated : key
 }
 
 describe('welcome credential authentication preserves the upstream flow', () => {
@@ -103,6 +110,7 @@ describe('welcome credential authentication preserves the upstream flow', () => 
     'keeps the upstream catch message for $operation when the auth operation throws',
     async (testCase) => {
       const state = createState()
+      state.t.mockImplementation(translateEnglish)
       const handlers = await loadHandlers(state)
       const { getBackend } = await import('@/lib/backend')
       vi.spyOn(getBackend().auth, testCase.authOperation).mockRejectedValue(
@@ -118,6 +126,7 @@ describe('welcome credential authentication preserves the upstream flow', () => 
 
   it('retains the email-confirmation prompt and returns to the login form', async () => {
     const state = createState()
+    state.t.mockImplementation(translateEnglish)
     state.isNewAccount = true
     fixture.signUp.mockResolvedValue({ data: { user: null, session: null }, error: null })
     const handlers = await loadHandlers(state)
@@ -169,5 +178,35 @@ describe('welcome credential authentication preserves the upstream flow', () => 
     expect(state.setAuthError).toHaveBeenCalledWith('welcome.passwordMismatch')
     expect(fixture.createClient).not.toHaveBeenCalled()
     expect(state.setIsSigningIn).not.toHaveBeenCalled()
+  })
+})
+
+describe('signInMethods: one sign-in page for members and supplier contacts', () => {
+  const none = { google: false, email: false, phone: false }
+
+  it('offers a method the org allows for either audience', () => {
+    const providers = {
+      users: { google: true, email: false, phone: false },
+      suppliers: { google: false, email: true, phone: true },
+    }
+    expect(signInMethods(providers, true)).toEqual({ google: true, email: true, phone: true })
+  })
+
+  it('hides a method the org allows for neither audience', () => {
+    const providers = { users: { ...none, google: true }, suppliers: { ...none, email: true } }
+    expect(signInMethods(providers, true)).toEqual({ google: true, email: true, phone: false })
+  })
+
+  it('offers every method on the desktop when the providers could not be loaded', () => {
+    expect(signInMethods(null, true)).toEqual({ google: true, email: true, phone: true })
+  })
+
+  it('offers Google only on the web, whatever the org allows', () => {
+    expect(signInMethods(null, false)).toEqual({ google: true, email: false, phone: false })
+    const providers = {
+      users: { google: true, email: true, phone: true },
+      suppliers: { google: true, email: true, phone: true },
+    }
+    expect(signInMethods(providers, false)).toEqual({ google: true, email: false, phone: false })
   })
 })

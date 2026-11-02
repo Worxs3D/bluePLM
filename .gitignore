@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 dist-electron/
+dist-web/
 release/
 
 # Environment files
@@ -70,3 +71,9 @@ coverage/
 # Mutation testing (stryker.config.mjs): reports and Stryker's sandbox
 reports/mutation/
 .stryker-tmp/
+
+# Staging Supabase credentials (5.0 rehearsal)
+.env.staging
+
+# ui-look screenshots (scripts/ui-look)
+ui-look-out/

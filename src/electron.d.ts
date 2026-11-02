@@ -236,40 +236,7 @@ declare global {
   }
 
   interface Window {
-    electronAPI: {
-      // App info
-      getVersion: () => Promise<string>
-      getPlatform: () => Promise<string>
-      getTitleBarOverlayRect: () => Promise<{ x: number; y: number; width: number; height: number }>
-      setTitleBarOverlay: (options: {
-        color: string
-        symbolColor: string
-      }) => Promise<{ success: boolean; error?: string }>
-      getZoomFactor: () => Promise<number>
-      setZoomFactor: (
-        factor: number,
-      ) => Promise<{ success: boolean; factor?: number; error?: string }>
-      onZoomChanged: (callback: (factor: number) => void) => () => void
-      getWindowSize: () => Promise<{ width: number; height: number } | null>
-      setWindowSize: (
-        width: number,
-        height: number,
-      ) => Promise<{ success: boolean; error?: string }>
-      resetWindowSize: () => Promise<{
-        success: boolean
-        size?: { width: number; height: number }
-        error?: string
-      }>
-      getPathForFile: (file: File) => string
-      reloadApp: () => Promise<{ success: boolean; error?: string }>
-      requestFocus: () => Promise<{ success: boolean; error?: string }>
-      openPerformanceWindow: () => Promise<{ success: boolean; error?: string }>
-      createTabWindow: (
-        view: string,
-        title: string,
-        customData?: Record<string, unknown>,
-      ) => Promise<{ success: boolean; error?: string }>
-
+    electronAPI?: {
       // OAuth
       openOAuthWindow: (
         url: string,
@@ -290,7 +257,6 @@ declare global {
       getLogs: () => Promise<
         Array<{ timestamp: string; level: string; message: string; data?: unknown }>
       >
-      getLogPath: () => Promise<string | null>
       exportLogs: () => Promise<{
         success: boolean
         path?: string
@@ -384,17 +350,9 @@ declare global {
         filePath: string,
       ) => Promise<{ success: boolean; content?: string; error?: string }>
       openCrashesDir: () => Promise<{ success: boolean; error?: string }>
-      getCrashesDir: () => Promise<string>
-
-      // Window controls
-      minimize: () => void
-      maximize: () => void
-      close: () => void
-      isMaximized: () => Promise<boolean>
 
       // Working directory
       selectWorkingDir: () => Promise<PathResult>
-      getWorkingDir: () => Promise<string | null>
       setWorkingDir: (path: string) => Promise<PathResult>
       createWorkingDir: (path: string) => Promise<PathResult>
       clearWorkingDir: () => Promise<{ success: boolean }>
@@ -412,7 +370,6 @@ declare global {
         expectedHash?: string,
       ) => Promise<FileWriteResult>
       fileExists: (path: string) => Promise<boolean>
-      getFileHash: (path: string) => Promise<HashResult>
       // Streaming hash - more efficient for large files, use for checkin operations
       hashFile: (
         path: string,
@@ -439,9 +396,6 @@ declare global {
         results?: Array<{ relativePath: string; hash: string }>
         error?: string
       }>
-      onHashProgress: (
-        callback: (progress: { processed: number; total: number; percent: number }) => void,
-      ) => () => void
       createFolder: (path: string) => Promise<OperationResult>
       /**
        * Delete a single file or directory.
@@ -473,17 +427,6 @@ declare global {
           succeeded: number
           failed: number
           /** Count of `results` entries with `skipped: true` - left on disk, not deleted. */
-          skipped: number
-          duration: number
-        }
-      }>
-      trashBatch: (paths: string[]) => Promise<{
-        success: boolean
-        results: Array<{ path: string; success: boolean; error?: string; skipped?: boolean }>
-        summary: {
-          total: number
-          succeeded: number
-          failed: number
           skipped: number
           duration: number
         }
@@ -526,7 +469,7 @@ declare global {
       }>
       isReadonly: (
         path: string,
-      ) => Promise<{ success: boolean; readonly?: boolean; error?: string }>
+      ) => Promise<{ success: boolean; readonly?: boolean; error?: string; code?: string }>
 
       // Test framework support
       /** Compute a cryptographic hash of a file (default: SHA-256) */
@@ -534,10 +477,6 @@ declare global {
         filePath: string,
         algorithm?: string,
       ) => Promise<{ success: boolean; hash: string; algorithm: string; error?: string }>
-      /** List all .bptest files in a folder (recursive) */
-      listTestScripts: (
-        folderPath: string,
-      ) => Promise<{ success: boolean; files: string[]; error?: string }>
       /** Read a file as UTF-8 text (no base64 encoding) */
       readTextFile: (
         filePath: string,
@@ -545,17 +484,6 @@ declare global {
 
       // Check ALL files in a folder for locks before move operations
       // Test file locks in a folder (debugging tool for folder move failures)
-      testFileLocks: (
-        folderPath: string,
-        sampleSize?: number,
-      ) => Promise<{
-        tested: number
-        locked: number
-        unlocked: number
-        lockedFiles: string[]
-        duration?: number
-        error?: string
-      }>
 
       checkFolderLocks: (folderPath: string) => Promise<{
         lockedFiles: Array<{
@@ -570,19 +498,8 @@ declare global {
       }>
 
       // Listen for folder lock check progress events
-      onFolderLockProgress: (
-        callback: (progress: {
-          scanned: number
-          locked: number
-          folderPath: string
-          complete?: boolean
-        }) => void,
-      ) => () => void
 
       startDrag: (filePaths: string[]) => void
-      onDownloadProgress: (
-        callback: (progress: { loaded: number; total: number; speed: number }) => void,
-      ) => () => void
 
       // Dialogs
       selectFiles: () => Promise<FileSelectResult>
@@ -627,12 +544,8 @@ declare global {
       // eDrawings preview
       checkEDrawingsInstalled: () => Promise<{ installed: boolean; path: string | null }>
       openInEDrawings: (filePath: string) => Promise<EDrawingsExternalOpenResult>
-      getWindowHandle: () => Promise<number[] | null>
 
       // SolidWorks thumbnail extraction (low-res, for file browser icons)
-      extractSolidWorksThumbnail: (
-        filePath: string,
-      ) => Promise<{ success: boolean; data?: string; error?: string }>
 
       // SolidWorks high-quality preview extraction (reads OLE stream directly)
       extractSolidWorksPreview: (
@@ -662,19 +575,10 @@ declare global {
       releaseHandles: () => Promise<{ success: boolean; error?: string }>
 
       // Check if SLDWORKS.exe process is running (lightweight check, no service call)
-      isSolidWorksProcessRunning: () => Promise<boolean>
 
       // SolidWorks Service API (requires SolidWorks installed)
       solidworks: {
         // File lock detection (uses Windows Restart Manager API, does NOT require SolidWorks)
-        findLockingProcesses: (filePath: string) => Promise<{
-          success: boolean
-          data?: {
-            processes: Array<{ processName: string; processId: number; appName: string }>
-            count: number
-          }
-          error?: string
-        }>
 
         // Service management
         isInstalled: () => Promise<{ success: boolean; data?: { installed: boolean } }>
@@ -757,36 +661,6 @@ declare global {
         warmup: () => Promise<{ success: boolean; error?: string; data?: unknown }>
 
         // Leaked SolidWorks instance management
-        getProcessStatus: () => Promise<{
-          success: boolean
-          data?: {
-            total: number
-            owned: number
-            reapable: number
-            querySource: string
-            processes: Array<{
-              pid: number
-              windowTitle: string
-              startedAt: string
-              verdict: string
-              reason: string
-            }>
-          }
-        }>
-        killOrphanedProcesses: () => Promise<{
-          success: boolean
-          data?: {
-            scanned: boolean
-            found: number
-            reapable: number
-            closeRequested: number
-            abandoned: number
-            errors: string[]
-          }
-        }>
-        onOrphansCleaned: (
-          callback: (event: { closed: number; timestamp: number }) => void,
-        ) => () => void
 
         // Metadata operations
         getBom: (
@@ -932,45 +806,6 @@ declare global {
         }>
         /** Drop queued background reference reads a newer watcher batch has made stale. */
         cancelBackgroundReferences: (reason?: string) => Promise<{ cancelledCount: number }>
-        getPreview: (
-          filePath: string,
-          configuration?: string,
-        ) => Promise<{
-          success: boolean
-          data?: {
-            filePath: string
-            configuration: string
-            imageData: string
-            mimeType: string
-            width: number
-            height: number
-            sizeBytes: number
-          }
-          error?: string
-        }>
-        getMassProperties: (
-          filePath: string,
-          configuration?: string,
-        ) => Promise<{
-          success: boolean
-          data?: {
-            filePath: string
-            configuration: string
-            mass: number
-            volume: number
-            surfaceArea: number
-            centerOfMass: { x: number; y: number; z: number }
-            momentsOfInertia: {
-              Ixx: number
-              Iyy: number
-              Izz: number
-              Ixy: number
-              Izx: number
-              Iyz: number
-            }
-          }
-          error?: string
-        }>
         extractDrawingCharacteristics: (filePath: string) => Promise<{
           success: boolean
           data?: ExtractedDrawingCharacteristics
@@ -1080,36 +915,8 @@ declare global {
           data?: { inputFile: string; exportedFiles: string[]; count: number }
           error?: string
         }>
-        exportImage: (
-          filePath: string,
-          options?: { outputPath?: string; width?: number; height?: number },
-        ) => Promise<{
-          success: boolean
-          data?: {
-            inputFile: string
-            outputFile: string
-            width: number
-            height: number
-            fileSize: number
-          }
-          error?: string
-        }>
 
         // Assembly operations
-        replaceComponent: (
-          assemblyPath: string,
-          oldComponent: string,
-          newComponent: string,
-        ) => Promise<{
-          success: boolean
-          data?: {
-            assemblyPath: string
-            oldComponent: string
-            newComponent: string
-            replacedCount: number
-          }
-          error?: string
-        }>
         packAndGo: (
           filePath: string,
           outputFolder: string,
@@ -1227,21 +1034,6 @@ declare global {
           }
           error?: string
         }>
-        getDocumentInfo: (filePath: string) => Promise<{
-          success: boolean
-          data?: {
-            filePath: string
-            fileName?: string
-            solidWorksRunning: boolean
-            isOpen: boolean
-            isReadOnly?: boolean
-            isDirty?: boolean
-            fileType?: string
-            activeConfiguration?: string
-            properties?: Record<string, string>
-          }
-          error?: string
-        }>
         setDocumentReadOnly: (
           filePath: string,
           readOnly: boolean,
@@ -1254,17 +1046,6 @@ declare global {
             isNowReadOnly: boolean
             readOnly: boolean
             changed: boolean
-          }
-          error?: string
-        }>
-        saveDocument: (filePath: string) => Promise<{
-          success: boolean
-          data?: {
-            filePath: string
-            fileName: string
-            saved: boolean
-            reason?: string
-            warnings?: number
           }
           error?: string
         }>
@@ -1305,19 +1086,6 @@ declare global {
           versions?: Array<{ version: string; year: number; registryPath: string }>
           error?: string
         }>
-        getFileLocations: () => Promise<{
-          success: boolean
-          versions?: Array<{ version: string; year: number; registryPath: string }>
-          locations?: Array<{
-            version: string
-            documentTemplates: string[]
-            sheetFormats: string[]
-            bomTemplates: string[]
-            customPropertyFolders: string[]
-            promptForTemplate: boolean
-          }>
-          error?: string
-        }>
         setFileLocations: (settings: {
           documentTemplates?: string
           sheetFormats?: string
@@ -1343,7 +1111,6 @@ declare global {
         checkLicenseRegistry: (
           serialNumber: string,
         ) => Promise<{ success: boolean; found: boolean; error?: string }>
-        openLicenseManager: () => Promise<{ success: boolean; error?: string }>
 
         // Template operations
         createDocumentFromTemplate: (
@@ -1443,7 +1210,6 @@ declare global {
 
       // Analytics settings
       setAnalyticsEnabled: (enabled: boolean) => Promise<{ success: boolean }>
-      getAnalyticsEnabled: () => Promise<boolean>
 
       // Clipboard operations (more reliable than navigator.clipboard in Electron)
       copyToClipboard: (text: string) => Promise<{ success: boolean; error?: string }>
@@ -1456,7 +1222,6 @@ declare global {
       }>
 
       // Backup execution
-      checkResticInstalled: () => Promise<{ installed: boolean; version?: string; error?: string }>
       isBackupRunning: () => Promise<{ running: boolean; startedAt: number | null }>
       runBackup: (config: {
         provider: string
@@ -1561,7 +1326,7 @@ declare global {
       runInstaller: (filePath: string) => Promise<{ success: boolean; error?: string }>
       installUpdate: () => Promise<{ success: boolean; error?: string }>
       getUpdateStatus: () => Promise<{
-        updateAvailable: { version: string; releaseDate?: string; releaseNotes?: string } | null
+        updateAvailable: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean } | null
         updateDownloaded: boolean
         downloadProgress: {
           percent: number
@@ -1572,12 +1337,10 @@ declare global {
       }>
       postponeUpdate: (version: string) => Promise<{ success: boolean }>
       clearUpdateReminder: () => Promise<{ success: boolean }>
-      getUpdateReminder: () => Promise<{ version: string; postponedAt: number } | null>
 
       // Update event listeners
-      onUpdateChecking: (callback: () => void) => () => void
       onUpdateAvailable: (
-        callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void,
+        callback: (info: { version: string; releaseDate?: string; releaseNotes?: string; postponed?: boolean }) => void,
       ) => () => void
       onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void
       onUpdateDownloadProgress: (
@@ -1625,183 +1388,12 @@ declare global {
       // CLI token management
       generateCliToken: (userEmail: string) => Promise<{ success: boolean; token?: string }>
       revokeCliToken: () => Promise<{ success: boolean }>
-      getCliStatus: () => Promise<{ authenticated: boolean; serverRunning: boolean }>
 
       // Deep Link handling
-      onDeepLinkInstall: (
-        callback: (data: { extensionId: string; version?: string; timestamp: number }) => void,
-      ) => () => void
-      acknowledgeDeepLink: (
-        extensionId: string,
-        success: boolean,
-        error?: string,
-      ) => Promise<{ success: boolean }>
-
-      // ═══════════════════════════════════════════════════════════════════════════════
-      // EXTENSION SYSTEM API
-      // ═══════════════════════════════════════════════════════════════════════════════
-
-      // Per-machine extension packages (store browsing, install, uninstall; never run)
-      // and org-installed native extensions (see docs/extensions/index.md).
-      extensions: {
-        // ----- Queries -----
-        getAll: () => Promise<ExtensionInfo[]>
-        getExtension: (extensionId: string) => Promise<ExtensionInfo | undefined>
-
-        // ----- Store Operations -----
-        fetchStore: () => Promise<StoreExtensionInfo[]>
-        searchStore: (request: {
-          query?: string
-          category?: string
-          verifiedOnly?: boolean
-          sort?: 'popular' | 'recent' | 'name'
-          page?: number
-          pageSize?: number
-        }) => Promise<{
-          extensions: StoreExtensionInfo[]
-          total: number
-          page: number
-          hasMore: boolean
-        }>
-        getStoreExtension: (extensionId: string) => Promise<StoreExtensionInfo | undefined>
-
-        // ----- Installation -----
-        // downloadId: database UUID for download, manifestId: expected manifest ID for validation
-        install: (
-          downloadId: string,
-          version?: string,
-          manifestId?: string,
-        ) => Promise<ExtensionInstallResult>
-        installFromFile: (
-          bpxPath: string,
-          acknowledgeUnsigned?: boolean,
-        ) => Promise<ExtensionInstallResult>
-        uninstall: (extensionId: string) => Promise<{ success: boolean; error?: string }>
-
-        // ----- Native extensions (org-installed, SHA-256 pinned) -----
-        nativePrepare: (request: {
-          extensionId: string
-          version: string
-          sha256: string
-          downloadUrl: string
-        }) => Promise<NativePrepareResult>
-        nativePrune: (
-          keepShas: string[],
-        ) => Promise<{ success: boolean; removed: string[]; error?: string }>
-        nativeInspect: () => Promise<NativeInspectResult>
-
-        // ----- Events -----
-        onStateChange: (callback: (event: ExtensionStateChangeEvent) => void) => () => void
-      }
-    }
+    } & import('./types/electron/desktopLifecycle').DesktopLifecycleAPI &
+      import('./types/electron/extensions').ExtensionAPI &
+      import('./types/electron/dbUpgrade').DbUpgradeAPI
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXTENSION SYSTEM TYPES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** Extension state as main reports it: a package is either installed or not. */
-type ExtensionState = 'not-installed' | 'installed'
-
-/** Extension verification status */
-type ExtensionVerificationStatus = 'verified' | 'community' | 'sideloaded'
-
-/** Extension category */
-type ExtensionCategory = 'sandboxed' | 'native'
-
-/** An installed extension package, as `extensions:get-all` returns it */
-interface ExtensionInfo {
-  manifest: {
-    id: string
-    name: string
-    version: string
-    publisher: string
-    description?: string
-    icon?: string
-    repository?: string
-    license?: string
-    category?: ExtensionCategory
-    main?: string
-    serverMain?: string
-  }
-  state: ExtensionState
-  verification: ExtensionVerificationStatus
-  installedAt: string
-}
-
-/** Store extension listing */
-interface StoreExtensionInfo {
-  id: string
-  extensionId: string
-  publisher: {
-    id: string
-    name: string
-    slug: string
-    verified: boolean
-  }
-  name: string
-  description?: string
-  iconUrl?: string
-  repositoryUrl: string
-  license: string
-  category: ExtensionCategory
-  categories: string[]
-  tags: string[]
-  verified: boolean
-  featured: boolean
-  downloadCount: number
-  latestVersion: string
-  createdAt: string
-  updatedAt: string
-  deprecation?: {
-    deprecatedAt: string
-    reason: string
-    replacementId?: string
-    sunsetDate?: string
-  }
-}
-
-/** Result of `extensions:install` and `extensions:install-from-file` */
-interface ExtensionInstallResult {
-  success: boolean
-  extensionId?: string
-  version?: string
-  error?: string
-  warning?: string
-  requiresAcknowledgment?: boolean
-}
-
-/** `extensions:native-prepare` result */
-type NativePrepareResult =
-  | {
-      success: true
-      sha256: string
-      /** `blueplm-ext://<sha256>/` */
-      baseUrl: string
-      clientEntryUrl: string
-      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
-      cached: boolean
-    }
-  | { success: false; error: string }
-
-/** `extensions:native-inspect` result (admin upload) */
-type NativeInspectResult =
-  | {
-      success: true
-      manifest: ExtensionInfo['manifest'] & Record<string, unknown>
-      sha256: string
-      size: number
-      sqlFiles: Array<{ name: string; content: string }>
-      data: Uint8Array
-    }
-  | { success: false; canceled?: boolean; error?: string }
-
-/** `extension:state-change`: sent by main after an install or an uninstall */
-interface ExtensionStateChangeEvent {
-  extensionId: string
-  state: ExtensionState
-  timestamp: number
 }
 
 export {}

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { log } from '@/lib/logger'
+import { getSupabaseClient } from '@/lib/supabase/client'
 import {
   getBackupConfig,
+  isBackupConfigured,
   listSnapshots,
   isThisDesignatedMachine,
   isDesignatedMachineOnline,
@@ -42,7 +44,12 @@ interface UseBackupStatusReturn {
   // Actions
   refresh: () => Promise<void>
   refreshSnapshots: () => Promise<void>
+  /** Re-reads backup_config only: call after any change to it (designation, run location, settings). */
+  reloadConfig: () => Promise<void>
 }
+
+/** backup_config is re-read this often as well as on realtime events (members get no events: RLS). */
+const CONFIG_POLL_MS = 30_000
 
 /**
  * Hook to manage backup status loading and polling
@@ -76,11 +83,7 @@ export function useBackupStatus(
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Derived state
-  const isConfigured = !!(
-    config?.bucket &&
-    config?.access_key_encrypted &&
-    config?.restic_password_encrypted
-  )
+  const isConfigured = isBackupConfigured(config)
   const lastSnapshot = snapshots[0] || null
   const totalSnapshots = snapshots.length
   const isBackoffActive = backoffRemainingSeconds > 0
@@ -167,10 +170,33 @@ export function useBackupStatus(
         loadedConfig?.access_key_encrypted &&
         loadedConfig?.restic_password_encrypted
       ) {
-        loadSnapshots(loadedConfig)
+        // Server-run backups do not use restic; its slow snapshot list loads only when asked for.
+        if (loadedConfig.run_location !== 'server') loadSnapshots(loadedConfig)
       }
     })
   }, [orgId, loadConfig, loadSnapshots])
+
+  // Keep the configuration current without a manual refresh. Before the overhaul, actions
+  // reloaded only the restic snapshot list, so a cleared designation or a saved setting stayed
+  // on screen until the page was refreshed.
+  useEffect(() => {
+    if (!orgId) return
+    const channel = getSupabaseClient()
+      .channel(`backup_config_${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'backup_config', filter: `org_id=eq.${orgId}` },
+        () => {
+          void loadConfig()
+        },
+      )
+      .subscribe()
+    const poll = setInterval(() => void loadConfig(), CONFIG_POLL_MS)
+    return () => {
+      clearInterval(poll)
+      void channel.unsubscribe()
+    }
+  }, [orgId, loadConfig])
 
   // Check designated machine status when config changes
   useEffect(() => {
@@ -211,6 +237,7 @@ export function useBackupStatus(
         log.debug('[Backup]', 'Skipping periodic refresh - previous error')
         return
       }
+      if (config.run_location === 'server') return
       loadSnapshots(config)
     }, 60000) // Every 60 seconds for slow operation
 
@@ -248,6 +275,10 @@ export function useBackupStatus(
     }
   }, [orgId, loadConfig, loadSnapshots, addToast, updateRateLimitState])
 
+  const reloadConfig = useCallback(async () => {
+    await loadConfig()
+  }, [loadConfig])
+
   // Refresh snapshots only (faster for just updating history)
   const refreshSnapshots = useCallback(async () => {
     if (!config || !isConfigured) return
@@ -284,5 +315,6 @@ export function useBackupStatus(
     // Actions
     refresh,
     refreshSnapshots,
+    reloadConfig,
   }
 }

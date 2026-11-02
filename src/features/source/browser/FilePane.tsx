@@ -54,8 +54,6 @@ import {
   FilePaneProvider,
   FilePaneHandlersProvider,
   type FilePaneHandlersContextValue,
-  // Utilities
-  matchesKeybinding,
 } from './'
 
 // Import types directly to avoid circular dependency with barrel file
@@ -138,7 +136,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   const connectedVaults = usePDMStore(useShallow((s) => s.connectedVaults))
   const expandedFolders = usePDMStore((s) => s.expandedFolders)
   const processingOperations = usePDMStore((s) => s.processingOperations)
-  const keybindings = usePDMStore(useShallow((s) => s.keybindings))
 
   // ─── Primitive Selectors (no equality function needed) ─────────────────────
   const sortColumn = usePDMStore((s) => s.sortColumn)
@@ -1082,7 +1079,7 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
 
       try {
         const { data, error } = await supabase
-          .from('file_metadata_columns')
+          .from('file_metadata_column')
           .select('*')
           .eq('org_id', organization.id)
           .order('sort_order')
@@ -1337,14 +1334,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     }
   }, [emptyContextMenu])
 
-  // Helper function to check if a keyboard event matches a keybinding
-  // Uses the imported matchesKeybinding utility from file-browser utils
-  const checkKeybinding = useStableCallback(
-    (e: KeyboardEvent, action: keyof typeof keybindings): boolean => {
-      return matchesKeybinding(e, keybindings[action])
-    },
-  )
-
   // Keyboard navigation and shortcuts (extracted to hook)
   useKeyboardNav({
     files,
@@ -1359,7 +1348,6 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     vaultPath,
     clipboard,
     setClipboard,
-    matchesKeybinding: checkKeybinding,
     navigateToFolder,
     navigateUp,
     handleCopy,
@@ -1642,13 +1630,13 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
   const allColumns = [
     ...columns,
     ...customMetadataColumns
-      .filter((c) => c.visible)
+      .filter((c) => c.is_visible)
       .map((c) => ({
         id: `custom_${c.name}`,
         label: c.label,
         width: c.width,
-        visible: c.visible,
-        sortable: c.sortable,
+        visible: c.is_visible,
+        sortable: c.is_sortable,
       })),
   ]
 

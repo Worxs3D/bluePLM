@@ -49,7 +49,7 @@ function describeChanges(paths: string[]): string {
       ? `all in ${Array.from(folders)[0]}`
       : `across ${folders.size} folders`
 
-  return `${paths.length} files (${scope}): ${sample.join(', ')}${suffix}`
+  return `${paths.length} file (${scope}): ${sample.join(', ')}${suffix}`
 }
 
 const IGNORED_PATTERNS = [
@@ -185,6 +185,9 @@ function createNativeWatcher(dirPath: string, deps: VaultWatcherDeps): VaultWatc
 
     const batch = Array.from(pending)
     pending.clear()
+    // One clock reading for the whole pass: files seen together settle together, so a burst
+    // is not split when the retry timer fires a moment early for one file and not another.
+    const passStartedAt = Date.now()
 
     const changedPaths: string[] = []
     const addedDirectories: string[] = []
@@ -242,13 +245,13 @@ function createNativeWatcher(dirPath: string, deps: VaultWatcherDeps): VaultWatc
         inFlightWrites.set(relativePath, {
           size: stats.size,
           mtimeMs: stats.mtimeMs,
-          observedAt: Date.now(),
+          observedAt: passStartedAt,
         })
         stillSettling.push(relativePath)
         continue
       }
 
-      if (Date.now() - previousWrite.observedAt < WRITE_SETTLE_MS) {
+      if (passStartedAt - previousWrite.observedAt < WRITE_SETTLE_MS) {
         stillSettling.push(relativePath)
         continue
       }

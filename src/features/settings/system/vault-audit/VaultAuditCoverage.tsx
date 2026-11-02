@@ -28,15 +28,15 @@ export function VaultAuditCoverage({ coverage }: VaultAuditCoverageProps) {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-medium text-plm-fg">{t('vaultAudit.coverage.heading')}</h3>
-      <p className="text-xs text-plm-fg-muted">{t('vaultAudit.coverage.description')}</p>
+      <h3 className="text-[14px] font-semibold text-ui-fg">{t('vaultAudit.coverage.heading')}</h3>
+      <p className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.coverage.description')}</p>
 
       {aligned ? (
-        <p className="text-xs text-plm-success">{t('vaultAudit.coverage.allAligned')}</p>
+        <p className="text-[13px] text-ui-success">{t('vaultAudit.coverage.allAligned')}</p>
       ) : (
-        <ul className="text-xs text-plm-fg-muted space-y-1">
+        <ul className="text-[13px] text-ui-fg-secondary space-y-1">
           {coverage.filesWithUndescribedConfigurations > 0 && (
-            <li className="text-plm-fg">
+            <li className="text-ui-fg">
               {t('vaultAudit.coverage.undescribed', {
                 files: coverage.filesWithUndescribedConfigurations,
               })}{' '}
@@ -64,52 +64,52 @@ export function VaultAuditCoverage({ coverage }: VaultAuditCoverageProps) {
       )}
 
       {coverage.filesWithStaleKeys > 0 && (
-        <p className="text-xs text-plm-fg-muted/80 italic">{t('vaultAudit.coverage.staleNote')}</p>
+        <p className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.coverage.staleNote')}</p>
       )}
 
       {rows.length > 0 && (
-        <div className="border border-plm-border rounded-md overflow-hidden">
-          <table className="w-full text-xs">
-            <thead className="bg-plm-bg-lighter text-plm-fg-muted">
+        <div className="overflow-hidden">
+          <table className="w-full text-[13px]">
+            <thead className="border-b border-ui-divider text-ui-fg-secondary">
               <tr>
-                <th className="text-left font-normal px-2 py-1.5">
+                <th className="text-left font-normal px-2 py-2.5 first:pl-0 last:pr-0">
                   {t('vaultAudit.coverage.columnFile')}
                 </th>
-                <th className="text-right font-normal px-2 py-1.5 w-28">
+                <th className="text-right font-normal px-2 py-2.5 first:pl-0 last:pr-0 w-28">
                   {t('vaultAudit.coverage.columnConfigurations')}
                 </th>
-                <th className="text-right font-normal px-2 py-1.5 w-28">
+                <th className="text-right font-normal px-2 py-2.5 first:pl-0 last:pr-0 w-28">
                   {t('vaultAudit.coverage.columnUndescribed')}
                 </th>
-                <th className="text-right font-normal px-2 py-1.5 w-28">
+                <th className="text-right font-normal px-2 py-2.5 first:pl-0 last:pr-0 w-28">
                   {t('vaultAudit.coverage.columnStale')}
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((file) => (
-                <tr key={file.fileId} className="border-t border-plm-border/60">
-                  <td className="px-2 py-1.5 text-plm-fg font-mono truncate max-w-0">
+                <tr key={file.fileId} className="border-t border-ui-divider">
+                  <td className="px-2 py-2.5 first:pl-0 last:pr-0 text-ui-fg font-mono truncate max-w-0">
                     <span title={file.relativePath}>{file.relativePath}</span>
                     {file.recordEmptied && (
-                      <span className="ml-2 text-plm-error">
+                      <span className="ml-2 text-ui-danger">
                         {t('vaultAudit.coverage.recordEmptied')}
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-plm-fg-muted">
+                  <td className="px-2 py-2.5 first:pl-0 last:pr-0 text-right text-ui-fg-secondary">
                     {file.configurationCount}
                   </td>
                   <td
-                    className={`px-2 py-1.5 text-right ${
+                    className={`px-2 py-2.5 first:pl-0 last:pr-0 text-right ${
                       file.undescribedConfigurations.length > 0
-                        ? 'text-plm-error'
-                        : 'text-plm-fg-muted'
+                        ? 'text-ui-danger'
+                        : 'text-ui-fg-secondary'
                     }`}
                   >
                     {file.undescribedConfigurations.length}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-plm-fg-muted">
+                  <td className="px-2 py-2.5 first:pl-0 last:pr-0 text-right text-ui-fg-secondary">
                     {file.staleKeys.length}
                   </td>
                 </tr>
@@ -120,7 +120,7 @@ export function VaultAuditCoverage({ coverage }: VaultAuditCoverageProps) {
           {coverage.files.length > INITIAL_ROWS && (
             <button
               onClick={() => setShowAll((current) => !current)}
-              className="w-full flex items-center justify-center gap-1 px-2 py-1.5 text-xs text-plm-fg-muted hover:text-plm-fg bg-plm-bg-lighter border-t border-plm-border transition-colors"
+              className="flex w-full items-center gap-1 border-t border-ui-divider py-2.5 text-[13px] text-ui-fg-secondary transition-colors hover:text-ui-fg"
             >
               {showAll ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               {showAll

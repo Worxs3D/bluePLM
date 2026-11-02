@@ -37,6 +37,8 @@ import { OnlineUsersIndicator } from '@/components/shared/OnlineUsers'
 import { SolidWorksStatusIndicator } from '@/components/shared/SolidWorksStatusIndicator'
 import { getMachineId } from '@/lib/backup'
 import { log } from '@/lib/logger'
+import { hasDesktop } from '@/lib/platform'
+import { signupErrorText } from '@/lib/auth/signupRefusal'
 
 // Get user's initials for avatar fallback (1-2 characters from name or email)
 function getUserInitial(user: { full_name?: string | null; email?: string } | null): string {
@@ -97,7 +99,6 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     connectedVaults,
     activeVaultId,
     switchVault,
-    setActiveView,
     isOfflineMode,
     setOfflineMode,
     sidebarVisible,
@@ -106,6 +107,9 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     toggleDetailsPanel,
     rightPanelVisible,
     toggleRightPanel,
+    activeView,
+    reviewCommentsVisible,
+    toggleReviewComments,
     topbarConfig,
     setTopbarConfig,
     tabsEnabled,
@@ -121,7 +125,6 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
       connectedVaults: s.connectedVaults,
       activeVaultId: s.activeVaultId,
       switchVault: s.switchVault,
-      setActiveView: s.setActiveView,
       isOfflineMode: s.isOfflineMode,
       setOfflineMode: s.setOfflineMode,
       sidebarVisible: s.sidebarVisible,
@@ -130,6 +133,9 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
       toggleDetailsPanel: s.toggleDetailsPanel,
       rightPanelVisible: s.rightPanelVisible,
       toggleRightPanel: s.toggleRightPanel,
+      activeView: s.activeView,
+      reviewCommentsVisible: s.reviewCommentsVisible,
+      toggleReviewComments: s.toggleReviewComments,
       topbarConfig: s.topbarConfig,
       setTopbarConfig: s.setTopbarConfig,
       tabsEnabled: s.tabsEnabled,
@@ -137,6 +143,11 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
       getEffectiveVaultIds: s.getEffectiveVaultIds,
     })),
   )
+
+  // In the Reviews view the right pane is the comment sidebar beside the drawing,
+  // which has its own visibility flag; everywhere else it is the tabbed right panel.
+  const rightPaneIsReviewComments = activeView === 'reviews'
+  const rightPaneShown = rightPaneIsReviewComments ? reviewCommentsVisible : rightPanelVisible
 
   // Filter vaults based on impersonated user's access
   const effectiveVaultIds = getEffectiveVaultIds()
@@ -151,6 +162,8 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showVaultDropdown, setShowVaultDropdown] = useState(false)
   const [showZoomDropdown, setShowZoomDropdown] = useState(false)
+  // BluePLM Web: no Electron zoom and no SOLIDWORKS, so their top-bar controls are left out.
+  const desktop = hasDesktop()
   const [showTopbarConfigDropdown, setShowTopbarConfigDropdown] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null)
@@ -161,7 +174,8 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   const vaultDropdownRef = useRef<HTMLDivElement>(null)
   const zoomDropdownRef = useRef<HTMLDivElement>(null)
   const topbarConfigRef = useRef<HTMLDivElement>(null)
-  const [titleBarPadding, setTitleBarPadding] = useState(140) // Default fallback
+  // Room for the window controls Electron draws over the top right. A browser tab has none.
+  const [titleBarPadding, setTitleBarPadding] = useState(() => (hasDesktop() ? 140 : 8))
   const [platform, setPlatform] = useState<string>('win32') // Default to Windows
   const [menuBarWidth, setMenuBarWidth] = useState(1200)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -378,7 +392,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
 
       if (error) {
         log.error('[MenuBar]', 'Sign in failed', { error: error.message })
-        addToast('error', `Sign in failed: ${error.message}`)
+        addToast('error', `Sign in failed: ${signupErrorText(error.message)}`)
       } else {
         log.info(
           '[MenuBar]',
@@ -556,7 +570,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
           )}
 
           {/* Zoom dropdown - condenses to icon only when narrow */}
-          {!minimal && topbarConfig.showZoom && (
+          {desktop && !minimal && topbarConfig.showZoom && (
             <div className="relative titlebar-no-drag" ref={zoomDropdownRef}>
               <button
                 onClick={() => setShowZoomDropdown(!showZoomDropdown)}
@@ -632,7 +646,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
           )}
 
           {/* SolidWorks Service Status Indicator */}
-          {!minimal && topbarConfig.showSolidworks && (
+          {desktop && !minimal && topbarConfig.showSolidworks && (
             <div className="flex items-center titlebar-no-drag">
               <div className="w-px h-4 bg-plm-border mx-1" />
               <SolidWorksStatusIndicator />
@@ -699,13 +713,13 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                   <PanelBottom size={16} />
                 </button>
                 <button
-                  onClick={toggleRightPanel}
+                  onClick={rightPaneIsReviewComments ? toggleReviewComments : toggleRightPanel}
                   className={`p-1.5 rounded transition-colors ${
-                    rightPanelVisible
+                    rightPaneShown
                       ? 'text-plm-fg hover:bg-plm-bg-lighter'
                       : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
                   }`}
-                  title={`${rightPanelVisible ? 'Hide' : 'Show'} Right Sidebar`}
+                  title={`${rightPaneShown ? 'Hide' : 'Show'} Right Sidebar`}
                 >
                   <PanelRight size={16} />
                 </button>
@@ -750,22 +764,24 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                     </button>
 
                     {/* Zoom Controls */}
-                    <button
-                      onClick={() => setTopbarConfig({ showZoom: !topbarConfig.showZoom })}
-                      className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-plm-fg hover:bg-plm-bg-lighter transition-colors"
-                    >
-                      <span className="text-plm-fg-muted">
-                        <ZoomIn size={14} />
-                      </span>
-                      <span className="flex-1 text-left">Zoom Controls</span>
-                      <div
-                        className={`w-8 h-4 rounded-full transition-colors relative ${topbarConfig.showZoom ? 'bg-plm-accent' : 'bg-plm-border'}`}
+                    {desktop && (
+                      <button
+                        onClick={() => setTopbarConfig({ showZoom: !topbarConfig.showZoom })}
+                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-plm-fg hover:bg-plm-bg-lighter transition-colors"
                       >
+                        <span className="text-plm-fg-muted">
+                          <ZoomIn size={14} />
+                        </span>
+                        <span className="flex-1 text-left">Zoom Controls</span>
                         <div
-                          className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${topbarConfig.showZoom ? 'translate-x-4' : 'translate-x-0.5'}`}
-                        />
-                      </div>
-                    </button>
+                          className={`w-8 h-4 rounded-full transition-colors relative ${topbarConfig.showZoom ? 'bg-plm-accent' : 'bg-plm-border'}`}
+                        >
+                          <div
+                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${topbarConfig.showZoom ? 'translate-x-4' : 'translate-x-0.5'}`}
+                          />
+                        </div>
+                      </button>
+                    )}
 
                     {/* Organization */}
                     <button
@@ -824,24 +840,26 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                     </button>
 
                     {/* SolidWorks Status */}
-                    <button
-                      onClick={() =>
-                        setTopbarConfig({ showSolidworks: !topbarConfig.showSolidworks })
-                      }
-                      className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-plm-fg hover:bg-plm-bg-lighter transition-colors"
-                    >
-                      <span className="text-plm-fg-muted">
-                        <Box size={14} />
-                      </span>
-                      <span className="flex-1 text-left">SolidWorks Status</span>
-                      <div
-                        className={`w-8 h-4 rounded-full transition-colors relative ${topbarConfig.showSolidworks ? 'bg-plm-accent' : 'bg-plm-border'}`}
+                    {desktop && (
+                      <button
+                        onClick={() =>
+                          setTopbarConfig({ showSolidworks: !topbarConfig.showSolidworks })
+                        }
+                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-plm-fg hover:bg-plm-bg-lighter transition-colors"
                       >
+                        <span className="text-plm-fg-muted">
+                          <Box size={14} />
+                        </span>
+                        <span className="flex-1 text-left">SolidWorks Status</span>
                         <div
-                          className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${topbarConfig.showSolidworks ? 'translate-x-4' : 'translate-x-0.5'}`}
-                        />
-                      </div>
-                    </button>
+                          className={`w-8 h-4 rounded-full transition-colors relative ${topbarConfig.showSolidworks ? 'bg-plm-accent' : 'bg-plm-border'}`}
+                        >
+                          <div
+                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${topbarConfig.showSolidworks ? 'translate-x-4' : 'translate-x-0.5'}`}
+                          />
+                        </div>
+                      </button>
+                    )}
 
                     {/* Panel Toggles */}
                     <button
@@ -1009,12 +1027,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                     <button
                       onClick={() => {
                         setShowUserMenu(false)
-                        setActiveView('settings')
-                        setTimeout(() => {
-                          window.dispatchEvent(
-                            new CustomEvent('navigate-settings-tab', { detail: 'profile' }),
-                          )
-                        }, 0)
+                        usePDMStore.getState().openSettings()
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2 text-sm text-plm-fg hover:bg-plm-bg-lighter transition-colors"
                     >
@@ -1089,7 +1102,7 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                             ) : (
                               <>
                                 <span className="text-[9px] text-plm-fg-dim">
-                                  {formatLastSeen(session.last_seen)}
+                                  {formatLastSeen(session.last_seen_at)}
                                 </span>
                                 <button
                                   onClick={(e) => {

@@ -81,8 +81,6 @@ export interface VaultAuditRepairState {
   /** The receipt from the last apply, kept so the admin can read it after it finishes. */
   outcome: VaultAuditRepairOutcome | null
   error: string | null
-  /** The database predates the release the repair function ships in. */
-  notInstalled: boolean
 }
 
 export const EMPTY_VAULT_AUDIT_REPAIR: VaultAuditRepairState = {
@@ -92,7 +90,6 @@ export const EMPTY_VAULT_AUDIT_REPAIR: VaultAuditRepairState = {
   applying: false,
   outcome: null,
   error: null,
-  notInstalled: false,
 }
 
 /**
@@ -194,6 +191,13 @@ export interface VaultAuditSlice {
   vaultAuditRun: VaultAuditRun | null
 
   /**
+   * Set when something outside settings (a folder's context menu) asks for the audit page. The
+   * SOLIDWORKS settings page keeps its sub-tab in its own state, so it reads this once, switches to
+   * Metadata Audit and clears it. Never persisted.
+   */
+  vaultAuditOpenRequested: boolean
+
+  /**
    * The repair built on top of the current run. Session-scoped and never persisted, for the same
    * reason the report is not: an approval of values read from a vault three days ago is an
    * approval of something that may no longer be true.
@@ -214,6 +218,9 @@ export interface VaultAuditSlice {
   // ═══════════════════════════════════════════════════════════════
 
   setVaultAuditScope: (scope: VaultAuditScope) => void
+  /** Open Settings > SOLIDWORKS > Metadata Audit scoped to one folder. Does not start a scan. */
+  openVaultAuditForFolder: (folderPath: string) => void
+  consumeVaultAuditOpenRequest: () => void
   setVaultAuditExpectRevisionOnModels: (expect: boolean) => void
   startVaultAuditRun: (scope: VaultAuditScope) => string
   setVaultAuditProgress: (runId: string, progress: Partial<VaultAuditProgress>) => void
@@ -235,7 +242,6 @@ export interface VaultAuditSlice {
   finishVaultAuditRepair: (result: {
     outcome?: VaultAuditRepairOutcome | null
     error?: string | null
-    notInstalled?: boolean
     /** Candidates the receipt accounted for, to be added to what earlier applies settled. */
     settledIds?: readonly string[]
   }) => void
@@ -278,12 +284,19 @@ export const createVaultAuditSlice: StateCreator<
   vaultAuditScope: DEFAULT_VAULT_AUDIT_SCOPE,
   vaultAuditExpectRevisionOnModels: false,
   vaultAuditRun: null,
+  vaultAuditOpenRequested: false,
   vaultAuditRepair: EMPTY_VAULT_AUDIT_REPAIR,
   vaultAuditPush: EMPTY_VAULT_AUDIT_PUSH,
   vaultAuditConflict: EMPTY_VAULT_AUDIT_CONFLICT,
   vaultAuditFill: EMPTY_VAULT_AUDIT_FILL,
 
   setVaultAuditScope: (scope: VaultAuditScope) => set({ vaultAuditScope: scope }),
+
+  openVaultAuditForFolder: (folderPath: string) => {
+    set({ vaultAuditScope: { kind: 'folder', folderPath }, vaultAuditOpenRequested: true })
+    get().openSettings('solidworks')
+  },
+  consumeVaultAuditOpenRequest: () => set({ vaultAuditOpenRequested: false }),
 
   // Deliberately does not clear the selection or the run. It changes which findings are shown, and
   // a value that goes out of view goes out of the list a selection is built from, so a tick on a
@@ -385,7 +398,6 @@ export const createVaultAuditSlice: StateCreator<
         applying: true,
         outcome: null,
         error: null,
-        notInstalled: false,
       },
     })),
 
@@ -396,7 +408,6 @@ export const createVaultAuditSlice: StateCreator<
         applying: false,
         outcome: result.outcome ?? null,
         error: result.error ?? null,
-        notInstalled: result.notInstalled === true,
         // Applied entries are no longer proposals. Emptying the selection stops a second click
         // re-sending a request whose entries the row now holds - which the merge would refuse
         // anyway, but which would read as a repair that did nothing.
@@ -424,9 +435,7 @@ export const createVaultAuditSlice: StateCreator<
         running: false,
         // Accumulated across every write in this run, for the same reason the repair accumulates:
         // a vault-wide push happens in batches and the second says nothing about the first.
-        writtenFileIds: [
-          ...new Set([...state.vaultAuditPush.writtenFileIds, ...writtenFileIds]),
-        ],
+        writtenFileIds: [...new Set([...state.vaultAuditPush.writtenFileIds, ...writtenFileIds])],
       },
     })),
 

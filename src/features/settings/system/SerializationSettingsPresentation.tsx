@@ -1,22 +1,40 @@
-import {
-  Loader2,
-  Hash,
-  Save,
-  Plus,
-  X,
-  AlertTriangle,
-  RefreshCw,
-  Info,
-  FileBox,
-  Layers,
-  Search,
-  SplitSquareHorizontal,
-  EyeOff,
-} from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  EyeOff,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  X,
+} from 'lucide-react'
+
+import { Button, FIELD_CLASS, Select, Switch } from '@/components/core/ui'
 import type { TranslationParams } from '@/lib/i18n'
 import type { HighestSerialScanResult } from '@/lib/serialization'
+
+import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
 import type { SerializationSettingsData } from './serializationSettingsModel'
+
+// The controls the presentation test reads (fields and action buttons) stay native elements with
+// the primitives' classes: the test walks the returned element tree without rendering components.
+const INPUT = `${FIELD_CLASS} h-7 px-2.5`
+const BUTTON = {
+  base: 'inline-flex flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border h-7 px-2.5 text-[13px] font-medium transition-colors duration-100 outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50 disabled:cursor-not-allowed disabled:opacity-40',
+  primary: 'border-transparent bg-ui-fg text-ui-bg hover:bg-ui-fg/90',
+  secondary: 'border-ui-field-border bg-ui-field text-ui-fg hover:bg-ui-selected',
+  ghost: 'border-transparent bg-transparent text-ui-fg hover:bg-ui-hover',
+} as const
+const CODE = 'rounded-md bg-ui-field px-1.5 py-0.5 font-mono text-[13px] text-ui-fg'
+
+const EXAMPLE_PATTERNS = [
+  { code: 'PN-00001', noteKey: 'settingsPages.serialization.examplePrefixDigits' },
+  { code: 'BR-AB00001', noteKey: 'settingsPages.serialization.examplePrefixLetters' },
+  { code: '100001', noteKey: 'settingsPages.serialization.exampleNoPrefix' },
+  { code: 'PN-00001-REV', noteKey: 'settingsPages.serialization.exampleSuffix' },
+]
 
 export interface SerializationSettingsBindings {
   organization: boolean
@@ -53,19 +71,19 @@ export interface SerializationSettingsBindings {
 
 // Common CAD file extensions for quick selection
 const COMMON_EXTENSIONS = [
-  { ext: '.sldprt', label: 'SolidWorks Part', icon: 'part' },
-  { ext: '.sldasm', label: 'SolidWorks Assembly', icon: 'assembly' },
-  { ext: '.slddrw', label: 'SolidWorks Drawing', icon: 'drawing' },
-  { ext: '.step', label: 'STEP', icon: 'step' },
-  { ext: '.stp', label: 'STP', icon: 'step' },
-  { ext: '.iges', label: 'IGES', icon: 'step' },
-  { ext: '.igs', label: 'IGS', icon: 'step' },
-  { ext: '.prt', label: 'Creo/NX Part', icon: 'part' },
-  { ext: '.asm', label: 'Creo Assembly', icon: 'assembly' },
-  { ext: '.ipt', label: 'Inventor Part', icon: 'part' },
-  { ext: '.iam', label: 'Inventor Assembly', icon: 'assembly' },
-  { ext: '.catpart', label: 'CATIA Part', icon: 'part' },
-  { ext: '.catproduct', label: 'CATIA Assembly', icon: 'assembly' },
+  { ext: '.sldprt', labelKey: 'settingsPages.serialization.extensionLabels.solidworksPart', icon: 'part' },
+  { ext: '.sldasm', labelKey: 'settingsPages.serialization.extensionLabels.solidworksAssembly', icon: 'assembly' },
+  { ext: '.slddrw', labelKey: 'settingsPages.serialization.extensionLabels.solidworksDrawing', icon: 'drawing' },
+  { ext: '.step', labelKey: 'settingsPages.serialization.extensionLabels.step', icon: 'step' },
+  { ext: '.stp', labelKey: 'settingsPages.serialization.extensionLabels.stp', icon: 'step' },
+  { ext: '.iges', labelKey: 'settingsPages.serialization.extensionLabels.iges', icon: 'step' },
+  { ext: '.igs', labelKey: 'settingsPages.serialization.extensionLabels.igs', icon: 'step' },
+  { ext: '.prt', labelKey: 'settingsPages.serialization.extensionLabels.creoNxPart', icon: 'part' },
+  { ext: '.asm', labelKey: 'settingsPages.serialization.extensionLabels.creoAssembly', icon: 'assembly' },
+  { ext: '.ipt', labelKey: 'settingsPages.serialization.extensionLabels.inventorPart', icon: 'part' },
+  { ext: '.iam', labelKey: 'settingsPages.serialization.extensionLabels.inventorAssembly', icon: 'assembly' },
+  { ext: '.catpart', labelKey: 'settingsPages.serialization.extensionLabels.catiaPart', icon: 'part' },
+  { ext: '.catproduct', labelKey: 'settingsPages.serialization.extensionLabels.catiaAssembly', icon: 'assembly' },
 ]
 
 export function SerializationSettingsPresentation({
@@ -105,768 +123,519 @@ export function SerializationSettingsPresentation({
 
   if (!organization) {
     return (
-      <div className="text-center py-12 text-plm-fg-muted">{t('settingsPages.noOrganization')}</div>
+      <div className="py-12 text-center text-[14px] text-ui-fg-secondary">
+        {t('settingsPages.noOrganization')}
+      </div>
     )
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-plm-accent" size={24} />
+        <Loader2 className="animate-spin text-ui-fg-secondary" size={20} />
       </div>
     )
   }
 
+  const locked = !isAdmin || !settings.enabled
+  const dimmed = !settings.enabled ? 'opacity-50' : ''
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold text-plm-fg flex items-center gap-2">
-          <Hash className="text-plm-accent" size={20} />
-          {t('settingsPages.serialization.title')}
-        </h2>
-        <p className="text-sm text-plm-fg-muted mt-1">
-          {t('settingsPages.serialization.description')}
-        </p>
-      </div>
-
-      {/* Read-only notice for non-admins */}
-      {!isAdmin && (
-        <div className="p-3 bg-plm-highlight rounded-lg border border-plm-border text-sm text-plm-fg-muted">
-          {t('settingsPages.serialization.readOnly')}
-        </div>
-      )}
-
-      {/* Live Preview Card */}
-      <div className="p-4 bg-gradient-to-br from-plm-accent/10 to-plm-accent/5 rounded-lg border border-plm-accent/30">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs text-plm-fg-muted uppercase tracking-wider mb-1">
-              {t('settingsPages.serialization.nextPreview')}
-            </div>
-            <div className="text-2xl font-mono font-bold text-plm-accent">{livePreview}</div>
-          </div>
-          <button
-            onClick={fetchPreview}
-            disabled={loadingPreview}
-            className="p-2 rounded-lg hover:bg-plm-highlight text-plm-fg-muted hover:text-plm-fg transition-colors"
-            title={t('settingsPages.serialization.fetchPreview')}
+    <SettingsPage>
+      <SettingsSection
+        title={t('settingsPages.serialization.title')}
+        description={
+          isAdmin
+            ? t('settingsPages.serialization.description')
+            : t('settingsPages.serialization.readOnly')
+        }
+      >
+        <SettingsGroup>
+          <SettingRow
+            label={t('settingsPages.serialization.nextPreview')}
+            description={
+              previewNumber ? (
+                <>
+                  {t('settingsPages.serialization.serverPreview')} <span className="font-mono">{previewNumber}</span>
+                </>
+              ) : undefined
+            }
           >
-            {loadingPreview ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <RefreshCw size={18} />
-            )}
-          </button>
-        </div>
-        {previewNumber && (
-          <div className="text-xs text-plm-fg-muted mt-2">
-            {t('settingsPages.serialization.serverPreview')}{' '}
-            <span className="font-mono">{previewNumber}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Enable/Disable Toggle */}
-      <div className="p-4 bg-plm-bg rounded-lg border border-plm-border">
-        <label
-          className={`flex items-center justify-between ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-        >
-          <div>
-            <span className="text-sm font-medium text-plm-fg">
-              {t('settingsPages.serialization.enable')}
-            </span>
-            <p className="text-xs text-plm-fg-muted mt-0.5">
-              {t('settingsPages.serialization.enableHelp')}
-            </p>
-          </div>
-          <button
-            onClick={() => isAdmin && updateSetting('enabled', !settings.enabled)}
-            disabled={!isAdmin}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              settings.enabled ? 'bg-plm-accent' : 'bg-plm-border'
-            } ${!isAdmin ? 'opacity-60' : ''}`}
+            <span className="font-mono text-[14px] font-medium text-ui-fg">{livePreview}</span>
+            <button
+              type="button"
+              onClick={fetchPreview}
+              disabled={loadingPreview}
+              className={`${BUTTON.base} ${BUTTON.ghost} !px-1.5`}
+              title={t('settingsPages.serialization.fetchPreview')}
+              aria-label={t('settingsPages.serialization.fetchPreview')}
+            >
+              {loadingPreview ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+            </button>
+          </SettingRow>
+          <SettingRow
+            label={t('settingsPages.serialization.enable')}
+            description={t('settingsPages.serialization.enableHelp')}
           >
-            <span
-              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                settings.enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
+            <Switch
+              checked={settings.enabled}
+              onChange={() => isAdmin && updateSetting('enabled', !settings.enabled)}
+              disabled={!isAdmin}
+              aria-label={t('settingsPages.serialization.enable')}
             />
-          </button>
-        </label>
-      </div>
+          </SettingRow>
+        </SettingsGroup>
+      </SettingsSection>
 
-      {/* File Types for Auto-Serialization */}
-      <div
-        className={`p-4 bg-plm-bg rounded-lg border border-plm-border ${!settings.enabled ? 'opacity-50' : ''}`}
+      <SettingsSection
+        title={t('settingsPages.serialization.fileTypes')}
+        description={t('settingsPages.serialization.fileTypesHelp')}
       >
-        <div className="mb-4">
-          <h3 className="text-base font-medium text-plm-fg">
-            {t('settingsPages.serialization.fileTypes')}
-          </h3>
-          <p className="text-xs text-plm-fg-muted mt-0.5">
-            {t('settingsPages.serialization.fileTypesHelp')}
-          </p>
-        </div>
-
-        {/* Common CAD extensions grid */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {COMMON_EXTENSIONS.map(({ ext, label, icon }) => {
-            const isSelected = (settings.auto_apply_extensions || []).includes(ext)
-            return (
-              <button
-                key={ext}
-                onClick={() => isAdmin && settings.enabled && toggleExtension(ext)}
-                disabled={!isAdmin || !settings.enabled}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
-                  isSelected
-                    ? 'bg-plm-accent/20 border-plm-accent text-plm-fg'
-                    : 'bg-plm-highlight border-plm-border text-plm-fg-muted hover:border-plm-accent/50'
-                } ${!isAdmin || !settings.enabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                {icon === 'part' && (
-                  <FileBox
-                    size={16}
-                    className={isSelected ? 'text-plm-accent' : 'text-plm-fg-muted'}
-                  />
-                )}
-                {icon === 'assembly' && (
-                  <Layers
-                    size={16}
-                    className={isSelected ? 'text-amber-400' : 'text-plm-fg-muted'}
-                  />
-                )}
-                {(icon === 'drawing' || icon === 'step') && (
-                  <FileBox
-                    size={16}
-                    className={isSelected ? 'text-plm-accent' : 'text-plm-fg-muted'}
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-mono text-xs">{ext}</div>
-                  <div className="text-xs text-plm-fg-muted truncate">{label}</div>
-                </div>
-                {isSelected && <div className="w-2 h-2 rounded-full bg-plm-accent flex-shrink-0" />}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Custom extension input */}
-        <div className="flex items-center gap-2 pt-3 border-t border-plm-border">
-          <span className="text-sm text-plm-fg-muted">
-            {t('settingsPages.serialization.custom')}
-          </span>
-          <input
-            type="text"
-            value={customExtension}
-            onChange={(e) => setCustomExtension(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addCustomExtension()}
-            placeholder=".xyz"
-            disabled={!isAdmin || !settings.enabled}
-            className="w-24 px-2 py-1 bg-plm-input border border-plm-border rounded text-sm text-plm-fg font-mono placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed"
-          />
-          <button
-            onClick={addCustomExtension}
-            disabled={!isAdmin || !settings.enabled || !customExtension.trim()}
-            className="px-2 py-1 text-sm bg-plm-highlight hover:bg-plm-highlight/80 text-plm-fg rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {t('settingsPages.serialization.add')}
-          </button>
-
-          {/* Show selected extensions not in common list */}
-          <div className="flex-1 flex flex-wrap gap-1 ml-2">
-            {(settings.auto_apply_extensions || [])
-              .filter((ext) => !COMMON_EXTENSIONS.some((c) => c.ext === ext))
-              .map((ext) => (
-                <span
+        <SettingsGroup className={dimmed}>
+          <div className="grid grid-cols-3 gap-2 py-4">
+            {COMMON_EXTENSIONS.map(({ ext, labelKey }) => {
+              const isSelected = (settings.auto_apply_extensions || []).includes(ext)
+              return (
+                <button
+                  type="button"
                   key={ext}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-plm-accent/20 text-plm-accent rounded text-xs font-mono"
+                  onClick={() => isAdmin && settings.enabled && toggleExtension(ext)}
+                  disabled={locked}
+                  aria-pressed={isSelected}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                    isSelected
+                      ? 'border-ui-selected-border bg-ui-selected'
+                      : 'border-ui-field-border bg-ui-field hover:bg-ui-hover'
+                  } ${locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                 >
-                  {ext}
-                  {isAdmin && settings.enabled && (
-                    <button onClick={() => toggleExtension(ext)} className="hover:text-plm-error">
-                      <X size={12} />
-                    </button>
-                  )}
-                </span>
-              ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14px] text-ui-fg">{ext}</div>
+                    <div className="truncate text-[13px] text-ui-fg-secondary">{t(labelKey)}</div>
+                  </div>
+                  {isSelected && <Check size={14} className="flex-shrink-0 text-ui-fg" />}
+                </button>
+              )
+            })}
           </div>
-        </div>
 
-        {/* Summary */}
-        {(settings.auto_apply_extensions || []).length > 0 && (
-          <div className="mt-3 text-xs text-plm-fg-muted">
-            {t('settingsPages.serialization.enabledFor')}{' '}
-            <span className="font-mono text-plm-fg">
-              {(settings.auto_apply_extensions || []).join(', ')}
-            </span>
-          </div>
-        )}
-        {(settings.auto_apply_extensions || []).length === 0 && settings.enabled && (
-          <div className="mt-3 text-xs text-plm-warning flex items-center gap-1">
-            <AlertTriangle size={12} />
-            {t('settingsPages.serialization.noFileTypes')}
-          </div>
-        )}
-      </div>
-
-      {/* Format Settings */}
-      <div
-        className={`p-4 bg-plm-bg rounded-lg border border-plm-border ${!settings.enabled ? 'opacity-50' : ''}`}
-      >
-        <h3 className="text-base font-medium text-plm-fg mb-4">
-          {t('settingsPages.serialization.numberFormat')}
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4">
-          {/* Prefix */}
-          <div>
-            <label className="text-sm text-plm-fg-muted block mb-1">
-              {t('settingsPages.serialization.prefix')}
-            </label>
+          <div className="flex flex-wrap items-center gap-2 py-3.5">
+            <span className="text-[14px] text-ui-fg">{t('settingsPages.serialization.custom')}</span>
             <input
+              type="text"
+              value={customExtension}
+              onChange={(e) => setCustomExtension(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addCustomExtension()}
+              placeholder=".xyz"
+              disabled={locked}
+              className={`${INPUT} !w-24 font-mono`}
+            />
+            <button
+              type="button"
+              onClick={addCustomExtension}
+              disabled={locked || !customExtension.trim()}
+              className={`${BUTTON.base} ${BUTTON.secondary}`}
+            >
+              {t('settingsPages.serialization.add')}
+            </button>
+            <div className="ml-2 flex flex-1 flex-wrap gap-1">
+              {(settings.auto_apply_extensions || [])
+                .filter((ext) => !COMMON_EXTENSIONS.some((c) => c.ext === ext))
+                .map((ext) => (
+                  <span
+                    key={ext}
+                    className="inline-flex items-center gap-1 rounded-md bg-ui-field px-2 py-0.5 text-[13px] text-ui-fg"
+                  >
+                    {ext}
+                    {isAdmin && settings.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExtension(ext)}
+                        className="text-ui-fg-secondary hover:text-ui-danger"
+                        aria-label={t('settingsPages.serialization.removeExtension', {
+                          extension: ext,
+                        })}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </span>
+                ))}
+            </div>
+          </div>
+
+          {(settings.auto_apply_extensions || []).length > 0 && (
+            <div className="py-3.5 text-[14px] text-ui-fg-secondary">
+              {t('settingsPages.serialization.enabledFor')}{' '}
+              <span className="text-ui-fg">
+                {(settings.auto_apply_extensions || []).join(', ')}
+              </span>
+            </div>
+          )}
+          {(settings.auto_apply_extensions || []).length === 0 && settings.enabled && (
+            <div className="flex items-center gap-1.5 py-3.5 text-[14px] text-ui-warning">
+              <AlertTriangle size={14} />
+              {t('settingsPages.serialization.noFileTypes')}
+            </div>
+          )}
+        </SettingsGroup>
+      </SettingsSection>
+
+      <SettingsSection title={t('settingsPages.serialization.numberFormat')}>
+        <SettingsGroup className={dimmed}>
+          <SettingRow label={t('settingsPages.serialization.prefix')} htmlFor="serial-prefix" description={t('settingsPages.serialization.prefixHelp')}>
+            <input
+              id="serial-prefix"
               type="text"
               value={settings.prefix}
               onChange={(e) => updateSetting('prefix', e.target.value)}
               placeholder="PN-"
-              disabled={!isAdmin || !settings.enabled}
-              className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+              disabled={locked}
+              className={`${INPUT} !w-40 font-mono`}
             />
-            <p className="text-xs text-plm-fg-muted mt-1">
-              {t('settingsPages.serialization.prefixHelp')}
-            </p>
-          </div>
-
-          {/* Suffix */}
-          <div>
-            <label className="text-sm text-plm-fg-muted block mb-1">
-              {t('settingsPages.serialization.suffix')}
-            </label>
+          </SettingRow>
+          <SettingRow label={t('settingsPages.serialization.suffix')} htmlFor="serial-suffix" description={t('settingsPages.serialization.suffixHelp')}>
             <input
+              id="serial-suffix"
               type="text"
               value={settings.suffix}
               onChange={(e) => updateSetting('suffix', e.target.value)}
               placeholder="-A"
-              disabled={!isAdmin || !settings.enabled}
-              className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+              disabled={locked}
+              className={`${INPUT} !w-40 font-mono`}
             />
-            <p className="text-xs text-plm-fg-muted mt-1">
-              {t('settingsPages.serialization.suffixHelp')}
-            </p>
-          </div>
-
-          {/* Letter Prefix */}
-          <div>
-            <label className="text-sm text-plm-fg-muted block mb-1">
-              {t('settingsPages.serialization.letterPrefix')}
-            </label>
+          </SettingRow>
+          <SettingRow
+            label={t('settingsPages.serialization.letterPrefix')}
+            htmlFor="serial-letter-prefix"
+            description={t('settingsPages.serialization.letterPrefixHelp')}
+          >
             <input
+              id="serial-letter-prefix"
               type="text"
               value={settings.letter_prefix}
               onChange={(e) => updateSetting('letter_prefix', e.target.value.toUpperCase())}
               placeholder="AB"
               maxLength={4}
-              disabled={!isAdmin || !settings.enabled}
-              className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono uppercase"
+              disabled={locked}
+              className={`${INPUT} !w-40 font-mono uppercase`}
             />
-            <p className="text-xs text-plm-fg-muted mt-1">
-              {t('settingsPages.serialization.letterPrefixHelp')}
-            </p>
-          </div>
-
-          {/* Number of Digits */}
-          <div>
-            <label className="text-sm text-plm-fg-muted block mb-1">
-              {t('settingsPages.serialization.numberPadding')}
-            </label>
-            <select
+          </SettingRow>
+          <SettingRow
+            label={t('settingsPages.serialization.numberPadding')}
+            htmlFor="serial-padding"
+            description={t('settingsPages.serialization.numberPaddingHelp')}
+          >
+            <Select
+              id="serial-padding"
               value={settings.padding_digits}
               onChange={(e) => updateSetting('padding_digits', parseInt(e.target.value))}
-              disabled={!isAdmin || !settings.enabled}
-              className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={locked}
+              className="w-40"
             >
-              <option value={3}>
-                {t('settingsPages.serialization.digitsOption', { digits: 3, sample: '001' })}
-              </option>
-              <option value={4}>
-                {t('settingsPages.serialization.digitsOption', { digits: 4, sample: '0001' })}
-              </option>
-              <option value={5}>
-                {t('settingsPages.serialization.digitsOption', { digits: 5, sample: '00001' })}
-              </option>
-              <option value={6}>
-                {t('settingsPages.serialization.digitsOption', { digits: 6, sample: '000001' })}
-              </option>
-              <option value={7}>
-                {t('settingsPages.serialization.digitsOption', { digits: 7, sample: '0000001' })}
-              </option>
-              <option value={8}>
-                {t('settingsPages.serialization.digitsOption', { digits: 8, sample: '00000001' })}
-              </option>
-            </select>
-            <p className="text-xs text-plm-fg-muted mt-1">
-              {t('settingsPages.serialization.numberPaddingHelp')}
-            </p>
-          </div>
-        </div>
-
-        {/* Current Counter */}
-        <div className="mt-4 pt-4 border-t border-plm-border">
-          <div className="flex items-center gap-2 mb-2">
-            <label className="text-sm text-plm-fg-muted">
-              {t('settingsPages.serialization.currentCounter')}
-            </label>
-            <div className="group relative">
-              <Info size={14} className="text-plm-fg-muted/50" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-plm-bg-elevated border border-plm-border rounded text-xs text-plm-fg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                {t('settingsPages.serialization.currentCounterHelp')}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+              <option value={3}>3 digits (001)</option>
+              <option value={4}>4 digits (0001)</option>
+              <option value={5}>5 digits (00001)</option>
+              <option value={6}>6 digits (000001)</option>
+              <option value={7}>7 digits (0000001)</option>
+              <option value={8}>8 digits (00000001)</option>
+            </Select>
+          </SettingRow>
+          <SettingRow
+            label={t('settingsPages.serialization.currentCounter')}
+            htmlFor="serial-counter"
+            description={
+              <>
+                The next number generated will be this value + 1. Next number will be:{' '}
+                <span className="font-mono font-medium text-ui-fg">
+                  {settings.current_counter + 1}
+                </span>
+              </>
+            }
+          >
             <input
+              id="serial-counter"
               type="number"
               value={settings.current_counter}
               onChange={(e) =>
                 updateSetting('current_counter', Math.max(0, parseInt(e.target.value) || 0))
               }
               min="0"
-              disabled={!isAdmin || !settings.enabled}
-              className="w-32 px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+              disabled={locked}
+              className={`${INPUT} !w-32 font-mono`}
             />
-            <span className="text-sm text-plm-fg-muted">
-              {t('settingsPages.serialization.nextNumber')}{' '}
-              <span className="font-mono font-medium text-plm-fg">
-                {settings.current_counter + 1}
-              </span>
-            </span>
-          </div>
+          </SettingRow>
           {isAdmin && (
-            <p className="text-xs text-plm-warning mt-2 flex items-center gap-1">
-              <AlertTriangle size={12} />
+            <div className="flex items-center gap-1.5 py-3.5 text-[14px] text-ui-warning">
+              <AlertTriangle size={14} />
               {t('settingsPages.serialization.counterWarning')}
-            </p>
+            </div>
           )}
 
-          {/* Detect Highest Serial Number */}
           {isAdmin && settings.enabled && (
-            <div className="mt-4 p-3 bg-plm-highlight/50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-plm-fg font-medium">
-                    {t('settingsPages.serialization.detectHighest')}
-                  </div>
-                  <div className="text-xs text-plm-fg-muted mt-0.5">
-                    {t('settingsPages.serialization.detectHighestHelp')}
-                  </div>
-                </div>
-                <button
-                  onClick={handleDetectHighest}
-                  disabled={detecting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-plm-bg hover:bg-plm-bg-light border border-plm-border text-plm-fg rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {detecting ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Search size={14} />
-                  )}
-                  {t('settingsPages.serialization.scanVault')}
-                </button>
+            <SettingRow
+              label={t('settingsPages.serialization.detectHighest')}
+              description={t('settingsPages.serialization.detectHighestHelp')}
+            >
+              <button
+                type="button"
+                onClick={handleDetectHighest}
+                disabled={detecting}
+                className={`${BUTTON.base} ${BUTTON.secondary}`}
+              >
+                {detecting ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                {t('settingsPages.serialization.scanVault')}
+              </button>
+            </SettingRow>
+          )}
+          {isAdmin && settings.enabled && detectedResult && (
+            <div className="py-3.5">
+              <div className="text-[14px] text-ui-fg-secondary">
+                {t('settingsPages.serialization.scannedFiles', {
+                  count: detectedResult.totalScanned,
+                })}
               </div>
-
-              {detectedResult && (
-                <div className="mt-3 p-2 bg-plm-bg rounded border border-plm-border">
-                  <div className="text-xs text-plm-fg-muted">
-                    {
-                      t('settingsPages.serialization.scannedFiles', { count: '__COUNT__' }).split(
-                        '__COUNT__',
-                      )[0]
-                    }
-                    <span className="font-medium text-plm-fg">{detectedResult.totalScanned}</span>
-                    {
-                      t('settingsPages.serialization.scannedFiles', { count: '__COUNT__' }).split(
-                        '__COUNT__',
-                      )[1]
-                    }
+              {detectedResult.skippedHidden > 0 && (
+                <div className="mt-1 flex items-center gap-1 text-[13px] text-ui-fg-secondary">
+                  <EyeOff size={11} />
+                  {t('hiddenFolders.scanSkipped', { count: detectedResult.skippedHidden })}
+                </div>
+              )}
+              {detectedResult.highestCounter > 0 ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <div>
+                    <div className="text-[14px] text-ui-fg">
+                      {t('settingsPages.serialization.highestFound')}{' '}
+                      <span className="font-mono font-medium text-ui-fg">
+                        {detectedResult.highestPartNumber}
+                      </span>
+                    </div>
+                    <div className="text-[13px] text-ui-fg-secondary">
+                      {t('settingsPages.serialization.counterValue', {
+                        counter: detectedResult.highestCounter,
+                      })}
+                    </div>
                   </div>
-                  {detectedResult.skippedHidden > 0 && (
-                    <div className="text-xs text-plm-fg-muted mt-1 flex items-center gap-1">
-                      <EyeOff size={11} />
-                      {t('hiddenFolders.scanSkipped', { count: detectedResult.skippedHidden })}
-                    </div>
-                  )}
-                  {detectedResult.highestCounter > 0 ? (
-                    <div className="flex items-center justify-between mt-2">
-                      <div>
-                        <div className="text-sm text-plm-fg">
-                          {t('settingsPages.serialization.highestFound')}{' '}
-                          <span className="font-mono font-medium text-plm-accent">
-                            {detectedResult.highestPartNumber}
-                          </span>
-                        </div>
-                        <div className="text-xs text-plm-fg-muted">
-                          {t('settingsPages.serialization.counterValue', {
-                            counter: detectedResult.highestCounter,
-                          })}
-                        </div>
-                      </div>
-                      <button
-                        onClick={applyDetectedCounter}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-plm-accent hover:bg-plm-accent-hover text-white rounded transition-colors"
-                      >
-                        {t('settingsPages.serialization.apply')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-plm-fg-muted mt-1">
-                      {t('settingsPages.serialization.noMatches')}
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={applyDetectedCounter}
+                    className={`${BUTTON.base} ${BUTTON.primary}`}
+                  >
+                    {t('settingsPages.serialization.apply')}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-1 text-[14px] text-ui-fg-secondary">
+                  {t('settingsPages.serialization.noMatches')}
                 </div>
               )}
             </div>
           )}
-        </div>
-      </div>
+        </SettingsGroup>
+      </SettingsSection>
 
-      {/* Tab Number Settings */}
-      <div
-        className={`p-4 bg-plm-bg rounded-lg border border-plm-border ${!settings.enabled ? 'opacity-50' : ''}`}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <SplitSquareHorizontal size={18} className="text-plm-accent" />
-            <div>
-              <h3 className="text-base font-medium text-plm-fg">
-                {t('settingsPages.serialization.tabNumbers')}
-              </h3>
-              <p className="text-xs text-plm-fg-muted mt-0.5">
-                {t('settingsPages.serialization.tabNumbersHelp').split('-104')[0]}
-                <span className="text-plm-accent">-104</span>
-                {t('settingsPages.serialization.tabNumbersHelp').split('-104')[1]}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() =>
+      <SettingsSection
+        title={t('settingsPages.serialization.tabNumbers')}
+        description={t('settingsPages.serialization.tabNumbersHelp')}
+        actions={
+          <Switch
+            checked={settings.tab_enabled}
+            onChange={() =>
               isAdmin && settings.enabled && updateSetting('tab_enabled', !settings.tab_enabled)
             }
-            disabled={!isAdmin || !settings.enabled}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              settings.tab_enabled ? 'bg-plm-accent' : 'bg-plm-border'
-            } ${!isAdmin || !settings.enabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                settings.tab_enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
+            disabled={locked}
+            aria-label={t('settingsPages.serialization.tabNumbers')}
+          />
+        }
+      >
         {settings.tab_enabled && (
-          <div className="grid grid-cols-2 gap-4">
-            {/* Tab Separator */}
-            <div>
-              <label className="text-sm text-plm-fg-muted block mb-1">
-                {t('settingsPages.serialization.tabSeparator')}
-              </label>
+          <SettingsGroup className={dimmed}>
+            <SettingRow
+              label={t('settingsPages.serialization.tabSeparator')}
+              htmlFor="serial-tab-separator"
+              description={t('settingsPages.serialization.tabSeparatorHelp')}
+            >
               <input
+                id="serial-tab-separator"
                 type="text"
                 value={settings.tab_separator}
                 onChange={(e) => updateSetting('tab_separator', e.target.value)}
                 placeholder="-"
                 maxLength={3}
-                disabled={!isAdmin || !settings.enabled}
-                className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+                disabled={locked}
+                className={`${INPUT} !w-24 font-mono`}
               />
-              <p className="text-xs text-plm-fg-muted mt-1">
-                {t('settingsPages.serialization.tabSeparatorHelp')}
-              </p>
-            </div>
-
-            {/* Tab Digits */}
-            <div>
-              <label className="text-sm text-plm-fg-muted block mb-1">
-                {t('settingsPages.serialization.tabDigits')}
-              </label>
-              <select
+            </SettingRow>
+            <SettingRow
+              label={t('settingsPages.serialization.tabDigits')}
+              htmlFor="serial-tab-digits"
+              description={t('settingsPages.serialization.tabDigitsHelp')}
+            >
+              <Select
+                id="serial-tab-digits"
                 value={settings.tab_padding_digits}
                 onChange={(e) => updateSetting('tab_padding_digits', parseInt(e.target.value))}
-                disabled={!isAdmin || !settings.enabled}
-                className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={locked}
+                className="w-40"
               >
-                <option value={1}>
-                  {t('settingsPages.serialization.tabDigitsOptionOne', {
-                    digits: 1,
-                    first: '1',
-                    last: '9',
-                  })}
-                </option>
-                <option value={2}>
-                  {t('settingsPages.serialization.tabDigitsOption', {
-                    digits: 2,
-                    first: '01',
-                    last: '99',
-                  })}
-                </option>
-                <option value={3}>
-                  {t('settingsPages.serialization.tabDigitsOption', {
-                    digits: 3,
-                    first: '001',
-                    last: '999',
-                  })}
-                </option>
-                <option value={4}>
-                  {t('settingsPages.serialization.tabDigitsOption', {
-                    digits: 4,
-                    first: '0001',
-                    last: '9999',
-                  })}
-                </option>
-              </select>
-              <p className="text-xs text-plm-fg-muted mt-1">
-                {t('settingsPages.serialization.tabDigitsHelp')}
-              </p>
-            </div>
-
-            {/* Auto-pad Numbers */}
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.auto_pad_numbers}
-                  onChange={(e) => updateSetting('auto_pad_numbers', e.target.checked)}
-                  disabled={!isAdmin || !settings.enabled}
-                  className="rounded border-plm-border text-plm-accent focus:ring-plm-accent disabled:opacity-60"
-                />
-                <span className="text-sm text-plm-fg">
-                  {t('settingsPages.serialization.autoPad')}
-                </span>
-              </label>
-              <p className="text-xs text-plm-fg-muted mt-1 ml-6">
-                {t('settingsPages.serialization.autoPadHelp')}
-              </p>
-            </div>
-
-            {/* Tab Required */}
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.tab_required}
-                  onChange={(e) => updateSetting('tab_required', e.target.checked)}
-                  disabled={!isAdmin || !settings.enabled}
-                  className="rounded border-plm-border text-plm-accent focus:ring-plm-accent disabled:opacity-60"
-                />
-                <span className="text-sm text-plm-fg">
-                  {t('settingsPages.serialization.tabRequired')}
-                </span>
-              </label>
-              <p className="text-xs text-plm-fg-muted mt-1 ml-6">
-                {settings.tab_required
+                <option value={1}>1 digit (1-9)</option>
+                <option value={2}>2 digits (01-99)</option>
+                <option value={3}>3 digits (001-999)</option>
+                <option value={4}>4 digits (0001-9999)</option>
+              </Select>
+            </SettingRow>
+            <SettingRow
+              label={t('settingsPages.serialization.autoPad')}
+              description={t('settingsPages.serialization.autoPadHelp')}
+            >
+              <Switch
+                checked={settings.auto_pad_numbers}
+                onChange={(checked) => updateSetting('auto_pad_numbers', checked)}
+                disabled={locked}
+                aria-label={t('settingsPages.serialization.autoPad')}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t('settingsPages.serialization.tabRequired')}
+              description={
+                settings.tab_required
                   ? t('settingsPages.serialization.tabRequiredHelp')
-                  : t('settingsPages.serialization.tabOptionalHelp')}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Tab Character Settings */}
-        {settings.tab_enabled && (
-          <div className="mt-4 pt-4 border-t border-plm-border">
-            <h4 className="text-sm font-medium text-plm-fg mb-3">
-              {t('settingsPages.serialization.allowedCharacters')}
-            </h4>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Allow Numbers */}
+                  : t('settingsPages.serialization.tabOptionalHelp')
+              }
+            >
+              <Switch
+                checked={settings.tab_required}
+                onChange={(checked) => updateSetting('tab_required', checked)}
+                disabled={locked}
+                aria-label={t('settingsPages.serialization.tabRequired')}
+              />
+            </SettingRow>
+            <div className="space-y-3 py-4">
               <div>
-                <label
-                  className={`flex items-center gap-2 ${isAdmin && settings.enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.tab_allow_numbers}
-                    onChange={(e) => updateSetting('tab_allow_numbers', e.target.checked)}
-                    disabled={!isAdmin || !settings.enabled}
-                    className="rounded border-plm-border text-plm-accent focus:ring-plm-accent disabled:opacity-60"
-                  />
-                  <span className="text-sm text-plm-fg">
-                    {t('settingsPages.serialization.allowNumbers')}
-                  </span>
-                </label>
+                <div className="mb-1.5 text-[14px] text-ui-fg-secondary">{t('settingsPages.serialization.exampleWithTab')}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {['1', '2', '3'].map((tab, index) => (
+                    <span key={tab} className="flex items-center gap-2">
+                      {index > 0 && <span className="text-[13px] text-ui-fg-secondary">→</span>}
+                      <code className={CODE}>
+                        {basePreview}
+                        {settings.tab_separator}
+                        {tab.padStart(settings.tab_padding_digits, '0')}
+                        {settings.suffix}
+                      </code>
+                    </span>
+                  ))}
+                </div>
               </div>
-
-              {/* Allow Letters */}
-              <div>
-                <label
-                  className={`flex items-center gap-2 ${isAdmin && settings.enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.tab_allow_letters}
-                    onChange={(e) => updateSetting('tab_allow_letters', e.target.checked)}
-                    disabled={!isAdmin || !settings.enabled}
-                    className="rounded border-plm-border text-plm-accent focus:ring-plm-accent disabled:opacity-60"
-                  />
-                  <span className="text-sm text-plm-fg">
-                    {t('settingsPages.serialization.allowLetters')}
-                  </span>
-                </label>
-              </div>
-
-              {/* Allow Special Characters */}
-              <div>
-                <label
-                  className={`flex items-center gap-2 ${isAdmin && settings.enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.tab_allow_special}
-                    onChange={(e) => updateSetting('tab_allow_special', e.target.checked)}
-                    disabled={!isAdmin || !settings.enabled}
-                    className="rounded border-plm-border text-plm-accent focus:ring-plm-accent disabled:opacity-60"
-                  />
-                  <span className="text-sm text-plm-fg">
-                    {t('settingsPages.serialization.allowSpecial')}
-                  </span>
-                </label>
-              </div>
-
-              {/* Special Characters Input */}
-              {settings.tab_allow_special && (
+              {!settings.tab_required && (
                 <div>
-                  <label className="text-sm text-plm-fg-muted block mb-1">
-                    {t('settingsPages.serialization.allowedSpecial')}
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.tab_special_chars}
-                    onChange={(e) => updateSetting('tab_special_chars', e.target.value)}
-                    placeholder="-_"
-                    maxLength={10}
-                    disabled={!isAdmin || !settings.enabled}
-                    className="w-full px-3 py-2 bg-plm-input border border-plm-border rounded text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:border-plm-accent disabled:opacity-60 disabled:cursor-not-allowed font-mono"
-                  />
+                  <div className="mb-1.5 text-[14px] text-ui-fg-secondary">{t('settingsPages.serialization.baseOnly')}</div>
+                  <code className={CODE}>
+                    {basePreview}
+                    {settings.suffix}
+                  </code>
                 </div>
               )}
             </div>
+          </SettingsGroup>
+        )}
+      </SettingsSection>
 
-            {/* Warning if no characters allowed */}
+      {settings.tab_enabled && (
+        <SettingsSection title={t('settingsPages.serialization.allowedCharacters')}>
+          <SettingsGroup className={dimmed}>
+            <SettingRow label={t('settingsPages.serialization.allowNumbers')}>
+              <Switch
+                checked={settings.tab_allow_numbers}
+                onChange={(checked) => updateSetting('tab_allow_numbers', checked)}
+                disabled={locked}
+                aria-label={t('settingsPages.serialization.allowNumbers')}
+              />
+            </SettingRow>
+            <SettingRow label={t('settingsPages.serialization.allowLetters')}>
+              <Switch
+                checked={settings.tab_allow_letters}
+                onChange={(checked) => updateSetting('tab_allow_letters', checked)}
+                disabled={locked}
+                aria-label={t('settingsPages.serialization.allowLetters')}
+              />
+            </SettingRow>
+            <SettingRow label={t('settingsPages.serialization.allowSpecial')}>
+              <Switch
+                checked={settings.tab_allow_special}
+                onChange={(checked) => updateSetting('tab_allow_special', checked)}
+                disabled={locked}
+                aria-label={t('settingsPages.serialization.allowSpecial')}
+              />
+            </SettingRow>
+            {settings.tab_allow_special && (
+              <SettingRow label={t('settingsPages.serialization.allowedSpecial')} htmlFor="serial-tab-special">
+                <input
+                  id="serial-tab-special"
+                  type="text"
+                  value={settings.tab_special_chars}
+                  onChange={(e) => updateSetting('tab_special_chars', e.target.value)}
+                  placeholder="-_"
+                  maxLength={10}
+                  disabled={locked}
+                  className={`${INPUT} !w-32 font-mono`}
+                />
+              </SettingRow>
+            )}
             {!settings.tab_allow_numbers &&
               !settings.tab_allow_letters &&
               !settings.tab_allow_special && (
-                <div className="mt-3 text-xs text-plm-warning flex items-center gap-1">
-                  <AlertTriangle size={12} />
+                <div className="flex items-center gap-1.5 py-3.5 text-[14px] text-ui-warning">
+                  <AlertTriangle size={14} />
                   {t('settingsPages.serialization.noCharacters')}
                 </div>
               )}
-          </div>
-        )}
+          </SettingsGroup>
+        </SettingsSection>
+      )}
 
-        {settings.tab_enabled && (
-          <div className="mt-4 p-3 bg-plm-highlight/50 rounded-lg space-y-2">
-            <div>
-              <div className="text-xs text-plm-fg-muted mb-1">
-                {t('settingsPages.serialization.exampleWithTab')}
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-                  {basePreview}
-                  {settings.tab_separator}
-                  {'1'.padStart(settings.tab_padding_digits, '0')}
-                  {settings.suffix}
-                </code>
-                <span className="text-xs text-plm-fg-muted">→</span>
-                <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-                  {basePreview}
-                  {settings.tab_separator}
-                  {'2'.padStart(settings.tab_padding_digits, '0')}
-                  {settings.suffix}
-                </code>
-                <span className="text-xs text-plm-fg-muted">→</span>
-                <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-                  {basePreview}
-                  {settings.tab_separator}
-                  {'3'.padStart(settings.tab_padding_digits, '0')}
-                  {settings.suffix}
-                </code>
-              </div>
-            </div>
-            {!settings.tab_required && (
-              <div>
-                <div className="text-xs text-plm-fg-muted mb-1">
-                  {t('settingsPages.serialization.baseOnly')}
-                </div>
-                <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-                  {basePreview}
-                  {settings.suffix}
-                </code>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Keepout Zones */}
-      <div
-        className={`p-4 bg-plm-bg rounded-lg border border-plm-border ${!settings.enabled ? 'opacity-50' : ''}`}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-base font-medium text-plm-fg">
-              {t('settingsPages.serialization.keepoutZones')}
-            </h3>
-            <p className="text-xs text-plm-fg-muted mt-0.5">
-              {t('settingsPages.serialization.keepoutZonesHelp')}
-            </p>
-          </div>
-          {isAdmin && settings.enabled && (
-            <button
-              onClick={() => setShowKeepoutForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-plm-highlight hover:bg-plm-highlight/80 text-plm-fg rounded-lg transition-colors"
-            >
-              <Plus size={14} />
+      <SettingsSection
+        title={t('settingsPages.serialization.keepoutZones')}
+        description={t('settingsPages.serialization.keepoutZonesHelp')}
+        actions={
+          isAdmin &&
+          settings.enabled && (
+            <Button size="sm" icon={<Plus size={14} />} onClick={() => setShowKeepoutForm(true)}>
               {t('settingsPages.serialization.addZone')}
-            </button>
-          )}
-        </div>
-
-        {/* Add keepout zone form */}
-        {showKeepoutForm && (
-          <div className="p-3 bg-plm-highlight rounded-lg mb-4">
-            <div className="grid grid-cols-4 gap-3">
+            </Button>
+          )
+        }
+      >
+        <SettingsGroup className={dimmed}>
+          {showKeepoutForm && (
+            <div className="grid grid-cols-4 gap-3 py-4">
               <div>
-                <label className="text-xs text-plm-fg-muted block mb-1">
-                  {t('settingsPages.serialization.start')}
-                </label>
+                <label className="mb-1 block text-[13px] text-ui-fg-secondary">{t('settingsPages.serialization.start')}</label>
                 <input
                   type="number"
                   value={newKeepout.start}
                   onChange={(e) => setNewKeepout((prev) => ({ ...prev, start: e.target.value }))}
                   placeholder="1000"
                   min="0"
-                  className="w-full px-2 py-1.5 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent font-mono"
+                  className={`${INPUT} font-mono`}
                 />
               </div>
               <div>
-                <label className="text-xs text-plm-fg-muted block mb-1">
-                  {t('settingsPages.serialization.end')}
-                </label>
+                <label className="mb-1 block text-[13px] text-ui-fg-secondary">{t('settingsPages.serialization.end')}</label>
                 <input
                   type="number"
                   value={newKeepout.end}
                   onChange={(e) => setNewKeepout((prev) => ({ ...prev, end: e.target.value }))}
                   placeholder="1999"
                   min="0"
-                  className="w-full px-2 py-1.5 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent font-mono"
+                  className={`${INPUT} font-mono`}
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-xs text-plm-fg-muted block mb-1">
-                  {t('settingsPages.serialization.zoneDescription')}
-                </label>
+                <label className="mb-1 block text-[13px] text-ui-fg-secondary">{t('settingsPages.serialization.zoneDescription')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -875,119 +644,94 @@ export function SerializationSettingsPresentation({
                       setNewKeepout((prev) => ({ ...prev, description: e.target.value }))
                     }
                     placeholder={t('settingsPages.serialization.zonePlaceholder')}
-                    className="flex-1 px-2 py-1.5 bg-plm-input border border-plm-border rounded text-sm text-plm-fg focus:outline-none focus:border-plm-accent"
+                    className={`${INPUT} flex-1`}
                   />
                   <button
+                    type="button"
                     onClick={addKeepoutZone}
-                    className="px-3 py-1.5 bg-plm-accent hover:bg-plm-accent-hover text-white rounded text-sm transition-colors"
+                    className={`${BUTTON.base} ${BUTTON.primary}`}
                   >
                     {t('settingsPages.serialization.add')}
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowKeepoutForm(false)
                       setNewKeepout({ start: '', end: '', description: '' })
                     }}
-                    className="px-2 py-1.5 text-plm-fg-muted hover:text-plm-fg transition-colors"
+                    className={`${BUTTON.base} ${BUTTON.ghost} !px-1.5`}
+                    aria-label={t('settingsPages.metadata.cancel')}
                   >
-                    <X size={16} />
+                    <X size={14} />
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Keepout zones list */}
-        {settings.keepout_zones.length === 0 ? (
-          <div className="text-center py-6 text-sm text-plm-fg-muted">
-            {t('settingsPages.serialization.noKeepoutZones')}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {settings.keepout_zones.map((zone, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-plm-highlight rounded-lg"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="font-mono text-sm">
-                    <span className="text-plm-warning">{zone.start.toLocaleString()}</span>
-                    <span className="text-plm-fg-muted mx-2">→</span>
-                    <span className="text-plm-warning">{zone.end_num.toLocaleString()}</span>
+          {settings.keepout_zones.length === 0 ? (
+            <div className="py-4 text-[14px] text-ui-fg-secondary">
+              {t('settingsPages.serialization.noKeepoutZones')}
+            </div>
+          ) : (
+            settings.keepout_zones.map((zone, index) => (
+              <div key={index} className="flex items-center justify-between gap-4 py-3">
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="text-[14px] text-ui-fg">
+                    <span>{zone.start.toLocaleString()}</span>
+                    <span className="mx-2 text-ui-fg-secondary">→</span>
+                    <span>{zone.end_num.toLocaleString()}</span>
                   </div>
-                  <span className="text-sm text-plm-fg-muted">{zone.description}</span>
-                  <span className="text-xs text-plm-fg-muted/60">
-                    {t('settingsPages.serialization.numberCount', {
-                      count: (zone.end_num - zone.start + 1).toLocaleString(),
-                    })}
+                  <span className="truncate text-[14px] text-ui-fg-secondary">
+                    {zone.description}
+                  </span>
+                  <span className="text-[13px] text-ui-fg-secondary">
+                    ({(zone.end_num - zone.start + 1).toLocaleString()} numbers)
                   </span>
                 </div>
                 {isAdmin && settings.enabled && (
                   <button
+                    type="button"
                     onClick={() => removeKeepoutZone(index)}
-                    className="p-1.5 text-plm-fg-muted hover:text-plm-error transition-colors"
+                    className={`${BUTTON.base} ${BUTTON.ghost} !px-1.5 hover:!text-ui-danger`}
                     title={t('settingsPages.serialization.removeZone')}
+                    aria-label={t('settingsPages.serialization.removeZone')}
                   >
-                    <X size={16} />
+                    <X size={14} />
                   </button>
                 )}
               </div>
+            ))
+          )}
+        </SettingsGroup>
+      </SettingsSection>
+
+      <SettingsSection title={t('settingsPages.serialization.examplePatterns')}>
+        <SettingsGroup>
+          <div className="grid grid-cols-2 gap-3 py-4 text-[14px]">
+            {EXAMPLE_PATTERNS.map(({ code, noteKey }) => (
+              <div key={code} className="flex items-center gap-2">
+                <code className={CODE}>{code}</code>
+                <span className="text-ui-fg-secondary">{t(noteKey)}</span>
+              </div>
             ))}
           </div>
-        )}
-      </div>
+        </SettingsGroup>
+      </SettingsSection>
 
-      {/* Example Patterns */}
-      <div className="p-4 bg-plm-highlight/50 rounded-lg border border-plm-border/50">
-        <h4 className="text-sm font-medium text-plm-fg mb-3">
-          {t('settingsPages.serialization.examplePatterns')}
-        </h4>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">PN-00001</code>
-            <span className="text-plm-fg-muted">
-              {t('settingsPages.serialization.examplePrefixDigits')}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-              BR-AB00001
-            </code>
-            <span className="text-plm-fg-muted">
-              {t('settingsPages.serialization.examplePrefixLetters')}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">100001</code>
-            <span className="text-plm-fg-muted">
-              {t('settingsPages.serialization.exampleNoPrefix')}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="px-2 py-1 bg-plm-bg rounded font-mono text-plm-accent">
-              PN-00001-REV
-            </code>
-            <span className="text-plm-fg-muted">
-              {t('settingsPages.serialization.exampleSuffix')}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Save button - only shown for admins */}
       {isAdmin && (
         <div className="flex justify-end">
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="btn btn-primary flex items-center gap-2"
+            className={`${BUTTON.base} ${BUTTON.primary} !h-8 !px-3.5 !text-[14px]`}
           >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {t('settingsPages.saveSettings')}
           </button>
         </div>
       )}
-    </div>
+    </SettingsPage>
   )
 }

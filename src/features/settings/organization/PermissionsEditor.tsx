@@ -1,4 +1,3 @@
-import { useState, useEffect, useMemo } from 'react'
 import * as LucideIcons from 'lucide-react'
 import {
   X,
@@ -19,25 +18,16 @@ import {
   AlertTriangle,
   Folder,
 } from 'lucide-react'
-import { log } from '@/lib/logger'
-import { usePDMStore } from '@/stores/pdmStore'
-import { useShallow } from 'zustand/react/shallow'
-import { supabase } from '@/lib/supabase'
-import { t } from '@/lib/i18n'
-import { withExtensionPermissionResources } from '@/lib/nativeExtensions/permissions'
-import type { Team, PermissionPreset, PermissionAction } from '@/types/permissions'
-import {
-  PERMISSION_ACTIONS,
-  PERMISSION_ACTION_LABELS,
-  ALL_RESOURCES,
-  DEFAULT_PRESETS,
-} from '@/types/permissions'
+import type { LucideIcon } from 'lucide-react'
 
-interface Vault {
-  id: string
-  name: string
-  slug: string
-}
+import { Button } from '@/components/core/ui'
+import { DEFAULT_PRESETS, PERMISSION_ACTIONS, PERMISSION_ACTION_LABELS } from '@/types/permissions'
+import type { PermissionPreset, Team } from '@/types/permissions'
+
+import { usePermissionsEditor } from './usePermissionsEditor'
+
+/** Lucide icons by name, for teams, presets, groups and resources that store an icon name. */
+const ICONS = LucideIcons as unknown as Record<string, LucideIcon | undefined>
 
 interface PermissionsEditorProps {
   team: Team
@@ -46,626 +36,41 @@ interface PermissionsEditorProps {
   isAdmin: boolean
 }
 
-// Group resources by a custom category for better UX
-const RESOURCE_GROUPS: {
-  id: string
-  name: string
-  icon: string
-  color: string
-  resources: string[]
-}[] = [
-  {
-    id: 'source-files',
-    name: 'Source Files',
-    icon: 'FolderTree',
-    color: '#3b82f6',
-    resources: [
-      'module:explorer',
-      'module:pending',
-      'module:history',
-      'module:workflows',
-      'module:trash',
-    ],
-  },
-  {
-    id: 'items',
-    name: 'Items & Products',
-    icon: 'Package',
-    color: '#8b5cf6',
-    resources: ['module:items', 'system:item-designations', 'module:products'],
-  },
-  {
-    id: 'change-control',
-    name: 'Change Control',
-    icon: 'GitBranch',
-    color: '#f59e0b',
-    resources: [
-      'module:ecr',
-      'module:eco',
-      'module:reviews',
-      'module:deviations',
-      'module:release-schedule',
-      'module:process',
-    ],
-  },
-  {
-    id: 'supply-chain',
-    name: 'Supply Chain',
-    icon: 'Truck',
-    color: '#14b8a6',
-    resources: ['module:supplier-database', 'module:supplier-portal'],
-  },
-  {
-    id: 'system',
-    name: 'System & Admin',
-    icon: 'Settings',
-    color: '#64748b',
-    resources: [
-      'module:google-drive',
-      'module:terminal',
-      'module:settings',
-      'system:users',
-      'system:teams',
-      'system:permissions',
-      'system:org-settings',
-      'system:vaults',
-      'system:backups',
-      'system:webhooks',
-      'system:workflows',
-      'system:metadata',
-      'system:integrations',
-      'system:recovery-codes',
-      'system:impersonation',
-    ],
-  },
-]
-
 export function PermissionsEditor({ team, onClose, userId, isAdmin }: PermissionsEditorProps) {
-  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
-
-  // Resources contributed by the organization's installed native extensions are
-  // listed in their own group next to core's.
-  const orgNativeExtensionRows = usePDMStore((s) => s.orgNativeExtensionRows)
-  const { allResources, resourceGroups } = useMemo(
-    () =>
-      withExtensionPermissionResources(
-        ALL_RESOURCES,
-        RESOURCE_GROUPS,
-        orgNativeExtensionRows,
-        t('nativeExtensions.permissionsGroup'),
-      ),
-    [orgNativeExtensionRows],
-  )
-
-  // State
-  const [permissions, setPermissions] = useState<Record<string, PermissionAction[]>>({})
-  const [originalPermissions, setOriginalPermissions] = useState<
-    Record<string, PermissionAction[]>
-  >({})
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(resourceGroups.map((g) => g.id)),
-  )
-  const [showPresets, setShowPresets] = useState(false)
-  const [_presets, setPresets] = useState<PermissionPreset[]>([])
-
-  // Vault scope state - only for source files
-  const [vaults, setVaults] = useState<Vault[]>([])
-  const [selectedSourceFilesVaultId, setSelectedSourceFilesVaultId] = useState<string | null>(null) // null = "All Vaults"
-  const [sourceFilesPermsByVault, setSourceFilesPermsByVault] = useState<
-    Record<string, Record<string, PermissionAction[]>>
-  >({})
-  const [originalSourceFilesPermsByVault, setOriginalSourceFilesPermsByVault] = useState<
-    Record<string, Record<string, PermissionAction[]>>
-  >({})
-  const [_vaultsLoading, setVaultsLoading] = useState(true)
-
-  // Source files resources
-  const sourceFilesResources = [
-    'module:explorer',
-    'module:pending',
-    'module:history',
-    'module:workflows',
-    'module:trash',
-  ]
-
-  // Load vaults for this org
-  useEffect(() => {
-    const loadVaults = async () => {
-      try {
-        const { data: orgData } = await supabase
-          .from('teams')
-          .select('org_id')
-          .eq('id', team.id)
-          .single()
-
-        if (!orgData) return
-
-        const { data, error } = await supabase
-          .from('vaults')
-          .select('id, name, slug')
-          .eq('org_id', orgData.org_id)
-          .order('name')
-
-        if (error) throw error
-        setVaults(data || [])
-      } catch (error) {
-        log.error('[PermissionsEditor]', 'Failed to load vaults', { error: error })
-      } finally {
-        setVaultsLoading(false)
-      }
-    }
-    loadVaults()
-  }, [team.id])
-
-  // Load permissions when team changes
-  useEffect(() => {
-    loadPermissions()
-    loadPresets()
-  }, [team.id])
-
-  // Track changes - check both global and source files permissions
-  useEffect(() => {
-    const globalChanged = JSON.stringify(permissions) !== JSON.stringify(originalPermissions)
-    const sourceFilesChanged =
-      JSON.stringify(sourceFilesPermsByVault) !== JSON.stringify(originalSourceFilesPermsByVault)
-    setHasChanges(globalChanged || sourceFilesChanged)
-  }, [permissions, originalPermissions, sourceFilesPermsByVault, originalSourceFilesPermsByVault])
-
-  const loadPermissions = async () => {
-    setIsLoading(true)
-    try {
-      // Load global permissions (vault_id IS NULL) for non-source-files resources
-      const { data: globalData, error: globalError } = await supabase
-        .from('team_permissions')
-        .select('*')
-        .eq('team_id', team.id)
-        .is('vault_id', null)
-
-      if (globalError) throw globalError
-
-      const globalPermsMap: Record<string, PermissionAction[]> = {}
-      for (const perm of globalData || []) {
-        // Only include non-source-files resources in global permissions
-        if (!sourceFilesResources.includes(perm.resource)) {
-          globalPermsMap[perm.resource] = perm.actions as PermissionAction[]
-        }
-      }
-
-      setPermissions(globalPermsMap)
-      setOriginalPermissions(globalPermsMap)
-
-      // Load source files permissions per vault
-      const { data: vaultPermsData, error: vaultError } = await supabase
-        .from('team_permissions')
-        .select('*')
-        .eq('team_id', team.id)
-        .not('vault_id', 'is', null)
-
-      if (vaultError) throw vaultError
-
-      // Also load "All Vaults" source files permissions (vault_id IS NULL)
-      const { data: allVaultsSourceFiles } = await supabase
-        .from('team_permissions')
-        .select('*')
-        .eq('team_id', team.id)
-        .is('vault_id', null)
-        .in('resource', sourceFilesResources)
-
-      const vaultPermsMap: Record<string, Record<string, PermissionAction[]>> = {}
-
-      // Initialize "all" vaults entry
-      vaultPermsMap['all'] = {}
-      for (const perm of allVaultsSourceFiles || []) {
-        if (sourceFilesResources.includes(perm.resource)) {
-          vaultPermsMap['all'][perm.resource] = perm.actions as PermissionAction[]
-        }
-      }
-
-      // Group by vault_id
-      for (const perm of vaultPermsData || []) {
-        if (sourceFilesResources.includes(perm.resource) && perm.vault_id) {
-          if (!vaultPermsMap[perm.vault_id]) {
-            vaultPermsMap[perm.vault_id] = {}
-          }
-          vaultPermsMap[perm.vault_id][perm.resource] = perm.actions as PermissionAction[]
-        }
-      }
-
-      setSourceFilesPermsByVault(vaultPermsMap)
-      setOriginalSourceFilesPermsByVault(JSON.parse(JSON.stringify(vaultPermsMap)))
-    } catch (error) {
-      log.error('[PermissionsEditor]', 'Failed to load permissions', { error: error })
-      addToast('error', 'Failed to load permissions')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const loadPresets = async () => {
-    try {
-      const { data: orgData } = await supabase
-        .from('teams')
-        .select('org_id')
-        .eq('id', team.id)
-        .single()
-
-      if (!orgData) return
-
-      const { data, error } = await supabase
-        .from('permission_presets')
-        .select('*')
-        .eq('org_id', orgData.org_id)
-        .order('name')
-
-      if (error) throw error
-      // Map Supabase types to app types with defaults
-      setPresets(
-        (data || []).map((p) => ({
-          id: p.id,
-          org_id: p.org_id,
-          name: p.name,
-          description: p.description ?? null,
-          color: p.color ?? '#64748b',
-          icon: p.icon ?? 'Shield',
-          permissions: (p.permissions as Record<string, PermissionAction[]>) ?? {},
-          is_system: p.is_system ?? false,
-          created_at: p.created_at ?? new Date().toISOString(),
-          created_by: p.created_by ?? null,
-          updated_at: p.updated_at ?? new Date().toISOString(),
-          updated_by: p.updated_by ?? null,
-        })),
-      )
-    } catch (error) {
-      log.error('[PermissionsEditor]', 'Failed to load presets', { error: error })
-    }
-  }
-
-  const savePermissions = async () => {
-    if (!userId) return
-
-    setIsSaving(true)
-    try {
-      // Delete all existing permissions for this team
-      await supabase.from('team_permissions').delete().eq('team_id', team.id)
-
-      const allNewPerms: any[] = []
-
-      // Add global permissions (non-source-files with vault_id = null)
-      for (const [resource, actions] of Object.entries(permissions)) {
-        if (actions.length > 0 && !sourceFilesResources.includes(resource)) {
-          allNewPerms.push({
-            team_id: team.id,
-            resource,
-            vault_id: null,
-            actions,
-            granted_by: userId,
-          })
-        }
-      }
-
-      // Add source files permissions per vault
-      for (const [vaultKey, vaultPerms] of Object.entries(sourceFilesPermsByVault)) {
-        const vaultId = vaultKey === 'all' ? null : vaultKey
-        for (const [resource, actions] of Object.entries(vaultPerms)) {
-          if (actions.length > 0 && sourceFilesResources.includes(resource)) {
-            allNewPerms.push({
-              team_id: team.id,
-              resource,
-              vault_id: vaultId,
-              actions,
-              granted_by: userId,
-            })
-          }
-        }
-      }
-
-      if (allNewPerms.length > 0) {
-        const { error } = await supabase.from('team_permissions').insert(allNewPerms)
-
-        if (error) throw error
-      }
-
-      setOriginalPermissions({ ...permissions })
-      setOriginalSourceFilesPermsByVault(JSON.parse(JSON.stringify(sourceFilesPermsByVault)))
-      setHasChanges(false)
-      addToast('success', 'Permissions saved')
-    } catch (error) {
-      log.error('[PermissionsEditor]', 'Failed to save permissions', { error: error })
-      addToast('error', 'Failed to save permissions')
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  // Get the current vault key for source files
-  const getSourceFilesVaultKey = () => selectedSourceFilesVaultId || 'all'
-
-  // Get permissions for a resource (handles source files vs others)
-  const getResourcePermissions = (resourceId: string): PermissionAction[] => {
-    if (sourceFilesResources.includes(resourceId)) {
-      const vaultKey = getSourceFilesVaultKey()
-      return sourceFilesPermsByVault[vaultKey]?.[resourceId] || []
-    }
-    return permissions[resourceId] || []
-  }
-
-  const toggleAction = (resourceId: string, action: PermissionAction) => {
-    if (!isAdmin) return
-
-    if (sourceFilesResources.includes(resourceId)) {
-      // Handle source files - update vault-specific permissions
-      const vaultKey = getSourceFilesVaultKey()
-      setSourceFilesPermsByVault((prev) => {
-        const vaultPerms = prev[vaultKey] || {}
-        const current = vaultPerms[resourceId] || []
-        const newActions = current.includes(action)
-          ? current.filter((a) => a !== action)
-          : [...current, action]
-        return {
-          ...prev,
-          [vaultKey]: {
-            ...vaultPerms,
-            [resourceId]: newActions,
-          },
-        }
-      })
-    } else {
-      // Handle non-source files - update global permissions
-      setPermissions((prev) => {
-        const current = prev[resourceId] || []
-        if (current.includes(action)) {
-          return { ...prev, [resourceId]: current.filter((a) => a !== action) }
-        } else {
-          return { ...prev, [resourceId]: [...current, action] }
-        }
-      })
-    }
-  }
-
-  const toggleAllInGroup = (groupId: string, action: PermissionAction) => {
-    if (!isAdmin) return
-
-    const group = resourceGroups.find((g) => g.id === groupId)
-    if (!group) return
-
-    if (groupId === 'source-files') {
-      // Handle source files group
-      const vaultKey = getSourceFilesVaultKey()
-      const allHave = group.resources.every((r) =>
-        (sourceFilesPermsByVault[vaultKey]?.[r] || []).includes(action),
-      )
-
-      setSourceFilesPermsByVault((prev) => {
-        const vaultPerms = prev[vaultKey] || {}
-        const updated = { ...vaultPerms }
-        for (const resourceId of group.resources) {
-          const current = updated[resourceId] || []
-          if (allHave) {
-            updated[resourceId] = current.filter((a) => a !== action)
-          } else if (!current.includes(action)) {
-            updated[resourceId] = [...current, action]
-          }
-        }
-        return { ...prev, [vaultKey]: updated }
-      })
-    } else {
-      // Handle non-source files groups
-      const allHave = group.resources.every((r) => (permissions[r] || []).includes(action))
-
-      setPermissions((prev) => {
-        const updated = { ...prev }
-        for (const resourceId of group.resources) {
-          const current = updated[resourceId] || []
-          if (allHave) {
-            updated[resourceId] = current.filter((a) => a !== action)
-          } else if (!current.includes(action)) {
-            updated[resourceId] = [...current, action]
-          }
-        }
-        return updated
-      })
-    }
-  }
-
-  const setAllActions = (resourceId: string, actions: PermissionAction[]) => {
-    if (!isAdmin) return
-
-    if (sourceFilesResources.includes(resourceId)) {
-      const vaultKey = getSourceFilesVaultKey()
-      setSourceFilesPermsByVault((prev) => ({
-        ...prev,
-        [vaultKey]: {
-          ...prev[vaultKey],
-          [resourceId]: actions,
-        },
-      }))
-    } else {
-      setPermissions((prev) => ({ ...prev, [resourceId]: actions }))
-    }
-  }
-
-  const applyPreset = (preset: PermissionPreset) => {
-    if (!isAdmin) return
-    // Split preset into source files and other permissions
-    const globalPerms: Record<string, PermissionAction[]> = {}
-    const sfPerms: Record<string, PermissionAction[]> = {}
-
-    for (const [resource, actions] of Object.entries(preset.permissions)) {
-      if (sourceFilesResources.includes(resource)) {
-        sfPerms[resource] = actions
-      } else {
-        globalPerms[resource] = actions
-      }
-    }
-
-    setPermissions(globalPerms)
-    // Apply source files to "all" vault context
-    setSourceFilesPermsByVault((prev) => ({ ...prev, all: sfPerms }))
-    setShowPresets(false)
-    addToast('success', `Applied "${preset.name}" preset`)
-  }
-
-  const resetToOriginal = () => {
-    setPermissions({ ...originalPermissions })
-    setSourceFilesPermsByVault(JSON.parse(JSON.stringify(originalSourceFilesPermsByVault)))
-  }
-
-  const clearAll = () => {
-    if (!isAdmin) return
-    setPermissions({})
-    setSourceFilesPermsByVault({})
-  }
-
-  const grantAll = () => {
-    if (!isAdmin) return
-    const globalPerms: Record<string, PermissionAction[]> = {}
-    const sfPerms: Record<string, PermissionAction[]> = {}
-
-    for (const resource of allResources) {
-      if (sourceFilesResources.includes(resource.id)) {
-        sfPerms[resource.id] = [...resource.applicableActions]
-      } else {
-        globalPerms[resource.id] = [...resource.applicableActions]
-      }
-    }
-
-    setPermissions(globalPerms)
-    setSourceFilesPermsByVault({ all: sfPerms })
-  }
-
-  // Toggle a specific action across ALL resources (including source files for current vault context)
-  const toggleAllForAction = (action: PermissionAction) => {
-    if (!isAdmin) return
-
-    // Get non-source-files resources
-    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
-    // Get source files resources
-    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
-    const vaultKey = getSourceFilesVaultKey()
-
-    // Check if all applicable resources have the action (both global and source files)
-    const allNonSfHave = nonSfResources
-      .filter((r) => r.applicableActions.includes(action))
-      .every((r) => (permissions[r.id] || []).includes(action))
-    const allSfHave = sfResources
-      .filter((r) => r.applicableActions.includes(action))
-      .every((r) => (sourceFilesPermsByVault[vaultKey]?.[r.id] || []).includes(action))
-    const allHave = allNonSfHave && allSfHave
-
-    // Update non-source-files permissions
-    setPermissions((prev) => {
-      const updated = { ...prev }
-      for (const resource of nonSfResources) {
-        if (!resource.applicableActions.includes(action)) continue
-        const current = updated[resource.id] || []
-        if (allHave) {
-          updated[resource.id] = current.filter((a) => a !== action)
-        } else if (!current.includes(action)) {
-          updated[resource.id] = [...current, action]
-        }
-      }
-      return updated
-    })
-
-    // Update source files permissions for current vault context
-    setSourceFilesPermsByVault((prev) => {
-      const vaultPerms = prev[vaultKey] || {}
-      const updated = { ...vaultPerms }
-      for (const resource of sfResources) {
-        if (!resource.applicableActions.includes(action)) continue
-        const current = updated[resource.id] || []
-        if (allHave) {
-          updated[resource.id] = current.filter((a) => a !== action)
-        } else if (!current.includes(action)) {
-          updated[resource.id] = [...current, action]
-        }
-      }
-      return { ...prev, [vaultKey]: updated }
-    })
-  }
-
-  // Check if all applicable resources have a specific action (including source files for current vault)
-  const allHaveAction = (action: PermissionAction): boolean => {
-    const vaultKey = getSourceFilesVaultKey()
-    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
-    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
-
-    const allNonSfHave = nonSfResources
-      .filter((r) => r.applicableActions.includes(action))
-      .every((r) => (permissions[r.id] || []).includes(action))
-    const allSfHave = sfResources
-      .filter((r) => r.applicableActions.includes(action))
-      .every((r) => (sourceFilesPermsByVault[vaultKey]?.[r.id] || []).includes(action))
-
-    return allNonSfHave && allSfHave
-  }
-
-  // Check if some (but not all) applicable resources have a specific action (including source files)
-  const someHaveAction = (action: PermissionAction): boolean => {
-    const vaultKey = getSourceFilesVaultKey()
-    const nonSfResources = allResources.filter((r) => !sourceFilesResources.includes(r.id))
-    const sfResources = allResources.filter((r) => sourceFilesResources.includes(r.id))
-
-    const applicableNonSf = nonSfResources.filter((r) => r.applicableActions.includes(action))
-    const applicableSf = sfResources.filter((r) => r.applicableActions.includes(action))
-
-    const withActionNonSf = applicableNonSf.filter((r) =>
-      (permissions[r.id] || []).includes(action),
-    )
-    const withActionSf = applicableSf.filter((r) =>
-      (sourceFilesPermsByVault[vaultKey]?.[r.id] || []).includes(action),
-    )
-
-    const totalApplicable = applicableNonSf.length + applicableSf.length
-    const totalWithAction = withActionNonSf.length + withActionSf.length
-
-    return totalWithAction > 0 && totalWithAction < totalApplicable
-  }
-
-  // Filter resources by search
-  const filterResources = (resources: string[]): string[] => {
-    if (!searchQuery) return resources
-    return resources.filter((resourceId) => {
-      const resource = allResources.find((r) => r.id === resourceId)
-      if (!resource) return false
-      return (
-        resource.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        resource.description.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    })
-  }
-
-  // Count permissions in a group
-  const getGroupStats = (groupId: string) => {
-    const group = resourceGroups.find((g) => g.id === groupId)
-    if (!group) return { total: 0, withPerms: 0 }
-
-    let withPerms = 0
-    for (const resourceId of group.resources) {
-      if (getResourcePermissions(resourceId).length > 0) {
-        withPerms++
-      }
-    }
-    return { total: group.resources.length, withPerms }
-  }
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) {
-        next.delete(groupId)
-      } else {
-        next.add(groupId)
-      }
-      return next
-    })
-  }
-
-  const IconComponent = (LucideIcons as any)[team.icon] || Users // TODO: type this
+  const {
+    allResources,
+    resourceGroups,
+    permissions,
+    isLoading,
+    isSaving,
+    hasChanges,
+    searchQuery,
+    setSearchQuery,
+    expandedGroups,
+    showPresets,
+    setShowPresets,
+    vaults,
+    selectedSourceFilesVaultId,
+    setSelectedSourceFilesVaultId,
+    sourceFilesPermsByVault,
+    savePermissions,
+    getResourcePermissions,
+    toggleAction,
+    toggleAllInGroup,
+    setAllActions,
+    applyPreset,
+    resetToOriginal,
+    clearAll,
+    grantAll,
+    toggleAllForAction,
+    allHaveAction,
+    someHaveAction,
+    filterResources,
+    getGroupStats,
+    toggleGroup,
+  } = usePermissionsEditor(team, userId, isAdmin)
+
+  const IconComponent = ICONS[team.icon] || Users
 
   return (
     <div
@@ -673,11 +78,11 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
       onClick={onClose}
     >
       <div
-        className="bg-plm-bg-light border border-plm-border rounded-xl w-full max-w-6xl h-[90vh] mx-4 flex flex-col shadow-2xl overflow-hidden"
+        className="bg-ui-field border border-ui-divider rounded-xl w-full max-w-6xl h-[90vh] mx-4 flex flex-col shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-plm-border flex items-center gap-4 flex-shrink-0">
+        <div className="p-4 border-b border-ui-divider flex items-center gap-4 flex-shrink-0">
           <div
             className="p-2.5 rounded-lg"
             style={{ backgroundColor: `${team.color}20`, color: team.color }}
@@ -685,34 +90,36 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
             <IconComponent size={22} />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-semibold text-plm-fg flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-ui-fg flex items-center gap-2">
               {team.name}
-              <span className="text-sm font-normal text-plm-fg-muted">— Permissions</span>
+              <span className="text-[13px] font-normal text-ui-fg-secondary">— Permissions</span>
             </h2>
-            <p className="text-sm text-plm-fg-muted">Configure what this team can access and do</p>
+            <p className="text-[13px] text-ui-fg-secondary">Configure what this team can access and do</p>
           </div>
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
             {hasChanges && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={resetToOriginal}
-                className="btn btn-ghost btn-sm flex items-center gap-1.5"
                 title="Reset changes"
               >
                 <RotateCcw size={14} />
                 Reset
-              </button>
+              </Button>
             )}
 
             {isAdmin && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowPresets(!showPresets)}
-                className="btn btn-ghost btn-sm flex items-center gap-1.5"
               >
                 <Wand2 size={14} />
                 Presets
-              </button>
+              </Button>
             )}
 
             <button
@@ -728,7 +135,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
 
             <button
               onClick={onClose}
-              className="p-2 text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight rounded-lg transition-colors"
+              className="p-2 text-ui-fg-secondary hover:text-ui-fg hover:bg-ui-hover rounded-lg transition-colors"
             >
               <X size={18} />
             </button>
@@ -737,22 +144,22 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
 
         {/* Presets dropdown */}
         {showPresets && isAdmin && (
-          <div className="border-b border-plm-border p-4 bg-gradient-to-r from-plm-accent/5 to-transparent">
+          <div className="border-b border-ui-divider p-4 bg-gradient-to-r from-ui-accent/5 to-transparent">
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-plm-fg">
-                <Sparkles size={16} className="text-plm-accent" />
+              <div className="flex items-center gap-2 text-[13px] font-medium text-ui-fg">
+                <Sparkles size={16} className="text-ui-accent" />
                 Quick Apply Preset
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={clearAll}
-                  className="text-xs text-plm-fg-muted hover:text-plm-fg px-2 py-1 rounded hover:bg-plm-highlight"
+                  className="text-[12px] text-ui-fg-secondary hover:text-ui-fg px-2 py-1 rounded hover:bg-ui-hover"
                 >
                   Clear All
                 </button>
                 <button
                   onClick={grantAll}
-                  className="text-xs text-plm-accent hover:text-plm-accent/80 px-2 py-1 rounded hover:bg-plm-accent/10"
+                  className="text-[12px] text-ui-accent hover:text-ui-accent/80 px-2 py-1 rounded hover:bg-ui-accent/10"
                 >
                   Grant All
                 </button>
@@ -760,12 +167,12 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
             </div>
             <div className="flex flex-wrap gap-2">
               {DEFAULT_PRESETS.map((preset) => {
-                const PresetIcon = (LucideIcons as any)[preset.icon] || Shield // TODO: type this
+                const PresetIcon = ICONS[preset.icon] || Shield
                 return (
                   <button
                     key={preset.name}
                     onClick={() => applyPreset(preset as PermissionPreset)}
-                    className="flex items-center gap-2 px-3 py-2 bg-plm-bg border border-plm-border rounded-lg hover:border-plm-accent/50 hover:bg-plm-highlight transition-all group"
+                    className="flex items-center gap-2 px-3 py-2 bg-ui-bg border border-ui-divider rounded-lg hover:border-ui-accent/50 hover:bg-ui-hover transition-all group"
                   >
                     <div
                       className="p-1 rounded"
@@ -773,7 +180,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                     >
                       <PresetIcon size={14} />
                     </div>
-                    <span className="text-sm text-plm-fg">{preset.name}</span>
+                    <span className="text-[13px] text-ui-fg">{preset.name}</span>
                   </button>
                 )
               })}
@@ -782,25 +189,25 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
         )}
 
         {/* Toolbar */}
-        <div className="p-3 border-b border-plm-border flex items-center gap-3 flex-shrink-0 bg-plm-bg/50">
+        <div className="p-3 border-b border-ui-divider flex items-center gap-3 flex-shrink-0 bg-ui-bg/50">
           <div className="relative flex-1 max-w-xs">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-plm-fg-muted"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-secondary"
             />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search resources..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm bg-plm-bg border border-plm-border rounded-lg text-plm-fg placeholder:text-plm-fg-dim focus:outline-none focus:border-plm-accent"
+              className="w-full pl-9 pr-3 py-1.5 text-[13px] bg-ui-bg border border-ui-divider rounded-lg text-ui-fg placeholder:text-ui-fg focus:outline-none focus:border-ui-accent"
             />
           </div>
 
           {/* Quick column toggles */}
           {isAdmin && (
             <div className="flex items-center gap-1">
-              <span className="text-xs text-plm-fg-muted mr-1">Toggle All:</span>
+              <span className="text-[12px] text-ui-fg-secondary mr-1">Toggle All:</span>
               {PERMISSION_ACTIONS.map((action) => {
                 const allHave = allHaveAction(action)
                 const someHave = someHaveAction(action)
@@ -861,10 +268,10 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
               })}
 
               {/* Select All / Clear All button */}
-              <div className="ml-2 flex items-center gap-1 border-l border-plm-border pl-2">
+              <div className="ml-2 flex items-center gap-1 border-l border-ui-divider pl-2">
                 <button
                   onClick={grantAll}
-                  className="px-2 py-1.5 text-xs rounded-lg border border-plm-accent/30 bg-plm-accent/10 text-plm-accent hover:bg-plm-accent/20 transition-colors flex items-center gap-1"
+                  className="px-2 py-1.5 text-[12px] rounded-lg border border-ui-accent/30 bg-ui-accent/10 text-ui-accent hover:bg-ui-accent/20 transition-colors flex items-center gap-1"
                   title="Grant all permissions to all resources"
                 >
                   <Check size={12} />
@@ -872,7 +279,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                 </button>
                 <button
                   onClick={clearAll}
-                  className="px-2 py-1.5 text-xs rounded-lg border border-plm-border bg-plm-bg text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight transition-colors flex items-center gap-1"
+                  className="px-2 py-1.5 text-[12px] rounded-lg border border-ui-divider bg-ui-bg text-ui-fg-secondary hover:text-ui-fg hover:bg-ui-hover transition-colors flex items-center gap-1"
                   title="Clear all permissions"
                 >
                   <X size={12} />
@@ -883,7 +290,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
           )}
 
           {/* Action legend */}
-          <div className="flex items-center gap-4 ml-auto text-xs text-plm-fg-muted">
+          <div className="flex items-center gap-4 ml-auto text-[12px] text-ui-fg-secondary">
             {PERMISSION_ACTIONS.map((action) => (
               <div key={action} className="flex items-center gap-1.5">
                 <div
@@ -909,7 +316,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="animate-spin text-plm-fg-muted" size={32} />
+              <Loader2 className="animate-spin text-ui-fg-secondary" size={32} />
             </div>
           ) : (
             <div className="p-4 space-y-2">
@@ -919,15 +326,15 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
 
                 const isExpanded = expandedGroups.has(group.id)
                 const stats = getGroupStats(group.id)
-                const GroupIcon = (LucideIcons as any)[group.icon] || LayoutGrid // TODO: type this
+                const GroupIcon = ICONS[group.icon] || LayoutGrid
 
                 return (
                   <div
                     key={group.id}
-                    className="border border-plm-border rounded-xl overflow-hidden bg-plm-bg/30"
+                    className="border border-ui-divider rounded-xl overflow-hidden bg-ui-bg/30"
                   >
                     {/* Group header */}
-                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-plm-highlight/50 transition-colors">
+                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-ui-hover/50 transition-colors">
                       {/* Icon - same width as child icons */}
                       <button
                         onClick={() => toggleGroup(group.id)}
@@ -943,17 +350,17 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                         className="flex-1 min-w-0 text-left flex items-center gap-2"
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-plm-fg">{group.name}</div>
-                          <div className="text-xs text-plm-fg-muted">
+                          <div className="font-medium text-ui-fg">{group.name}</div>
+                          <div className="text-[12px] text-ui-fg-secondary">
                             {group.id === 'source-files'
                               ? `${vaults.length} vault${vaults.length !== 1 ? 's' : ''} • ${stats.withPerms} of ${stats.total} configured`
                               : `${stats.withPerms} of ${stats.total} resources configured`}
                           </div>
                         </div>
                         {isExpanded ? (
-                          <ChevronDown size={18} className="text-plm-fg-muted flex-shrink-0" />
+                          <ChevronDown size={18} className="text-ui-fg-secondary flex-shrink-0" />
                         ) : (
-                          <ChevronRight size={18} className="text-plm-fg-muted flex-shrink-0" />
+                          <ChevronRight size={18} className="text-ui-fg-secondary flex-shrink-0" />
                         )}
                       </button>
 
@@ -1016,7 +423,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                                 ) : someHave ? (
                                   <Minus size={14} />
                                 ) : (
-                                  <span className="text-[10px] font-medium">
+                                  <span className="text-[12px] font-medium">
                                     {action.charAt(0).toUpperCase()}
                                   </span>
                                 )}
@@ -1031,17 +438,17 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
 
                     {/* Group resources */}
                     {isExpanded && (
-                      <div className="border-t border-plm-border">
+                      <div className="border-t border-ui-divider">
                         {/* Vault tabs for source-files group */}
                         {group.id === 'source-files' && vaults.length > 0 && (
-                          <div className="px-4 py-2 border-b border-plm-border bg-plm-bg/50 flex items-center gap-1 flex-wrap">
-                            <span className="text-xs text-plm-fg-muted mr-1">Vault:</span>
+                          <div className="px-4 py-2 border-b border-ui-divider bg-ui-bg/50 flex items-center gap-1 flex-wrap">
+                            <span className="text-[12px] text-ui-fg-secondary mr-1">Vault:</span>
                             <button
                               onClick={() => setSelectedSourceFilesVaultId(null)}
-                              className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[12px] transition-colors ${
                                 selectedSourceFilesVaultId === null
-                                  ? 'bg-plm-accent text-white'
-                                  : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight border border-plm-border'
+                                  ? 'bg-ui-accent text-white'
+                                  : 'bg-ui-field text-ui-fg-secondary hover:text-ui-fg hover:bg-ui-hover border border-ui-divider'
                               }`}
                             >
                               <Database size={11} />
@@ -1051,10 +458,10 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                               <button
                                 key={vault.id}
                                 onClick={() => setSelectedSourceFilesVaultId(vault.id)}
-                                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[12px] transition-colors ${
                                   selectedSourceFilesVaultId === vault.id
-                                    ? 'bg-plm-accent text-white'
-                                    : 'bg-plm-bg-light text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight border border-plm-border'
+                                    ? 'bg-ui-accent text-white'
+                                    : 'bg-ui-field text-ui-fg-secondary hover:text-ui-fg hover:bg-ui-hover border border-ui-divider'
                                 }`}
                               >
                                 <Folder size={11} />
@@ -1068,29 +475,29 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                           const resource = allResources.find((r) => r.id === resourceId)
                           if (!resource) return null
 
-                          const ResourceIcon = (LucideIcons as any)[resource.icon] || Shield // TODO: type this
+                          const ResourceIcon = ICONS[resource.icon] || Shield
                           const currentActions = getResourcePermissions(resourceId)
 
                           return (
                             <div
                               key={resourceId}
-                              className={`flex items-center gap-3 px-4 py-2.5 hover:bg-plm-highlight/30 transition-colors ${
+                              className={`flex items-center gap-3 px-4 py-2.5 hover:bg-ui-hover/30 transition-colors ${
                                 idx !== filteredResources.length - 1
-                                  ? 'border-b border-plm-border/20'
+                                  ? 'border-b border-ui-divider/20'
                                   : ''
                               }`}
                             >
                               {/* Resource icon */}
-                              <div className="w-8 h-8 rounded-lg bg-plm-bg-secondary flex items-center justify-center text-plm-fg-muted">
+                              <div className="w-8 h-8 rounded-lg bg-ui-field flex items-center justify-center text-ui-fg-secondary">
                                 <ResourceIcon size={16} />
                               </div>
 
                               {/* Resource info */}
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm text-plm-fg font-medium truncate">
+                                <div className="text-[13px] text-ui-fg font-medium truncate">
                                   {resource.name}
                                 </div>
-                                <div className="text-xs text-plm-fg-muted truncate">
+                                <div className="text-[12px] text-ui-fg-secondary truncate">
                                   {resource.description}
                                 </div>
                               </div>
@@ -1108,7 +515,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                                         className="w-9 h-9 rounded-lg flex items-center justify-center opacity-20"
                                         title={`${PERMISSION_ACTION_LABELS[action]} not applicable`}
                                       >
-                                        <Minus size={12} className="text-plm-fg-dim" />
+                                        <Minus size={12} className="text-ui-fg" />
                                       </div>
                                     )
                                   }
@@ -1153,7 +560,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                                       {isGranted ? (
                                         <Check size={14} />
                                       ) : (
-                                        <span className="text-[10px] font-medium">
+                                        <span className="text-[12px] font-medium">
                                           {actionLetter}
                                         </span>
                                       )}
@@ -1166,7 +573,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                                   <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
                                     <button
                                       onClick={() => setAllActions(resourceId, [])}
-                                      className="p-1.5 text-plm-fg-dim hover:text-plm-fg hover:bg-plm-highlight rounded transition-colors"
+                                      className="p-1.5 text-ui-fg hover:text-ui-fg hover:bg-ui-hover rounded transition-colors"
                                       title="Clear all"
                                     >
                                       <X size={12} />
@@ -1175,7 +582,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
                                       onClick={() =>
                                         setAllActions(resourceId, [...resource.applicableActions])
                                       }
-                                      className="p-1.5 text-plm-fg-dim hover:text-plm-accent hover:bg-plm-accent/10 rounded transition-colors"
+                                      className="p-1.5 text-ui-fg hover:text-ui-accent hover:bg-ui-accent/10 rounded transition-colors"
                                       title="Grant all"
                                     >
                                       <Check size={12} />
@@ -1196,8 +603,8 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
         </div>
 
         {/* Footer with summary */}
-        <div className="p-4 border-t border-plm-border flex items-center justify-between bg-plm-bg/50 flex-shrink-0">
-          <div className="flex items-center gap-4 text-sm text-plm-fg-muted">
+        <div className="p-4 border-t border-ui-divider flex items-center justify-between bg-ui-bg/50 flex-shrink-0">
+          <div className="flex items-center gap-4 text-[13px] text-ui-fg-secondary">
             <div className="flex items-center gap-1.5">
               <Shield size={14} />
               <span>
@@ -1211,7 +618,7 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
               </span>
             </div>
             {hasChanges && (
-              <div className="flex items-center gap-1.5 text-plm-warning">
+              <div className="flex items-center gap-1.5 text-ui-warning">
                 <AlertTriangle size={14} />
                 <span>Unsaved changes</span>
               </div>
@@ -1219,18 +626,18 @@ export function PermissionsEditor({ team, onClose, userId, isAdmin }: Permission
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="btn btn-ghost">
+            <Button variant="ghost" onClick={onClose}>
               {hasChanges ? 'Cancel' : 'Close'}
-            </button>
+            </Button>
             {isAdmin && (
-              <button
+              <Button
+                variant="primary"
                 onClick={savePermissions}
                 disabled={!hasChanges || isSaving}
-                className="btn btn-primary flex items-center gap-2"
               >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                 Save Permissions
-              </button>
+              </Button>
             )}
           </div>
         </div>

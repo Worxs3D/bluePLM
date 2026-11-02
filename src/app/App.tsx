@@ -12,12 +12,14 @@ import { OnboardingScreen } from '@/components/shared/Screens'
 import { PerformanceWindow } from '@/features/dev-tools/performance'
 import { TabWindow, isTabWindowMode, parseTabWindowParams } from '@/components/layout'
 import { AppShell } from '@/components/layout'
+import { DbUpgradeGate } from '@/features/dbUpgrade'
 import { executeTerminalCommand } from '@/lib/commands/parser'
 import { logUserAction } from '@/lib/userActionLogger'
 import { checkSchemaCompatibility } from '@/lib/schemaVersion'
 import { checkApiVersion } from '@/lib/apiVersion'
 import { registerSettingsNavigationListener } from '@/lib/settingsNavigation'
 import { getAccessibleVaults } from '@/lib/supabase'
+import { JoinLinkGate } from '@/components/shared/Screens/JoinLinkGate'
 import { useVaultWatchers } from '@/hooks/useVaultWatchers'
 import { hashCheckoutIdentifier } from '@/types/pdm'
 import {
@@ -32,10 +34,10 @@ import {
   useLoadFiles,
   useAuth,
   useAutoDownload,
+  useWebVaultAutoConnect,
   useVaultManagement,
   useIntegrationStatus,
   useAppStartup,
-  useDeepLinkInstall,
   useNativeExtensions,
 } from '@/hooks'
 
@@ -73,8 +75,7 @@ export function App() {
   // Context menus dispatch this event from below the application shell.
   useEffect(() => {
     return registerSettingsNavigationListener(window, {
-      setActiveView: (view) => usePDMStore.getState().setActiveView(view),
-      setSettingsTab: (tab) => usePDMStore.getState().setSettingsTab(tab),
+      openSettings: (tab) => usePDMStore.getState().openSettings(tab),
     })
   }, [])
 
@@ -171,6 +172,9 @@ export function App() {
 
   // Auto-download trigger hook
   useAutoDownload()
+
+  // BluePLM Web: connect the user's vaults (no folder to choose there)
+  useWebVaultAutoConnect()
 
   // Get store values needed for effects and computed values
   const {
@@ -274,9 +278,6 @@ export function App() {
   useSolidWorksAutoStart(organization)
   useAutoUpdater()
   useKeyboardShortcuts({ onOpenVault: handleOpenVault, onRefresh: loadFiles })
-
-  // Deep link handling - listens for blueplm:// protocol links
-  useDeepLinkInstall()
 
   // Org-installed native extensions: activate on sign-in/org switch, deactivate on sign-out
   useNativeExtensions()
@@ -629,12 +630,18 @@ export function App() {
     )
   }
 
+  // A BluePLM Web join link (blueplm.io/join#<org code>) is confirmed before the app shows, and the
+  // backend it names is then checked for a schema this app can use.
   return (
-    <AppShell
-      showWelcome={showWelcome}
-      isSignInScreen={isSignInScreen}
-      handleChangeOrg={handleChangeOrg}
-    />
+    <JoinLinkGate onConfigured={handleSupabaseConfigured}>
+      <DbUpgradeGate>
+        <AppShell
+          showWelcome={showWelcome}
+          isSignInScreen={isSignInScreen}
+          handleChangeOrg={handleChangeOrg}
+        />
+      </DbUpgradeGate>
+    </JoinLinkGate>
   )
 }
 

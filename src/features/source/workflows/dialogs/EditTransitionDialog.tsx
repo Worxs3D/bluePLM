@@ -41,7 +41,7 @@ export function EditTransitionDialog({ transition, onClose, onSave }: EditTransi
       if (!organization) return
       try {
         const { data, error } = await supabase
-          .from('workflow_roles')
+          .from('workflow_role')
           .select('id, name, color, icon')
           .eq('org_id', organization.id)
           .eq('is_active', true)
@@ -126,11 +126,7 @@ export function EditTransitionDialog({ transition, onClose, onSave }: EditTransi
                 No workflow roles defined.{' '}
                 <button
                   onClick={() => {
-                    const { setActiveView } = usePDMStore.getState()
-                    setActiveView('settings')
-                    window.dispatchEvent(
-                      new CustomEvent('navigate-settings-tab', { detail: 'team-members' }),
-                    )
+                    usePDMStore.getState().openSettings('team-members')
                     setTimeout(() => {
                       window.dispatchEvent(
                         new CustomEvent('navigate-team-members-tab', { detail: 'users' }),

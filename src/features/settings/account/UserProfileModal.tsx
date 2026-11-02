@@ -19,12 +19,21 @@ import {
   ShoppingCart,
   Loader2,
   Clock,
+  Folder,
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient } from '@/lib/supabase'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
+import { useTranslation } from '@/lib/i18n'
+import { useRevealInFileBrowser } from '@/features/settings/system/vault-audit/useRevealInFileBrowser'
+import {
+  countByAction,
+  toProfileActivity,
+  type ProfileActivity,
+  type ProfileActivityRow,
+} from './profileActivity'
 
 // Supabase v2 type inference incomplete for user profile queries
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,8 +50,8 @@ interface UserData {
   full_name: string | null
   avatar_url: string | null
   custom_avatar_url: string | null
-  last_sign_in: string | null
-  last_online: string | null
+  last_sign_in_at: string | null
+  last_online_at: string | null
   teams: { id: string; name: string; color: string; icon: string }[]
   workflow_roles: { id: string; name: string; color: string }[]
   job_title: { id: string; name: string; color: string; icon: string } | null
@@ -51,13 +60,6 @@ interface UserData {
 interface DayData {
   date: string
   count: number
-}
-
-interface ActivityRecord {
-  id: string
-  action: string
-  created_at: string
-  file_name?: string
 }
 
 interface ECORecord {
@@ -95,19 +97,19 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
 
 const ACTION_COLORS: Record<string, string> = {
   checkout: 'text-amber-400',
-  checkin: 'text-plm-success',
+  checkin: 'text-ui-success',
   create: 'text-sky-400',
-  delete: 'text-plm-error',
+  delete: 'text-ui-danger',
   state_change: 'text-violet-400',
   revision_change: 'text-indigo-400',
   rename: 'text-orange-400',
   move: 'text-orange-400',
   rollback: 'text-rose-400',
   roll_forward: 'text-emerald-400',
-  review_approved: 'text-plm-success',
-  review_rejected: 'text-plm-error',
-  review_kicked_back: 'text-plm-warning',
-  review_requested: 'text-plm-accent',
+  review_approved: 'text-ui-success',
+  review_rejected: 'text-ui-danger',
+  review_kicked_back: 'text-ui-warning',
+  review_requested: 'text-ui-accent',
 }
 
 function getIntensityLevel(count: number, maxCount: number): number {
@@ -176,8 +178,12 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const { t } = useTranslation()
+  const { reveal } = useRevealInFileBrowser()
   const [activityData, setActivityData] = useState<Map<string, DayData>>(new Map())
-  const [recentActivity, setRecentActivity] = useState<ActivityRecord[]>([])
+  const [activities, setActivities] = useState<ProfileActivity[]>([])
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [actionFilter, setActionFilter] = useState<string | null>(null)
   const [userECOs, setUserECOs] = useState<ECORecord[]>([])
   const [userRFQs, setUserRFQs] = useState<RFQRecord[]>([])
   const [totalContributions, setTotalContributions] = useState(0)
@@ -198,8 +204,8 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
       try {
         // Load user info
         const { data: user, error: userError } = await client
-          .from('users')
-          .select('id, email, full_name, avatar_url, custom_avatar_url, last_sign_in, last_online')
+          .from('app_user')
+          .select('id, email, full_name, avatar_url, custom_avatar_url, last_sign_in_at, last_online_at')
           .eq('id', userId)
           .single()
 
@@ -208,20 +214,20 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
         } else {
           // Load teams
           const { data: membershipsData } = await client
-            .from('team_members')
-            .select('team:teams(id, name, color, icon)')
+            .from('team_member')
+            .select('team:team(id, name, color, icon)')
             .eq('user_id', userId)
 
           // Load workflow roles
           const { data: rolesData } = await client
-            .from('user_workflow_roles')
-            .select('role:workflow_roles(id, name, color)')
+            .from('user_workflow_role')
+            .select('role:workflow_role(id, name, color)')
             .eq('user_id', userId)
 
           // Load job title
           const { data: titleData } = await client
-            .from('user_job_titles')
-            .select('title:job_titles(id, name, color, icon)')
+            .from('user_job_title')
+            .select('title:job_title(id, name, color, icon)')
             .eq('user_id', userId)
             .single()
 
@@ -258,40 +264,32 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
         }
 
         // Load activity for heatmap and recent list (limited for performance)
-        const { data: activities, error: activityError } = await client
+        const { data: activityRows, error: activityError } = await client
           .from('activity')
-          .select('id, action, created_at, details')
+          .select('id, action, created_at, file_id, details, file:file(file_name, file_path)')
           .eq('user_id', userId)
           .eq('org_id', organization.id)
           .gte('created_at', oneYearAgo.toISOString())
           .order('created_at', { ascending: false })
           .limit(5000) // Enough for heatmap visualization
 
-        if (!activityError && activities) {
+        if (!activityError && activityRows) {
           const dataMap = new Map<string, DayData>()
-          // Supabase v2 nested select type inference incomplete
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fileActivities: ActivityRecord[] = activities.map((a: any) => ({
-            id: a.id,
-            action: a.action,
-            created_at: a.created_at,
-            file_name: (a.details as Record<string, unknown>)?.file_name as string | undefined,
-          }))
+          const loaded = (activityRows as ProfileActivityRow[]).map(toProfileActivity)
 
-          fileActivities.forEach((activity) => {
-            const date = activity.created_at.split('T')[0]
-            const existing = dataMap.get(date) || { date, count: 0 }
+          loaded.forEach((activity) => {
+            const existing = dataMap.get(activity.day) || { date: activity.day, count: 0 }
             existing.count++
-            dataMap.set(date, existing)
+            dataMap.set(activity.day, existing)
           })
 
           setActivityData(dataMap)
-          setRecentActivity(fileActivities.slice(0, 15))
+          setActivities(loaded)
         }
 
         // Load ECOs
         const { data: ecos, error: ecoError } = await client
-          .from('ecos')
+          .from('eco')
           .select('id, eco_number, title, status, created_at')
           .eq('org_id', organization.id)
           .eq('created_by', userId)
@@ -304,7 +302,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
         // Load RFQs
         const { data: rfqs, error: rfqError } = await client
-          .from('rfqs')
+          .from('rfq')
           .select('id, rfq_number, title, status, created_at')
           .eq('org_id', organization.id)
           .eq('created_by', userId)
@@ -332,6 +330,26 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
     return max
   }, [activityData])
 
+  // A selected day shows everything that day; otherwise the latest entries. The action breakdown
+  // follows the day so its counts match the list under it.
+  const dayActivities = useMemo(
+    () => (selectedDay ? activities.filter((a) => a.day === selectedDay) : activities),
+    [activities, selectedDay],
+  )
+  const actionCounts = useMemo(() => countByAction(dayActivities), [dayActivities])
+  const visibleActivity = useMemo(() => {
+    const filtered = actionFilter
+      ? dayActivities.filter((a) => a.action === actionFilter)
+      : dayActivities
+    return selectedDay ? filtered : filtered.slice(0, 50)
+  }, [dayActivities, actionFilter, selectedDay])
+
+  const openActivityFile = (activity: ProfileActivity) => {
+    if (!activity.filePath) return
+    reveal(activity.filePath)
+    onClose()
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'open':
@@ -346,7 +364,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
       case 'cancelled':
         return 'bg-rose-500/20 text-rose-400'
       default:
-        return 'bg-plm-fg-muted/20 text-plm-fg-muted'
+        return 'bg-ui-fg-secondary/20 text-ui-fg-secondary'
     }
   }
 
@@ -399,17 +417,17 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-plm-bg-light border border-plm-border rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-ui-field border border-ui-divider rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-plm-border">
-          <h2 className="text-lg font-medium text-plm-fg">User Profile</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ui-divider">
+          <h2 className="text-lg font-medium text-ui-fg">User Profile</h2>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-plm-highlight rounded-lg transition-colors"
+            className="p-1.5 hover:bg-ui-hover rounded-lg transition-colors"
           >
-            <X size={20} className="text-plm-fg-muted" />
+            <X size={20} className="text-ui-fg-secondary" />
           </button>
         </div>
 
@@ -417,10 +435,10 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 size={24} className="animate-spin text-plm-fg-muted" />
+              <Loader2 size={24} className="animate-spin text-ui-fg-secondary" />
             </div>
           ) : !userData ? (
-            <div className="text-center py-12 text-plm-fg-muted">User not found</div>
+            <div className="text-center py-12 text-ui-fg-secondary">User not found</div>
           ) : (
             <>
               {/* User Info */}
@@ -437,24 +455,24 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                     }}
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-plm-accent flex items-center justify-center text-2xl text-white font-semibold flex-shrink-0">
+                  <div className="w-20 h-20 rounded-full bg-ui-accent flex items-center justify-center text-2xl text-white font-semibold flex-shrink-0">
                     {getInitials(userData.full_name || userData.email)}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-2xl font-medium text-plm-fg">
+                  <div className="text-2xl font-medium text-ui-fg">
                     {userData.full_name || 'No name'}
                   </div>
-                  <div className="text-base text-plm-fg-muted flex items-center gap-1.5 mt-1">
+                  <div className="text-[14px] text-ui-fg-secondary flex items-center gap-1.5 mt-1">
                     <Mail size={16} />
                     {userData.email}
                   </div>
 
                   {/* Last Online */}
-                  {userData.last_online && (
-                    <div className="text-sm text-plm-fg-dim flex items-center gap-1.5 mt-1">
+                  {userData.last_online_at && (
+                    <div className="text-[13px] text-ui-fg flex items-center gap-1.5 mt-1">
                       <Clock size={14} />
-                      Last online {formatRelativeTime(userData.last_online)}
+                      Last online {formatRelativeTime(userData.last_online_at)}
                     </div>
                   )}
 
@@ -465,7 +483,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                         const TitleIcon = (LucideIcons as any)[userData.job_title.icon] || Users // TODO: type this
                         return (
                           <div
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[13px]"
                             style={{
                               backgroundColor: `${userData.job_title.color}15`,
                               color: userData.job_title.color,
@@ -488,7 +506,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                         return (
                           <div
                             key={team.id}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px]"
                             style={{ backgroundColor: `${team.color}15`, color: team.color }}
                           >
                             <TeamIcon size={12} />
@@ -502,7 +520,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                       userData.workflow_roles.map((role) => (
                         <div
                           key={role.id}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px]"
                           style={{ backgroundColor: `${role.color}15`, color: role.color }}
                         >
                           <Shield size={12} />
@@ -512,17 +530,17 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
 
                     {/* No teams or roles message */}
                     {userData.teams.length === 0 && userData.workflow_roles.length === 0 && (
-                      <span className="text-sm text-plm-fg-muted">No teams or roles assigned</span>
+                      <span className="text-[13px] text-ui-fg-secondary">No teams or roles assigned</span>
                     )}
                   </div>
                 </div>
               </div>
 
               {/* Contribution Grid */}
-              <div className="bg-plm-bg rounded-lg border border-plm-border p-4">
+              <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-plm-fg">Contribution History</h3>
-                  <span className="text-xs text-plm-fg-muted">
+                  <h3 className="text-[13px] font-medium text-ui-fg">Contribution History</h3>
+                  <span className="text-[12px] text-ui-fg-secondary">
                     {totalContributions} contributions in the last year
                   </span>
                 </div>
@@ -537,7 +555,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                         return (
                           <div key={weekIndex} className="flex-1 min-w-0">
                             {monthLabel && (
-                              <span className="text-[10px] text-plm-fg-muted">
+                              <span className="text-[12px] text-ui-fg-secondary">
                                 {monthLabel.month}
                               </span>
                             )}
@@ -553,7 +571,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
                         <div
                           key={day}
-                          className="h-0 flex items-center text-[10px] text-plm-fg-muted leading-none"
+                          className="h-0 flex items-center text-[12px] text-ui-fg-secondary leading-none"
                           style={{ visibility: i % 2 === 1 ? 'visible' : 'hidden' }}
                         >
                           {day}
@@ -580,17 +598,24 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                             const level = getIntensityLevel(count, Math.max(maxCount, 1))
 
                             const colorClasses = [
-                              'bg-plm-bg-lighter',
+                              'bg-ui-field',
                               'bg-emerald-900/50',
                               'bg-emerald-700/70',
                               'bg-emerald-500/80',
                               'bg-emerald-400',
                             ]
 
+                            const isSelected = selectedDay === dateStr
                             return (
-                              <div
+                              <button
+                                type="button"
                                 key={dayIndex}
-                                className={`aspect-square rounded-sm ${colorClasses[level]}`}
+                                disabled={count === 0}
+                                onClick={() => {
+                                  setSelectedDay(isSelected ? null : dateStr)
+                                  setActionFilter(null)
+                                }}
+                                className={`block w-full aspect-square rounded-sm ${colorClasses[level]} ${count > 0 ? 'cursor-pointer hover:ring-1 hover:ring-ui-fg-secondary' : 'cursor-default'} ${isSelected ? 'ring-2 ring-ui-accent' : ''}`}
                                 title={`${cell.date.toLocaleDateString()}: ${count} contributions`}
                               />
                             )
@@ -601,12 +626,12 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                   </div>
 
                   {/* Legend */}
-                  <div className="flex items-center justify-end gap-2 mt-2 text-xs text-plm-fg-muted">
+                  <div className="flex items-center justify-end gap-2 mt-2 text-[12px] text-ui-fg-secondary">
                     <span>Less</span>
                     <div className="flex gap-[2px]">
                       {[0, 1, 2, 3, 4].map((level) => {
                         const colorClasses = [
-                          'bg-plm-bg-lighter',
+                          'bg-ui-field',
                           'bg-emerald-900/50',
                           'bg-emerald-700/70',
                           'bg-emerald-500/80',
@@ -626,41 +651,98 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
               </div>
 
               {/* Recent Activity */}
-              <div className="bg-plm-bg rounded-lg border border-plm-border p-4">
-                <h3 className="text-sm font-medium text-plm-fg mb-3 flex items-center gap-2">
-                  <Activity size={16} className="text-plm-accent" />
-                  Recent Activity
-                </h3>
+              <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <h3 className="text-[13px] font-medium text-ui-fg flex items-center gap-2">
+                    <Activity size={16} className="text-ui-accent" />
+                    Recent Activity
+                    {selectedDay && (
+                      <span className="text-ui-fg-secondary font-normal">
+                        • {formatDate(`${selectedDay}T12:00:00Z`)}
+                      </span>
+                    )}
+                  </h3>
+                  {(selectedDay || actionFilter) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDay(null)
+                        setActionFilter(null)
+                      }}
+                      className="text-[12px] text-ui-fg-secondary hover:text-ui-fg px-2 py-0.5 rounded hover:bg-ui-field"
+                    >
+                      {t('common.clear')}
+                    </button>
+                  )}
+                </div>
 
-                {recentActivity.length === 0 ? (
-                  <div className="text-center py-6 text-plm-fg-muted text-sm">
+                {actionCounts.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {actionCounts.map(({ action, count }) => {
+                      const active = actionFilter === action
+                      return (
+                        <button
+                          type="button"
+                          key={action}
+                          onClick={() => setActionFilter(active ? null : action)}
+                          className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[12px] border transition-colors ${active ? 'border-ui-accent bg-ui-accent/15 text-ui-fg' : 'border-ui-divider bg-ui-field text-ui-fg-secondary hover:text-ui-fg'}`}
+                        >
+                          <span className={ACTION_COLORS[action] || 'text-ui-fg-secondary'}>
+                            {ACTION_ICONS[action] || <Activity size={12} />}
+                          </span>
+                          {getActionLabel(action)}
+                          <span className="text-ui-fg tabular-nums">{count}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {visibleActivity.length === 0 ? (
+                  <div className="text-center py-6 text-ui-fg-secondary text-[13px]">
                     No recent activity
                   </div>
                 ) : (
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {recentActivity.map((activity, index) => (
-                      <div
-                        key={`${activity.id}-${index}`}
-                        className="flex items-center gap-3 p-2 hover:bg-plm-bg-lighter rounded-lg transition-colors"
-                      >
-                        <div
-                          className={`p-1.5 rounded-full bg-plm-bg-lighter ${ACTION_COLORS[activity.action] || 'text-plm-fg-muted'}`}
+                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                    {visibleActivity.map((activity, index) => {
+                      const canOpen = !!activity.filePath
+                      return (
+                        <button
+                          type="button"
+                          key={`${activity.id}-${index}`}
+                          disabled={!canOpen}
+                          onClick={() => openActivityFile(activity)}
+                          title={activity.filePath ?? undefined}
+                          className={`w-full text-left flex items-center gap-3 p-2 rounded-lg transition-colors ${canOpen ? 'hover:bg-ui-field cursor-pointer' : 'cursor-default'}`}
                         >
-                          {ACTION_ICONS[activity.action] || <Activity size={14} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-plm-fg">
-                            <span className="font-medium">{getActionLabel(activity.action)}</span>
-                            {activity.file_name && (
-                              <span className="text-plm-fg-muted"> • {activity.file_name}</span>
+                          <div
+                            className={`p-1.5 rounded-full bg-ui-field flex-shrink-0 ${ACTION_COLORS[activity.action] || 'text-ui-fg-secondary'}`}
+                          >
+                            {ACTION_ICONS[activity.action] || <Activity size={14} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] text-ui-fg truncate">
+                              <span className="font-medium">{getActionLabel(activity.action)}</span>
+                              {activity.fileName && (
+                                <span className="text-ui-fg-secondary"> • {activity.fileName}</span>
+                              )}
+                            </div>
+                            {activity.folderPath !== null && (
+                              <div className="text-[12px] text-ui-fg truncate flex items-center gap-1">
+                                <Folder size={11} className="flex-shrink-0" />
+                                <span className="truncate">{activity.folderPath || '/'}</span>
+                              </div>
                             )}
                           </div>
-                        </div>
-                        <div className="text-xs text-plm-fg-dim flex-shrink-0">
-                          {formatRelativeTime(activity.created_at)}
-                        </div>
-                      </div>
-                    ))}
+                          <div
+                            className="text-[12px] text-ui-fg flex-shrink-0"
+                            title={new Date(activity.createdAt).toLocaleString()}
+                          >
+                            {formatRelativeTime(activity.createdAt)}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -668,31 +750,31 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
               {/* ECOs and RFQs side by side */}
               <div className="grid grid-cols-2 gap-4">
                 {/* ECOs */}
-                <div className="bg-plm-bg rounded-lg border border-plm-border p-4">
-                  <h3 className="text-sm font-medium text-plm-fg mb-3 flex items-center gap-2">
-                    <GitBranch size={16} className="text-plm-accent" />
+                <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
+                  <h3 className="text-[13px] font-medium text-ui-fg mb-3 flex items-center gap-2">
+                    <GitBranch size={16} className="text-ui-accent" />
                     ECOs
                   </h3>
 
                   {userECOs.length === 0 ? (
-                    <div className="text-center py-4 text-plm-fg-muted text-sm">No ECOs</div>
+                    <div className="text-center py-4 text-ui-fg-secondary text-[13px]">No ECOs</div>
                   ) : (
                     <div className="space-y-2">
                       {userECOs.map((eco) => (
                         <div
                           key={eco.id}
-                          className="flex items-center gap-2 p-2 bg-plm-bg-lighter rounded-lg"
+                          className="flex items-center gap-2 p-2 bg-ui-field rounded-lg"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-plm-fg truncate">
+                            <div className="text-[13px] font-medium text-ui-fg truncate">
                               {eco.eco_number}
                             </div>
-                            <div className="text-xs text-plm-fg-dim truncate">
+                            <div className="text-[12px] text-ui-fg truncate">
                               {eco.title || formatDate(eco.created_at)}
                             </div>
                           </div>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-xs ${getStatusColor(eco.status)}`}
+                            className={`px-1.5 py-0.5 rounded text-[12px] ${getStatusColor(eco.status)}`}
                           >
                             {eco.status.replace('_', ' ')}
                           </span>
@@ -703,31 +785,31 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                 </div>
 
                 {/* RFQs */}
-                <div className="bg-plm-bg rounded-lg border border-plm-border p-4">
-                  <h3 className="text-sm font-medium text-plm-fg mb-3 flex items-center gap-2">
+                <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
+                  <h3 className="text-[13px] font-medium text-ui-fg mb-3 flex items-center gap-2">
                     <ShoppingCart size={16} className="text-violet-400" />
                     RFQs
                   </h3>
 
                   {userRFQs.length === 0 ? (
-                    <div className="text-center py-4 text-plm-fg-muted text-sm">No RFQs</div>
+                    <div className="text-center py-4 text-ui-fg-secondary text-[13px]">No RFQs</div>
                   ) : (
                     <div className="space-y-2">
                       {userRFQs.map((rfq) => (
                         <div
                           key={rfq.id}
-                          className="flex items-center gap-2 p-2 bg-plm-bg-lighter rounded-lg"
+                          className="flex items-center gap-2 p-2 bg-ui-field rounded-lg"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-plm-fg truncate">
+                            <div className="text-[13px] font-medium text-ui-fg truncate">
                               {rfq.rfq_number}
                             </div>
-                            <div className="text-xs text-plm-fg-dim truncate">
+                            <div className="text-[12px] text-ui-fg truncate">
                               {rfq.title || formatDate(rfq.created_at)}
                             </div>
                           </div>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-xs ${getStatusColor(rfq.status)}`}
+                            className={`px-1.5 py-0.5 rounded text-[12px] ${getStatusColor(rfq.status)}`}
                           >
                             {rfq.status.replace('_', ' ')}
                           </span>

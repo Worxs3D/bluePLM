@@ -17,12 +17,20 @@ import { describe, expect, it } from 'vitest'
 // used before a session exists.
 
 const REPO = resolve(__dirname, '../../..')
+// The 5.0 baseline, then every numbered migration after it, in order: the
+// functions a database holds once the runner is done. 0500_from_4x.sql is left
+// out because it recreates exactly the baseline's functions (schemaUpgrade.test.ts
+// proves the two agree), so reading it would only repeat them.
 const SQL_FILES = [
   resolve(REPO, 'supabase/core.sql'),
   ...readdirSync(resolve(REPO, 'supabase/modules'))
     .filter((f) => f.endsWith('.sql'))
     .sort()
     .map((f) => resolve(REPO, 'supabase/modules', f)),
+  ...readdirSync(resolve(REPO, 'supabase/migrations'))
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f) && Number(f.slice(0, 4)) > 500)
+    .sort()
+    .map((f) => resolve(REPO, 'supabase/migrations', f)),
 ]
 
 // ---------------------------------------------------------------------------
@@ -35,6 +43,8 @@ interface Param {
 
 interface Signature {
   params: Param[]
+  /** Number of input arguments, which (with their types) is how DROP FUNCTION names an overload. */
+  arity: number
   file: string
 }
 
@@ -106,16 +116,21 @@ function loadFunctions(): Map<string, Signature[]> {
       const open = m.index + m[0].length - 1
       const close = closingParen(sql, open)
       if (close < 0) continue
+      const args = splitTopLevel(sql.slice(open + 1, close))
       if (/^DROP/i.test(m[1])) {
-        fns.delete(name)
+        // DROP FUNCTION f(UUID, TEXT) removes that overload only; the others stay defined.
+        const kept = (fns.get(name) ?? []).filter((sig) => sig.arity !== args.length)
+        if (kept.length) fns.set(name, kept)
+        else fns.delete(name)
         continue
       }
-      const params = splitTopLevel(sql.slice(open + 1, close))
+      const inputs = args.filter((arg) => !/^out\s/i.test(arg))
+      const params = args
         .map(parseParam)
         .filter((p): p is Param & { out: boolean } => p !== null && !p.out)
         .map(({ name: n, optional }) => ({ name: n, optional }))
       const list = fns.get(name) ?? []
-      list.push({ params, file: relative(REPO, file).replace(/\\/g, '/') })
+      list.push({ params, arity: inputs.length, file: relative(REPO, file).replace(/\\/g, '/') })
       fns.set(name, list)
     }
   }

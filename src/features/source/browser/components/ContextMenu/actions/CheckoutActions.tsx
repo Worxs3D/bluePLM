@@ -16,6 +16,8 @@ import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 import { isSolidWorksUsable } from '@/types/solidworks'
 import { ChangeStateSubmenu } from './ChangeStateSubmenu'
 import { isFileWriteInFlight } from '@/lib/metadata/writeInFlight'
+import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
+import { hasDesktop } from '@/lib/platform'
 
 interface CheckoutActionsProps extends RefreshableActionProps {
   counts: SelectionCounts
@@ -60,6 +62,8 @@ export function CheckoutActions({
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
   const [isSyncing, setIsSyncing] = useState(false)
   const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null
+  // File workflows switched off for the organization hide every Change State entry.
+  const workflowsOn = usePDMStore((s) => fileWorkflowsEnabled(s.organization))
   const heldFileHydration = usePDMStore((s) =>
     heldFile?.pdmData?.id ? s.checkoutHydration[heldFile.pdmData.id]?.state : undefined,
   )
@@ -72,6 +76,9 @@ export function CheckoutActions({
   }
   const effectiveRole = getEffectiveRole()
   const isAdmin = effectiveRole === 'admin'
+  // BluePLM Web has no local vault: no check out, check in or discard. Force Release and
+  // Change State are server-side and stay.
+  const desktop = hasDesktop()
 
   // Permission checks
   const canCheckout = checkOperationPermission('checkout', hasPermission)
@@ -125,7 +132,7 @@ export function CheckoutActions({
   return (
     <>
       {/* Check Out - for synced files or folders */}
-      {state.allFolders && !multiSelect ? (
+      {!desktop ? null : state.allFolders && !multiSelect ? (
         <div
           className={`context-menu-item ${checkoutDisabled ? 'disabled' : ''}`}
           onClick={() => {
@@ -188,7 +195,8 @@ export function CheckoutActions({
       )}
 
       {/* Check In - only for synced files */}
-      {state.anySynced &&
+      {desktop &&
+        state.anySynced &&
         (state.allFolders && !multiSelect ? (
           <div
             className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
@@ -255,7 +263,7 @@ export function CheckoutActions({
         ))}
 
       {/* Discard Checkout - for files checked out by current user */}
-      {counts.checkinableCount > 0 && (
+      {desktop && counts.checkinableCount > 0 && (
         <div
           className={`context-menu-item ${discardDisabled ? 'disabled' : 'text-plm-warning'}`}
           onClick={() => {
@@ -310,7 +318,7 @@ export function CheckoutActions({
       )}
 
       {/* Change State - single file uses the workflow engine's available transitions */}
-      {syncedFilesInSelection.length === 1 && (
+      {workflowsOn && syncedFilesInSelection.length === 1 && (
         <ChangeStateSubmenu
           targetFile={syncedFilesInSelection[0]}
           onClose={onClose}
@@ -322,7 +330,7 @@ export function CheckoutActions({
       )}
 
       {/* Change State - multi-select falls back to the legacy bulk state change */}
-      {syncedFilesInSelection.length > 1 && (
+      {workflowsOn && syncedFilesInSelection.length > 1 && (
         <div
           className="context-menu-item relative"
           onMouseEnter={() => {
@@ -405,7 +413,7 @@ export function CheckoutActions({
         onClose={onClose}
         onRefresh={onRefresh}
         user={user}
-        solidworksIntegrationEnabled={solidworksIntegrationEnabled}
+        solidworksIntegrationEnabled={desktop && solidworksIntegrationEnabled}
         swServiceRunning={isSolidWorksUsable(status)}
         swStatusChecked={swStatusChecked}
         isSyncing={isSyncing}

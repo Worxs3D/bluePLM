@@ -13,6 +13,7 @@ export { useLoadFiles } from './useLoadFiles'
 export { useAuth } from './useAuth'
 export { useStagedCheckins } from './useStagedCheckins'
 export { useAutoDownload } from './useAutoDownload'
+export { useWebVaultAutoConnect } from './useWebVaultAutoConnect'
 export { useVaultManagement } from './useVaultManagement'
 export { useIntegrationStatus } from './useIntegrationStatus'
 
@@ -43,7 +44,6 @@ export {
 export type { UseSlowDoubleClickOptions, UseSlowDoubleClickReturn } from './useSlowDoubleClick'
 
 // Deep link handling
-export { useDeepLinkInstall } from './useDeepLinkInstall'
 export { useNativeExtensions } from './useNativeExtensions'
 
 // Auto-scroll during drag operations
