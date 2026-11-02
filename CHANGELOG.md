@@ -4,6 +4,12 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+### Changed
+
+- **API 4.2.1: server backups include inspection templates and inspection reports** (schema 504).
+
 ## [5.4.0] - 2026-11-02
 
 Schema 504 (migration `0504_inspection_tables.sql`, applied by the release before anything is

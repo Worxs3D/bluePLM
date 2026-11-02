@@ -97,14 +97,17 @@ describe('supabase/migrations/0501_server_backups.sql', () => {
     expect(r.rows[0].v).toMatchObject({ stamped: true, version: 501 })
   }, 240_000)
 
-  it('knows exactly the tables the worker exports', () => {
-    const inSql = [...readSql(MIGRATION).matchAll(/WHEN '([a-z_]+)' THEN/g)].map((m) => m[1]).sort()
-    expect(inSql).toEqual([...BACKUP_TABLES].sort())
+  // Later migrations add tables to backup_list_org_rows() (0504: inspection templates and
+  // reports); the worker's full list is checked against the latest one in inspectionTables504.test.ts.
+  const tables0501 = [...readSql(MIGRATION).matchAll(/WHEN '([a-z_]+)' THEN/g)].map((m) => m[1])
+
+  it('exports only tables the worker knows', () => {
+    expect(tables0501.filter((t) => !(BACKUP_TABLES as readonly string[]).includes(t))).toEqual([])
   })
 
   it('exports every table through a valid query on the real 5.0 tables', async () => {
     const missing: string[] = []
-    for (const table of BACKUP_TABLES) {
+    for (const table of tables0501) {
       const page = await exportAll(table)
       if (page.missing) missing.push(table)
     }

@@ -10,6 +10,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { BACKUP_TABLES } from '../../../api/src/backup/source'
 import { actAs, actAsOwner, bootBaseline, MIGRATIONS, readSql, seed } from './testing/schemaDb'
 
 const ORG_A = '00000000-0000-0000-0000-00000000000a'
@@ -148,6 +149,8 @@ describe('supabase/migrations/0504_inspection_tables.sql', () => {
     expect(tables('0504_inspection_tables.sql')).toEqual(
       [...tables('0501_server_backups.sql'), 'inspection_report', 'inspection_template'].sort(),
     )
+    // The API's backup worker exports exactly what the latest definition knows.
+    expect([...BACKUP_TABLES].sort()).toEqual(tables('0504_inspection_tables.sql'))
     await actAsOwner(db)
     await db.exec('SET ROLE service_role')
     for (const t of ['inspection_report', 'inspection_template']) {
