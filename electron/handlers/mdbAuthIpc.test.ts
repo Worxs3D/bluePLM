@@ -118,7 +118,7 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
     expect(mocks.showMessageBox).not.toHaveBeenCalled()
     dispose()
   })
-  it('runs a local fake transport end to end and rejects a foreign sender', async () => {
+  it('preserves server-computed isAdmin through preload and rejects a foreign sender', async () => {
     const { window: win } = fakeWindow()
     let saved: MdbAuthSnapshot | null = null
     const persistence = {
@@ -138,7 +138,7 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
       email: 'a@example.test',
       displayName: 'A',
       role: 'member',
-      isAdmin: false,
+      isAdmin: true,
       createdAt: '2026-01-01T00:00:00Z',
     }
     const organization = {
@@ -188,7 +188,10 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
       }),
     )
     const verified = await backend.auth.verifyTotp('123456')
-    expect(verified).toMatchObject({ ok: true, state: { status: 'verified' } })
+    expect(verified).toMatchObject({
+      ok: true,
+      state: { status: 'verified', principal: { role: 'member', isAdmin: true } },
+    })
     expect(JSON.stringify([verified, events])).not.toMatch(/secret|private-license/)
     const foreign = await mocks.handlers.get('mdb-auth:get-state')?.(
       { sender: {}, senderFrame: mocks.frame } as unknown as IpcMainInvokeEvent,
