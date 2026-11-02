@@ -4,6 +4,7 @@ import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
+import { inspectionReportStrings } from './inspectionReports'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
@@ -717,6 +718,7 @@ export const en: TranslationDict = {
         'Write model only leaves drawings that are not checked out by you unchanged.',
     },
     inspection: {
+      ...inspectionReportStrings,
       title: 'Inspection Table',
       notSynced: 'Sync this drawing to bluePLM to manage its inspection table.',
       version: 'Version',
@@ -757,47 +759,12 @@ export const en: TranslationDict = {
       extractFailed: 'Failed to read the drawing',
       extractNone: 'No dimensions, GTOLs or surface finish symbols found in this drawing.',
       extractUpToDate: 'The table already matches the drawing.',
-      extractPreviewTitle: 'Extract from drawing',
-      extractPreviewCounts:
-        '{{added}} new, {{updated}} changed, {{adopted}} linked, {{missing}} no longer in the drawing, {{unchanged}} unchanged',
-      extractAdded: 'New ({{count}})',
-      extractUpdated: 'Changed ({{count}})',
-      extractChanged: 'Changes: {{fields}}',
-      extractAdoptedBadge: 'Linked',
-      extractMissing: 'No longer in the drawing ({{count}})',
-      extractMissingHint: 'Ticked rows are removed from the table. Untick a row to keep it.',
-      extractRemoveRow: 'Remove balloon {{balloon}}',
-      extractIncompleteBadge: 'Sheet not fully read',
-      extractIncompleteSheets:
-        'Some of the drawing could not be read ({{sheets}}). Rows on those sheets are not ticked for removal, because their annotations may still be there.',
-      extractUnreadable: 'Could not be read ({{count}})',
-      extractUnreadableHint:
-        'These annotations are still in the drawing but could not be read. Their rows are kept as they are.',
-      extractManualNote:
-        '{{count}} row(s) not linked to the drawing are left as they are.',
-      extractApply: 'Apply',
       extractApplied: 'Table updated: {{added}} added, {{updated}} changed, {{removed}} removed',
-      fieldSourceKey: 'drawing link',
-      fieldSourceView: 'View',
       balloonDrawing: 'Balloon drawing',
       balloonTitle:
-        'Write numbered balloons into the drawing on the BluePLM Inspection layer, replacing earlier BluePLM balloons.',
+        'Update the table from the drawing, then write numbered balloons for every linked row on the BluePLM Inspection layer, replacing earlier BluePLM balloons, and save the drawing.',
       ballooning: 'Ballooning…',
       balloonNothing: 'No rows are linked to the drawing. Extract from the drawing first.',
-      balloonAllStale:
-        'None of the linked rows are in the drawing any more. Extract from the drawing first.',
-      balloonConfirmTitle: 'Balloon drawing',
-      balloonConfirmBody:
-        'Place {{count}} balloon(s) in the drawing on the BluePLM Inspection layer. Balloons BluePLM placed before are replaced.',
-      balloonConfirmOtherBalloons:
-        'Balloons BluePLM did not place, such as older balloons already on the drawing, are not touched.',
-      balloonConfirmUnkeyed:
-        '{{count}} row(s) without a drawing link or balloon number get no balloon.',
-      balloonConfirmStale:
-        '{{count}} row(s) are no longer in the drawing and get no balloon. Extract from the drawing to update the table.',
-      balloonConfirmSave:
-        'The drawing is saved. Check it in afterwards to share the ballooned drawing.',
-      balloonConfirmApply: 'Balloon drawing',
       balloonApplied:
         'Placed {{placed}} balloon(s) (replaced {{removedPrevious}}) and saved the drawing. Check it in to share it.',
       balloonKeptPositions: '{{count}} balloon(s) kept the position you moved them to.',
@@ -813,6 +780,47 @@ export const en: TranslationDict = {
       errorUnsavedChanges:
         'The drawing is open in SOLIDWORKS with unsaved changes. Save or close it there first.',
       errorNotADrawing: 'This file is not a SOLIDWORKS drawing.',
+      // Straight-through extraction (no preview), read-only drawing values, general tolerances.
+      extractKeptIncomplete:
+        '{{count}} row(s) on sheets that could not be fully read were kept.',
+      undo: 'Undo',
+      mergeNotSaved:
+        'The table could not be saved, so it was put back as it was. Check that the drawing is still checked out to you and try again.',
+      extractUndone: 'Restored the table as it was before the extraction.',
+      undoUnavailable: 'The table has changed since the extraction, so it cannot be undone.',
+      lockedFromDrawing:
+        'Read from the drawing. Change it in the drawing, then extract again.',
+      lockedRow:
+        'Linked to the drawing. To remove it, delete the annotation or make it a reference dimension, then extract again.',
+      toleranceSourceColumn: 'Tol. Source',
+      toleranceSourceDrawing: 'Drawing',
+      toleranceSourceGeneral: 'General',
+      generalToleranceBadge: 'GT',
+      generalTolerance: 'General tolerance from the title block: {{rule}}',
+      generalToleranceUnknownRule:
+        'General tolerance from the title block. Extract again to see the rule it came from.',
+      gtRuleDecimal: '{{places}}-place decimals ±{{tolerance}}',
+      gtRuleLinear: 'all values ±{{tolerance}}',
+      gtRuleFractional: 'fractions ±{{tolerance}}',
+      gtRuleAngular: 'angles ±{{tolerance}}',
+      gtRuleIso: 'ISO 2768-{{cls}}, Table {{table}}, {{range}} mm: ±{{tolerance}} mm',
+      gtRangeFirst: '{{over}} up to {{upTo}}',
+      gtRangeOver: 'over {{over}} up to {{upTo}}',
+      gtRangeOpen: 'over {{over}}',
+      // Column manager, selection and bulk edit.
+      columns: 'Columns',
+      columnsTitle: 'Show, hide and order columns',
+      columnsReset: 'Reset to default',
+      columnMoveUp: 'Move up',
+      columnMoveDown: 'Move down',
+      selectRow: 'Select row',
+      selectAll: 'Select all shown rows',
+      selectedCount: '{{count}} selected',
+      bulkField: 'Set',
+      bulkValue: 'to',
+      bulkApply: 'Apply to selected',
+      bulkClear: 'Clear selection',
+      bulkApplied: 'Updated {{count}} row(s).',
       errorModifiedNotSaved:
         'Ballooning failed and the drawing is still open in SOLIDWORKS with partial balloon changes. Close it there without saving.',
     },

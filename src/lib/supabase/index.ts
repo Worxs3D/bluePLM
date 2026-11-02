@@ -298,3 +298,31 @@ export {
 } from './annotations'
 
 export type { CreateAnnotationParams } from './annotations'
+
+// ============================================
+// Inspection templates and reports (schema 504)
+// ============================================
+export {
+  listInspectionTemplates,
+  getInspectionTemplate,
+  getDefaultInspectionTemplate,
+  createInspectionTemplate,
+  updateInspectionTemplate,
+  setDefaultInspectionTemplate,
+  archiveInspectionTemplate,
+  deleteInspectionTemplate,
+} from './inspectionTemplates'
+
+export {
+  listInspectionReports,
+  listInspectionReportsForFiles,
+  getFileVersionNumbers,
+  getInspectionReport,
+  createInspectionReport,
+  updateInspectionReport,
+  deleteInspectionReport,
+  InspectionReportNumberTakenError,
+  getInspectionRowsAtVersion,
+  uploadInspectionContent,
+  downloadInspectionContent,
+} from './inspectionReports'

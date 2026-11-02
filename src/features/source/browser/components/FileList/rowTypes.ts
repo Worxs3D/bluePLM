@@ -1,5 +1,6 @@
 import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
+import type { InspectionReport } from '@/types/inspectionReports'
 
 import type { ConfigWithDepth } from '../../types'
 
@@ -42,6 +43,20 @@ export interface DrawingRefVirtualRow {
   type: 'drawing-ref'
   file: LocalFile
   item: DrawingRefItem
+}
+
+/** An inspection report of an expanded drawing, listed after its referenced files. */
+export interface DrawingReportVirtualRow {
+  type: 'drawing-report'
+  file: LocalFile
+  report: InspectionReport
+}
+
+/** "n more reports" after the first few of an expanded drawing. */
+export interface DrawingReportMoreVirtualRow {
+  type: 'drawing-report-more'
+  file: LocalFile
+  hiddenCount: number
 }
 
 export interface ConfigDrawingVirtualRow {
@@ -99,6 +114,8 @@ export type VirtualRow =
   | ConfigVirtualRow
   | ConfigBomVirtualRow
   | DrawingRefVirtualRow
+  | DrawingReportVirtualRow
+  | DrawingReportMoreVirtualRow
   | ConfigDrawingVirtualRow
   | ConfigGroupVirtualRow
   | ConfigEmptyVirtualRow

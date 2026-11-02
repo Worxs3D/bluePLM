@@ -16,14 +16,35 @@
  *   user leaves selected.
  * - A row whose annotation the service found but could not read (`skipped`) is not gone: it is
  *   listed as `unreadable`, kept as it is, and never offered for removal.
+ * - With a sheet context (plan `inspection-tables-system.plan.md`), a characteristic with no
+ *   tolerance of its own takes the sheet's general tolerance (`tolerance_source` 'general'), and
+ *   one with no service zone takes the zone of its position in the border grid.
  */
 import { emptyRowValues } from '../supabase/files/inspectionRows'
 import type { InspectionRowInput, InspectionRowValues } from '../supabase/files/inspection'
+import {
+  generalToleranceFor,
+  isBlockToleranceType,
+  type GeneralToleranceRules,
+} from './generalTolerance'
+import { zoneAt, type ZoneGrid } from './zones'
 import type {
   ExtractedCharacteristic,
+  ExtractedDrawingCharacteristics,
   ExtractedDrawingSheet,
   ExtractedSkippedAnnotation,
 } from './types'
+
+/** What a sheet's notes give the merge: its general tolerance rules and its zone grid. */
+export interface SheetContext {
+  rules: GeneralToleranceRules | null
+  grid: ZoneGrid | null
+  /**
+   * The rules are known: the sheet's notes were read (even if they state no rule), or the
+   * drawing-level rules apply. When false, a matched row keeps the general tolerance it has.
+   */
+  notesRead: boolean
+}
 
 export interface CharacteristicMergeInput {
   /** The current table. */
@@ -39,6 +60,10 @@ export interface CharacteristicMergeInput {
   skipped?: ExtractedSkippedAnnotation[]
   /** Id for each added row. */
   newId: () => string
+  /** Per sheet name: general tolerance rules and zone grid read from the sheet's notes. */
+  sheetContext?: Map<string, SheetContext>
+  /** Drawing length units (for general tolerances of values without a unit). */
+  units?: ExtractedDrawingCharacteristics['units']
 }
 
 export interface CharacteristicMergePlan {
@@ -72,6 +97,7 @@ export const GEOMETRY_FIELDS = [
   'minus_tolerance',
   'upper_limit',
   'lower_limit',
+  'tolerance_source',
   'zone',
   'source_key',
   'source_sheet',
@@ -95,18 +121,63 @@ export function subTypeOf(c: ExtractedCharacteristic): string | null {
   return c.subType
 }
 
-/** The geometry columns a characteristic sets. */
-export function geometryOf(c: ExtractedCharacteristic): Pick<InspectionRowValues, GeometryField> {
+const blank = (v: string | null | undefined) => v === null || v === undefined || v.trim() === ''
+
+/**
+ * The drawing gives this characteristic a tolerance: a tolerance value or limit, a tolerance type
+ * other than None / Basic (fits, min / max), or a GTOL frame (whose value is the tolerance).
+ * Block, General and Unknown types are governed by the title block, not the annotation.
+ */
+export function hasDrawingTolerance(c: ExtractedCharacteristic): boolean {
+  if (c.kind === 'gtol') return true
+  if (c.kind === 'surfaceFinish') return false
+  if (isBlockToleranceType(c.toleranceType)) return false
+  const hasValue = [c.plusTolerance, c.minusTolerance, c.upperLimit, c.lowerLimit].some(
+    (v) => !blank(v),
+  )
+  const type = c.toleranceType?.trim().toLowerCase() ?? ''
+  return hasValue || (type !== '' && type !== 'none' && type !== 'basic')
+}
+
+/**
+ * The geometry columns a characteristic sets. With a sheet context, an untoleranced value takes
+ * the general tolerance and a missing service zone the border grid's zone.
+ */
+export function geometryOf(
+  c: ExtractedCharacteristic,
+  context?: SheetContext | null,
+  units: ExtractedDrawingCharacteristics['units'] = 'other',
+): Pick<InspectionRowValues, GeometryField> {
+  let tolerance: Pick<
+    InspectionRowValues,
+    'plus_tolerance' | 'minus_tolerance' | 'upper_limit' | 'lower_limit' | 'tolerance_source'
+  > = {
+    plus_tolerance: c.plusTolerance,
+    minus_tolerance: c.minusTolerance,
+    upper_limit: c.upperLimit,
+    lower_limit: c.lowerLimit,
+    tolerance_source: hasDrawingTolerance(c) ? 'drawing' : null,
+  }
+  if (tolerance.tolerance_source === null && context?.rules) {
+    const general = generalToleranceFor(c, context.rules, units)
+    if (general) {
+      tolerance = {
+        plus_tolerance: general.plus,
+        minus_tolerance: general.minus,
+        upper_limit: general.upper,
+        lower_limit: general.lower,
+        tolerance_source: 'general',
+      }
+    }
+  }
+  const zone = c.zone ?? (context?.grid ? zoneAt(context.grid, c.x, c.y) : null)
   return {
     char_type: charTypeOf(c.kind),
     sub_type: subTypeOf(c),
     nominal_value: c.nominal,
     unit: c.unit,
-    plus_tolerance: c.plusTolerance,
-    minus_tolerance: c.minusTolerance,
-    upper_limit: c.upperLimit,
-    lower_limit: c.lowerLimit,
-    zone: c.zone,
+    ...tolerance,
+    zone,
     source_key: c.sourceKey,
     source_sheet: c.sheet,
     source_view: c.view,
@@ -132,8 +203,6 @@ export function sortByBalloonNumber(rows: InspectionRowInput[]): InspectionRowIn
     return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
   })
 }
-
-const blank = (v: string | null | undefined) => v === null || v === undefined || v.trim() === ''
 
 /** The annotation part of a source key: `abc#1` → `abc`. */
 export function baseKeyOf(sourceKey: string): string {
@@ -213,17 +282,35 @@ export function inReadingOrder(
 function withGeometry(
   row: InspectionRowInput,
   c: ExtractedCharacteristic,
+  context: SheetContext | null,
+  units: ExtractedDrawingCharacteristics['units'],
 ): { after: InspectionRowInput; changedFields: GeometryField[] } {
-  const geometry = geometryOf(c)
+  const geometry = geometryOf(c, context, units)
   // The API does not always expose a zone; never blank one the user typed.
   if (geometry.zone === null) geometry.zone = row.zone
+  // Notes not read (older service, or the service skipped them): the rules are unknown, not
+  // absent, so a general tolerance the row has keeps standing while its value is unchanged.
+  if (
+    !context?.notesRead &&
+    geometry.tolerance_source !== 'drawing' &&
+    row.tolerance_source === 'general' &&
+    normalizeValue(row.nominal_value) === normalizeValue(geometry.nominal_value) &&
+    (row.unit ?? null) === (geometry.unit ?? null)
+  ) {
+    geometry.plus_tolerance = row.plus_tolerance
+    geometry.minus_tolerance = row.minus_tolerance
+    geometry.upper_limit = row.upper_limit
+    geometry.lower_limit = row.lower_limit
+    geometry.tolerance_source = 'general'
+  }
   const after: InspectionRowInput = { ...row, ...geometry }
   const changedFields = GEOMETRY_FIELDS.filter((f) => (row[f] ?? null) !== (after[f] ?? null))
   return { after, changedFields }
 }
 
 export function planCharacteristicMerge(input: CharacteristicMergeInput): CharacteristicMergePlan {
-  const { rows, extracted, sheets, includeReference = false, newId } = input
+  const { rows, extracted, sheets, includeReference = false, newId, units = 'other' } = input
+  const contextOf = (c: ExtractedCharacteristic) => input.sheetContext?.get(c.sheet) ?? null
   const plan: CharacteristicMergePlan = {
     updated: [],
     unchanged: [],
@@ -249,7 +336,7 @@ export function planCharacteristicMerge(input: CharacteristicMergeInput): Charac
   const matchedKeys = new Set<string>()
   const keyless: InspectionRowInput[] = []
   const record = (row: InspectionRowInput, c: ExtractedCharacteristic) => {
-    const { after, changedFields } = withGeometry(row, c)
+    const { after, changedFields } = withGeometry(row, c, contextOf(c), units)
     if (changedFields.length === 0) plan.unchanged.push(row.id)
     else plan.updated.push({ rowId: row.id, before: row, after, changedFields })
   }
@@ -312,7 +399,7 @@ export function planCharacteristicMerge(input: CharacteristicMergeInput): Charac
   for (const c of fresh) {
     plan.added.push({
       ...emptyRowValues(0),
-      ...geometryOf(c),
+      ...geometryOf(c, contextOf(c), units),
       id: newId(),
       balloon_number: String(next++),
     })

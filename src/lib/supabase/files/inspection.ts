@@ -29,7 +29,12 @@ interface InspectionSourceColumns {
   source_key: string | null
   source_sheet: string | null
   source_view: string | null
+  /** Schema 504. TODO(schema 504): drop from this intersection once gen:types has it. */
+  tolerance_source?: InspectionToleranceSource | null
 }
+
+/** Where a row's tolerance came from: the drawing itself, or the drawing's general tolerance block. */
+export type InspectionToleranceSource = 'drawing' | 'general'
 type InspectionCharacteristic = GeneratedInspectionCharacteristic & InspectionSourceColumns
 type InspectionCharacteristicVersion = GeneratedInspectionCharacteristicVersion & InspectionSourceColumns
 type InspectionCharacteristicInsert = GeneratedInspectionCharacteristicInsert & Partial<InspectionSourceColumns>
@@ -63,6 +68,12 @@ export interface InspectionRowValues {
   source_sheet: string | null
   /** Drawing view the annotation belongs to, as extracted (null for sheet annotations). */
   source_view: string | null
+  /**
+   * Where the tolerance came from (schema 504): 'drawing' when the annotation carries one,
+   * 'general' when filled from the title block's general tolerances, null otherwise. Set by
+   * extraction only.
+   */
+  tolerance_source: InspectionToleranceSource | null
 }
 
 /** A row as edited in the UI. `id` is present for existing rows, absent/local for new ones. */
@@ -238,15 +249,31 @@ export async function saveInspectionRows(
     ...values,
   }))
 
-  const { error: upsertError } = await client
+  let { error: upsertError } = await client
     .from('inspection_characteristic')
     .upsert(payload, { onConflict: 'id' })
+
+  // A database before schema 504 has no tolerance_source column: save without it.
+  if (upsertError && isMissingToleranceSourceColumn(upsertError)) {
+    const legacy = payload.map(({ tolerance_source: _dropped, ...rest }) => rest)
+    ;({ error: upsertError } = await client
+      .from('inspection_characteristic')
+      .upsert(legacy, { onConflict: 'id' }))
+  }
 
   if (upsertError) {
     return { success: false, error: upsertError.message }
   }
 
   return { success: true }
+}
+
+/** PostgREST's "column not in the schema cache" error, naming tolerance_source. */
+export function isMissingToleranceSourceColumn(error: { code?: string; message?: string }): boolean {
+  return (
+    (error.code === 'PGRST204' || error.code === '42703') &&
+    (error.message ?? '').includes('tolerance_source')
+  )
 }
 
 /** An org-defined inspection method (id needed for edit/remove). */

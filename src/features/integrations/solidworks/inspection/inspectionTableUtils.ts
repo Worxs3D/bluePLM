@@ -54,3 +54,42 @@ export function matchesFilter(
   const text = value === null || value === undefined ? '' : String(value)
   return text.toLowerCase().includes(filterValue.toLowerCase())
 }
+
+/**
+ * Set one user-owned column on the selected rows. A field outside `bulkFields` (geometry, balloon,
+ * drawing link) changes nothing, so the drawing's values cannot be overwritten in bulk.
+ */
+export function applyBulkEdit(
+  rows: InspectionRowInput[],
+  selectedIds: ReadonlySet<string>,
+  field: keyof InspectionRowValues,
+  value: string | number | null,
+  bulkFields: readonly (keyof InspectionRowValues)[],
+): InspectionRowInput[] {
+  if (!bulkFields.includes(field) || selectedIds.size === 0) return rows
+  return rows.map((r) => (selectedIds.has(r.id) ? { ...r, [field]: value } : r))
+}
+
+/**
+ * Selection after clicking row `id` in the shown order: a plain click toggles that row, a
+ * shift-click selects the range from the last clicked row (`anchor`).
+ */
+export function toggleRowSelection(
+  selected: ReadonlySet<string>,
+  shownIds: readonly string[],
+  id: string,
+  anchor: string | null,
+  range: boolean,
+): Set<string> {
+  const next = new Set(selected)
+  const from = anchor ? shownIds.indexOf(anchor) : -1
+  const to = shownIds.indexOf(id)
+  if (range && from >= 0 && to >= 0) {
+    const [a, b] = from < to ? [from, to] : [to, from]
+    for (let i = a; i <= b; i++) next.add(shownIds[i])
+    return next
+  }
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}

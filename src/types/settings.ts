@@ -19,6 +19,7 @@ export const SETTINGS_TABS = [
   'metadata-columns',
   'file-workflows',
   'item-designations',
+  'inspection-templates',
   'backup',
   'solidworks',
   'google-drive',

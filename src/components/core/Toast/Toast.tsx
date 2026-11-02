@@ -356,6 +356,19 @@ function ToastItem({ toast, onClose }: { toast: ToastMessage; onClose: () => voi
       <span className={`flex-shrink-0 mt-0.5 ${iconColors[toast.type]}`}>{icons[toast.type]}</span>
       <p className="flex-1 text-sm leading-relaxed">{toast.message}</p>
       <div className="flex items-center gap-1 flex-shrink-0">
+        {toast.action && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              toast.action?.onClick()
+              handleClose()
+            }}
+            className="px-2 py-0.5 rounded border border-current/40 text-xs font-medium hover:bg-white/10"
+          >
+            {toast.action.label}
+          </button>
+        )}
         {/* Copy button - show for errors and warnings */}
         {(toast.type === 'error' || toast.type === 'warning') && (
           <button

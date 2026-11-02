@@ -1,6 +1,7 @@
 import { resolvePartNumber, resolvedText } from '@/lib/metadata/overlay'
 import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
+import type { InspectionReport } from '@/types/inspectionReports'
 
 import { getFileStatus } from '../../hooks/useFileStatus'
 import type { ConfigWithDepth } from '../../types'
@@ -10,6 +11,8 @@ import type { ConfigSectionGroup, SelectableRow, VirtualRow } from './rowTypes'
 const PART_EXTENSION = '.sldprt'
 const ASSEMBLY_EXTENSION = '.sldasm'
 const GROUP_ITEM_DEPTH = 1
+/** Reports listed under an expanded drawing before a "n more" row; the rest are in the Inspection tab. */
+export const MAX_DRAWING_REPORT_ROWS = 10
 
 interface ClipboardState {
   files: LocalFile[]
@@ -38,6 +41,23 @@ export interface BuildVirtualRowsOptions {
   expandedDrawingRefs: ReadonlySet<string>
   drawingRefData: ReadonlyMap<string, DrawingRefItem[]>
   expandedDrawingRefFiles: ReadonlySet<string>
+  /** Inspection reports per drawing file id (store `drawingInspectionReports`). */
+  drawingInspectionReports?: ReadonlyMap<string, InspectionReport[]>
+}
+
+/** A drawing's reports (newest first, at most `MAX_DRAWING_REPORT_ROWS`), then a "n more" row. */
+export function appendDrawingReportRows(
+  rows: VirtualRow[],
+  file: LocalFile,
+  reports: readonly InspectionReport[] | undefined,
+): void {
+  if (!reports || reports.length === 0) return
+  for (const report of reports.slice(0, MAX_DRAWING_REPORT_ROWS)) {
+    rows.push({ type: 'drawing-report', file, report })
+  }
+  if (reports.length > MAX_DRAWING_REPORT_ROWS) {
+    rows.push({ type: 'drawing-report-more', file, hiddenCount: reports.length - MAX_DRAWING_REPORT_ROWS })
+  }
 }
 
 function appendConfigDrawingRows(
@@ -139,6 +159,7 @@ export function buildVirtualRows({
   expandedDrawingRefs,
   drawingRefData,
   expandedDrawingRefFiles,
+  drawingInspectionReports,
 }: BuildVirtualRowsOptions): { rows: VirtualRow[]; selectableRows: SelectableRow[] } {
   const rows: VirtualRow[] = []
   const selectableRows: SelectableRow[] = []
@@ -221,6 +242,9 @@ export function buildVirtualRows({
           })
         }
       })
+
+      const drawingId = file.pdmData?.id
+      if (drawingId) appendDrawingReportRows(rows, file, drawingInspectionReports?.get(drawingId))
     }
 
     if (!expandedConfigFiles.has(file.path)) return

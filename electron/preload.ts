@@ -634,6 +634,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('review-package:write-manifest', dir, files),
   },
 
+  // Inspection report workbooks (src/features/integrations/solidworks/inspection/reports)
+  inspectionReports: {
+    openWorkbook: (fileName: string, base64: string) =>
+      ipcRenderer.invoke('inspection-reports:open-workbook', fileName, base64),
+    saveWorkbook: (defaultName: string, base64: string) =>
+      ipcRenderer.invoke('inspection-reports:save-workbook', defaultName, base64),
+  },
+
   // Archive (ZIP) operations
   archive: {
     createZip: (files: Array<{ path: string; relativePath: string }>, outputPath: string) =>

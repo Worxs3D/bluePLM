@@ -9,6 +9,7 @@ import {
   DatabaseBackup,
   Factory,
   FileOutput,
+  FileSpreadsheet,
   Gauge,
   GitBranch,
   HardDrive,
@@ -167,6 +168,14 @@ export const settingsSections = (): SettingsSection[] => [
         icon: LifeBuoy,
         description: 'Codes that restore admin access if every admin is locked out.',
         keywords: ['admin recovery'],
+      },
+      {
+        id: 'inspection-templates',
+        label: 'Inspection templates',
+        icon: FileSpreadsheet,
+        description: 'Excel templates for the inspection reports of drawings.',
+        layout: 'wide',
+        keywords: ['inspection', 'report', 'excel', 'xlsx', 'template', 'fai', 'first article'],
       },
       {
         id: 'backup',
@@ -608,6 +617,11 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Push to All Users', keywords: ['push', 'everyone'] },
   ],
   'item-designations': [{ label: 'Add designation', keywords: ['new designation', 'item type'] }],
+  'inspection-templates': [
+    { label: 'Upload template', keywords: ['xlsx', 'excel', 'add template'] },
+    { label: 'Built-in starters', keywords: ['starter', 'example', 'first article'] },
+    { label: 'Template tokens', keywords: ['tokens', 'placeholders', 'fields'] },
+  ],
   backup: [
     { label: 'Status', keywords: ['backup', 'restore', 'snapshot', 'backup & restore'] },
     { label: 'Last Backup', keywords: ['latest', 'recent'] },

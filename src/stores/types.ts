@@ -26,6 +26,7 @@ import type { OperationLogSlice } from './slices/operationLogSlice'
 import type { VaultAuditSlice } from './slices/vaultAuditSlice'
 import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
+import type { InspectionReportsSlice } from './slices/inspectionReportsSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -183,11 +184,18 @@ export interface ConnectedVault {
   hasCompletedSetup?: boolean // Whether user has completed the first-time setup wizard
 }
 
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface ToastMessage {
   id: string
   type: ToastType
   message: string
   duration?: number
+  /** One button on a message toast (for example Undo). Clicking it runs `onClick` and dismisses the toast. */
+  action?: ToastAction
   // Progress toast fields
   progress?: {
     current: number
@@ -512,7 +520,13 @@ export interface ToastsSlice {
    * @param message - Message to display
    * @param duration - Duration in ms (default 5000, 0 for no auto-dismiss)
    */
-  addToast: (type: ToastType, message: string, duration?: number) => void
+  addToast: (
+    type: ToastType,
+    message: string,
+    duration?: number,
+    /** An optional button on the toast, such as Undo. */
+    action?: ToastAction,
+  ) => void
   addProgressToast: (id: string, message: string, total: number, queued?: boolean) => void
   setProgressToastActive: (id: string) => void
   updateProgressToast: (
@@ -643,6 +657,9 @@ export interface UISlice {
   // First-run picker shown when several SOLIDWORKS releases are installed
   showSolidworksVersionModal: boolean
 
+  /** Inspection table column layout of this user (order of column keys, hidden keys); null = default. */
+  inspectionColumnPrefs: { order: string[]; hidden: string[] } | null
+
   // Actions
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
@@ -696,6 +713,9 @@ export interface UISlice {
 
   // SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show: boolean) => void
+
+  // Inspection table columns
+  setInspectionColumnPrefs: (prefs: UISlice['inspectionColumnPrefs']) => void
 }
 
 export interface SettingsSlice {
@@ -2038,6 +2058,7 @@ export type PDMStoreState = ToastsSlice &
   ItemBrowserSlice &
   VaultAuditSlice &
   ReviewsSlice &
+  InspectionReportsSlice &
   DbUpgradeSlice
 
 // ============================================================================

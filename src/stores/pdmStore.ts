@@ -83,6 +83,7 @@ import {
   createItemBrowserSlice,
   createVaultAuditSlice,
   createReviewsSlice,
+  createInspectionReportsSlice,
   createDbUpgradeSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
@@ -220,6 +221,7 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createItemBrowserSlice(...a),
       ...createVaultAuditSlice(...a),
       ...createReviewsSlice(...a),
+      ...createInspectionReportsSlice(...a),
       ...createDbUpgradeSlice(...a),
     })),
     {
@@ -285,6 +287,7 @@ export const usePDMStore = create<PDMStoreState>()(
         itemListRowSize: state.itemListRowSize,
         itemIconSize: state.itemIconSize,
         itemColumns: state.itemColumns,
+        inspectionColumnPrefs: state.inspectionColumnPrefs,
 
         // ═══════════════════════════════════════════════════════════════
         // Theme & Appearance
