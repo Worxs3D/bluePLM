@@ -5,8 +5,29 @@ export interface MdbPrincipal {
   readonly email: string
   readonly displayName: string
   readonly role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
+  /** Organization administrator status computed and returned by the MDB server. */
+  readonly isAdmin: boolean
   readonly createdAt: string
 }
+/** Locale selected by the renderer; Main resolves dialog copy from local catalogs. */
+export type MdbAuthLanguage =
+  | 'en'
+  | 'fr'
+  | 'de'
+  | 'es'
+  | 'pt'
+  | 'zh-CN'
+  | 'zh-TW'
+  | 'it'
+  | 'nl'
+  | 'sv'
+  | 'pl'
+  | 'ru'
+  | 'ja'
+  | 'ko'
+  | 'sindarin'
+
+export type MdbAuthDialogStrings = Readonly<Record<'cancel' | 'continue' | 'confirmServer', string>>
 
 export interface MdbOrganization {
   readonly id: string
@@ -32,11 +53,12 @@ export type MdbAuthResult =
 
 /** Explicit MDB capability; it does not implement Supabase's token-bearing AuthPort. */
 export interface MdbAuthCapability {
-  validateServer(serverUrl: string): Promise<MdbAuthResult>
+  validateServer(serverUrl: string, language: MdbAuthLanguage): Promise<MdbAuthResult>
   signIn(input: {
     readonly serverUrl: string
     readonly email: string
     readonly password: string
+    readonly language: MdbAuthLanguage
   }): Promise<MdbAuthResult>
   verifyTotp(code: string): Promise<MdbAuthResult>
   restore(): Promise<MdbAuthResult>

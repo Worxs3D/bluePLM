@@ -12,7 +12,7 @@ import {
 
 export function createMdbAuthBridge(): MdbAuthCapability {
   return {
-    validateServer: (url) => ipcRenderer.invoke(MDB_AUTH_VALIDATE, url),
+    validateServer: (url, language) => ipcRenderer.invoke(MDB_AUTH_VALIDATE, { url, language }),
     signIn: (input) => ipcRenderer.invoke(MDB_AUTH_SIGN_IN, input),
     verifyTotp: (code) => ipcRenderer.invoke(MDB_AUTH_VERIFY_TOTP, code),
     restore: () => ipcRenderer.invoke(MDB_AUTH_RESTORE),

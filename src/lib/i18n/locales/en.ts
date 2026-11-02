@@ -1,14 +1,14 @@
-import dialogStrings from '../../../../electron/backend/mdbAuthDialogStrings.json'
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
+import mdbAuthDialogStrings from './mdbAuth.json'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
-  mdbAuth: dialogStrings.en,
+  mdbAuth: mdbAuthDialogStrings.en,
   solidworksSettings: {
     previewMode: 'Preview mode',
     embeddedThumbnail: 'Embedded thumbnail',
@@ -109,7 +109,7 @@ export const en: TranslationDict = {
   // Common
   common: {
     save: 'Save',
-    cancel: dialogStrings.en.cancel,
+    cancel: 'Cancel',
     delete: 'Delete',
     edit: 'Edit',
     add: 'Add',

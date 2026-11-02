@@ -1,0 +1,37 @@
+{
+  "en": {
+    "cancel": "Cancel",
+    "continue": "Continue",
+    "confirmServer": "Connect to MDB server?"
+  },
+  "de": {
+    "cancel": "Abbrechen",
+    "continue": "Weiter",
+    "confirmServer": "Mit dem MDB-Server verbinden?"
+  },
+  "es": {
+    "cancel": "Cancelar",
+    "continue": "Continuar",
+    "confirmServer": "¿Conectarse al servidor MDB?"
+  },
+  "fr": {
+    "cancel": "Annuler",
+    "continue": "Continuer",
+    "confirmServer": "Se connecter au serveur MDB ?"
+  },
+  "pt": {
+    "cancel": "Cancelar",
+    "continue": "Continuar",
+    "confirmServer": "Conectar ao servidor MDB?"
+  },
+  "zh-CN": {
+    "cancel": "取消",
+    "continue": "继续",
+    "confirmServer": "连接到 MDB 服务器？"
+  },
+  "zh-TW": {
+    "cancel": "取消",
+    "continue": "繼續",
+    "confirmServer": "連線至 MDB 伺服器？"
+  }
+}

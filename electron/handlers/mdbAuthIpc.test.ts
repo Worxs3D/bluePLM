@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import type { MdbAuthSnapshot } from '../electron/backend/mdbAuthAuthority'
+import type { MdbAuthSnapshot } from '../backend/mdbAuthAuthority'
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, input: unknown) => Promise<unknown>>(),
   listeners: new Map<string, (event: unknown, value: unknown) => void>(),
   sender: {} as Record<string, unknown>,
   frame: { url: 'http://localhost:5173/' },
-  locale: 'en',
   showMessageBox: vi.fn(async () => ({ response: 0 })),
 }))
 vi.mock('electron', () => ({
@@ -15,7 +14,6 @@ vi.mock('electron', () => ({
     isPackaged: false,
     getPath: () => 'test',
     getAppPath: () => 'test',
-    getLocale: () => mocks.locale,
   },
   dialog: { showMessageBox: mocks.showMessageBox },
   safeStorage: {},
@@ -34,10 +32,12 @@ vi.mock('electron', () => ({
     removeListener: (name: string) => mocks.listeners.delete(name),
   },
 }))
-import { registerMdbAuthIpc } from '../electron/handlers/mdbAuthIpc'
-import { createMdbAuthBridge } from '../electron/preloadMdbAuth'
-import { resolveMdbBackend } from '../src/lib/backend'
-import { MDB_PASSWORD_MAX_LENGTH } from '../electron/backend/mdbAuthTransport'
+import { registerMdbAuthIpc } from './mdbAuthIpc'
+import { createMdbAuthBridge } from '../preloadMdbAuth'
+import { resolveMdbBackend } from '../../src/lib/backend'
+import { mdbAuthDialogStrings } from '../backend/mdbAuthDialogStrings'
+import type { Language } from '../../src/lib/i18n/types'
+import { MDB_PASSWORD_MAX_LENGTH } from '../backend/mdbAuthTransport'
 
 function fakeWindow() {
   const webContents = Object.assign(mocks.sender, {
@@ -67,21 +67,32 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
     mocks.showMessageBox.mockClear()
   })
   it.each([
-    ['en-US', 'Cancel', 'Continue', 'Connect to MDB server?'],
-    ['de-DE', 'Abbrechen', 'Weiter', 'Mit dem MDB-Server verbinden?'],
-    ['fr-FR', 'Annuler', 'Continuer', 'Se connecter au serveur MDB ?'],
-    ['es-ES', 'Cancelar', 'Continuar', '¿Conectarse al servidor MDB?'],
-    ['pt-BR', 'Cancelar', 'Continuar', 'Conectar ao servidor MDB?'],
+    ['en', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['de', 'Abbrechen', 'Weiter', 'Mit dem MDB-Server verbinden?'],
+    ['fr', 'Annuler', 'Continuer', 'Se connecter au serveur MDB ?'],
+    ['es', 'Cancelar', 'Continuar', '¿Conectarse al servidor MDB?'],
+    ['pt', 'Cancelar', 'Continuar', 'Conectar ao servidor MDB?'],
     ['zh-CN', '取消', '继续', '连接到 MDB 服务器？'],
-    ['zh-Hant-TW', '取消', '繼續', '連線至 MDB 伺服器？'],
-    ['ja-JP', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['zh-TW', '取消', '繼續', '連線至 MDB 伺服器？'],
+    ['it', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['nl', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['sv', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['pl', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['ru', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['ja', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['ko', 'Cancel', 'Continue', 'Connect to MDB server?'],
+    ['sindarin', 'Cancel', 'Continue', 'Connect to MDB server?'],
   ])(
-    'localizes the native server confirmation for %s',
-    async (locale, cancel, proceed, message) => {
-      mocks.locale = locale
+    'resolves native server confirmation for %s with the existing renderer fallback',
+    async (language, cancel, proceed, message) => {
       const { window: win } = fakeWindow()
       const dispose = registerMdbAuthIpc(win)
-      const result = await createMdbAuthBridge().validateServer('https://example.test/')
+      const strings = mdbAuthDialogStrings(language as Language)
+      expect(strings).toEqual({ cancel, continue: proceed, confirmServer: message })
+      const result = await createMdbAuthBridge().validateServer(
+        'https://example.test/',
+        language as Language,
+      )
       expect(result).toMatchObject({ ok: false, code: 'server-not-confirmed' })
       expect(mocks.showMessageBox).toHaveBeenCalledWith(
         win,
@@ -96,6 +107,17 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
       dispose()
     },
   )
+  it('rejects an unknown locale before opening the confirmation dialog', async () => {
+    const { window: win } = fakeWindow()
+    const dispose = registerMdbAuthIpc(win)
+    const result = await createMdbAuthBridge().validateServer(
+      'https://example.test/',
+      'xx' as Language,
+    )
+    expect(result).toMatchObject({ ok: false, code: 'invalid-input' })
+    expect(mocks.showMessageBox).not.toHaveBeenCalled()
+    dispose()
+  })
   it('runs a local fake transport end to end and rejects a foreign sender', async () => {
     const { window: win } = fakeWindow()
     let saved: MdbAuthSnapshot | null = null
@@ -116,6 +138,7 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
       email: 'a@example.test',
       displayName: 'A',
       role: 'member',
+      isAdmin: false,
       createdAt: '2026-01-01T00:00:00Z',
     }
     const organization = {
@@ -140,18 +163,30 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
       if (url.pathname === '/organizations/current') return Response.json({ organization })
       throw Error('unexpected request')
     })
+    mocks.showMessageBox.mockResolvedValue({ response: 1 })
     const dispose = registerMdbAuthIpc(win, {
       persistence,
       fetchImpl,
-      confirmServer: async () => true,
     })
     expect(fetchImpl).not.toHaveBeenCalled()
     const backend = resolveMdbBackend(createMdbAuthBridge())
     const events: unknown[] = []
     const unsubscribe = backend.auth.subscribe((event) => events.push(event))
     expect(
-      await backend.auth.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' }),
+      await backend.auth.signIn({
+        serverUrl: 'https://example.test/',
+        email: 'a',
+        password: 'b',
+        language: 'en',
+      }),
     ).toEqual({ ok: true, state: { status: 'totp-required' } })
+    expect(mocks.showMessageBox).toHaveBeenCalledWith(
+      win,
+      expect.objectContaining({
+        buttons: ['Cancel', 'Continue'],
+        message: 'Connect to MDB server?',
+      }),
+    )
     const verified = await backend.auth.verifyTotp('123456')
     expect(verified).toMatchObject({ ok: true, state: { status: 'verified' } })
     expect(JSON.stringify([verified, events])).not.toMatch(/secret|private-license/)
@@ -213,12 +248,18 @@ describe('MDB explicit adapter through preload and Main IPC', () => {
         serverUrl: 'https://example.test/',
         email: 'a',
         password: 'x'.repeat(MDB_PASSWORD_MAX_LENGTH + 1),
+        language: 'en',
       }),
     ).toMatchObject({ ok: false, code: 'invalid-input' })
     expect(fetchImpl).not.toHaveBeenCalled()
     const password = ` ${'x'.repeat(MDB_PASSWORD_MAX_LENGTH - 2)} `
     expect(
-      await bridge.signIn({ serverUrl: 'https://example.test/', email: 'a', password }),
+      await bridge.signIn({
+        serverUrl: 'https://example.test/',
+        email: 'a',
+        password,
+        language: 'en',
+      }),
     ).toEqual({ ok: true, state: { status: 'totp-required' } })
     const request = fetchImpl.mock.calls[1] as unknown as [URL, RequestInit]
     expect(JSON.parse(String(request[1].body)).password).toBe(password)

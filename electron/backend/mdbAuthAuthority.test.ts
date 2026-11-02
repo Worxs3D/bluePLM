@@ -11,6 +11,7 @@ const user = {
   email: 'user@example.test',
   displayName: 'User',
   role: 'member',
+  isAdmin: false,
   createdAt: '2026-01-01T00:00:00Z',
 }
 const organization = {
@@ -50,6 +51,41 @@ function setup(failClear = false) {
   return { create, persistence, fetchImpl }
 }
 describe('Main auth authority', () => {
+  it.each([
+    ['missing', undefined],
+    ['non-boolean', 'true'],
+  ] as const)('fails closed when auth/me returns %s isAdmin', async (_case, isAdmin) => {
+    const { create, fetchImpl } = setup()
+    fetchImpl.mockImplementation(async (url) => {
+      if (url.pathname.endsWith('/health'))
+        return Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+      if (url.pathname.endsWith('/auth/login'))
+        return Response.json({ totpRequired: true, challengeToken: 'challenge-secret', expiresAt })
+      if (url.pathname.endsWith('/auth/totp/verify'))
+        return Response.json({ token: 'bearer-secret', expiresAt })
+      if (url.pathname.endsWith('/auth/me')) {
+        const responseUser = { ...user, isAdmin }
+        return Response.json({ user: responseUser })
+      }
+      if (url.pathname.endsWith('/organizations/current'))
+        return Response.json({ organization })
+      throw Error('unexpected request')
+    })
+    const authority = create()
+    await authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+    await expect(
+      authority.verifyTotp('123456'),
+    ).rejects.toMatchObject({ code: 'invalid-principal-response' })
+    expect(authority.state()).toEqual({ status: 'totp-required' })
+    expect(fetchImpl.mock.calls.map(([url]) => url.pathname)).toEqual([
+      '/health',
+      '/auth/login',
+      '/auth/totp/verify',
+      '/auth/me',
+    ])
+    authority.dispose()
+  })
+
   it('preserves verified and persisted authority on invalid URL or cancelled confirmation', async () => {
     const { persistence, fetchImpl } = setup()
     let confirm = true

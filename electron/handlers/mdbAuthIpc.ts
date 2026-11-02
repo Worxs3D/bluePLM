@@ -28,7 +28,8 @@ import {
   createSafeStorageMdbAuthPersistence,
 } from '../backend/mdbAuthPersistence'
 import { isApplicationUrl, isTrustedSender } from './mdbTrustedSender'
-import { mdbAuthDialogStrings } from '../backend/mdbAuthDialogStrings'
+import type { MdbAuthDialogStrings, MdbAuthLanguage } from '../../src/lib/backend/contracts/mdbAuthShared'
+import { mdbAuthDialogStrings, isMdbAuthLanguage } from '../backend/mdbAuthDialogStrings'
 
 let activeDisposer: (() => void) | undefined
 
@@ -37,7 +38,7 @@ export function registerMdbAuthIpc(
   options?: {
     persistence: MdbAuthPersistence
     fetchImpl: MdbFetch
-    confirmServer: (url: string) => Promise<boolean>
+    confirmServer?: (url: string, strings?: MdbAuthDialogStrings) => Promise<boolean>
   },
 ): () => void {
   activeDisposer?.()
@@ -49,8 +50,8 @@ export function registerMdbAuthIpc(
     fetchImpl: options?.fetchImpl,
     confirmServer:
       options?.confirmServer ??
-      (async (url) => {
-        const strings = mdbAuthDialogStrings(app.getLocale())
+      (async (url, strings) => {
+        if (!strings) throw new MdbAuthAuthorityError('invalid-input', 'Invalid input.')
         return (
           (
             await dialog.showMessageBox(window, {
@@ -88,6 +89,10 @@ export function registerMdbAuthIpc(
       throw new MdbAuthAuthorityError('invalid-input', 'Invalid input.')
     return value
   }
+  const language = (value: unknown): MdbAuthLanguage => {
+    if (!isMdbAuthLanguage(value)) throw new MdbAuthAuthorityError('invalid-input', 'Invalid input.')
+    return value
+  }
   const handle =
     (action: (input: unknown) => Promise<void>) =>
     async (event: IpcMainInvokeEvent, input: unknown) => {
@@ -110,19 +115,21 @@ export function registerMdbAuthIpc(
   ipcMain.handle(
     MDB_AUTH_VALIDATE,
     handle(async (v) => {
-      await authority.validateServer(text(v))
+      const x = record(v, ['url', 'language'])
+      await authority.validateServer(text(x.url), mdbAuthDialogStrings(language(x.language)))
     }),
   )
   ipcMain.handle(
     MDB_AUTH_SIGN_IN,
     handle(async (v) => {
-      const x = record(v, ['serverUrl', 'email', 'password'])
+      const x = record(v, ['serverUrl', 'email', 'password', 'language'])
       if (typeof x.password !== 'string' || x.password.length > MDB_PASSWORD_MAX_LENGTH)
         throw new MdbAuthAuthorityError('invalid-input', 'Invalid input.')
       await authority.signIn({
         serverUrl: text(x.serverUrl),
         email: text(x.email),
         password: text(x.password),
+        dialogStrings: mdbAuthDialogStrings(language(x.language)),
       })
     }),
   )

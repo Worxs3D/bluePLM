@@ -1,4 +1,4 @@
-﻿import { app, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { app, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
