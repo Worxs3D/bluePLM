@@ -130,6 +130,11 @@
  *                   there; data.keptPositions counts them. Removed the SOLIDWORKS Inspection add-in
  *                   path: getInspectionCharacteristics, setInspectionCharacteristics and the
  *                   INSPECTION_ADDIN_UNAVAILABLE code are gone (native extraction replaces them)
+ * - Version 1.27.0: extractDrawingCharacteristics returns each sheet's notes (sheets[].notes): the
+ *                   sheet format's notes, sheet-level notes and notes in block instances on the sheet
+ *                   or format, with evaluated text, sheet position, character height and source.
+ *                   The app parses general tolerances and zone labels from them. Characteristics
+ *                   with no zone get a second GetDrawingZone try with their sheet active
  *
  * When making service changes:
  * 1. Increment SERVICE_VERSION in Program.cs
@@ -139,7 +144,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.26.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.27.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -206,6 +211,8 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Balloons you move by hand in SOLIDWORKS now stay where you put them when BluePLM re-balloons a drawing: a balloon whose number is still in the table goes back to its old spot, and only new numbers are placed automatically. The SOLIDWORKS Inspection add-in import and push are gone; extracting from the drawing needs no Inspection licence',
   '1.26.0':
     'Review packages can be opened in SOLIDWORKS: the service rewrites the references of every assembly and drawing in a downloaded package so they point at the pinned copies inside the package instead of the vault, without needing a SOLIDWORKS seat',
+  '1.27.0':
+    'Extracting a drawing now also reads its title block and border: the service returns the notes of each sheet format, the notes on each sheet and the notes inside blocks, so BluePLM can apply the drawing\'s general tolerances to untoleranced dimensions and fill in zones from the border labels',
 }
 
 /**
@@ -227,6 +234,12 @@ export const SW_SERVICE_VERSION_DOCUMENT_MANAGER_READ = '1.21.0'
 
 /** First service version that answers `retargetReferences`. */
 export const SW_SERVICE_VERSION_RETARGET_REFERENCES = '1.26.0'
+
+/**
+ * First service version whose `extractDrawingCharacteristics` returns `sheets[].notes` (sheet
+ * format, sheet and block notes, for general tolerances and zone labels). Older services omit it.
+ */
+export const SW_SERVICE_VERSION_SHEET_NOTES = '1.27.0'
 
 export interface SwServiceVersionCheckResult {
   status: 'current' | 'outdated' | 'ahead' | 'incompatible' | 'unknown'

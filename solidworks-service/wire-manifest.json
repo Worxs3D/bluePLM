@@ -125,6 +125,20 @@
         "skipped",
         "units"
       ],
+      "sheetFields": [
+        "heightM",
+        "name",
+        "notes",
+        "notesRead",
+        "widthM"
+      ],
+      "noteFields": [
+        "height",
+        "source",
+        "text",
+        "x",
+        "y"
+      ],
       "skippedFields": [
         "baseKey",
         "reason",

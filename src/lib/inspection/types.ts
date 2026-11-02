@@ -48,10 +48,27 @@ export interface ExtractedCharacteristic {
   y: number
 }
 
+/** One note of a sheet: sheet format, sheet annotation or block instance (never inside a view). */
+export interface ExtractedSheetNote {
+  /** Evaluated text, lines joined with '\n'. */
+  text: string
+  /** Note position, sheet metres (same space as characteristic x/y). */
+  x: number
+  y: number
+  /** Character height in metres when known. */
+  height: number | null
+  /** Sheet format, sheet annotation, block instance on sheet/format. */
+  source: 'format' | 'sheet' | 'block'
+}
+
 export interface ExtractedDrawingSheet {
   name: string
   widthM: number
   heightM: number
+  /** Sheet notes (service 1.27.0+, `SW_SERVICE_VERSION_SHEET_NOTES`); older services omit it. */
+  notes?: ExtractedSheetNote[]
+  /** False when the service skipped or failed reading the sheet's notes. */
+  notesRead?: boolean
 }
 
 /** `data` of a successful `extractDrawingCharacteristics`. */

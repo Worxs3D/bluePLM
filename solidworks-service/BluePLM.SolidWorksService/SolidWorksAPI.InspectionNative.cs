@@ -38,6 +38,10 @@ namespace BluePLM.SolidWorksService
     ///   R12 ISelectionMgr.GetSelectedObjectType3 reports a selected note (balloon) as swSelNOTES.
     ///   R13 INote.GetText on a BluePLM balloon returns exactly its label, and GetPosition of the old
     ///       balloon fed back to SetPosition2 puts the new one in the same place (same space both ways).
+    ///   R14-R20 (sheet notes and zones) are in SolidWorksAPI.InspectionNotes.cs.
+    ///   R21 IView.GetAnnotations returns null for a drawing view with no annotations only; a view
+    ///       that is lightweight (IsLightweight) or not loaded (IsModelLoaded false), or whose
+    ///       GetAnnotationCount is not 0, may return null too, so its sheet is marked incomplete.
     /// </summary>
     public partial class SolidWorksAPI
     {
@@ -115,6 +119,9 @@ namespace BluePLM.SolidWorksService
         /// surface finish symbol uses <c>baseKey</c> itself. Every skip carries the sheet and, when
         /// computed, the baseKey; <c>incompleteSheets</c> names sheets the walk could not finish. <c>persistRef</c> is the
         /// same bytes in base64, so applyInspectionBalloons can resolve an annotation directly.
+        ///
+        /// Each sheet also carries <c>notes</c>: the sheet format's notes, the sheet's own notes and
+        /// the notes of block instances on the sheet or format, never notes inside a drawing view.
         ///
         /// Opens the drawing read-only (reusing it when it is already open), changes nothing, and
         /// closes it again only if this call opened it. Hidden annotations, annotations in hidden
@@ -203,6 +210,11 @@ namespace BluePLM.SolidWorksService
                         Skip(site, site.BaseKey, "read failed: " + ex.Message);
                     }
                 }
+
+                // Sheet format, sheet and block notes (SolidWorksAPI.InspectionNotes.cs). Last, because
+                // reading the format switches sheets and editing mode (restored), and never fails
+                // the extraction: a sheet whose notes cannot be read carries what was read.
+                ReadSheetNotesInto(doc, drw, sheets, data, filePath!, wasAlreadyOpen);
 
                 data.IncompleteSheets = sheets.Where(s => s.Incomplete).Select(s => s.Name).ToList();
                 return new CommandResult { Success = true, Data = data };
@@ -369,7 +381,18 @@ namespace BluePLM.SolidWorksService
                     object? raw = null;
                     try { raw = view.GetAnnotations(); }
                     catch { sheet.Incomplete = true; continue; }
-                    if (raw == null) continue; // no annotations
+                    if (raw == null)
+                    {
+                        // Null is "no annotations" only for a view that can show its model's
+                        // annotations; a lightweight or unloaded view, or one that counts
+                        // annotations it will not hand over, makes absence on this sheet unproven.
+                        if (!isSheet && !ViewProvablyHasNoAnnotations(view))
+                        {
+                            sheet.Incomplete = true;
+                            Console.Error.WriteLine($"[InspectionNative] View {viewName ?? "?"} on sheet {sheet.Name} returned no annotations but is not loaded/resolved (or counts some): sheet marked incomplete");
+                        }
+                        continue;
+                    }
                     if (!(raw is Array annotations)) { sheet.Incomplete = true; continue; }
 
                     foreach (var item in annotations)
@@ -411,6 +434,26 @@ namespace BluePLM.SolidWorksService
                         sites.Add(site);
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// True only when a drawing view whose GetAnnotations returned null really has none: it counts
+        /// zero annotations, and a view with a referenced model has that model loaded and not
+        /// lightweight. Any read that throws counts as unproven.
+        /// </summary>
+        private static bool ViewProvablyHasNoAnnotations(View view)
+        {
+            try
+            {
+                if (view.GetAnnotationCount() != 0) return false;
+                var model = view.GetReferencedModelName();
+                if (string.IsNullOrEmpty(model)) return true; // sketch-only / empty view
+                return view.IsModelLoaded() && !view.IsLightweight();
+            }
+            catch
+            {
+                return false;
             }
         }
 

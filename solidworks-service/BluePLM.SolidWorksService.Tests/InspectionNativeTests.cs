@@ -293,5 +293,68 @@ namespace BluePLM.SolidWorksService.Tests
             var m = InspectionNative.MatchOldBalloons(old, new[] { Target("4", "Sheet1", "View1"), Target("8", "Sheet1", null) });
             Assert.Equal(new int?[] { null, 1 }, m);
         }
+
+        // ------------------------------------------------------------------ sheet notes
+
+        [Fact]
+        public void Note_text_keeps_lines_drops_font_tags_and_decodes_symbols()
+        {
+            var raw = "<FONT size=3.5mm>UNLESS OTHERWISE SPECIFIED:</FONT>\r\n  DIMENSIONS   ARE IN MM\r\n.XX <MOD-PM>0.05\r\nANGLES <MOD-PM>0.5<MOD-DEG>\r\n\r\n";
+            Assert.Equal("UNLESS OTHERWISE SPECIFIED:\nDIMENSIONS ARE IN MM\n.XX ±0.05\nANGLES ±0.5°",
+                InspectionNative.NormalizeNoteText(raw));
+            Assert.Equal("A\n\nB", InspectionNative.NormalizeNoteText("\nA\r\rB\n"));
+            Assert.Equal("", InspectionNative.NormalizeNoteText("  \r\n "));
+            Assert.Equal("", InspectionNative.NormalizeNoteText(null));
+        }
+
+        [Fact]
+        public void Block_transform_rotates_scales_and_translates_a_point()
+        {
+            // Identity rotation, scale 2, translation (0.1, 0.2).
+            var t = new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0.1, 0.2, 0, 2, 0, 0, 0 };
+            Assert.Equal((0.12, 0.26), Round(InspectionNative.TransformPoint(t, 0.01, 0.03)!.Value));
+            // 90 degrees counter-clockwise (row-vector convention: a=cos, b=sin, d=-sin, e=cos), scale 1.
+            var r = new double[] { 0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 };
+            Assert.Equal((-0.02, 0.01), Round(InspectionNative.TransformPoint(r, 0.01, 0.02)!.Value));
+            Assert.Null(InspectionNative.TransformPoint(new double[] { 1, 2 }, 0, 0));
+            Assert.Null(InspectionNative.TransformPoint(null, 0, 0));
+        }
+
+        static (double, double) Round((double X, double Y) p) => (Math.Round(p.X, 9), Math.Round(p.Y, 9));
+
+        [Fact]
+        public void Doubles_reads_typed_and_boxed_arrays()
+        {
+            Assert.Equal(new[] { 1.0, 2.5 }, InspectionNative.Doubles(new[] { 1.0, 2.5 }));
+            Assert.Equal(new[] { 1.0, 2.0 }, InspectionNative.Doubles(new object[] { 1, 2f }));
+            Assert.Null(InspectionNative.Doubles("x"));
+            Assert.Null(InspectionNative.Doubles(new object[] { "nope" }));
+        }
+
+        static ExtractedSheetNote N(string text, double x, double y, string source) =>
+            new ExtractedSheetNote { Text = text, X = x, Y = y, Source = source };
+
+        [Fact]
+        public void Merged_notes_are_kept_once_by_the_most_specific_read_in_source_order()
+        {
+            var format = new[] { N("TITLE", 0.2, 0.01, "format"), N("A", 0.005, 0.1, "format"), N("REV", 0.25, 0.01, "format") };
+            // The sheet view also returned the format's "A" and a block's attribute value.
+            var sheet = new[] { N("A", 0.005, 0.1, "sheet"), N("NOTE 1", 0.05, 0.05, "sheet"), N("PART-01", 0.22, 0.02, "sheet"), N("", 0, 0, "sheet") };
+            var block = new[] { N("PART-01", 0.22, 0.02, "block"), N("TITLE", 0.2, 0.01, "block") };
+
+            var merged = InspectionNative.MergeSheetNotes(format, sheet, block);
+
+            Assert.Equal(new[] { "A|format", "REV|format", "NOTE 1|sheet", "PART-01|block", "TITLE|block" },
+                merged.Select(n => n.Text + "|" + n.Source).ToArray());
+        }
+
+        [Fact]
+        public void Same_text_at_different_positions_is_kept_twice()
+        {
+            var merged = InspectionNative.MergeSheetNotes(
+                new[] { N("1", 0.01, 0.005, "format"), N("1", 0.01, 0.205, "format") },
+                Array.Empty<ExtractedSheetNote>(), Array.Empty<ExtractedSheetNote>());
+            Assert.Equal(2, merged.Count);
+        }
     }
 }
