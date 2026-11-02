@@ -4,6 +4,20 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.3.4] - 2026-11-02
+
+App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.3.
+
+### Fixed
+
+- **Downloaded files stay downloaded in the file browser.** After downloading a folder, the files
+  could flip back to cloud-only a second later and only show as local after pressing Refresh. Any
+  unrelated change in the vault (such as a thumbnail being read) started a quick reload that used
+  a scan of the disk taken before the download, so it concluded the new files were not there.
+  Downloads and file writes now record themselves in that scan.
+- **The right-pane button hides and shows the review package pane.** It did nothing while that
+  pane was open.
+
 ## [5.3.3] - 2026-11-02
 
 App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.2.

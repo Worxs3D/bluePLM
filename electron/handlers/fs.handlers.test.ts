@@ -639,6 +639,38 @@ describe('download', () => {
     expect(fs.existsSync(dest + '.download')).toBe(false)
   })
 
+  it('records a download in the cached scan, so a later delta scan still lists it', async () => {
+    put('Parts/a.sldprt', 'a')
+    await scan()
+
+    // The renderer suppresses the download's own watcher events, so the delta scan is
+    // only ever told about some unrelated change.
+    const dest = path.join(vault, 'T90', 'DRAWINGS', 'down.step')
+    await expect(invoke('fs:download-url', `${baseUrl}/file`, dest, sha256(body))).resolves.toMatchObject({
+      success: true,
+    })
+    put('Parts/b.sldprt', 'b')
+
+    const result = await delta(['Parts/b.sldprt'])
+    expect(result.wasFullScan).toBe(false)
+    expect(paths(result.files)).toEqual(
+      expect.arrayContaining(['T90', 'T90/DRAWINGS', 'T90/DRAWINGS/down.step']),
+    )
+    const downloaded = result.files.find((file) => file.relativePath === 'T90/DRAWINGS/down.step')
+    expect(downloaded).toMatchObject({ isDirectory: false, size: body.length, hash: sha256(body) })
+  })
+
+  it('records a written file in the cached scan', async () => {
+    await scan()
+    const target = path.join(vault, 'New', 'w.sldprt')
+    await invoke('fs:write-file', target, Buffer.from('written').toString('base64'))
+
+    const result = await delta(['unrelated.txt'])
+    expect(result.files.find((file) => file.relativePath === 'New/w.sldprt')).toMatchObject({
+      hash: sha256('written'),
+    })
+  })
+
   it('discards a download whose hash does not match and keeps the old file', async () => {
     const dest = put('down.sldprt', 'previous version')
     const result = await invoke('fs:download-url', `${baseUrl}/file`, dest, sha256('something else'))
