@@ -140,6 +140,7 @@ class TelemetryService {
 
   // Load saved config
   loadConfig(): TelemetryConfig {
+    const wasRunning = this.isRunning()
     let saved: string | null = null
     try {
       saved = localStorage.getItem('telemetry.config')
@@ -155,8 +156,9 @@ class TelemetryService {
       }
     }
     this.buffer.resize(this.config.sampleRateHz * this.config.retentionSeconds)
-    // Restoring settings never resumes a recording.
-    this.stop()
+    // Persisted settings never start recording, but reloading them must not
+    // stop a recording that is already active in this renderer session.
+    this.config.enabled = wasRunning
     return this.config
   }
 

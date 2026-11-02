@@ -104,7 +104,7 @@ describe('telemetry configuration restore', () => {
     expect(intervalSpy).not.toHaveBeenCalled()
   })
 
-  it('stops a running recording when saved config is loaded', async () => {
+  it('preserves a running recording when saved config is loaded', async () => {
     values.set(
       'telemetry.config',
       JSON.stringify({ enabled: true, sampleRateHz: 10, retentionSeconds: 20 }),
@@ -114,10 +114,12 @@ describe('telemetry configuration restore', () => {
 
     telemetry.start()
     telemetry.loadConfig()
+    telemetry.loadConfig()
 
     expect(intervalSpy).toHaveBeenCalledTimes(1)
-    expect(telemetry.isRunning()).toBe(false)
-    expect(telemetry.getConfig().enabled).toBe(false)
+    expect(telemetry.isRunning()).toBe(true)
+    expect(telemetry.getConfig().enabled).toBe(true)
+    telemetry.stop()
   })
 
   it('keeps recording usable when browser storage cannot be written', async () => {
