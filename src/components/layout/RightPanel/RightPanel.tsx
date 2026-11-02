@@ -14,6 +14,7 @@ import { VendorsTab } from '@/features/source/details/VendorsTab'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
+import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
 import { FileBox, Layers, File, Loader2, FilePen, ArrowLeft } from 'lucide-react'
 
 // Component to load OS icon for files
@@ -80,7 +81,7 @@ export function RightPanel() {
       setItemPanel: s.setItemPanel,
     })),
   )
-  const reviewPackagePaneOpen = usePDMStore((s) => s.reviewPackagePaneOpen)
+  const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
   const extensionPanelWorkspace = usePDMStore((s) =>
     s.extensionRightPanel && s.extensionRightPanel === s.activeView
       ? (s.extensionWorkspaces.find((w) => w.id === s.extensionRightPanel && w.RightPanel) ?? null)
@@ -162,7 +163,7 @@ export function RightPanel() {
 
   // The review package builder, opened from a file or version context menu, wins over the
   // view's own panel until it is closed: the user asked for it explicitly.
-  if (reviewPackagePaneOpen) {
+  if (reviewPackagePaneShown) {
     return (
       <div
         className="bg-plm-panel border-l border-plm-border flex flex-col"

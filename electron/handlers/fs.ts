@@ -314,6 +314,51 @@ function forgetScanCacheEntry(absolutePath: string): void {
 }
 
 /**
+ * Record a file a handler just wrote into the cached scan, with any folders made for it.
+ *
+ * Downloads and writes land behind the watcher: the renderer marks their events as
+ * expected, so those paths never reach the delta scan. Left alone, the cache kept its
+ * pre-download view, and the next delta-scan load (triggered by any unrelated change)
+ * merged the server rows against it, found no local copy, and turned every file just
+ * downloaded back into cloud-only until a manual refresh. The content hash is known
+ * here, so it is stamped too and the next load does not re-hash the file.
+ *
+ * @param absolutePath - Absolute path of the file now on disk
+ * @param hash - SHA-256 of the content just written
+ */
+function rememberScanCacheWrite(absolutePath: string, hash: string): void {
+  if (!workingDirectory) return
+  const rootDir = workingDirectory
+  const relativePath = path.relative(rootDir, absolutePath).replace(/\\/g, '/')
+  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return
+  if (isIgnoredVaultPath(relativePath)) return
+
+  try {
+    const stats = fs.statSync(absolutePath)
+    hashCache.set(relativePath, { size: stats.size, mtime: stats.mtime.getTime(), hash })
+    if (!watcherScanCache.isPopulated() || !workingFilesScanCache) return
+
+    const entries = workingFilesScanCache.entries
+    entries.set(relativePath, buildFileEntry(absolutePath, relativePath, stats))
+
+    // A download into a folder the cache never saw created that folder as well.
+    let dir = path.posix.dirname(relativePath)
+    while (dir !== '.' && !entries.has(dir)) {
+      const fullDir = path.join(rootDir, dir)
+      entries.set(dir, buildDirectoryEntry(fullDir, dir, fs.statSync(fullDir)))
+      dir = path.posix.dirname(dir)
+    }
+  } catch (error) {
+    // The file is already in place; a full scan will pick it up.
+    watcherScanCache.invalidate()
+    log('Dropped cached vault scan: could not record a written file', {
+      absolutePath,
+      error: String(error),
+    })
+  }
+}
+
+/**
  * Drop the cached scan after a handler put entries on disk behind the watcher's back.
  *
  * Forgetting individual entries is not enough here. The delta scan only re-walks the
@@ -966,6 +1011,7 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
         } catch {}
         throw renameErr
       }
+      rememberScanCacheWrite(filePath, hash)
 
       logDebug('File written successfully', {
         filePath,
@@ -1395,6 +1441,8 @@ export function registerFsHandlers(window: BrowserWindow, deps: FsHandlerDepende
                 resolve({ success: false, error: 'Failed to replace destination file' })
                 return
               }
+
+              rememberScanCacheWrite(destPath, hash)
 
               log(`[${operationId}] Download complete`, {
                 destPath,

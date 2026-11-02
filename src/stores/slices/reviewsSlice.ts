@@ -56,6 +56,15 @@ export function selectReviewPackageDraft(state: PDMStoreState): ReviewPackageDra
 
 const EMPTY_DRAFT: ReviewPackageDraft = emptyReviewPackageDraft()
 
+/**
+ * Whether the review package pane is on screen. It lives in the right panel, so the top bar's
+ * right-pane toggle hides and shows it like any other right-panel content; the draft is in the
+ * store, so hiding loses nothing.
+ */
+export function selectReviewPackagePaneShown(state: PDMStoreState): boolean {
+  return state.reviewPackagePaneOpen && state.rightPanelVisible
+}
+
 export const createReviewsSlice: StateCreator<
   PDMStoreState,
   [['zustand/persist', unknown]],
@@ -104,7 +113,11 @@ export const createReviewsSlice: StateCreator<
         return { reviewPackageDrafts: next }
       })
     },
-    setReviewPackagePaneOpen: (reviewPackagePaneOpen) => set({ reviewPackagePaneOpen }),
+    setReviewPackagePaneOpen: (reviewPackagePaneOpen) => {
+      set({ reviewPackagePaneOpen })
+      // Opening asks for the pane explicitly, so a hidden right panel comes back with it.
+      if (reviewPackagePaneOpen && !get().rightPanelVisible) get().toggleRightPanel()
+    },
     setActiveReviewId: (activeReviewId, itemId = null) =>
       set({ activeReviewId, activeReviewItemId: activeReviewId ? itemId : null }),
     setActiveReviewItemId: (activeReviewItemId) => set({ activeReviewItemId }),
