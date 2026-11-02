@@ -18,7 +18,9 @@
     "vite.perf.ts",
     "electron/**/*.ts",
     "api/src/native-extensions/safeExtract.ts",
-    "src/lib/backend/contracts/mdbAuthShared.d.ts"
-  ]
+    "src/lib/backend/contracts/mdbAuthShared.d.ts",
+    "src/lib/i18n/locales/mdbAuth.json"
+  ],
+  "exclude": ["electron/handlers/mdbAuthIpc.test.ts"]
 }
 

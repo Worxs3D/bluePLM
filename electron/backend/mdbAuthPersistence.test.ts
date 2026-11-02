@@ -78,6 +78,7 @@ it('fails closed when encryption is unavailable and propagates clear IO errors',
         email: 'a',
         displayName: 'A',
         role: 'member',
+        isAdmin: false,
         createdAt: '2026-01-01T00:00:00Z',
       },
       organization: { id: 'o', name: 'O', slug: 'o', createdAt: '2026-01-01T00:00:00Z' },
@@ -100,6 +101,7 @@ it('does not restore after confirmed filesystem clear with a fresh authority', a
     email: 'a@example.test',
     displayName: 'A',
     role: 'member',
+    isAdmin: false,
     createdAt: '2026-01-01T00:00:00Z',
   }
   const organization = {
@@ -164,7 +166,7 @@ it.each(['restore', 'dispose', 'newer-authority'] as const)(
     const principal = {
       userId: '11111111-1111-4111-8111-111111111111',
       organizationId: '22222222-2222-4222-8222-222222222222',
-      email: 'a@example.test', displayName: 'A', role: 'member', createdAt: '2026-01-01T00:00:00Z',
+      email: 'a@example.test', displayName: 'A', role: 'member', isAdmin: false, createdAt: '2026-01-01T00:00:00Z',
     }
     const organization = { id: principal.organizationId, name: 'Org', slug: 'org', createdAt: principal.createdAt }
     const fetchImpl = async (url: URL) => {

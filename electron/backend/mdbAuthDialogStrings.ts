@@ -1,14 +1,32 @@
-import strings from './mdbAuthDialogStrings.json'
+import type {
+  MdbAuthDialogStrings,
+  MdbAuthLanguage,
+} from '../../src/lib/backend/contracts/mdbAuthShared'
+import localizedStrings from '../../src/lib/i18n/locales/mdbAuth.json'
 
-type DialogLocale = keyof typeof strings
+const supportedLanguages: readonly MdbAuthLanguage[] = [
+  'en',
+  'fr',
+  'de',
+  'es',
+  'pt',
+  'zh-CN',
+  'zh-TW',
+  'it',
+  'nl',
+  'sv',
+  'pl',
+  'ru',
+  'ja',
+  'ko',
+  'sindarin',
+]
 
-export function mdbAuthDialogStrings(locale: string): (typeof strings)[DialogLocale] {
-  const normalized = locale.toLowerCase()
-  if (normalized.startsWith('zh')) {
-    const traditional = /(?:^|[-_])(tw|hk|mo|hant)(?:$|[-_])/.test(normalized)
-    return strings[traditional ? 'zhTW' : 'zhCN']
-  }
-  const primary = normalized.split(/[-_]/)[0]
-  const language = (['en', 'fr', 'de', 'es', 'pt'] as const).find((value) => value === primary)
-  return strings[language ?? 'en']
+export function isMdbAuthLanguage(value: unknown): value is MdbAuthLanguage {
+  return typeof value === 'string' && supportedLanguages.includes(value as MdbAuthLanguage)
+}
+
+export function mdbAuthDialogStrings(language: MdbAuthLanguage): MdbAuthDialogStrings {
+  const locale = Object.hasOwn(localizedStrings, language) ? language : 'en'
+  return localizedStrings[locale as keyof typeof localizedStrings]
 }

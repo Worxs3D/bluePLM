@@ -2,6 +2,7 @@ import type {
   MdbAuthState,
   MdbPrincipal,
   MdbOrganization,
+  MdbAuthDialogStrings,
 } from '../../src/lib/backend/contracts/mdbAuthShared'
 import {
   MdbFileVaultTransport,
@@ -37,7 +38,7 @@ export interface MdbAuthPersistence {
 }
 
 export function createMdbAuthAuthority(options: {
-  readonly confirmServer: (url: string) => Promise<boolean>
+  readonly confirmServer: (url: string, strings?: MdbAuthDialogStrings) => Promise<boolean>
   readonly persistence: MdbAuthPersistence
   readonly fetchImpl?: MdbFetch
   readonly now?: () => Date
@@ -204,16 +205,21 @@ export function createMdbAuthAuthority(options: {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    async validateServer(serverUrl: string) {
+    async validateServer(serverUrl: string, dialogStrings: MdbAuthDialogStrings) {
       const normalized = normalizeMdbServerUrl(serverUrl).toString()
-      if (!(await options.confirmServer(normalized)))
+      if (!(await options.confirmServer(normalized, dialogStrings)))
         throw new MdbAuthAuthorityError('server-not-confirmed', 'Server not confirmed.')
       await validateMdbHealth(normalized, options.fetchImpl)
     },
-    async signIn(input: { serverUrl: string; email: string; password: string }) {
+    async signIn(input: {
+      serverUrl: string
+      email: string
+      password: string
+      dialogStrings?: MdbAuthDialogStrings
+    }) {
       const serverUrl = normalizeMdbServerUrl(input.serverUrl).toString()
       const beforeConfirmation = generation
-      if (!(await options.confirmServer(serverUrl)))
+      if (!(await options.confirmServer(serverUrl, input.dialogStrings)))
         throw new MdbAuthAuthorityError('server-not-confirmed', 'Server not confirmed.')
       current(beforeConfirmation)
       const expected = invalidate()

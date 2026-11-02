@@ -4,4 +4,5 @@ export type {
   MdbAuthState,
   MdbAuthResult,
   MdbAuthCapability,
+  MdbAuthLanguage,
 } from './mdbAuthShared'

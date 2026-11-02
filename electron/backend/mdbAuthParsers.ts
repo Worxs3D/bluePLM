@@ -59,6 +59,12 @@ export function parseSessionLogin(value: unknown, now: () => Date): MdbLoginSess
 export function parsePrincipal(value: unknown): MdbTrustedPrincipal {
   const user = requireRecord(requireRecord(value, 'auth/me').user, 'auth/me.user')
   const role = requireText(user.role, 'auth/me.user.role')
+  if (typeof user.isAdmin !== 'boolean') {
+    throw new MdbTrustedContextError(
+      'invalid-principal-response',
+      'MDB auth/me.user.isAdmin must be a boolean.',
+    )
+  }
   if (!isMdbMembershipRole(role)) {
     throw new MdbTrustedContextError(
       'invalid-principal-response',
@@ -78,6 +84,7 @@ export function parsePrincipal(value: unknown): MdbTrustedPrincipal {
     email: requireText(user.email, 'auth/me.user.email'),
     displayName: requireText(user.displayName, 'auth/me.user.displayName'),
     role,
+    isAdmin: user.isAdmin,
     createdAt,
   }
 }
