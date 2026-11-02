@@ -26,6 +26,7 @@ import {
   Box,
 } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
+import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
 import { useShallow } from 'zustand/react/shallow'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
@@ -145,8 +146,10 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   )
 
   // In the Reviews view the right pane is the comment sidebar beside the drawing,
-  // which has its own visibility flag; everywhere else it is the tabbed right panel.
-  const rightPaneIsReviewComments = activeView === 'reviews'
+  // which has its own visibility flag; everywhere else it is the right panel. The
+  // review package pane sits in the right panel and goes first while it is showing.
+  const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
+  const rightPaneIsReviewComments = activeView === 'reviews' && !reviewPackagePaneShown
   const rightPaneShown = rightPaneIsReviewComments ? reviewCommentsVisible : rightPanelVisible
 
   // Filter vaults based on impersonated user's access
