@@ -8,7 +8,7 @@
  * that gained a value since the scan is never overwritten, and no version is created.
  */
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AlertTriangle, Check, Eye, Loader2, Lock, ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/core/ui'
@@ -17,14 +17,16 @@ import type { FillableMetadataField } from '@/lib/supabase/files/fillEmptyMetada
 import type { VaultAuditFillOutcome } from '@/types/vaultAudit'
 
 import type { UseVaultAuditFillResult } from './useVaultAuditFill'
-import { fieldLabel } from './vaultAuditLabels'
-import { VaultAuditNote } from './VaultAuditNote'
+import { FooterMessage, VaultAuditFooter } from './VaultAuditFooter'
+import { countOf, fieldLabel } from './vaultAuditLabels'
 
 /** Rows listed in the preview; the count above it always covers the whole plan. */
 const MAX_PREVIEW_ROWS = 50
 
 interface VaultAuditFillActionBarProps {
   fill: UseVaultAuditFillResult
+  /** The selection controls, from the findings list. */
+  selection: ReactNode
 }
 
 function Receipt({ outcome }: { outcome: VaultAuditFillOutcome }) {
@@ -70,7 +72,7 @@ function Preview({ fill, onCancel }: { fill: UseVaultAuditFillResult; onCancel: 
   )
 
   return (
-    <div className="space-y-2 border-t border-ui-divider pt-3">
+    <div className="space-y-2">
       <p className="text-[14px] text-ui-fg">
         {t('vaultAudit.fill.previewHeading', {
           values: fill.plan.valueCount,
@@ -106,65 +108,53 @@ function Preview({ fill, onCancel }: { fill: UseVaultAuditFillResult; onCancel: 
           {fill.applying ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
           {fill.applying
             ? t('vaultAudit.fill.applying')
-            : t('vaultAudit.fill.apply', { count: fill.plan.valueCount })}
+            : t('vaultAudit.fill.applyPhrase', { values: countOf('values', fill.plan.valueCount) })}
         </Button>
       </div>
     </div>
   )
 }
 
-export function VaultAuditFillActionBar({ fill }: VaultAuditFillActionBarProps) {
+export function VaultAuditFillActionBar({ fill, selection }: VaultAuditFillActionBarProps) {
   const [previewing, setPreviewing] = useState(false)
+  const values = fill.plan.valueCount
+
+  if (previewing && values > 0) {
+    return <Preview fill={fill} onCancel={() => setPreviewing(false)} />
+  }
 
   return (
-    <div className="space-y-3">
-      <VaultAuditNote
-        icon={ShieldCheck}
-        iconClassName="text-ui-success"
-        label={t('vaultAudit.actions.guaranteeLabel')}
-      >
-        <p>{t('vaultAudit.fill.guarantee')}</p>
-      </VaultAuditNote>
-
-      {!fill.isAdmin && (
-        <p className="text-[13px] text-ui-fg-secondary flex items-start gap-1.5">
-          <Lock size={13} className="mt-0.5 flex-shrink-0" />
-          {t('vaultAudit.fill.adminOnly')}
-        </p>
-      )}
-
-      {fill.error && (
-        <p className="text-[13px] text-ui-danger flex items-start gap-1.5">
-          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-          {fill.error}
-        </p>
-      )}
-
-      {fill.outcome && <Receipt outcome={fill.outcome} />}
-
-      {previewing && fill.plan.valueCount > 0 ? (
-        <Preview fill={fill} onCancel={() => setPreviewing(false)} />
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-ui-fg-secondary">
-            {fill.plan.valueCount === 0
-              ? t('vaultAudit.fill.selectPrompt')
-              : t('vaultAudit.fill.selectedSummary', {
-                  values: fill.plan.valueCount,
-                  files: fill.plan.requests.length,
-                })}
-          </p>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setPreviewing(true)}
-            disabled={!fill.isAdmin || fill.applying || fill.plan.valueCount === 0}
-          >
-            <Eye size={12} />
-            {t('vaultAudit.fill.review', { count: fill.plan.valueCount })}
-          </Button>
-        </div>
-      )}
-    </div>
+    <VaultAuditFooter
+      note={{ icon: ShieldCheck, content: <p>{t('vaultAudit.fill.guarantee')}</p> }}
+      messages={
+        <>
+          {!fill.isAdmin && <FooterMessage icon={Lock}>{t('vaultAudit.fill.adminOnly')}</FooterMessage>}
+          {fill.error && (
+            <FooterMessage icon={AlertTriangle} tone="danger">
+              {fill.error}
+            </FooterMessage>
+          )}
+          {fill.outcome && <Receipt outcome={fill.outcome} />}
+        </>
+      }
+      summary={
+        selection ?? (
+          <span className="text-ui-fg-secondary">{t('vaultAudit.fill.selectPromptShort')}</span>
+        )
+      }
+      actions={
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Eye size={13} />}
+          onClick={() => setPreviewing(true)}
+          disabled={!fill.isAdmin || fill.applying || values === 0}
+        >
+          {values > 0
+            ? t('vaultAudit.fill.reviewPhrase', { values: countOf('values', values) })
+            : t('vaultAudit.fill.reviewNone')}
+        </Button>
+      }
+    />
   )
 }

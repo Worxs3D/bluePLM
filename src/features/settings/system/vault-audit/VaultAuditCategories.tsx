@@ -1,7 +1,7 @@
 import { t } from '@/lib/i18n'
-import type { VaultAuditCategory, VaultAuditCategoryKind } from '@/types/vaultAudit'
+import type { VaultAuditCategory, VaultAuditCategoryKind, VaultAuditTone } from '@/types/vaultAudit'
 
-import { categoryDescription, categoryLabel, TONE_TEXT } from './vaultAuditLabels'
+import { categoryDescription, categoryLabel, categoryShortLabel } from './vaultAuditLabels'
 
 interface VaultAuditCategoriesProps {
   categories: VaultAuditCategory[]
@@ -9,19 +9,24 @@ interface VaultAuditCategoriesProps {
   onSelect: (kind: VaultAuditCategoryKind) => void
 }
 
+const TONE_DOT: Record<VaultAuditTone, string> = {
+  critical: 'bg-ui-danger',
+  warning: 'bg-ui-warning',
+  repairable: 'bg-ui-accent',
+  neutral: 'bg-ui-fg-tertiary',
+}
+
 /**
- * The six categories, worst first, as the rail beside the file list.
+ * The six categories, worst first, as tabs above the file list.
  *
  * All six are always shown, including the empty ones, because "no values are lost" is the answer
- * an administrator came for and an entry that disappears when it hits zero cannot give it.
+ * an administrator came for and a tab that disappears when it hits zero cannot give it. An empty
+ * tab is dimmed and shows its zero.
  *
- * Each is titled by what resolving it consists of rather than by what the evidence is: "Copy the
- * file's value into BluePLM" is the fix, where "The file still has it" leaves the reader to work
- * out which way it runs. The evidence is the description, shown above the list for the selected
- * category and on hover for the rest.
- *
- * They used to be a grid of cards above the list, which pushed the list below the fold and made
- * choosing one look like it did nothing. As a rail they stay beside the list they filter.
+ * A tab names what is wrong in a few words; the heading under the tabs names the fix ("Copy the
+ * file's value into BluePLM") and the evidence. They used to be a rail beside the list, which in a
+ * settings dialog took a quarter of the width the values need and wrapped every name onto two
+ * lines.
  */
 export function VaultAuditCategories({
   categories,
@@ -29,11 +34,11 @@ export function VaultAuditCategories({
   onSelect,
 }: VaultAuditCategoriesProps) {
   return (
-    <nav aria-label={t('vaultAudit.category.heading')} className="space-y-1">
-      <h3 className="px-2.5 pb-1 text-[13px] text-ui-fg-secondary">
-        {t('vaultAudit.category.heading')}
-      </h3>
-
+    <div
+      role="tablist"
+      aria-label={t('vaultAudit.category.heading')}
+      className="flex flex-wrap gap-1.5"
+    >
       {categories.map((category) => {
         const empty = category.valueCount === 0
         const isSelected = selected === category.kind
@@ -42,34 +47,28 @@ export function VaultAuditCategories({
           <button
             key={category.kind}
             type="button"
+            role="tab"
+            aria-selected={isSelected}
             onClick={() => onSelect(category.kind)}
             disabled={empty}
-            aria-pressed={isSelected}
-            title={categoryDescription(category.kind)}
-            className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
-              isSelected ? 'bg-ui-selected' : 'hover:bg-ui-hover'
-            } ${empty ? 'opacity-50 cursor-default hover:bg-transparent' : ''}`}
+            title={`${categoryLabel(category.kind)}. ${categoryDescription(category.kind)}`}
+            className={`inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50 ${
+              isSelected
+                ? 'border-ui-selected-border bg-ui-selected text-ui-fg'
+                : 'border-ui-divider text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
+            } ${empty ? 'opacity-45 cursor-default hover:bg-transparent hover:text-ui-fg-secondary' : ''}`}
           >
-            <div className="flex items-start justify-between gap-2">
-              <span className={`text-[14px] text-ui-fg ${isSelected ? 'font-medium' : ''}`}>
-                {categoryLabel(category.kind)}
-              </span>
-              <span
-                className={`text-[13px] font-mono tabular-nums flex-shrink-0 ${
-                  empty ? 'text-ui-fg-secondary' : TONE_TEXT[category.tone]
-                }`}
-              >
-                {category.valueCount}
-              </span>
-            </div>
-            {!empty && (
-              <span className="block text-[13px] text-ui-fg-secondary mt-0.5">
-                {t('vaultAudit.category.files', { count: category.fileCount })}
-              </span>
-            )}
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full ${empty ? 'bg-ui-fg-tertiary' : TONE_DOT[category.tone]}`}
+            />
+            <span className={isSelected ? 'font-medium' : ''}>
+              {categoryShortLabel(category.kind)}
+            </span>
+            <span className="tabular-nums text-ui-fg-secondary">{category.valueCount}</span>
           </button>
         )
       })}
-    </nav>
+    </div>
   )
 }

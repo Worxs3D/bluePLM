@@ -1,16 +1,16 @@
-import { AlertTriangle, CheckCircle2, CircleDashed, FileWarning, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleDashed, ShieldCheck } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import type { VaultAuditView } from '@/types/vaultAudit'
 
+import { formatDuration } from './vaultAuditTiming'
 import { hasEvidence } from './vaultAuditView'
 
 interface VaultAuditOverviewProps {
   view: VaultAuditView
-  artifactPath: string | null
+  /** Shown by `VaultAuditRunNotes` only. */
+  artifactPath?: string | null
 }
-
-const MS_PER_SECOND = 1000
 
 function unreadLines(view: VaultAuditView): string[] {
   const lines: string[] = []
@@ -83,9 +83,37 @@ function headlineTextOf(view: VaultAuditView, tone: HeadlineTone): string {
   })
 }
 
-export function VaultAuditOverview({ view, artifactPath }: VaultAuditOverviewProps) {
+function Stat({
+  value,
+  label,
+  detail,
+  tone = 'text-ui-fg',
+  title,
+}: {
+  value: string
+  label: string
+  detail?: string
+  tone?: string
+  title?: string
+}) {
+  return (
+    <div className="min-w-0 px-4 py-3" title={title}>
+      <div className="text-[12px] text-ui-fg-secondary">{label}</div>
+      <div className={`mt-0.5 text-[20px] font-semibold leading-7 tabular-nums ${tone}`}>{value}</div>
+      {detail && <div className="truncate text-[12px] text-ui-fg-tertiary">{detail}</div>}
+    </div>
+  )
+}
+
+/**
+ * The run in four numbers, then only the sentences that change what the numbers mean (a cancelled
+ * run, files that were never compared, a file that changed while being read). Bookkeeping such as
+ * the artifact path goes in `VaultAuditRunNotes`, under the details fold.
+ */
+export function VaultAuditOverview({ view }: VaultAuditOverviewProps) {
   const tone = headlineToneOf(view)
   const notRead = unreadLines(view)
+  const notReadTotal = view.unread.missingOnDisk + view.unread.openInSolidWorks + view.unread.readFailed
   const notCompared = notComparedLines(view)
   // Only worth saying when a folder was actually asked for. On a whole-vault run that matched
   // nothing, the path is not the thing to go and check.
@@ -94,38 +122,54 @@ export function VaultAuditOverview({ view, artifactPath }: VaultAuditOverviewPro
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-2">
-        {tone === 'clean' ? (
-          <CheckCircle2 size={16} className="text-ui-success mt-0.5 flex-shrink-0" />
-        ) : tone === 'empty' ? (
-          <AlertTriangle size={16} className="text-ui-warning mt-0.5 flex-shrink-0" />
-        ) : tone === 'partial' ? (
-          <CircleDashed size={16} className="text-ui-fg-secondary mt-0.5 flex-shrink-0" />
-        ) : (
-          <FileWarning size={16} className="text-ui-warning mt-0.5 flex-shrink-0" />
-        )}
-        <div className="min-w-0">
-          <p className="text-[14px] text-ui-fg">{headlineTextOf(view, tone)}</p>
-          {unmatchedFolderPath && (
-            <p className="text-[13px] text-ui-fg-secondary mt-1">
-              {t('vaultAudit.result.folderMatchedNothingAnywhere', {
-                path: unmatchedFolderPath,
-                vault: view.scopeDescription.vaultPath,
-              })}
-            </p>
+      {tone !== 'findings' && (
+        <div className="flex items-start gap-2">
+          {tone === 'clean' ? (
+            <CheckCircle2 size={16} className="text-ui-success mt-0.5 flex-shrink-0" />
+          ) : tone === 'empty' ? (
+            <AlertTriangle size={16} className="text-ui-warning mt-0.5 flex-shrink-0" />
+          ) : (
+            <CircleDashed size={16} className="text-ui-fg-secondary mt-0.5 flex-shrink-0" />
           )}
-          <p className="text-[13px] text-ui-fg-secondary mt-0.5">
-            {t('vaultAudit.result.scanned', {
-              files: view.filesCompared,
-              seconds: Math.round(view.durationMs / MS_PER_SECOND),
-            })}
-            {view.filesWithMultipleConfigurations > 0 &&
-              ` · ${t('vaultAudit.result.multiConfiguration', {
-                count: view.filesWithMultipleConfigurations,
-              })}`}
-          </p>
+          <div className="min-w-0">
+            <p className="text-[14px] text-ui-fg">{headlineTextOf(view, tone)}</p>
+            {unmatchedFolderPath && (
+              <p className="text-[13px] text-ui-fg-secondary mt-1">
+                {t('vaultAudit.result.folderMatchedNothingAnywhere', {
+                  path: unmatchedFolderPath,
+                  vault: view.scopeDescription.vaultPath,
+                })}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {tone !== 'empty' && (
+        <div className="grid grid-cols-3 divide-x divide-ui-divider rounded-xl border border-ui-divider bg-ui-nav">
+          <Stat
+            label={t('vaultAudit.summary.withFindings')}
+            value={tone === 'findings' ? String(view.filesWithFindings) : t('vaultAudit.summary.clean')}
+            tone={tone === 'findings' ? 'text-ui-warning' : 'text-ui-success'}
+            detail={t('vaultAudit.summary.ofCompared', { count: view.filesCompared })}
+            title={
+              view.filesWithMultipleConfigurations > 0
+                ? t('vaultAudit.result.multiConfiguration', {
+                    count: view.filesWithMultipleConfigurations,
+                  })
+                : undefined
+            }
+          />
+          <Stat
+            label={t('vaultAudit.summary.notRead')}
+            value={String(notReadTotal)}
+            tone={notReadTotal > 0 ? 'text-ui-fg' : 'text-ui-fg-secondary'}
+            detail={notRead.length > 0 ? notRead.join(' · ') : t('vaultAudit.summary.notReadNone')}
+            title={notRead.join(' · ') || undefined}
+          />
+          <Stat label={t('vaultAudit.summary.duration')} value={formatDuration(view.durationMs)} />
+        </div>
+      )}
 
       {view.cancelled && (
         <p className="text-[13px] text-ui-warning flex items-start gap-1.5">
@@ -140,37 +184,39 @@ export function VaultAuditOverview({ view, artifactPath }: VaultAuditOverviewPro
         </p>
       )}
 
-      {notRead.length > 0 && (
+      {tone === 'empty' && notRead.length > 0 && (
         <p className="text-[13px] text-ui-fg-secondary">
           {t('vaultAudit.unread.heading')}: {notRead.join(' · ')}
         </p>
       )}
 
-      {view.integrity.filesChanged > 0 ? (
+      {view.integrity.filesChanged > 0 && (
         <p className="text-[13px] text-ui-danger flex items-start gap-1.5">
           <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
           {t('vaultAudit.integrity.changed', { count: view.integrity.filesChanged })}
         </p>
-      ) : (
-        view.integrity.filesHashed > 0 && (
-          <p className="text-[13px] text-ui-fg-secondary flex items-start gap-1.5">
-            <ShieldCheck size={13} className="mt-0.5 flex-shrink-0 text-ui-success" />
-            {t('vaultAudit.integrity.verified', { count: view.integrity.filesHashed })}
-          </p>
-        )
       )}
+    </div>
+  )
+}
 
+/** What is worth knowing about the run but changes nothing on the page: under the details fold. */
+export function VaultAuditRunNotes({ view, artifactPath }: VaultAuditOverviewProps) {
+  return (
+    <div className="space-y-2 text-[13px] text-ui-fg-secondary">
       {view.noEvidenceValues > 0 && (
-        <p className="text-[13px] text-ui-fg-secondary">
-          {t('vaultAudit.result.noEvidence', { count: view.noEvidenceValues })}
+        <p>{t('vaultAudit.result.noEvidence', { count: view.noEvidenceValues })}</p>
+      )}
+      {view.integrity.filesChanged === 0 && view.integrity.filesHashed > 0 && (
+        <p className="flex items-start gap-1.5">
+          <ShieldCheck size={13} className="mt-0.5 flex-shrink-0 text-ui-success" />
+          {t('vaultAudit.integrity.verified', { count: view.integrity.filesHashed })}
         </p>
       )}
-
       {artifactPath && (
-        <p className="text-[13px] text-ui-fg-secondary font-mono break-all">
-          {t('vaultAudit.result.artifact', { path: artifactPath })}
-        </p>
+        <p className="font-mono break-all">{t('vaultAudit.result.artifact', { path: artifactPath })}</p>
       )}
+      <p>{t('vaultAudit.result.notStored')}</p>
     </div>
   )
 }

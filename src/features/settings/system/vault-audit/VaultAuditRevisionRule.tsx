@@ -17,9 +17,11 @@
  *
  * A filter with no visible effect is how a page comes to show a reassuring number over values it
  * decided not to mention, which is the failure the whole audit exists to avoid. The excluded count
- * is printed whenever it is not zero, in the same place as the control that produced it.
+ * is printed whenever it is not zero, next to the switch that produced it; the full explanation is
+ * on hover, so it no longer fills a column of the page.
  */
 
+import { Switch } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 
 interface VaultAuditRevisionRuleProps {
@@ -34,28 +36,24 @@ export function VaultAuditRevisionRule({
   hiddenCount,
   onChange,
 }: VaultAuditRevisionRuleProps) {
+  const hint = t('vaultAudit.revisionRule.hint')
   return (
-    <div className="border-t border-ui-divider pt-3">
-      <div className="space-y-1.5 min-w-0">
-        <label className="flex items-start gap-2 text-[13px] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={expectRevisionOnModels}
-            onChange={(event) => onChange(event.target.checked)}
-            className="mt-0.5 accent-ui-accent"
-          />
-          <span>
-            <span className="text-ui-fg block">{t('vaultAudit.revisionRule.label')}</span>
-            <span className="text-ui-fg-secondary block">{t('vaultAudit.revisionRule.hint')}</span>
-          </span>
-        </label>
-
-        {hiddenCount > 0 && (
-          <p className="text-[13px] text-ui-fg-secondary">
-            {t('vaultAudit.revisionRule.hidden', { count: hiddenCount })}
-          </p>
-        )}
-      </div>
+    <div className="flex items-center gap-2 text-[13px]" title={hint}>
+      <Switch
+        size="sm"
+        checked={expectRevisionOnModels}
+        onChange={onChange}
+        aria-label={t('vaultAudit.revisionRule.label')}
+      />
+      <span className="text-ui-fg-secondary">{t('vaultAudit.revisionRule.short')}</span>
+      {hiddenCount > 0 && (
+        <span
+          className="text-ui-fg-tertiary"
+          title={t('vaultAudit.revisionRule.hidden', { count: hiddenCount })}
+        >
+          · {t('vaultAudit.revisionRule.hiddenShort', { count: hiddenCount })}
+        </span>
+      )}
     </div>
   )
 }

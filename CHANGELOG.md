@@ -4,6 +4,22 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+App only: no schema, API or SolidWorks service change.
+
+### Changed
+
+- **The Metadata Audit page is redesigned.** The six finding categories are tabs above the list
+  instead of a rail beside it, so the values get the dialog's full width. A run is summarised in
+  three numbers (files with findings, files not read, scan time). The list, its filter and the write
+  button are one card, with the button in a footer that stays in view; the explanations behind each
+  write sit behind "How this works". The resolution column appears only where rows resolve
+  differently or a side has to be picked, and a picked side shows its arrow. An empty value reads
+  "empty" instead of a dash, and counts say "1 file" rather than "1 files". The scope is three cards
+  before a run and one line after it or while it runs. The revision switch sits beside the list it
+  filters, its explanation on hover.
+
 ## [5.3.2] - 2026-11-01
 
 App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.1.

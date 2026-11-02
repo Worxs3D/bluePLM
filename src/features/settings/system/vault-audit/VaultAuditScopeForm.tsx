@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Play, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { AlertTriangle, Loader2, Play, X } from 'lucide-react'
 
 import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
@@ -35,6 +35,9 @@ interface VaultAuditScopeFormProps {
 interface ScopeOption {
   kind: VaultAuditScopeKind
   label: string
+  /** One line on the card. */
+  short: string
+  /** The full explanation, on hover. */
   hint: string
 }
 
@@ -43,16 +46,19 @@ function scopeOptions(): ScopeOption[] {
     {
       kind: 'configuration-recorded',
       label: t('vaultAudit.scope.configurationRecorded'),
+      short: t('vaultAudit.scope.configurationRecordedShort'),
       hint: t('vaultAudit.scope.configurationRecordedHint'),
     },
     {
       kind: 'folder',
       label: t('vaultAudit.scope.folder'),
+      short: t('vaultAudit.scope.folderShort'),
       hint: t('vaultAudit.scope.folderHint'),
     },
     {
       kind: 'whole-vault',
       label: t('vaultAudit.scope.wholeVault'),
+      short: t('vaultAudit.scope.wholeVaultShort'),
       hint: t('vaultAudit.scope.wholeVaultHint'),
     },
   ]
@@ -118,10 +124,13 @@ export function VaultAuditScopeForm({
   // Once there is a result the list is what matters, so the three options fold into one line
   // naming the scope, and open again on request.
   const [expanded, setExpanded] = useState(false)
-  const showOptions = !hasResult || expanded
+  // While a scan runs the scope cannot change, so it is a line too.
+  const showOptions = !isRunning && (!hasResult || expanded)
+  useEffect(() => {
+    if (isRunning) setExpanded(false)
+  }, [isRunning])
   const options = scopeOptions()
   const current = options.find((option) => option.kind === scope.kind)
-  const Chevron = showOptions ? ChevronDown : ChevronRight
 
   const vaultPath = usePDMStore((state) => state.vaultPath) ?? ''
   const files = usePDMStore((state) => state.files)
@@ -137,97 +146,125 @@ export function VaultAuditScopeForm({
     : null
   const folderBlocks = folderStatus !== null && folderScopeBlocksRun(folderStatus)
 
-  return (
-    <div className="space-y-3">
-      {hasResult && (
+  const runButton = isRunning ? (
+    <Button icon={<X size={14} />} onClick={onCancel} disabled={cancelRequested}>
+      {cancelRequested ? t('vaultAudit.cancelling') : t('vaultAudit.cancel')}
+    </Button>
+  ) : (
+    <Button
+      variant="primary"
+      icon={<Play size={14} />}
+      onClick={onStart}
+      disabled={!canScan || blocked || folderBlocks}
+    >
+      {hasResult ? t('vaultAudit.rescan') : t('vaultAudit.scan')}
+    </Button>
+  )
+
+  // After a run the scope is a line, not a form: it is settled, and the result is what to read.
+  if (!showOptions) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-ui-divider px-3 py-2">
+        <span className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.scope.label')}</span>
+        <span className="min-w-0 truncate text-[13px] font-medium text-ui-fg">
+          {scope.kind === 'folder' && scope.folderPath
+            ? `${current?.label ?? ''}: ${scope.folderPath}`
+            : (current?.label ?? '')}
+        </span>
         <button
           type="button"
-          onClick={() => setExpanded((value) => !value)}
-          aria-expanded={showOptions}
-          className="flex items-center gap-1.5 text-[14px] text-ui-fg-secondary hover:text-ui-fg"
+          onClick={() => setExpanded(true)}
+          disabled={isRunning}
+          aria-expanded={false}
+          className="text-[13px] text-ui-accent hover:underline disabled:opacity-40"
         >
-          <Chevron size={14} />
-          {t('vaultAudit.scope.current', {
-            scope:
-              scope.kind === 'folder' && scope.folderPath
-                ? `${current?.label ?? ''}: ${scope.folderPath}`
-                : (current?.label ?? ''),
-          })}
+          {t('vaultAudit.scope.change')}
         </button>
-      )}
+        <div className="ml-auto flex items-center gap-2">
+          {canScan && folderBlocks && (
+            <span className="text-[13px] text-ui-warning">
+              {t('vaultAudit.scope.folderFixFirst')}
+            </span>
+          )}
+          {isRunning && <Loader2 size={14} className="animate-spin text-ui-fg-secondary" />}
+          {runButton}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-ui-divider p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-[14px] font-semibold text-ui-fg">{t('vaultAudit.scope.legend')}</h4>
+        {hasResult && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="text-[13px] text-ui-accent hover:underline"
+          >
+            {t('vaultAudit.scope.done')}
+          </button>
+        )}
+      </div>
 
       <fieldset
         disabled={isRunning}
-        className={`divide-y divide-ui-divider ${showOptions ? '' : 'hidden'}`}
+        className={`grid gap-2 sm:grid-cols-3 ${isRunning ? 'opacity-60' : ''}`}
       >
-        <legend className="mb-1 text-[14px] font-semibold text-ui-fg">
-          {t('vaultAudit.scope.legend')}
-        </legend>
-
-        {options.map((option) => (
-          <div key={option.kind} className="py-3.5">
+        <legend className="sr-only">{t('vaultAudit.scope.legend')}</legend>
+        {options.map((option) => {
+          const selected = scope.kind === option.kind
+          return (
             <label
-              className={`flex cursor-pointer gap-3 ${
-                isRunning ? 'cursor-not-allowed opacity-60' : ''
-              }`}
+              key={option.kind}
+              title={option.hint}
+              className={`flex cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2.5 transition-colors ${
+                selected
+                  ? 'border-ui-accent/70 bg-ui-accent/[0.07]'
+                  : 'border-ui-divider hover:bg-ui-hover'
+              } ${isRunning ? 'cursor-not-allowed' : ''}`}
             >
-              <input
-                type="radio"
-                name="vault-audit-scope"
-                className="mt-1 accent-ui-accent"
-                checked={scope.kind === option.kind}
-                onChange={() => onScopeChange({ ...scope, kind: option.kind })}
-              />
-              <div className="min-w-0">
-                <div className="text-[14px] text-ui-fg">{option.label}</div>
-                <p className="mt-1 text-[14px] leading-[1.4] text-ui-fg-secondary">{option.hint}</p>
-              </div>
-            </label>
-            {/* Outside the label: a label around a text box, a list and a tree would forward
-                stray clicks on any of them to the radio. */}
-            {option.kind === 'folder' && folderIndex && folderStatus && (
-              <div className="pl-7">
-                <VaultAuditFolderPicker
-                  value={scope.folderPath}
-                  onChange={(folderPath) => onScopeChange({ kind: 'folder', folderPath })}
-                  index={folderIndex}
-                  match={folderStatus.kind === 'found' ? folderStatus.folder : null}
-                  vaultPath={vaultPath}
-                  disabled={isRunning}
+              <span className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="vault-audit-scope"
+                  className="accent-ui-accent"
+                  checked={selected}
+                  onChange={() => onScopeChange({ ...scope, kind: option.kind })}
                 />
-                <FolderStatusLine status={folderStatus} vaultPath={vaultPath} />
-              </div>
-            )}
-          </div>
-        ))}
+                <span className="text-[13px] font-medium text-ui-fg">{option.label}</span>
+              </span>
+              <span className="pl-5 text-[12px] leading-[1.45] text-ui-fg-secondary">
+                {option.short}
+              </span>
+            </label>
+          )
+        })}
       </fieldset>
 
-      <div className="flex items-center gap-2">
-        {isRunning ? (
-          <Button icon={<X size={14} />} onClick={onCancel} disabled={cancelRequested}>
-            {cancelRequested ? t('vaultAudit.cancelling') : t('vaultAudit.cancel')}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            icon={<Play size={14} />}
-            onClick={onStart}
-            disabled={!canScan || blocked || folderBlocks}
-          >
-            {hasResult ? t('vaultAudit.rescan') : t('vaultAudit.scan')}
-          </Button>
-        )}
+      {/* Outside the cards: a label around a text box, a list and a tree would forward stray
+          clicks on any of them to the radio. */}
+      {isFolderScope && folderIndex && folderStatus && (
+        <div>
+          <VaultAuditFolderPicker
+            value={scope.folderPath}
+            onChange={(folderPath) => onScopeChange({ kind: 'folder', folderPath })}
+            index={folderIndex}
+            match={folderStatus.kind === 'found' ? folderStatus.folder : null}
+            vaultPath={vaultPath}
+            disabled={isRunning}
+          />
+          <FolderStatusLine status={folderStatus} vaultPath={vaultPath} />
+        </div>
+      )}
 
-        {isRunning && <Loader2 size={14} className="animate-spin text-ui-fg-secondary" />}
+      <div className="flex items-center justify-end gap-3 pt-1">
         {!canScan && (
-          <span className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.noVault')}</span>
+          <span className="mr-auto text-[13px] text-ui-fg-secondary">{t('vaultAudit.noVault')}</span>
         )}
-        {/* With the options folded the folder line is out of sight, so the reason comes here. */}
-        {canScan && folderBlocks && !showOptions && (
-          <span className="text-[13px] text-ui-warning">
-            {t('vaultAudit.scope.folderFixFirst')}
-          </span>
-        )}
+        {isRunning && <Loader2 size={14} className="animate-spin text-ui-fg-secondary" />}
+        {runButton}
       </div>
     </div>
   )

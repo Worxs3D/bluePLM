@@ -31,10 +31,8 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
-  ArrowDown,
   ArrowLeft,
   ArrowRight,
-  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
@@ -43,9 +41,9 @@ import {
   Lock,
 } from 'lucide-react'
 
+import { Badge } from '@/components/core/ui'
 import { FileIcon } from '@/components/shared'
 import { t } from '@/lib/i18n'
-import type { VaultAuditFinding } from '@/types/vaultAudit'
 
 import type { VaultAuditActionKind } from './vaultAuditActions'
 import type { VaultAuditFileAvailability } from './vaultAuditFileState'
@@ -53,6 +51,7 @@ import type { VaultAuditFileGroup, VaultAuditListItem } from './vaultAuditGroups
 import { compareForDisplay, isTrivialDifference, type ValueSegments } from './valueDifference'
 import {
   blockedReasonLabel,
+  countOf,
   differenceLabel,
   fieldLabel,
   resolutionDirection,
@@ -61,22 +60,25 @@ import {
   unattributedReasonLabel,
 } from './vaultAuditLabels'
 import type { VaultAuditFindingRow } from './vaultAuditRows'
-import type { FindingSort, FindingSortKey } from './vaultAuditSort'
 import { useRevealInFileBrowser, type RevealInFileBrowser } from './useRevealInFileBrowser'
 
 export type { ConflictOption, VaultAuditFindingRow } from './vaultAuditRows'
 
 /** Same template for the column header and every value row, so the columns line up. */
 const VALUE_GRID =
-  'grid grid-cols-[2.25rem_minmax(8rem,12rem)_minmax(0,1fr)_1.75rem_minmax(0,1fr)_minmax(9rem,13rem)]'
+  'grid grid-cols-[2.5rem_minmax(8rem,13rem)_minmax(0,1fr)_1.5rem_minmax(0,1fr)]'
+/** With the resolution column: conflicts, and categories whose rows resolve differently. */
+const VALUE_GRID_WITH_RESOLUTION =
+  'grid grid-cols-[2.5rem_minmax(7rem,11rem)_minmax(0,1fr)_1.5rem_minmax(0,1fr)_auto]'
 
-const ESTIMATED_FILE_ROW_PX = 44
-const ESTIMATED_VALUE_ROW_PX = 48
+const ESTIMATED_FILE_ROW_PX = 40
+const ESTIMATED_VALUE_ROW_PX = 44
 const OVERSCAN_ROWS = 12
 
 interface VaultAuditFileListProps {
   items: VaultAuditListItem[]
-  sort: FindingSort
+  /** Show the resolution column. Off when every row resolves the same way the heading says. */
+  showResolution: boolean
   /** Changes whenever the list underneath is a different list, so the view returns to the top. */
   scrollResetKey: string
   disabled: boolean
@@ -84,7 +86,6 @@ interface VaultAuditFileListProps {
   allSelected: boolean
   someSelected: boolean
   canSelectAny: boolean
-  onSort: (key: FindingSortKey) => void
   onToggleAll: () => void
   onToggle: (row: VaultAuditFindingRow, shiftKey: boolean) => void
   onToggleFile: (group: VaultAuditFileGroup) => void
@@ -128,7 +129,11 @@ function TriStateBox({
 
 function ValueCell({ value, segments }: { value: string | null; segments: ValueSegments | null }) {
   if (value === null) {
-    return <span className="text-ui-fg-secondary">{t('vaultAudit.findings.empty')}</span>
+    return (
+      <span className="inline-block rounded border border-dashed border-ui-divider px-1.5 text-[12px] italic leading-5 text-ui-fg-tertiary">
+        {t('vaultAudit.findings.emptyValue')}
+      </span>
+    )
   }
 
   const text = 'whitespace-pre-wrap break-words text-ui-fg'
@@ -162,46 +167,26 @@ function heldByLabel(availability: VaultAuditFileAvailability | null): string {
     : t('vaultAudit.blocked.heldByAnotherUser')
 }
 
-function DirectionCell({ finding }: { finding: VaultAuditFinding }) {
-  const direction = resolutionDirection(finding.resolution)
+function DirectionCell({ row }: { row: VaultAuditFindingRow }) {
+  const { finding } = row
+  // A conflict has no direction until someone picks a side; then the arrow shows the pick.
+  const direction = row.conflict
+    ? row.conflict.useFile.selected
+      ? 'file-to-vault'
+      : row.conflict.useBluePlm.selected
+        ? 'vault-to-file'
+        : null
+    : resolutionDirection(finding.resolution)
   if (!direction) return null
 
   const Icon = direction === 'file-to-vault' ? ArrowLeft : ArrowRight
   return (
     <span
-      className="flex justify-center pt-0.5 text-ui-fg-secondary"
+      className="flex justify-center pt-0.5 text-ui-accent"
       title={resolutionHint(finding.resolution)}
     >
-      <Icon size={13} />
+      <Icon size={14} />
     </span>
-  )
-}
-
-function SortButton({
-  label,
-  sortKey,
-  sort,
-  onSort,
-}: {
-  label: string
-  sortKey: FindingSortKey
-  sort: FindingSort
-  onSort: (key: FindingSortKey) => void
-}) {
-  const active = sort.key === sortKey
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      title={t('vaultAudit.findings.sortBy', { column: label })}
-      aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={`inline-flex items-center gap-0.5 hover:text-ui-fg transition-colors ${
-        active ? 'text-ui-fg' : ''
-      }`}
-    >
-      {label}
-      {active && (sort.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
-    </button>
   )
 }
 
@@ -225,12 +210,13 @@ function ConflictButton({
       disabled={disabled}
       aria-pressed={selected}
       title={hint}
-      className={`px-2 py-0.5 rounded-md border transition-colors disabled:opacity-40 ${
+      className={`h-6 rounded-md border px-2 text-[12px] transition-colors disabled:opacity-40 ${
         selected
-          ? 'border-ui-selected-border bg-ui-selected text-ui-fg'
-          : 'border-ui-field-border bg-ui-field text-ui-fg-secondary hover:text-ui-fg'
+          ? 'border-ui-selected-border bg-ui-selected font-medium text-ui-fg'
+          : 'border-transparent text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
       }`}
     >
+      {selected && <Check size={11} className="mr-1 inline" />}
       {label}
     </button>
   )
@@ -273,7 +259,7 @@ function FileRowView({
   return (
     <div
       role="row"
-      className="flex items-center gap-2 pr-1 py-2 border-t border-ui-divider hover:bg-ui-hover"
+      className="group flex items-center gap-2 border-t border-ui-divider bg-ui-nav/60 py-1.5 pl-2 pr-2 hover:bg-ui-hover"
     >
       <button
         type="button"
@@ -282,12 +268,12 @@ function FileRowView({
         title={
           collapsed ? t('vaultAudit.findings.expandFile') : t('vaultAudit.findings.collapseFile')
         }
-        className="p-0.5 rounded text-ui-fg-secondary hover:text-ui-fg"
+        className="rounded p-0.5 text-ui-fg-tertiary hover:text-ui-fg"
       >
         <Chevron size={14} />
       </button>
 
-      <span className="w-4 flex justify-center flex-shrink-0">
+      <span className="flex w-4 flex-shrink-0 justify-center">
         {group.selectableCount > 0 ? (
           <TriStateBox
             checked={group.selectedCount === group.selectableCount}
@@ -305,11 +291,11 @@ function FileRowView({
         ) : null}
       </span>
 
-      <span className="flex-shrink-0 flex items-center">
+      <span className="flex flex-shrink-0 items-center">
         {file ? (
-          <FileIcon file={file} size={22} />
+          <FileIcon file={file} size={18} />
         ) : (
-          <FileGlyph size={20} className="text-ui-fg-secondary" />
+          <FileGlyph size={16} className="text-ui-fg-tertiary" />
         )}
       </span>
 
@@ -318,31 +304,31 @@ function FileRowView({
         onClick={() => onToggleCollapsed(group.fileId)}
         onDoubleClick={() => reveal(group.relativePath)}
         title={group.relativePath}
-        className="min-w-0 flex-1 text-left"
+        className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
       >
-        <span className="block truncate text-[14px] text-ui-fg">{name}</span>
+        <span className="truncate text-[13px] font-medium text-ui-fg">{name}</span>
         {folder && (
-          <span className="block truncate text-[13px] text-ui-fg-secondary">{folder}</span>
+          <span className="min-w-0 truncate text-[12px] text-ui-fg-tertiary">
+            {folder.replace(/[\\/]/g, ' / ')}
+          </span>
         )}
       </button>
 
       {heldByOther && (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[13px] text-ui-warning bg-ui-warning/10 flex-shrink-0">
-          <Lock size={10} />
+        <Badge tone="warning" icon={<Lock size={10} />}>
           {heldByLabel(availability)}
-        </span>
+        </Badge>
       )}
 
-      <span className="px-1.5 py-0.5 rounded-md text-[13px] text-ui-fg-secondary bg-ui-field flex-shrink-0">
-        {t('vaultAudit.category.values', { count: group.rows.length })}
-      </span>
+      {group.rows.length > 1 && <Badge>{countOf('values', group.rows.length)}</Badge>}
 
       <button
         type="button"
         onClick={() => reveal(group.relativePath)}
         disabled={!file}
         title={file ? t('vaultAudit.findings.reveal') : t('vaultAudit.findings.revealUnavailable')}
-        className="p-1 rounded-md text-ui-fg-secondary hover:text-ui-fg hover:bg-ui-selected transition-colors disabled:opacity-40 disabled:hover:bg-transparent flex-shrink-0"
+        aria-label={t('vaultAudit.findings.reveal')}
+        className="flex-shrink-0 rounded-md p-1 text-ui-fg-tertiary opacity-0 transition hover:bg-ui-selected hover:text-ui-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:hidden"
       >
         <ExternalLink size={13} />
       </button>
@@ -353,11 +339,18 @@ function FileRowView({
 interface ValueRowViewProps {
   row: VaultAuditFindingRow
   disabled: boolean
+  showResolution: boolean
   onToggle: VaultAuditFileListProps['onToggle']
   onChooseConflict: VaultAuditFileListProps['onChooseConflict']
 }
 
-function ValueRowView({ row, disabled, onToggle, onChooseConflict }: ValueRowViewProps) {
+function ValueRowView({
+  row,
+  disabled,
+  showResolution,
+  onToggle,
+  onChooseConflict,
+}: ValueRowViewProps) {
   const { finding } = row
   const isConflict = finding.resolution === 'choose-a-side'
 
@@ -368,19 +361,27 @@ function ValueRowView({ row, disabled, onToggle, onChooseConflict }: ValueRowVie
   )
   const trivialNote =
     comparison && isTrivialDifference(comparison.kind) ? differenceLabel(comparison.kind) : null
+  const blockedNote = row.action.available
+    ? null
+    : row.action.reason === 'held-by-another-user'
+      ? heldByLabel(row.availability)
+      : blockedReasonLabel(row.action.reason)
+  // In a category with nothing to write, "nothing to write" on every row repeats the footer.
+  const showBlocked =
+    blockedNote !== null && !row.action.available && row.action.reason !== 'no-write-resolves-it'
 
   return (
     <div
       role="row"
-      className={`${VALUE_GRID} items-start text-[13px] border-t border-ui-divider/40 transition-colors ${
-        row.selected && !row.settled ? 'bg-ui-hover/40' : 'hover:bg-ui-field/40'
-      } ${row.settled ? 'opacity-70' : ''}`}
+      className={`${showResolution ? VALUE_GRID_WITH_RESOLUTION : VALUE_GRID} items-start border-t border-ui-divider/50 text-[13px] leading-5 transition-colors ${
+        row.selected && !row.settled ? 'bg-ui-accent/[0.06]' : 'hover:bg-ui-hover/50'
+      } ${row.settled ? 'opacity-60' : ''}`}
     >
-      <div role="cell" className="pl-7 pr-1 py-2">
+      <div role="cell" className="flex justify-end py-2 pr-2">
         {row.settled ? (
           <Check
             size={12}
-            className="text-ui-success"
+            className="mt-1 text-ui-success"
             aria-label={t('vaultAudit.findings.settled')}
           />
         ) : row.selectable ? (
@@ -390,81 +391,92 @@ function ValueRowView({ row, disabled, onToggle, onChooseConflict }: ValueRowVie
             disabled={disabled}
             onChange={() => undefined}
             onClick={(event) => onToggle(row, event.shiftKey)}
-            className="accent-ui-accent"
+            className="mt-1 accent-ui-accent"
             aria-label={resolutionLabel(finding.resolution)}
           />
         ) : null}
       </div>
-      <div role="cell" className="pl-4 pr-2 py-2 min-w-0">
-        <span className="block text-ui-fg break-words">{fieldLabel(finding.field)}</span>
-        <span className="block text-ui-fg-secondary break-words">
-          {finding.configuration ?? t('vaultAudit.findings.fileScope')}
-        </span>
+      <div role="cell" className="min-w-0 py-2 pl-5 pr-2">
+        <span className="block break-words text-ui-fg">{fieldLabel(finding.field)}</span>
+        {finding.configuration && (
+          <span
+            className="mt-0.5 inline-block max-w-full truncate rounded bg-ui-field px-1.5 font-mono text-[11.5px] leading-5 text-ui-fg-secondary"
+            title={finding.configuration}
+          >
+            {finding.configuration}
+          </span>
+        )}
         {finding.unattributedReason && (
-          <span className="block text-ui-fg-secondary">
+          <span className="block text-[12px] text-ui-fg-tertiary">
             {unattributedReasonLabel(finding.unattributedReason)}
           </span>
         )}
+        {showBlocked && !showResolution && (
+          <span className="mt-0.5 flex items-start gap-1 text-[12px] text-ui-warning">
+            <Lock size={10} className="mt-1 flex-shrink-0" />
+            {blockedNote}
+          </span>
+        )}
       </div>
-      <div role="cell" className="px-2 py-2 min-w-0">
+      <div role="cell" className="min-w-0 px-2 py-2">
         <ValueCell value={finding.databaseValue} segments={comparison?.database ?? null} />
       </div>
       <div role="cell" className="py-2">
-        <DirectionCell finding={finding} />
+        <DirectionCell row={row} />
       </div>
-      <div role="cell" className="px-2 py-2 min-w-0">
+      <div role="cell" className="min-w-0 px-2 py-2">
         <ValueCell value={finding.fileValue} segments={comparison?.file ?? null} />
+        {trivialNote && <span className="block text-[12px] text-ui-warning/80">{trivialNote}</span>}
       </div>
-      <div role="cell" className="px-2 py-2 min-w-0 text-ui-fg-secondary">
-        <span title={resolutionHint(finding.resolution)}>
-          {resolutionLabel(finding.resolution)}
-        </span>
-        {isConflict && row.conflict && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {finding.field !== 'revision' && (
+      {showResolution && (
+        <div role="cell" className="min-w-0 py-1.5 pl-2 pr-3 text-ui-fg-secondary">
+          {isConflict && row.conflict ? (
+            <div className="inline-flex gap-0.5 rounded-lg border border-ui-divider bg-ui-field p-0.5">
+              {finding.field !== 'revision' && (
+                <ConflictButton
+                  label={t('vaultAudit.conflict.useBluePlm')}
+                  hint={
+                    row.conflict.useBluePlm.reason ?? t('vaultAudit.resolution.pushVaultValueHint')
+                  }
+                  selected={row.conflict.useBluePlm.selected}
+                  disabled={
+                    disabled ||
+                    row.conflict.useBluePlm.settled ||
+                    !row.conflict.useBluePlm.available
+                  }
+                  onClick={() => onChooseConflict(row, 'write-to-file')}
+                />
+              )}
               <ConflictButton
-                label={t('vaultAudit.conflict.useBluePlm')}
-                hint={
-                  row.conflict.useBluePlm.reason ?? t('vaultAudit.resolution.pushVaultValueHint')
-                }
-                selected={row.conflict.useBluePlm.selected}
+                label={t('vaultAudit.conflict.useFile')}
+                hint={row.conflict.useFile.reason ?? t('vaultAudit.resolution.adoptFileValueHint')}
+                selected={row.conflict.useFile.selected}
                 disabled={
-                  disabled || row.conflict.useBluePlm.settled || !row.conflict.useBluePlm.available
+                  disabled || row.conflict.useFile.settled || !row.conflict.useFile.available
                 }
-                onClick={() => onChooseConflict(row, 'write-to-file')}
+                onClick={() => onChooseConflict(row, 'write-to-vault')}
               />
-            )}
-            <ConflictButton
-              label={t('vaultAudit.conflict.useFile')}
-              hint={row.conflict.useFile.reason ?? t('vaultAudit.resolution.adoptFileValueHint')}
-              selected={row.conflict.useFile.selected}
-              disabled={disabled || row.conflict.useFile.settled || !row.conflict.useFile.available}
-              onClick={() => onChooseConflict(row, 'write-to-vault')}
-            />
-          </div>
-        )}
-        {!row.action.available && (
-          <span className="block text-ui-fg-secondary">
-            {row.action.reason === 'held-by-another-user'
-              ? heldByLabel(row.availability)
-              : blockedReasonLabel(row.action.reason)}
-          </span>
-        )}
-        {trivialNote && <span className="block text-ui-warning/80">{trivialNote}</span>}
-      </div>
+            </div>
+          ) : (
+            <span className="block pt-0.5" title={resolutionHint(finding.resolution)}>
+              {resolutionLabel(finding.resolution)}
+            </span>
+          )}
+          {showBlocked && <span className="block text-[12px] text-ui-warning">{blockedNote}</span>}
+        </div>
+      )}
     </div>
   )
 }
 
 export function VaultAuditFileList({
   items,
-  sort,
+  showResolution,
   scrollResetKey,
   disabled,
   allSelected,
   someSelected,
   canSelectAny,
-  onSort,
   onToggleAll,
   onToggle,
   onToggleFile,
@@ -493,12 +505,12 @@ export function VaultAuditFileList({
   }, [scrollResetKey])
 
   return (
-    <div role="table" className="flex flex-col h-full min-h-0 overflow-hidden">
+    <div role="table" className="flex min-h-0 flex-col overflow-hidden">
       <div
         role="row"
-        className={`${VALUE_GRID} items-center pb-2 text-[13px] text-ui-fg-secondary border-b border-ui-divider flex-shrink-0`}
+        className={`${showResolution ? VALUE_GRID_WITH_RESOLUTION : VALUE_GRID} flex-shrink-0 items-center border-b border-ui-divider py-2 text-[12px] font-medium text-ui-fg-secondary`}
       >
-        <div role="columnheader" className="pl-2">
+        <div role="columnheader" className="flex justify-end pr-2">
           <TriStateBox
             checked={allSelected}
             indeterminate={someSelected}
@@ -507,25 +519,8 @@ export function VaultAuditFileList({
             onClick={onToggleAll}
           />
         </div>
-        <div role="columnheader" className="pl-4 pr-2 flex flex-wrap gap-x-2">
-          <SortButton
-            label={t('vaultAudit.findings.columnFile')}
-            sortKey="file"
-            sort={sort}
-            onSort={onSort}
-          />
-          <SortButton
-            label={t('vaultAudit.findings.columnField')}
-            sortKey="field"
-            sort={sort}
-            onSort={onSort}
-          />
-          <SortButton
-            label={t('vaultAudit.findings.columnConfiguration')}
-            sortKey="configuration"
-            sort={sort}
-            onSort={onSort}
-          />
+        <div role="columnheader" className="pl-5 pr-2">
+          {t('vaultAudit.findings.columnField')}
         </div>
         <div role="columnheader" className="px-2">
           {t('vaultAudit.findings.columnDatabase')}
@@ -534,17 +529,16 @@ export function VaultAuditFileList({
         <div role="columnheader" className="px-2">
           {t('vaultAudit.findings.columnFile2')}
         </div>
-        <div role="columnheader" className="px-2">
-          <SortButton
-            label={t('vaultAudit.findings.columnResolution')}
-            sortKey="resolution"
-            sort={sort}
-            onSort={onSort}
-          />
-        </div>
+        {showResolution && (
+          <div role="columnheader" className="px-2">
+            {t('vaultAudit.findings.columnResolution')}
+          </div>
+        )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      {/* Sized to its rows up to most of the window, so a short category is not a tall empty
+          box and a long one fills the screen once scrolled to. */}
+      <div ref={scrollRef} className="max-h-[calc(100vh-22rem)] min-h-[3rem] overflow-y-auto">
         <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = items[virtualRow.index]
@@ -571,6 +565,7 @@ export function VaultAuditFileList({
                   <ValueRowView
                     row={item.row}
                     disabled={disabled}
+                    showResolution={showResolution}
                     onToggle={onToggle}
                     onChooseConflict={onChooseConflict}
                   />

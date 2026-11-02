@@ -1,11 +1,12 @@
-import { AlertTriangle, Check, FileUp, Info, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileUp } from 'lucide-react'
 
 import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 
 import type { UseVaultAuditConflictResult } from './useVaultAuditConflict'
 import type { UseVaultAuditPushResult } from './useVaultAuditPush'
-import { VaultAuditNote } from './VaultAuditNote'
+import { FooterMessage, VaultAuditFooter } from './VaultAuditFooter'
+import { countOf } from './vaultAuditLabels'
 
 interface VaultAuditConflictActionBarProps {
   conflict: UseVaultAuditConflictResult
@@ -21,69 +22,77 @@ interface VaultAuditConflictActionBarProps {
  */
 export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConflictActionBarProps) {
   const busy = conflict.applying || push.running
-  const selectedFiles = push.eligibility.selected
+  const fileValues = conflict.selectedCount
+  const bluePlmFiles = push.eligibility.eligible.length
+  const nothingChosen = fileValues === 0 && push.eligibility.selected === 0
 
   return (
-    <div className="space-y-3">
-      <VaultAuditNote icon={Info} label={t('vaultAudit.actions.conflictLabel')}>
-        <p>{t('vaultAudit.conflict.instruction')}</p>
-        <p>{t('vaultAudit.conflict.bluePlmNote')}</p>
-      </VaultAuditNote>
-
-      {conflict.error && (
-        <p className="text-[13px] text-ui-danger flex items-start gap-1.5">
-          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-          {conflict.error}
-        </p>
-      )}
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-ui-fg-secondary">
-            {conflict.selectedCount === 0
-              ? t('vaultAudit.conflict.fileSelectPrompt')
-              : t('vaultAudit.conflict.fileSelectedSummary', {
-                  values: conflict.selectedCount,
-                })}
-          </p>
-          <Button
-            variant="primary"
-            size="sm"
-            type="button"
-            onClick={() => void conflict.apply()}
-            disabled={busy || !conflict.canApply}
-          >
-            {conflict.applying ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Check size={12} />
-            )}
-            {conflict.applying
-              ? t('vaultAudit.conflict.applying')
-              : t('vaultAudit.conflict.applyFile', { count: conflict.selectedCount })}
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-ui-fg-secondary">
-            {selectedFiles === 0
-              ? t('vaultAudit.conflict.bluePlmSelectPrompt')
-              : t('vaultAudit.conflict.bluePlmSelectedSummary', { files: selectedFiles })}
-          </p>
-          <Button
-            variant="primary"
-            size="sm"
-            type="button"
-            onClick={() => void push.run()}
-            disabled={busy || !push.canRun}
-          >
-            {push.running ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
-            {push.running
-              ? t('vaultAudit.push.running')
-              : t('vaultAudit.conflict.applyBluePlm', { files: push.eligibility.eligible.length })}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <VaultAuditFooter
+      note={{
+        content: (
+          <>
+            <p>{t('vaultAudit.conflict.instruction')}</p>
+            <p>{t('vaultAudit.conflict.bluePlmNote')}</p>
+          </>
+        ),
+      }}
+      messages={
+        conflict.error && (
+          <FooterMessage icon={AlertTriangle} tone="danger">
+            {conflict.error}
+          </FooterMessage>
+        )
+      }
+      summary={
+        nothingChosen ? (
+          <span className="text-ui-fg-secondary">{t('vaultAudit.conflict.selectPromptShort')}</span>
+        ) : (
+          <span className="font-medium text-ui-fg">
+            {[
+              fileValues > 0 &&
+                t('vaultAudit.conflict.fileChoice', { values: countOf('values', fileValues) }),
+              push.eligibility.selected > 0 &&
+                t('vaultAudit.conflict.bluePlmChoice', {
+                  files: countOf('files', push.eligibility.selected),
+                }),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        )
+      }
+      actions={
+        <>
+          {fileValues > 0 && (
+            <Button
+              variant={push.eligibility.selected > 0 ? 'secondary' : 'primary'}
+              size="sm"
+              loading={conflict.applying}
+              icon={<Check size={13} />}
+              onClick={() => void conflict.apply()}
+              disabled={busy || !conflict.canApply}
+            >
+              {conflict.applying
+                ? t('vaultAudit.conflict.applying')
+                : t('vaultAudit.conflict.applyFilePhrase', { values: countOf('values', fileValues) })}
+            </Button>
+          )}
+          {push.eligibility.selected > 0 && (
+            <Button
+              variant="primary"
+              size="sm"
+              loading={push.running}
+              icon={<FileUp size={13} />}
+              onClick={() => void push.run()}
+              disabled={busy || !push.canRun}
+            >
+              {push.running
+                ? t('vaultAudit.push.running')
+                : t('vaultAudit.conflict.applyBluePlmPhrase', { files: countOf('files', bluePlmFiles) })}
+            </Button>
+          )}
+        </>
+      }
+    />
   )
 }

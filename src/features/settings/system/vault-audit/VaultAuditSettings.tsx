@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronRight, ShieldCheck, Trash2 } from 'lucide-react'
 
 import { Button, Callout } from '@/components/core/ui'
 import { SwServiceVersionNotice } from '@/components/shared'
@@ -38,7 +38,7 @@ import { VaultAuditCategories } from './VaultAuditCategories'
 import { VaultAuditCoverage } from './VaultAuditCoverage'
 import { VaultAuditFieldTable } from './VaultAuditFieldTable'
 import { VaultAuditFindings } from './VaultAuditFindings'
-import { VaultAuditOverview } from './VaultAuditOverview'
+import { VaultAuditOverview, VaultAuditRunNotes } from './VaultAuditOverview'
 import { VaultAuditProgress } from './VaultAuditProgress'
 import { VaultAuditRevisionRule } from './VaultAuditRevisionRule'
 import { VaultAuditScopeForm } from './VaultAuditScopeForm'
@@ -78,8 +78,13 @@ export function VaultAuditSettings() {
       {!audit.isAdmin ? (
         <p className="text-[14px] text-ui-fg-secondary">{t('vaultAudit.adminOnly')}</p>
       ) : (
-        <div className="space-y-6">
-          <p className="text-[14px] text-ui-fg-secondary">{t('vaultAudit.readOnlyNote')}</p>
+        <div className="space-y-5 pt-1">
+          {!audit.view && (
+            <p className="flex items-start gap-2 text-[13px] text-ui-fg-secondary">
+              <ShieldCheck size={14} className="mt-0.5 flex-shrink-0 text-ui-success" />
+              {t('vaultAudit.readOnlyNote')}
+            </p>
+          )}
 
           {audit.serviceCheck && (
             <SwServiceVersionNotice
@@ -115,83 +120,79 @@ export function VaultAuditSettings() {
           )}
 
           {audit.view && (
-            <div className="space-y-8 pt-6 border-t border-ui-divider">
-              <VaultAuditOverview view={audit.view} artifactPath={audit.artifactPath} />
+            <div className="space-y-5">
+              <VaultAuditOverview view={audit.view} />
 
               {/*
                 Every section below is a count over files that were read, and every one of them
-                reads as an all-clear at zero - "no findings", "every record describes exactly the
-                configurations its file has", in green. A run that compared nothing earns none of
-                those statements, so it gets the overview's explanation on its own.
+                reads as an all-clear at zero. A run that compared nothing earns none of those
+                statements, so it gets the overview's explanation on its own.
               */}
               {hasEvidence(audit.view) && (
-                <>
-                  {/*
-                    The list is the page: categories in a rail on the left, the files of the chosen
-                    one filling the rest. The revision rule sits in the rail because it changes the
-                    counts there, and reading a total before the rule that produced it is the wrong
-                    order.
-                  */}
-                  <div className="flex flex-col lg:flex-row gap-4 items-start">
-                    <aside className="w-full lg:w-64 flex-shrink-0 space-y-3 lg:sticky lg:top-0">
-                      <VaultAuditCategories
-                        categories={audit.view.categories}
-                        selected={selectedCategory}
-                        onSelect={handleSelectCategory}
-                      />
-                      <VaultAuditRevisionRule
-                        expectRevisionOnModels={audit.expectRevisionOnModels}
-                        hiddenCount={audit.view.revisionOnModelsHidden}
-                        onChange={audit.setExpectRevisionOnModels}
-                      />
-                    </aside>
+                <div className="space-y-3">
+                  <VaultAuditCategories
+                    categories={audit.view.categories}
+                    selected={selectedCategory}
+                    onSelect={handleSelectCategory}
+                  />
 
-                    <div ref={findingsRef} className="flex-1 min-w-0 w-full space-y-2 scroll-mt-4">
-                      {/* No category is chosen only when all six are empty, which the overview
-                          has already said in words. */}
-                      {selectedCategory && (
-                        <>
-                          <div>
-                            <h4 className="text-[14px] font-semibold text-ui-fg">
-                              {categoryLabel(selectedCategory)}
-                            </h4>
-                            <p className="mt-1 text-[14px] text-ui-fg-secondary">
-                              {categoryDescription(selectedCategory)}
-                            </p>
-                          </div>
-                          <VaultAuditFindings
-                            findings={audit.view.findings}
-                            kind={selectedCategory}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  {/* All six empty can still hide revision rows, and the switch must stay reachable. */}
+                  {!selectedCategory && audit.view.revisionOnModelsHidden > 0 && (
+                    <VaultAuditRevisionRule
+                      expectRevisionOnModels={audit.expectRevisionOnModels}
+                      hiddenCount={audit.view.revisionOnModelsHidden}
+                      onChange={audit.setExpectRevisionOnModels}
+                    />
+                  )}
 
-                  {/* Context for the numbers, not something to act on, so it stays folded. */}
-                  <details className="group">
-                    <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-2 text-[14px] font-semibold text-ui-fg">
-                      <ChevronRight
-                        size={14}
-                        className="transition-transform group-open:rotate-90"
-                      />
-                      {t('vaultAudit.details.heading')}
-                    </summary>
-                    <div className="space-y-8 pt-3">
-                      <VaultAuditCoverage coverage={audit.view.coverage} />
-                      <VaultAuditFieldTable tallies={audit.view.fieldTallies} />
+                  {/* No category is chosen only when all six are empty, which the overview has
+                      already said in words. */}
+                  {selectedCategory && (
+                    <div ref={findingsRef} className="scroll-mt-4 space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-[15px] font-semibold text-ui-fg">
+                            {categoryLabel(selectedCategory)}
+                          </h4>
+                          <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-ui-fg-secondary">
+                            {categoryDescription(selectedCategory)}
+                          </p>
+                        </div>
+                        {/* With the list it filters: it changes which revision rows are counted. */}
+                        <VaultAuditRevisionRule
+                          expectRevisionOnModels={audit.expectRevisionOnModels}
+                          hiddenCount={audit.view.revisionOnModelsHidden}
+                          onChange={audit.setExpectRevisionOnModels}
+                        />
+                      </div>
+                      <VaultAuditFindings findings={audit.view.findings} kind={selectedCategory} />
                     </div>
-                  </details>
-                </>
+                  )}
+                </div>
               )}
 
-              <div className="flex items-center justify-between gap-4 pt-4 border-t border-ui-divider">
-                <p className="max-w-2xl text-[14px] text-ui-fg-secondary">
-                  {t('vaultAudit.result.notStored')}
-                </p>
+              <div className="flex items-start justify-between gap-4 border-t border-ui-divider pt-3">
+                {/* Context for the numbers, not something to act on, so it stays folded. */}
+                <details className="group min-w-0 flex-1">
+                  <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-1 text-[13px] text-ui-fg-secondary hover:text-ui-fg">
+                    <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+                    {t('vaultAudit.details.heading')}
+                  </summary>
+                  <div className="space-y-8 pt-4">
+                    <VaultAuditRunNotes view={audit.view} artifactPath={audit.artifactPath} />
+                    {hasEvidence(audit.view) && (
+                      <>
+                        <VaultAuditCoverage coverage={audit.view.coverage} />
+                        <VaultAuditFieldTable tallies={audit.view.fieldTallies} />
+                      </>
+                    )}
+                  </div>
+                </details>
                 <Button
                   size="sm"
-                  icon={<Trash2 size={12} />}
+                  variant="ghost"
+                  icon={<Trash2 size={13} />}
+                  title={t('vaultAudit.result.notStored')}
                   onClick={() => {
                     setSelectedCategory(null)
                     audit.clear()

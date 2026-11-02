@@ -1639,6 +1639,13 @@ export const en: TranslationDict = {
       folderHint:
         'That folder and everything beneath it. Type part of a folder name, browse the vault, or paste a full path.',
       current: 'Scope: {{scope}}',
+      label: 'Scope',
+      change: 'Change',
+      done: 'Done',
+      configurationRecordedShort:
+        'Files BluePLM records per configuration, where a record can have lost something. A fraction of a full scan.',
+      folderShort: 'One folder and everything beneath it.',
+      wholeVaultShort: 'Every part and assembly in the vault. The slowest scan.',
       folderPlaceholder: 'Search folders or paste a path',
       folderBrowse: 'Browse',
       folderBrowseHide: 'Hide folders',
@@ -1778,6 +1785,34 @@ export const en: TranslationDict = {
         'The file holds a value BluePLM never owned. Adopting one would invent a record rather than restore it, and erasing it is not BluePLM’s to do.',
       values: '{{count}} values',
       files: '{{count}} files',
+      // Tab names: what is wrong, short enough for six to sit in one row. The full name above is
+      // the heading under the tabs and says what resolving it consists of.
+      lostShort: 'Lost on both sides',
+      conflictingShort: 'Conflicts',
+      recoverableShort: 'Restore from file',
+      emptyInDatabaseShort: 'Empty in BluePLM',
+      absentFromFileShort: 'Missing from file',
+      unattributedShort: 'Leave alone',
+    },
+
+    // Counted nouns, picked by `countOf()` (t() has no plural rules). Strings that show a count
+    // take these as ready-made phrases.
+    count: {
+      files_one: '{{count}} file',
+      files_other: '{{count}} files',
+      values_one: '{{count}} value',
+      values_other: '{{count}} values',
+      entries_one: '{{count}} entry',
+      entries_other: '{{count}} entries',
+    },
+
+    summary: {
+      withFindings: 'Files with findings',
+      ofCompared: 'of {{count}} compared',
+      notRead: 'Not read',
+      notReadNone: 'every file opened',
+      duration: 'Scan time',
+      clean: 'Clean',
     },
 
     resolution: {
@@ -1812,6 +1847,8 @@ export const en: TranslationDict = {
       hint: 'Leave this off if your drawings drive revisions and the model never states one — a model file without a revision is expected and the difference is not a finding. Turning it on shows those comparisons; revision remains driven by the file and the audit never writes BluePLM’s revision into a document. Drawings always own their own revision, and changing this re-reads the scan you already have rather than running a new one.',
       hidden:
         '{{count}} revision comparisons on parts and assemblies are not counted above, because your drawings own revision.',
+      short: 'Models carry their own revision',
+      hiddenShort: '{{count}} revision comparisons hidden',
     },
 
     blocked: {
@@ -1843,6 +1880,11 @@ export const en: TranslationDict = {
       receiptRefused:
         '{{refused}} values were not allowed by the database and {{failed}} files failed. Nothing else changed for them.',
       appliedToast: 'Filled {{count}} values from files.',
+      selectPromptShort: 'Tick the values to fill',
+      selectedPhrase: '{{values}} selected in {{files}}',
+      reviewPhrase: 'Review {{values}}',
+      reviewNone: 'Review',
+      applyPhrase: 'Fill {{values}}',
     },
 
     difference: {
@@ -1859,6 +1901,7 @@ export const en: TranslationDict = {
       guaranteeLabel: 'What this can and cannot change',
       fileWriteLabel: 'How writing into documents works',
       conflictLabel: 'How conflicts are resolved',
+      howItWorks: 'How this works',
     },
 
     push: {
@@ -1875,6 +1918,10 @@ export const en: TranslationDict = {
       selectedSummary: '{{files}} files selected.',
       apply: 'Write {{count}} files',
       running: 'Writing…',
+      selectPromptShort: 'Tick the files to write',
+      selectedPhrase: '{{files}} selected',
+      applyPhrase: 'Write {{files}}',
+      applyNone: 'Write files',
     },
 
     conflict: {
@@ -1894,6 +1941,11 @@ export const en: TranslationDict = {
       noUser: 'No signed-in user is available to apply this choice.',
       appliedToast: 'Applied {{values}} file values to BluePLM.',
       updateFailed: 'Metadata update failed',
+      selectPromptShort: 'Choose a side on each row',
+      fileChoice: 'Use file: {{values}}',
+      bluePlmChoice: 'Use BluePLM: {{files}}',
+      applyFilePhrase: 'Copy {{values}} into BluePLM',
+      applyBluePlmPhrase: 'Write {{files}}',
     },
 
     findings: {
@@ -1937,6 +1989,13 @@ export const en: TranslationDict = {
       selectFile: 'Select or clear every value of this file',
       expandAll: 'Expand all',
       collapseAll: 'Collapse all',
+      emptyValue: 'empty',
+      totalPhrase: '{{values}} in {{files}}',
+      showingPhrase: '{{shown}} of {{total}} shown',
+      selectedPhrase: '{{selected}} of {{total}} selected',
+      selectAllPhrase: 'Select all {{items}}',
+      selectOnePhrase: 'Select {{items}}',
+      noneAvailableShort: 'Nothing here can be written from the audit.',
     },
 
     repair: {
@@ -1953,6 +2012,11 @@ export const en: TranslationDict = {
         '{{entries}} entries across {{files}} files selected, {{derived}} of them reconstructed.',
       apply: 'Write {{count}} entries',
       applying: 'Writing…',
+      selectPromptShort: 'Tick the entries to restore',
+      selectedPhrase: '{{entries}} selected in {{files}}',
+      derivedPhrase: '{{count}} reconstructed',
+      applyPhrase: 'Restore {{entries}}',
+      applyNone: 'Restore entries',
       appliedToast: 'Restored {{entries}} entries across {{files}} files.',
 
       receiptHeading: '{{entries}} entries restored across {{files}} files.',

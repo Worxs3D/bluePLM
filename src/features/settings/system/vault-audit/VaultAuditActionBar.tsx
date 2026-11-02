@@ -23,7 +23,8 @@
  * run that quietly processed the eligible eighth would leave the vault looking done.
  */
 
-import { AlertTriangle, Check, FileUp, Loader2, Lock, ShieldCheck, Sparkles } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AlertTriangle, Check, FileUp, Lock, ShieldCheck, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
@@ -31,15 +32,18 @@ import type { VaultAuditRepairOutcome } from '@/types/vaultAudit'
 
 import { describeShortfall } from './repairReceipt'
 import type { UseVaultAuditPushResult } from './useVaultAuditPush'
-import { VaultAuditNote } from './VaultAuditNote'
+import { FooterMessage, VaultAuditFooter } from './VaultAuditFooter'
 import type { UseVaultAuditRepairResult } from './useVaultAuditRepair'
 import type { VaultAuditActionKind } from './vaultAuditActions'
+import { countOf } from './vaultAuditLabels'
 
 interface VaultAuditActionBarProps {
   /** What this category's rows resolve as, or null when none of them can be acted on. */
   action: VaultAuditActionKind | null
   repair: UseVaultAuditRepairResult
   push: UseVaultAuditPushResult
+  /** The selection controls, from the findings list. */
+  selection: ReactNode
 }
 
 function Receipt({ outcome }: { outcome: VaultAuditRepairOutcome }) {
@@ -86,136 +90,136 @@ function Receipt({ outcome }: { outcome: VaultAuditRepairOutcome }) {
   )
 }
 
-function WriteToVaultBar({ repair }: { repair: UseVaultAuditRepairResult }) {
+function WriteToVaultBar({
+  repair,
+  selection,
+}: {
+  repair: UseVaultAuditRepairResult
+  selection: ReactNode
+}) {
+  const { entries, files, derived } = repair.selected
   return (
-    <div className="space-y-3">
-      <VaultAuditNote
-        icon={ShieldCheck}
-        iconClassName="text-ui-success"
-        label={t('vaultAudit.actions.guaranteeLabel')}
-      >
-        <p>{t('vaultAudit.repair.guarantee')}</p>
-      </VaultAuditNote>
-
-      <label className="flex items-start gap-2 text-[13px] text-ui-fg-secondary cursor-pointer">
-        <input
-          type="checkbox"
-          checked={repair.includeDerivedTabs}
-          disabled={repair.applying}
-          onChange={(event) => repair.setIncludeDerivedTabs(event.target.checked)}
-          className="mt-0.5 accent-ui-accent"
-        />
-        <span>
-          <span className="text-ui-fg inline-flex items-center gap-1">
-            <Sparkles size={11} className="text-ui-warning" />
-            {t('vaultAudit.repair.includeDerived')}
-          </span>
-          <span className="block">{t('vaultAudit.repair.includeDerivedHint')}</span>
-        </span>
-      </label>
-
-      {repair.error && (
-        <p className="text-[13px] text-ui-danger flex items-start gap-1.5">
-          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-          {repair.error}
-        </p>
-      )}
-
-      {repair.outcome && <Receipt outcome={repair.outcome} />}
-
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] text-ui-fg-secondary">
-          {repair.selected.entries === 0
-            ? t('vaultAudit.repair.selectPrompt')
-            : t('vaultAudit.repair.selectedSummary', {
-                entries: repair.selected.entries,
-                files: repair.selected.files,
-                derived: repair.selected.derived,
+    <VaultAuditFooter
+      note={{ icon: ShieldCheck, content: <p>{t('vaultAudit.repair.guarantee')}</p> }}
+      messages={
+        <>
+          <label className="flex items-start gap-2 text-[13px] text-ui-fg-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={repair.includeDerivedTabs}
+              disabled={repair.applying}
+              onChange={(event) => repair.setIncludeDerivedTabs(event.target.checked)}
+              className="mt-1 accent-ui-accent"
+              title={t('vaultAudit.repair.includeDerivedHint')}
+            />
+            <span title={t('vaultAudit.repair.includeDerivedHint')}>
+              <Sparkles size={11} className="mr-1 inline text-ui-warning" />
+              {t('vaultAudit.repair.includeDerived')}
+            </span>
+          </label>
+          {repair.error && (
+            <FooterMessage icon={AlertTriangle} tone="danger">
+              {repair.error}
+            </FooterMessage>
+          )}
+          {derived > 0 && (
+            <FooterMessage icon={Sparkles}>
+              {t('vaultAudit.repair.selectedPhrase', {
+                entries: countOf('entries', entries),
+                files: countOf('files', files),
               })}
-        </p>
+              {' · '}
+              {t('vaultAudit.repair.derivedPhrase', { count: derived })}
+            </FooterMessage>
+          )}
+          {repair.outcome && <Receipt outcome={repair.outcome} />}
+        </>
+      }
+      summary={
+        selection ?? (
+          <span className="text-ui-fg-secondary">{t('vaultAudit.repair.selectPromptShort')}</span>
+        )
+      }
+      actions={
         <Button
           variant="primary"
           size="sm"
+          loading={repair.applying}
+          icon={<Check size={13} />}
           onClick={() => void repair.apply()}
           disabled={!repair.canApply}
         >
-          {repair.applying ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
           {repair.applying
             ? t('vaultAudit.repair.applying')
-            : t('vaultAudit.repair.apply', { count: repair.selected.entries })}
+            : entries > 0
+              ? t('vaultAudit.repair.applyPhrase', { entries: countOf('entries', entries) })
+              : t('vaultAudit.repair.applyNone')}
         </Button>
-      </div>
-    </div>
+      }
+    />
   )
 }
 
-function WriteToFileBar({ push }: { push: UseVaultAuditPushResult }) {
+function WriteToFileBar({ push, selection }: { push: UseVaultAuditPushResult; selection: ReactNode }) {
   const { eligibility } = push
+  const eligible = eligibility.eligible.length
 
   return (
-    <div className="space-y-3">
-      <VaultAuditNote
-        icon={FileUp}
-        iconClassName="text-ui-accent"
-        label={t('vaultAudit.actions.fileWriteLabel')}
-      >
-        <p>{t('vaultAudit.push.wholeFileNote')}</p>
-      </VaultAuditNote>
-
-      {push.heldByOthers.size > 0 && (
-        <p className="text-[13px] text-ui-fg-secondary flex items-start gap-1.5">
-          <Lock size={13} className="mt-0.5 flex-shrink-0" />
-          {t('vaultAudit.push.heldByOthers', { count: push.heldByOthers.size })}
-        </p>
-      )}
-
-      {eligibility.selected > 0 && (
-        <div className="text-[13px] space-y-1">
-          <p className="text-ui-fg">
-            {t('vaultAudit.push.eligible', {
-              eligible: eligibility.eligible.length,
-              selected: eligibility.selected,
-            })}
-          </p>
-          {/* Separated from the lock above because this one is yours to clear: these files are in
+    <VaultAuditFooter
+      note={{ icon: FileUp, content: <p>{t('vaultAudit.push.wholeFileNote')}</p> }}
+      messages={
+        <>
+          {push.heldByOthers.size > 0 && (
+            <FooterMessage icon={Lock}>
+              {t('vaultAudit.push.heldByOthers', { count: push.heldByOthers.size })}
+            </FooterMessage>
+          )}
+          {eligibility.selected > 0 && eligible < eligibility.selected && (
+            <FooterMessage>
+              {t('vaultAudit.push.eligible', { eligible, selected: eligibility.selected })}
+            </FooterMessage>
+          )}
+          {/* Separate from the lock above because this one is yours to clear: these files are in
               BluePLM and nobody is holding them, so a checkout makes them writable. */}
-          {eligibility.tally.notCheckedOut > 0 && (
-            <p className="text-ui-warning flex items-start gap-1.5">
-              <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+          {eligibility.selected > 0 && eligibility.tally.notCheckedOut > 0 && (
+            <FooterMessage icon={AlertTriangle} tone="warning">
               {t('vaultAudit.push.notCheckedOut', { count: eligibility.tally.notCheckedOut })}
-            </p>
+            </FooterMessage>
           )}
-          {eligibility.tally.notLoaded > 0 && (
-            <p className="text-ui-fg-secondary">
-              {t('vaultAudit.push.notLoaded', { count: eligibility.tally.notLoaded })}
-            </p>
+          {eligibility.selected > 0 && eligibility.tally.notLoaded > 0 && (
+            <FooterMessage>{t('vaultAudit.push.notLoaded', { count: eligibility.tally.notLoaded })}</FooterMessage>
           )}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] text-ui-fg-secondary">
-          {eligibility.selected === 0
-            ? t('vaultAudit.push.selectPrompt')
-            : t('vaultAudit.push.selectedSummary', { files: eligibility.selected })}
-        </p>
-        <Button variant="primary" size="sm" onClick={() => void push.run()} disabled={!push.canRun}>
-          {push.running ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+        </>
+      }
+      summary={selection ?? <span className="text-ui-fg-secondary">{t('vaultAudit.push.selectPromptShort')}</span>}
+      actions={
+        <Button
+          variant="primary"
+          size="sm"
+          loading={push.running}
+          icon={<FileUp size={13} />}
+          onClick={() => void push.run()}
+          disabled={!push.canRun}
+        >
           {push.running
             ? t('vaultAudit.push.running')
-            : t('vaultAudit.push.apply', { count: eligibility.eligible.length })}
+            : eligible > 0
+              ? t('vaultAudit.push.applyPhrase', { files: countOf('files', eligible) })
+              : t('vaultAudit.push.applyNone')}
         </Button>
-      </div>
-    </div>
+      }
+    />
   )
 }
 
-export function VaultAuditActionBar({ action, repair, push }: VaultAuditActionBarProps) {
+export function VaultAuditActionBar({ action, repair, push, selection }: VaultAuditActionBarProps) {
   if (action === null) {
     return (
-      <p className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.actions.noneAvailable')}</p>
+      <VaultAuditFooter
+        summary={<span className="text-ui-fg-secondary">{t('vaultAudit.findings.noneAvailableShort')}</span>}
+      />
     )
   }
-  if (action === 'write-to-vault') return <WriteToVaultBar repair={repair} />
-  return <WriteToFileBar push={push} />
+  if (action === 'write-to-vault') return <WriteToVaultBar repair={repair} selection={selection} />
+  return <WriteToFileBar push={push} selection={selection} />
 }
