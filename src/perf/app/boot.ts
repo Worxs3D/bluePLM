@@ -21,8 +21,13 @@ function stage(name: string): void {
   document.documentElement.dataset.perfBootStage = name
 }
 
+/** A ui-look boot (scripts/ui-look) renders screens, not scale: a vault this size loads in a moment. */
+const LOOK_FILE_COUNT = 600
+
 export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   const bootStartedAt = performance.now()
+  const look = new URLSearchParams(location.search).has('look')
+  if (look) fileCount = LOOK_FILE_COUNT
   // The soak (scripts/render-perf/soak.ts) loads the page with ?soak=1. Its probes go in first, so
   // every timer and date the app makes is seen.
   const soakProbes = new URLSearchParams(location.search).has('soak')
@@ -72,6 +77,10 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   if (soakProbes) {
     const { installSoak } = await import('./soak')
     installSoak(backend, usePDMStore, control, soakProbes, electronHooks)
+  }
+  if (look) {
+    const { installLook } = await import('./look')
+    installLook(usePDMStore)
   }
   stage('installed')
 }

@@ -192,6 +192,7 @@ npm run test           # vitest run
 npm run lint           # eslint
 npm run dev            # vite dev server
 npm run gen:types      # regenerate src/types/supabase.ts (requires the schema applied)
+npx tsx scripts/ui-look/look.ts --scene <name> --shot <name> --out <dir>  # headless screenshot of a screen (scripts/render-perf/README.md)
 ```
 
 ## Rules

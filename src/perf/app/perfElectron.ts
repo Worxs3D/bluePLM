@@ -124,6 +124,11 @@ export function createPerfElectron(
         results: files.map((f) => ({ relativePath: f.relativePath, hash: hashByPath.get(f.relativePath) ?? '' })),
       }
     },
+    // No crash happened: the inert answer is a truthy object, which the startup hook would read as
+    // a crash notice and toast about.
+    async consumeCrashNotice() {
+      return null
+    },
     async fileExists(path: string) {
       const rel = path.slice(root.length + 1).replace(/\\/g, '/')
       return vault.localEntries.some((e) => e.relativePath === rel)

@@ -41,3 +41,16 @@ and 11,630 ms, and every timing about 2x apart. Each result records the runner's
 count, and once 3 main runs from the current CPU model exist the baseline uses only those.
 
 Run by hand: Actions, "Render performance", Run workflow.
+
+## ui-look: screenshots of any screen
+
+`scripts/ui-look/look.ts` starts the same perf boot with `BLUEPLM_PERF_LOOK=1`: a 600-file vault, a
+window that is never shown, and `window.__blueplmLook` (`src/perf/app/look.ts`) to put the app into
+a named scene. Steps on the command line click, type and screenshot, so a screen can be designed and
+checked by reading its PNGs. Unlike the measurement runs it is light enough for a developer machine.
+
+```
+npx tsx scripts/ui-look/look.ts --scene vault-audit-results --shot results --out ui-look-out
+```
+
+Scenes are added in `src/perf/app/look.ts`; fixture data for them in `src/perf/app/lookFixtures.ts`.

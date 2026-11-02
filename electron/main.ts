@@ -2,7 +2,7 @@
 // This file contains only app lifecycle, window creation, and imports handlers from modules
 
 // First: in a render-performance boot it moves userData before any module reads it.
-import { isPerfBoot, isSoakBoot, PERF_BOOT_ARG, PERF_BLOCKED_URLS } from './perfBoot'
+import { isLookBoot, isPerfBoot, isSoakBoot, PERF_BOOT_ARG, PERF_BLOCKED_URLS } from './perfBoot'
 import {
   installNavigationGuard,
   isGoogleAuthUrl,
@@ -950,6 +950,8 @@ function createWindow() {
 
   let windowShown = false
   const showWindow = () => {
+    // A ui-look boot renders hidden: it is screenshotted, never looked at on the desktop.
+    if (isLookBoot) return
     if (!windowShown && mainWindow) {
       windowShown = true
       mainWindow.show()
@@ -1022,9 +1024,15 @@ function createWindow() {
   if (isDev && !isPerfBoot) {
     mainWindow.loadURL(loadPath)
   } else {
-    // A soak boot tells the page to install its probes and drivers (src/perf/app/soak.ts).
+    // A soak boot tells the page to install its probes and drivers (src/perf/app/soak.ts), a
+    // ui-look boot its scene control (src/perf/app/look.ts).
+    const query: Record<string, string> | undefined = isSoakBoot
+      ? { soak: '1' }
+      : isLookBoot
+        ? { look: '1' }
+        : undefined
     mainWindow
-      .loadFile(loadPath, isSoakBoot ? { query: { soak: '1' } } : undefined)
+      .loadFile(loadPath, query ? { query } : undefined)
       .catch((error) => log('Error loading file: ' + String(error)))
     if (isSoakBoot) void import('./perfSoak').then((m) => m.installSoakMainProbe())
   }
