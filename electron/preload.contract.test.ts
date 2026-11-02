@@ -223,6 +223,24 @@ describe('preload listener allowlist', () => {
 
 type Shape = Map<string, Shape | null>
 
+function shapeOfReturnedObject(call: ts.CallExpression): Shape | undefined {
+  if (!ts.isIdentifier(call.expression)) return undefined
+  const factory = call.expression.text
+  for (const sf of sources) {
+    let result: Shape | undefined
+    walk(sf, (node) => {
+      if (!ts.isFunctionDeclaration(node) || node.name?.text !== factory || !node.body) return
+      const returns = node.body.statements.filter(ts.isReturnStatement)
+      if (returns.length !== 1 || !returns[0].expression || !ts.isObjectLiteralExpression(returns[0].expression)) {
+        return
+      }
+      result = shapeOfObjectLiteral(returns[0].expression)
+    })
+    if (result) return result
+  }
+  return undefined
+}
+
 function shapeOfObjectLiteral(obj: ts.ObjectLiteralExpression): Shape {
   const shape: Shape = new Map()
   for (const prop of obj.properties) {
@@ -232,6 +250,8 @@ function shapeOfObjectLiteral(obj: ts.ObjectLiteralExpression): Shape {
     const key = ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode) ? nameNode.text : nameNode.getText()
     if (ts.isPropertyAssignment(prop) && ts.isObjectLiteralExpression(prop.initializer)) {
       shape.set(key, shapeOfObjectLiteral(prop.initializer))
+    } else if (ts.isPropertyAssignment(prop) && ts.isCallExpression(prop.initializer)) {
+      shape.set(key, shapeOfReturnedObject(prop.initializer) ?? null)
     } else {
       shape.set(key, null)
     }
