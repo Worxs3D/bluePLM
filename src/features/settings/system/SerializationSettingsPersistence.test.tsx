@@ -70,7 +70,7 @@ describe('serialization keepout persistence', () => {
       await act(async () => state.bindings!.handleSave())
 
       const save = state.rpc.mock.calls.find(
-        ([name]) => name === 'update_serialization_settings_safe',
+        ([name]) => name === 'org_update_serialization_settings',
       )
       expect(save).toBeDefined()
       expect(save![1].p_settings?.keepout_zones).toEqual([
