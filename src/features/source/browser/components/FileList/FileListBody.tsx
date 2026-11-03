@@ -28,6 +28,8 @@ import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
 import { FileOutputRow } from './FileOutputRow'
+import { FileGenerateRow, FileSectionRow } from './FileSectionRow'
+import { useModelSectionsLoader } from './useModelSectionsLoader'
 import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
 import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
 import { hasDesktop } from '@/lib/platform'
@@ -215,9 +217,19 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     )
     useDrawingReportsLoader(displayFiles, reportDrawings)
     useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles, columnPaths)
+    useModelSectionsLoader(displayFiles, expandedConfigFiles)
     const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
     const fileOutputHeads = usePDMStore((s) => s.fileOutputHeads)
     const outputJobs = usePDMStore((s) => s.outputJobs)
+    const fileReleases = usePDMStore((s) => s.fileReleases)
+    const versionOutputs = usePDMStore((s) => s.versionOutputs)
+    const fileSectionToggles = usePDMStore((s) => s.fileSectionToggles)
+    const modelDrawings = usePDMStore((s) => s.modelDrawings)
+    const modelUsedIn = usePDMStore((s) => s.modelUsedIn)
+    const sections = useMemo(
+      () => ({ toggles: fileSectionToggles, modelDrawings, usedIn: modelUsedIn }),
+      [fileSectionToggles, modelDrawings, modelUsedIn],
+    )
     const canGenerateOutputs = usePDMStore(
       (s) => hasDesktop() && (s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit')),
     )
@@ -227,8 +239,10 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         heads: fileOutputHeads,
         jobs: outputJobs,
         canGenerate: canGenerateOutputs,
+        releases: fileReleases,
+        versionOutputs,
       }),
-      [fileOutputVersions, fileOutputHeads, outputJobs, canGenerateOutputs],
+      [fileOutputVersions, fileOutputHeads, outputJobs, canGenerateOutputs, fileReleases, versionOutputs],
     )
 
     // Get tab settings from organization serialization settings
@@ -281,6 +295,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           expandedDrawingRefFiles,
           drawingInspectionReports,
           outputs,
+          sections,
         }),
       [
         displayFiles,
@@ -306,6 +321,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         expandedDrawingRefFiles,
         drawingInspectionReports,
         outputs,
+        sections,
       ],
     )
 
@@ -335,6 +351,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'drawing-report':
           case 'drawing-report-more':
           case 'file-output':
+          case 'file-section':
+          case 'file-generate':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -814,7 +832,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             case 'drawing-report':
               return (
                 <DrawingReportRow
-                  key={`drawing-report::${row.file.path}::${row.report.id}`}
+                  key={`drawing-report::${row.file.path}::${row.received ? 'received' : 'report'}::${row.report.id}`}
+                  variant={row.received ? 'received' : 'generated'}
                   file={row.file}
                   report={row.report}
                   versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
@@ -825,10 +844,29 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             case 'file-output':
               return (
                 <FileOutputRow
-                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.configuration ?? ''}`}
+                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.configuration ?? ''}::${row.entry.output?.id ?? 'none'}`}
                   file={row.file}
                   entry={row.entry}
                   version={row.version}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-section':
+              return (
+                <FileSectionRow
+                  key={`file-section::${row.file.path}::${row.section}`}
+                  row={row}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-generate':
+              return (
+                <FileGenerateRow
+                  key={`file-generate::${row.file.path}`}
+                  file={row.file}
+                  kinds={row.kinds}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
                 />

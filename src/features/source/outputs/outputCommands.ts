@@ -23,6 +23,7 @@ import {
 } from '@/lib/outputs'
 import { hasDesktop } from '@/lib/platform'
 import { pdfRenderUnavailableReason } from '@/lib/reviewPackage/pdf'
+import { getAutoOutputsOff, setAutoOutput } from '@/lib/supabase/releases'
 import { deleteVersionOutput, VersionOutputRpcError } from '@/lib/supabase/versionOutputs'
 import { usePDMStore } from '@/stores/pdmStore'
 import { outputJobKey, type OutputJob } from '@/stores/slices/outputsSlice'
@@ -239,7 +240,9 @@ export async function deleteOutputWithToast(file: LocalFile, output: VersionOutp
     log.error('[Outputs]', 'Deleting an output failed', { outputId: output.id, code, error: errorText(err) })
     toast(
       'error',
-      code === 'IN_REVIEW'
+      code === 'RELEASED'
+        ? t('source.outputs.deleteReleased', { kind })
+        : code === 'IN_REVIEW'
         ? t('source.outputs.deleteInReview', { kind })
         : code === 'NOT_GENERATOR'
           ? t('source.outputs.deleteNotGenerator', { kind })
@@ -256,5 +259,43 @@ export async function deleteOutputWithToast(file: LocalFile, output: VersionOutp
     loadOutputHeads([output.fileId]),
   ]).catch((err) => log.warn('[Outputs]', 'Could not reload version outputs', { error: errorText(err) }))
   toast('success', t('source.outputs.deleted', { kind, name: file.name }))
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Regenerate at check-in (schema 509)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether `kind` of this file is regenerated at check-in (on unless the file turned it off), or
+ * null when it cannot be read (a database before 509): the menu then leaves the toggle out.
+ */
+export async function readAutoOutput(fileId: string, kind: VersionOutputKind): Promise<boolean | null> {
+  try {
+    return !(await getAutoOutputsOff(fileId)).includes(kind)
+  } catch (err) {
+    log.debug('[Outputs]', 'Regenerate-at-check-in setting unavailable', { fileId, error: errorText(err) })
+    return null
+  }
+}
+
+/** Turn regenerating `kind` at check-in on or off for one file. Returns whether it was saved. */
+export async function setAutoOutputWithToast(file: LocalFile, kind: VersionOutputKind, enabled: boolean): Promise<boolean> {
+  const fileId = file.pdmData?.id
+  if (!fileId) return false
+  try {
+    await setAutoOutput(fileId, kind, enabled)
+  } catch (err) {
+    log.error('[Outputs]', 'Changing regenerate at check-in failed', { fileId, kind, error: errorText(err) })
+    toast('error', t('source.outputs.autoRegenerateFailed', { error: errorText(err) }))
+    return false
+  }
+  toast(
+    'success',
+    t(enabled ? 'source.outputs.autoRegenerateOn' : 'source.outputs.autoRegenerateOff', {
+      kind: outputKindLabel(kind),
+      name: file.name,
+    }),
+  )
   return true
 }

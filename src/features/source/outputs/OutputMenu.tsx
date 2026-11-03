@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Copy, Download, ExternalLink, FolderDown, RefreshCw, Trash2 } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, FolderDown, RefreshCw, Trash2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
@@ -10,8 +10,10 @@ import type { VersionOutput } from '@/types/versionOutputs'
 import {
   copyOutputName,
   openOutput,
+  readAutoOutput,
   regenerateOutput,
   saveOutputCopyWithToast,
+  setAutoOutputWithToast,
   saveOutputNextToFileWithToast,
 } from './outputCommands'
 import { outputMenuItems } from './outputRowModel'
@@ -24,6 +26,8 @@ export interface OutputMenuProps {
   busy: boolean
   /** The output is of an older version than the file's latest. */
   stale: boolean
+  /** The output is of a released version (schema 509): no Regenerate, no Delete. */
+  released?: boolean
   onClose: () => void
   /** Ask to delete the output (the row confirms). */
   onDelete: () => void
@@ -58,9 +62,11 @@ function Item({
 /**
  * The menu of one version output in the file list: Open, Save copy..., Save next to file
  * (desktop), Copy file name, Regenerate for the latest version (desktop, explorer edit; only when
- * the output is out of date), Delete (administrators, or the user who generated it).
+ * the output is out of date), Delete (administrators, or the user who generated it), and
+ * "Regenerate at check-in" for the kind (explorer edit; on unless the file turned it off). An
+ * export of a released version is frozen: it has no Regenerate and no Delete.
  */
-export function OutputMenu({ file, output, position, busy, stale, onClose, onDelete }: OutputMenuProps) {
+export function OutputMenu({ file, output, position, busy, stale, released = false, onClose, onDelete }: OutputMenuProps) {
   const getEffectiveRole = usePDMStore((s) => s.getEffectiveRole)
   const hasPermission = usePDMStore((s) => s.hasPermission)
   const userId = usePDMStore((s) => s.user?.id)
@@ -73,7 +79,22 @@ export function OutputMenu({ file, output, position, busy, stale, onClose, onDel
     busy,
     isGeneratorWithEdit:
       !!userId && output.generatedBy === userId && hasPermission('module:explorer', 'edit'),
+    released,
   })
+  const canEdit = getEffectiveRole() === 'admin' || hasPermission('module:explorer', 'edit')
+  const fileId = file.pdmData?.id ?? null
+  // null: not read yet or not available (the toggle is left out).
+  const [autoOn, setAutoOn] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!canEdit || !fileId) return
+    let alive = true
+    void readAutoOutput(fileId, output.kind).then((on) => {
+      if (alive) setAutoOn(on)
+    })
+    return () => {
+      alive = false
+    }
+  }, [canEdit, fileId, output.kind])
   // The queue regenerates the saved configuration only.
   const canRegenerate = items.regenerate && output.configuration === null
 
@@ -141,6 +162,16 @@ export function OutputMenu({ file, output, position, busy, stale, onClose, onDel
               icon={<RefreshCw size={14} />}
               label={t('source.outputs.regenerateLatest', { version: file.pdmData?.version ?? '' })}
               onClick={() => run(() => regenerateOutput(file, output))}
+            />
+          </>
+        )}
+        {autoOn !== null && (
+          <>
+            <div className="context-menu-separator" />
+            <Item
+              icon={autoOn ? <Check size={14} /> : <span className="inline-block w-3.5" />}
+              label={t('source.outputs.autoRegenerate')}
+              onClick={() => run(() => void setAutoOutputWithToast(file, output.kind, !autoOn))}
             />
           </>
         )}

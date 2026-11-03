@@ -20,7 +20,9 @@ import {
   getFileVersions,
   listInspectionReports,
   listInspectionTemplates,
+  uploadInspectionContent,
 } from '@/lib/supabase'
+import { overwriteInspectionReport, ReportOverwriteError } from '@/lib/supabase/releases'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import type { InspectionReport, InspectionReportType, InspectionTemplate } from '@/types/inspectionReports'
 
@@ -48,6 +50,7 @@ import {
 } from './reportModel'
 import { liveInspectionRowCount, organizationLogo, reportIdentity } from './reportSources'
 import { defaultTypeRequest, reportTypeKey, type ReportTypeRequest } from './reportTypeModel'
+import { overwriteFallback, overwriteKeepsLayout } from './regenerateModel'
 
 export interface ReportContext {
   reports: InspectionReport[]
@@ -441,6 +444,134 @@ function regenerateTypeRequest(report: InspectionReport, context: ReportContext,
     supplierName: report.supplierName,
     ncrReference: report.ncrReference,
     chosenIds: keepChoice ? report.characteristicIds : null,
+  }
+}
+
+/**
+ * Regenerate a report of the same version in place (5.9.0): the workbook is rebuilt from the same
+ * version with the report's id and number, uploaded, and recorded on the same row
+ * (`inspection_report_overwrite`). The server refuses a released version (the report is frozen:
+ * a toast says so) and a report with a returned workbook (then a new report supersedes it, and a
+ * toast says so). A report from before types, or a lot report whose template now lays out a
+ * different number of part columns, also gets a new superseding report. While it runs the report
+ * is in `regeneratingReportIds`.
+ */
+export async function overwriteReport(file: LocalFile, report: InspectionReport): Promise<InspectionReport | null> {
+  const outcome = await tryOverwrite(file, report)
+  return outcome === 'supersede' ? regenerateReport(file, report, 'same') : outcome
+}
+
+async function tryOverwrite(file: LocalFile, report: InspectionReport): Promise<InspectionReport | null | 'supersede'> {
+  const state = usePDMStore.getState()
+  const { addToast } = state
+  if (state.regeneratingReportIds.has(report.id)) return null
+  if (generating.has(report.fileId)) {
+    addToast('info', t('source.inspection.rptAlreadyGenerating', { name: file.name }))
+    return null
+  }
+  generating.add(report.fileId)
+  state.setReportRegenerating(report.id, true)
+  let versionNumber: number | null = null
+  try {
+    if (!report.reportType) {
+      return 'supersede'
+    }
+    const context = await loadReportContext(report.fileId, report.orgId)
+    const version = context.versions.find((v) => v.id === report.fileVersionId)
+    if (!version) {
+      addToast('warning', t('source.inspection.rptVersionGone'))
+      return null
+    }
+    versionNumber = version.version
+    const template = regenerateTemplateChoice(report, templateChoices(context.templates, builtInTemplateNames()))
+    if (!template) throw new Error('No template')
+    const type = regenerateTypeRequest(report, context, 'same')
+    const organization = usePDMStore.getState().organization
+    const naming = reportNamingFromSettings(organization?.settings?.inspection_reports)
+    const [identity, logo] = await Promise.all([
+      reportIdentity(version, file.pdmData),
+      naming.includeLogo ? organizationLogo(organization) : Promise.resolve(null),
+    ])
+    const local = await generateReport({
+      orgId: report.orgId,
+      orgName: organization?.name ?? '',
+      fileId: report.fileId,
+      drawingName: file.name,
+      version,
+      versions: context.versions,
+      template,
+      existingReports: context.reports,
+      naming,
+      identity,
+      logo,
+      type: type ?? defaultTypeRequest(context.reports, context.versions, version, naming),
+      localOnly: true,
+      reuse: { reportId: report.id, reportNumber: report.reportNumber },
+    })
+    if (!overwriteKeepsLayout(report.sampleColumns, local.sampleColumns)) {
+      addToast('info', t('source.inspection.rptOverwriteLayoutChanged'), 10000)
+      return 'supersede'
+    }
+    const uploaded = await uploadInspectionContent(report.orgId, local.workbook)
+    await overwriteInspectionReport({
+      reportId: report.id,
+      storageHash: uploaded.hash,
+      fileSize: uploaded.size,
+      characteristicCount: local.characteristicCount,
+      drawingPdfHash: local.drawingPdfHash,
+      templateId: local.templateId,
+      templateName: local.templateName,
+      templateHash: local.templateHash,
+    })
+    const reports = await listInspectionReports(report.fileId)
+    publishReports(report.fileId, reports)
+    const updated = reports.find((r) => r.id === report.id) ?? report
+    addToast('success', t('source.inspection.rptOverwritten', { number: report.reportNumber ?? '' }), 8000, {
+      label: t('source.inspection.rptOpen'),
+      onClick: () => void openReportWithToast(updated),
+    })
+    if (!local.rowsExact) {
+      addToast(
+        'warning',
+        local.rowsSourceVersion !== null
+          ? t('source.inspection.rptRowsFromVersion', { version: local.rowsSourceVersion })
+          : t('source.inspection.rptRowsNotExact'),
+        10000,
+      )
+    }
+    if (local.drawingOmitted) addToast('info', t(drawingOmittedKey(local.drawingOmitted)), 10000)
+    await warnIfNotCheckedIn(file, version, local.characteristicCount)
+    return updated
+  } catch (err) {
+    if (err instanceof ReportOverwriteError) {
+      const next = overwriteFallback(err.code)
+      if (next === 'frozen') {
+        addToast('warning', t('source.inspection.rptOverwriteReleased', { version: versionNumber ?? '' }), 12000)
+        return null
+      }
+      if (next === 'supersede') {
+        addToast('info', t('source.inspection.rptOverwriteHasReturn'), 10000)
+        return 'supersede'
+      }
+    }
+    if (err instanceof ReportHasNoRowsError) {
+      addToast('warning', t('source.inspection.rptNoRows', { version: err.version }), 12000)
+      return null
+    }
+    if (err instanceof ReportSelectionEmptyError) {
+      addToast('warning', t(`source.inspection.rptSelectionEmpty_${err.note ?? 'none_chosen'}`), 12000)
+      return null
+    }
+    if (err instanceof ReportSamplingError) {
+      addToast('warning', t(`source.inspection.rptSamplingError_${err.reason}`), 12000)
+      return null
+    }
+    log.error('[InspectionReports]', 'Overwrite failed', { reportId: report.id, error: errorText(err) })
+    addToast('error', t('source.inspection.rptGenerateFailed', { error: errorText(err) }))
+    return null
+  } finally {
+    generating.delete(report.fileId)
+    usePDMStore.getState().setReportRegenerating(report.id, false)
   }
 }
 

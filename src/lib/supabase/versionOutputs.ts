@@ -62,6 +62,7 @@ const ERROR_CODES: readonly VersionOutputErrorCode[] = [
   'NOT_GENERATOR',
   'IN_REVIEW',
   'NOT_FOUND',
+  'RELEASED',
 ]
 
 /** A refused or failed output write or delete; `code` is the RPC's hint. */

@@ -11,7 +11,7 @@ export {
   type OutputProgress,
   type OutputProgressPhase,
 } from './ensure'
-export { listVersionOutputs, loadOutputHeads, loadVersionOutputs } from './list'
+export { listVersionOutputs, loadFileReleases, loadOutputHeads, loadVersionOutputs } from './list'
 export {
   applyOutputNamePattern,
   baseNameOf,

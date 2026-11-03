@@ -5,6 +5,8 @@ import type { InspectionReport } from '@/types/inspectionReports'
 import type { OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 
 import type { ConfigWithDepth } from '../../types'
+import type { FileSectionId, ParentModelsKind } from './fileSections'
+import type { VersionOutputKind } from '@/types/versionOutputs'
 
 export interface FileVirtualRow {
   type: 'file'
@@ -52,6 +54,28 @@ export interface DrawingReportVirtualRow {
   type: 'drawing-report'
   file: LocalFile
   report: InspectionReport
+  /** Listed in Received inspections (a filled-in workbook came back). */
+  received?: boolean
+}
+
+/** A section header under an expanded file (`fileSections.ts`): a chevron, a name and a count. */
+export interface FileSectionVirtualRow {
+  type: 'file-section'
+  file: LocalFile
+  section: FileSectionId
+  /** Null while the content is not read yet. */
+  count: number | null
+  isExpanded: boolean
+  isLoading: boolean
+  /** A drawing's models section: what the models are (its name). */
+  parents?: ParentModelsKind
+}
+
+/** "Generate…" at the end of a file's Exports: a menu of the kinds it can have (saved configuration). */
+export interface FileGenerateVirtualRow {
+  type: 'file-generate'
+  file: LocalFile
+  kinds: VersionOutputKind[]
 }
 
 /** "n more reports" after the first few of an expanded drawing. */
@@ -128,6 +152,8 @@ export type VirtualRow =
   | DrawingReportVirtualRow
   | DrawingReportMoreVirtualRow
   | FileOutputVirtualRow
+  | FileSectionVirtualRow
+  | FileGenerateVirtualRow
   | ConfigDrawingVirtualRow
   | ConfigGroupVirtualRow
   | ConfigEmptyVirtualRow

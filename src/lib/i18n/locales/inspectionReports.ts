@@ -107,6 +107,36 @@ export const inspectionReportStrings: Record<string, string> = {
   rptRegenerate: 'Regenerate',
   rptRegenerateFor: 'Regenerate for version {{version}}',
   rptRegenerateAsCopy: 'Regenerate as copy',
+  rptOverwritten: 'Report {{number}} regenerated in place',
+  rptOverwriteReleased:
+    'Version {{version}} is released, so its report is frozen and was left unchanged. Regenerate it for a newer version, or as a copy.',
+  rptOverwriteHasReturn:
+    'A filled-in workbook came back for this report, so it is kept as received. A new report of the same version replaces it in the list.',
+  rptOverwriteLayoutChanged:
+    'The template now lays out a different number of part columns, so a new report of the same version replaces this one instead.',
+  rptReturnedOn: 'Returned {{date}}',
+  // Received view (Inspection tab)
+  rptViewReceived: 'Received',
+  rptReceived: 'Received inspections',
+  rptRecvScopeLabel: 'Which drawings',
+  rptRecvScopeFolder: 'This folder',
+  rptRecvScopeVault: 'Whole vault',
+  rptRecvCountOne: '1 received inspection',
+  rptRecvCountMany: '{{count}} received inspections',
+  rptRecvEmptyTitle: 'No received inspections',
+  rptRecvEmptyBody:
+    'A report shows up here once its filled-in workbook is imported (Import results on the report).',
+  rptRecvEmptyFiltered: 'No received inspection matches the filter.',
+  rptRecvStatusLabel: 'Status',
+  rptRecvStatusAll: 'All',
+  rptRecvSupplier: 'Supplier',
+  rptRecvPo: 'PO',
+  rptRecvLot: 'Lot',
+  rptRecvPoValue: 'PO {{po}}',
+  rptRecvLotValue: 'Lot {{lot}}',
+  rptRecvOpenReturned: 'Open returned workbook',
+  rptRecvReject: 'Reject',
+  rptRecvVersion: 'Version {{version}}',
   rptRegenerating: 'Regenerating the report for the latest version…',
   rptOutdated:
     'Out of date: made from version {{version}}, and the drawing is now at version {{latest}}. Click to generate a new report of version {{latest}}.',

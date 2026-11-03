@@ -9,6 +9,7 @@ import type { LocalFile } from '@/stores/types'
 import {
   checkinCandidates,
   createOutputQueue,
+  existingOutputKinds,
   planCheckinOutputs,
   queuedJobKey,
   SAME_NAME_MAX_ATTEMPTS,
@@ -61,6 +62,53 @@ describe('planCheckinOutputs', () => {
     expect(planCheckinOutputs(many, both).skipped).toBe('batch_too_large')
     expect(planCheckinOutputs(many.slice(0, 25), both).jobs).toHaveLength(25)
     expect(planCheckinOutputs([file('p', 'P.sldprt'), file('p', 'P.sldprt')], both).jobs).toHaveLength(1)
+  })
+})
+
+describe('planCheckinOutputs per file (5.9.0)', () => {
+  const kinds = (plan: ReturnType<typeof planCheckinOutputs>) => plan.jobs.map((j) => `${j.fileId}:${j.kind}`)
+
+  it('adds every kind a file already has an export of, in kind order', () => {
+    const plan = planCheckinOutputs([file('d', 'D.slddrw'), file('p', 'P.sldprt')], both, 25, {
+      existing: new Map([
+        ['d', ['step', 'dxf']],
+        ['p', ['stl']],
+      ]),
+    })
+    expect(kinds(plan)).toEqual(['d:pdf', 'd:dxf', 'd:step', 'p:step', 'p:stl'])
+  })
+
+  it('drops the kinds a file turned off, the organization kind too', () => {
+    const plan = planCheckinOutputs([file('d', 'D.slddrw'), file('p', 'P.sldprt')], both, 25, {
+      existing: new Map([['d', ['dxf']]]),
+      off: new Map([
+        ['d', ['pdf']],
+        ['p', ['step']],
+      ]),
+    })
+    expect(kinds(plan)).toEqual(['d:dxf'])
+  })
+
+  it('regenerates existing kinds even when the organization setting is off', () => {
+    const off = { pdf: false, step: false }
+    expect(planCheckinOutputs([file('p', 'P.sldprt')], off).skipped).toBe('disabled')
+    const plan = planCheckinOutputs([file('p', 'P.sldprt')], off, 25, { existing: new Map([['p', ['iges']]]) })
+    expect(kinds(plan)).toEqual(['p:iges'])
+  })
+
+  it('ignores a kind the file cannot have, and keeps the batch cap', () => {
+    const plan = planCheckinOutputs([file('p', 'P.sldprt')], both, 25, { existing: new Map([['p', ['pdf']]]) })
+    expect(kinds(plan)).toEqual(['p:step'])
+    const many = Array.from({ length: 26 }, (_, i) => file(`p${i}`, `P${i}.sldprt`))
+    expect(planCheckinOutputs(many, both, 25, { existing: new Map([['p0', ['stl']]]) }).skipped).toBe('batch_too_large')
+  })
+
+  it('reads existing kinds from the saved configuration only', () => {
+    const heads = new Map([
+      ['p', [{ kind: 'step' as const, configuration: 'Long' }, { kind: 'stl' as const, configuration: null }]],
+      ['q', [{ kind: 'step' as const, configuration: 'Short' }]],
+    ])
+    expect(existingOutputKinds(heads)).toEqual(new Map([['p', ['stl']]]))
   })
 })
 

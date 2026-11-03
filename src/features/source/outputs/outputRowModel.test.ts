@@ -88,20 +88,20 @@ describe('fileOutputEntries', () => {
 
   it('shows a Generate ghost for the primary kinds only, once the outputs are loaded', () => {
     expect(fileOutputEntries(drawing, inputs())).toEqual([
-      { kind: 'pdf', output: null, job: null, state: 'missing', stale: false },
-      { kind: 'step', output: null, job: null, state: 'missing', stale: false },
+      { kind: 'pdf', output: null, job: null, state: 'missing', stale: false, released: null, secondary: false },
+      { kind: 'step', output: null, job: null, state: 'missing', stale: false, released: null, secondary: false },
     ])
     expect(fileOutputEntries(part, inputs()).map((e) => [e.kind, e.state])).toEqual([['step', 'missing']])
     expect(fileOutputEntries(drawing, inputs({ heads: undefined }))).toEqual([])
     expect(fileOutputEntries(drawing, inputs({ canGenerate: false }))).toEqual([])
   })
 
-  it('lists recorded outputs of every kind, the primary first', () => {
+  it('lists recorded outputs of every kind, a drawing PDF, DXF, STEP (5.9.0 order)', () => {
     const rows = fileOutputEntries(drawing, inputs({ heads: [output('pdf'), output('step'), output('dxf')] }))
     expect(rows.map((e) => [e.kind, e.state])).toEqual([
       ['pdf', 'ready'],
-      ['step', 'ready'],
       ['dxf', 'ready'],
+      ['step', 'ready'],
     ])
     const stepRows = fileOutputEntries(part, inputs({ heads: [output('step'), output('step', 'Long'), output('stl')] }))
     expect(stepRows.map((e) => [e.kind, e.output?.configuration])).toEqual([

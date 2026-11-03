@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
 import { inspectionReportStrings } from './inspectionReports'
@@ -43,6 +44,7 @@ export const en: TranslationDict = {
   ...reviewsUiStrings.en,
   reviewPackage: reviewPackageStrings.en,
   dbUpgrade: dbUpgradeStrings.en,
+  releases: releasesStrings.en,
   securityMonitoring: securityMonitoringStrings.en,
   shortcuts: shortcutsStrings,
   app: {

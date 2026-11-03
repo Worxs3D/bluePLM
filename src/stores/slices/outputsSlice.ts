@@ -12,13 +12,16 @@
 import { StateCreator } from 'zustand'
 
 import type { ChildSelection } from '../../features/source/outputs/preview/childPreviewModel'
+import type { VersionRelease } from '../../types/releases'
 import type { VersionedOutput, VersionOutput, VersionOutputKind } from '../../types/versionOutputs'
-import type { PDMStoreState } from '../types'
+import type { DrawingRefItem, PDMStoreState } from '../types'
 
 export const MAX_VERSIONS_WITH_OUTPUTS = 500
 export const MAX_OUTPUT_JOBS = 200
 /** Files whose latest version id the file list has resolved (for the outputs under its chevron). */
 export const MAX_FILE_OUTPUT_VERSIONS = 500
+/** Section headers under expanded files the user opened or closed against their default. */
+export const MAX_FILE_SECTION_TOGGLES = 2000
 
 /** The checked-in version of a file whose outputs the file list shows. */
 export interface FileOutputVersion {
@@ -71,6 +74,24 @@ export interface OutputsSlice {
    */
   childSelection: ChildSelection | null
   setChildSelection: (selection: ChildSelection | null) => void
+  /**
+   * file id -> its released versions, newest first (schema 509; `loadFileReleases`). An empty list
+   * means "loaded, none released". Bounded like `fileOutputHeads`.
+   */
+  fileReleases: Map<string, VersionRelease[]>
+  setFileReleases: (byFile: ReadonlyMap<string, VersionRelease[]>) => void
+  /**
+   * Chevron section headers (`${filePath}::${section}`) the user flipped from their default
+   * (`fileSectionExpanded` in FileList/fileSections.ts). Session state, bounded.
+   */
+  fileSectionToggles: Set<string>
+  toggleFileSection: (key: string) => void
+  /** part/assembly file id -> the drawings that reference it (the Drawings section). Bounded. */
+  modelDrawings: Map<string, DrawingRefItem[]>
+  setModelDrawings: (byFile: ReadonlyMap<string, DrawingRefItem[]>) => void
+  /** part/assembly file id -> the assemblies that reference it (the Used in section). Bounded. */
+  modelUsedIn: Map<string, DrawingRefItem[]>
+  setModelUsedIn: (byFile: ReadonlyMap<string, DrawingRefItem[]>) => void
 }
 
 export function outputJobKey(fileId: string, kind: VersionOutputKind, configuration: string | null): string {
@@ -113,6 +134,18 @@ export function mergeFileOutputVersions<T>(
   return next
 }
 
+/** Flip one key; the oldest flips go past `max` (they fall back to their default). */
+export function toggleSetKey(current: ReadonlySet<string>, key: string, max = MAX_FILE_SECTION_TOGGLES): Set<string> {
+  const next = new Set(current)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  for (const k of next) {
+    if (next.size <= max) break
+    next.delete(k)
+  }
+  return next
+}
+
 /** The job written last; finished jobs beyond `max` are dropped oldest first (active ones stay). */
 export function mergeOutputJob(
   current: ReadonlyMap<string, OutputJob>,
@@ -150,4 +183,14 @@ export const createOutputsSlice: StateCreator<
     set((state) => ({ fileOutputVersions: mergeFileOutputVersions(state.fileOutputVersions, byFile) })),
   childSelection: null,
   setChildSelection: (childSelection) => set({ childSelection }),
+  fileReleases: new Map(),
+  setFileReleases: (byFile) =>
+    set((state) => ({ fileReleases: mergeFileOutputVersions(state.fileReleases, byFile) })),
+  fileSectionToggles: new Set(),
+  toggleFileSection: (key) => set((state) => ({ fileSectionToggles: toggleSetKey(state.fileSectionToggles, key) })),
+  modelDrawings: new Map(),
+  setModelDrawings: (byFile) =>
+    set((state) => ({ modelDrawings: mergeFileOutputVersions(state.modelDrawings, byFile) })),
+  modelUsedIn: new Map(),
+  setModelUsedIn: (byFile) => set((state) => ({ modelUsedIn: mergeFileOutputVersions(state.modelUsedIn, byFile) })),
 })

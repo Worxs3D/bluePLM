@@ -9,6 +9,9 @@
  * STEP (and DXF when generated), a part or assembly its STEP (and IGES/STL when generated). A
  * primary kind (`primaryOutputKinds`) shows as a "Generate" ghost row when the file has none and
  * this user can generate it; any kind shows a spinner while a job for it is queued or running.
+ * When the file has a released version (schema 509), that version's export of a kind is listed
+ * first (`released`), and a newer work-in-progress export follows it (`secondary`); the stale mark
+ * is only on the newest row.
  */
 
 // Direct module imports (not the `@/lib/outputs` barrel) keep this pure: no store, no Supabase.
@@ -23,6 +26,7 @@ import {
 import { orgExportFilenamePattern, versionOutputFileName } from '@/lib/outputs/naming'
 import { outputJobKey, type FileOutputVersion, type OutputJob } from '@/stores/slices/outputsSlice'
 import type { LocalFile } from '@/stores/types'
+import type { VersionRelease } from '@/types/releases'
 import type { VersionedOutput, VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 /**
@@ -38,8 +42,15 @@ export interface OutputRowEntry {
   /** The job behind `queued`/`running`/`failed`, or one generating a stale output for the latest version. */
   job: OutputJob | null
   state: OutputRowState
-  /** The output is of an older version than the file's latest. */
+  /**
+   * The newest row of its kind (and configuration) is of an older version than the file's latest.
+   * A released row followed by a newer work-in-progress row is never stale; that row carries it.
+   */
   stale: boolean
+  /** The output is of this released version (schema 509): frozen, listed first. */
+  released: VersionRelease | null
+  /** A work-in-progress output listed after the released one of its kind. */
+  secondary: boolean
 }
 
 export interface OutputRowInputs {
@@ -50,6 +61,59 @@ export interface OutputRowInputs {
   jobs: ReadonlyMap<string, OutputJob>
   /** Desktop and allowed to generate (explorer edit or admin): show "Generate" ghost rows. */
   canGenerate: boolean
+  /** The file's released versions, newest first (store `fileReleases`); undefined until loaded. */
+  releases?: readonly VersionRelease[]
+  /** Outputs per file_version id (store `versionOutputs`): the newest released version's exports. */
+  versionOutputs?: ReadonlyMap<string, readonly VersionOutput[]>
+}
+
+/**
+ * The newest released version's outputs of one kind and file, with its version number. Empty when
+ * nothing is released or its outputs are not loaded yet.
+ */
+export function releasedOutputsOfKind(
+  fileId: string,
+  kind: VersionOutputKind,
+  release: VersionRelease | null | undefined,
+  versionOutputs: ReadonlyMap<string, readonly VersionOutput[]> | undefined,
+): VersionedOutput[] {
+  if (!release) return []
+  return (versionOutputs?.get(release.fileVersionId) ?? [])
+    .filter((o) => o.kind === kind && o.fileId === fileId)
+    .map((o) => ({ ...o, version: release.version }))
+}
+
+/** What the Outputs column shows for one kind: the released export when there is one, else the newest. */
+export interface ColumnOutput {
+  /** The output the icon shows and previews. */
+  shown: VersionedOutput | null
+  /** `shown` is of a released version. */
+  released: VersionRelease | null
+  /** The newest export of the kind (work in progress or released). */
+  newest: VersionedOutput | null
+  /** The newest export is older than the file's latest version (the amber mark). */
+  stale: boolean
+}
+
+export function columnOutput(
+  fileId: string,
+  kind: VersionOutputKind,
+  latestVersion: number | null | undefined,
+  heads: readonly VersionedOutput[] | undefined,
+  releases: readonly VersionRelease[] | undefined,
+  versionOutputs: ReadonlyMap<string, readonly VersionOutput[]> | undefined,
+): ColumnOutput {
+  const newest = heads?.find((o) => o.kind === kind && o.configuration === null && o.fileId === fileId) ?? null
+  const release = releases?.[0] ?? null
+  const fromRelease =
+    releasedOutputsOfKind(fileId, kind, release, versionOutputs).find((o) => o.configuration === null) ??
+    (newest && release && newest.fileVersionId === release.fileVersionId ? newest : null)
+  return {
+    shown: fromRelease ?? newest,
+    released: fromRelease ? release : null,
+    newest,
+    stale: !!newest && isStaleOutput(newest, latestVersion),
+  }
 }
 
 /** The kind a file gets a "Generate" ghost row for first: PDF for drawings, STEP for parts/assemblies. */
@@ -88,16 +152,47 @@ export function fileOutputEntries(
   const primary = primaryOutputKinds(file.path)
   const entries: OutputRowEntry[] = []
 
+  const release = inputs.releases?.[0] ?? null
+
   for (const kind of kinds) {
     const job = inputs.jobs.get(outputJobKey(fileId, kind, null))
     const relevantJob = job && aboutVersion(job, inputs.latest) ? job : null
     const recorded = (inputs.heads ?? []).filter((o) => o.kind === kind && o.fileId === fileId)
+    const released = releasedOutputsOfKind(fileId, kind, release, inputs.versionOutputs)
 
-    if (recorded.length > 0) {
-      for (const output of recorded) {
+    if (recorded.length > 0 || released.length > 0) {
+      // One group per configuration: the released export first, then a newer work-in-progress one.
+      const configs = [...new Set([...released, ...recorded].map((o) => o.configuration ?? ''))]
+      for (const config of configs) {
+        const ofConfig = (o: VersionedOutput) => (o.configuration ?? '') === config
+        const head = recorded.find(ofConfig) ?? null
+        const frozen =
+          released.find(ofConfig) ?? (head && release && head.fileVersionId === release.fileVersionId ? head : null)
+        const wip = head && (!frozen || head.version > frozen.version) ? head : null
         // The queue only runs the saved configuration, so a job is about the unconfigured output.
-        const working = output.configuration === null && relevantJob && isActiveJob(relevantJob) ? relevantJob : null
-        entries.push({ kind, output, job: working, state: 'ready', stale: isStaleOutput(output, latestVersion) })
+        const working = config === '' && relevantJob && isActiveJob(relevantJob) ? relevantJob : null
+        if (frozen) {
+          entries.push({
+            kind,
+            output: frozen,
+            job: wip ? null : working,
+            state: 'ready',
+            stale: !wip && isStaleOutput(frozen, latestVersion),
+            released: release,
+            secondary: false,
+          })
+        }
+        if (wip) {
+          entries.push({
+            kind,
+            output: wip,
+            job: working,
+            state: 'ready',
+            stale: isStaleOutput(wip, latestVersion),
+            released: null,
+            secondary: !!frozen,
+          })
+        }
       }
       continue
     }
@@ -108,6 +203,8 @@ export function fileOutputEntries(
         job: relevantJob,
         state: relevantJob.status === 'running' ? 'running' : 'queued',
         stale: false,
+        released: null,
+        secondary: false,
       })
       continue
     }
@@ -119,6 +216,8 @@ export function fileOutputEntries(
       job: failed ? relevantJob : null,
       state: failed ? 'failed' : 'missing',
       stale: false,
+      released: null,
+      secondary: false,
     })
   }
   return entries
@@ -152,14 +251,17 @@ export function outputMenuItems(opts: {
   busy: boolean
   /** The signed-in user generated the output and has explorer edit. */
   isGeneratorWithEdit?: boolean
+  /** The output is of a released version (schema 509): frozen, never regenerated or deleted. */
+  released?: boolean
 }): OutputMenuItems {
+  const frozen = opts.released === true
   return {
     open: true,
     saveCopy: true,
     saveNextToFile: opts.desktop && opts.hasLocalFolder,
     copyName: true,
-    regenerate: opts.desktop && opts.canGenerate && opts.stale && !opts.busy,
-    delete: (opts.isAdmin || !!opts.isGeneratorWithEdit) && !opts.busy,
+    regenerate: !frozen && opts.desktop && opts.canGenerate && opts.stale && !opts.busy,
+    delete: !frozen && (opts.isAdmin || !!opts.isGeneratorWithEdit) && !opts.busy,
   }
 }
 
@@ -326,6 +428,7 @@ export const OUTPUT_REASON_CODES = [
   'NO_EDIT_PERMISSION',
   'NOT_FOUND',
   'NO_MODEL',
+  'RELEASED',
 ] as const
 
 export function outputReasonKey(code: string): string {

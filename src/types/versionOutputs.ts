@@ -67,6 +67,8 @@ export type VersionOutputErrorCode =
   | 'NOT_GENERATOR'
   | 'IN_REVIEW'
   | 'NOT_FOUND'
+  /** The version is released (schema 509): its exports are frozen. */
+  | 'RELEASED'
   | 'UNKNOWN'
 
 /** `organization.settings.outputs` (5.5.0). */

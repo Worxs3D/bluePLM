@@ -5,10 +5,11 @@ import { Badge } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
+import { log } from '@/lib/logger'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
 import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
-import type { InspectionReport } from '@/types/inspectionReports'
+import type { InspectionReport, InspectionReportStatus } from '@/types/inspectionReports'
 
 import {
   ChildChip,
@@ -21,9 +22,20 @@ import { isParentMetadataColumn, outdatedReportVersion, reportHeads } from './ch
 import { showReportInInspectionTab } from './showReportInInspectionTab'
 import { statusKey, statusTone } from '@/features/integrations/solidworks/inspection/reports/reportModel'
 import {
+  deliveredToast,
   openReportWithToast,
+  publishReport,
   regenerateReport,
 } from '@/features/integrations/solidworks/inspection/reports/reportCommands'
+import {
+  downloadReturned,
+  openReturned,
+  setReportStatus,
+} from '@/features/integrations/solidworks/inspection/reports/reportActions'
+import {
+  generatedStatus,
+  receivedStatus,
+} from '@/features/integrations/solidworks/inspection/reports/receivedModel'
 import { ReportMenu } from '@/features/integrations/solidworks/inspection/reports/ReportMenu'
 import { useReportDialogs } from '@/features/integrations/solidworks/inspection/reports/useReportDialogs'
 import { reportTypeTone } from '@/features/integrations/solidworks/inspection/reports/reportTypeModel'
@@ -39,6 +51,35 @@ interface DrawingReportRowProps {
   versionNumber: number | null
   rowHeight: number
   visibleColumns: { id: string; width: number }[]
+  /**
+   * `generated` (default): a report of the drawing, with its issued / sent status and the stale
+   * mark. `received`: a report a filled-in workbook came back for (`receivedReports`), with the
+   * return date, returned / accepted / rejected and its results; double-click opens the returned
+   * workbook, and the menu has Accept / Reject and Save returned workbook.
+   */
+  variant?: 'generated' | 'received'
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+async function setStatusWithToast(report: InspectionReport, status: InspectionReportStatus): Promise<void> {
+  try {
+    publishReport(await setReportStatus(report, status))
+  } catch (err) {
+    log.error('[InspectionReports]', 'Status change failed', { reportId: report.id, error: errorText(err) })
+    usePDMStore.getState().addToast('error', t('source.inspection.rptUpdateFailed', { error: errorText(err) }))
+  }
+}
+
+async function deliverReturned(report: InspectionReport, open: boolean): Promise<void> {
+  try {
+    deliveredToast(await (open ? openReturned(report) : downloadReturned(report)))
+  } catch (err) {
+    log.error('[InspectionReports]', 'Returned workbook failed', { reportId: report.id, error: errorText(err) })
+    usePDMStore.getState().addToast('error', t('source.inspection.rptOpenFailed', { error: errorText(err) }))
+  }
 }
 
 
@@ -52,6 +93,7 @@ interface DrawingReportRowProps {
  * Delete) plus "Show in Inspection tab". The newest report of a type made of an older version has
  * a stale mark at the left that regenerates it for the latest version (`outdatedReportVersion`; a
  * spinner while that runs), and the new report then takes this row's place (`reportHeads`).
+ * The `received` variant is the same row for a returned workbook (see the prop).
  */
 export const DrawingReportRow = memo(function DrawingReportRow({
   file,
@@ -59,7 +101,9 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   versionNumber,
   rowHeight,
   visibleColumns,
+  variant = 'generated',
 }: DrawingReportRowProps) {
+  const received = variant === 'received'
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const dialogs = useReportDialogs()
   const selected = usePDMStore((s) => isChildSelected(s.childSelection, s.selectedFiles, `report:${report.id}`))
@@ -67,7 +111,12 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   const versionOf = usePDMStore((s) => s.reportVersionNumbers)
   const canEdit = usePDMStore((s) => s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit'))
   const latestVersion = file.pdmData?.version ?? null
-  const outdatedFor = outdatedReportVersion(report, reportHeads(siblings ?? [report]), versionOf, latestVersion)
+  // A received inspection is a record of inspected parts, never out of date.
+  const outdatedFor = received
+    ? null
+    : outdatedReportVersion(report, reportHeads(siblings ?? [report]), versionOf, latestVersion)
+  const shownStatus: InspectionReportStatus = received ? receivedStatus(report.status) : generatedStatus(report.status)
+  const statusBadge = <Badge tone={statusTone(shownStatus)}>{t(statusKey(shownStatus))}</Badge>
   const regenerating = usePDMStore((s) => s.regeneratingReportIds.has(report.id))
   const target = file.pdmData?.id
     ? ({ kind: 'report', filePath: file.path, fileId: file.pdmData.id, version: versionNumber, report } as const)
@@ -89,6 +138,9 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   const details = [
     ...new Set(
       [
+        received && report.returnedAt
+          ? t('source.inspection.rptReturnedOn', { date: formatDateTime(report.returnedAt) })
+          : null,
         reportTypeName(report),
         reportTypeDetail(report, () => null),
         report.title || report.templateName,
@@ -110,7 +162,8 @@ export const DrawingReportRow = memo(function DrawingReportRow({
         }}
         onDoubleClick={(e) => {
           e.stopPropagation()
-          void openReportWithToast(report)
+          if (received) void deliverReturned(report, true)
+          else void openReportWithToast(report)
         }}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -152,12 +205,12 @@ export const DrawingReportRow = memo(function DrawingReportRow({
                   <>
                     {results && <ChildChip title={results}>{results}</ChildChip>}
                     {!showsType && typeChip}
-                    {!showsState && <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>}
+                    {!showsState && statusBadge}
                   </>
                 }
               />
             ) : column.id === 'state' ? (
-              <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>
+              statusBadge
             ) : column.id === 'version' && versionNumber !== null ? (
               <ChildText>{String(versionNumber)}</ChildText>
             ) : isParentMetadataColumn(column.id) ? (
@@ -167,7 +220,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
             ) : column.id === 'size' ? (
               <ChildText>{formatFileSize(report.fileSize)}</ChildText>
             ) : column.id === 'modifiedTime' ? (
-              <ChildText>{formatDateTime(report.updatedAt)}</ChildText>
+              <ChildText>{formatDateTime(received ? (report.returnedAt ?? report.updatedAt) : report.updatedAt)}</ChildText>
             ) : null}
           </td>
         ))}
@@ -183,6 +236,8 @@ export const DrawingReportRow = memo(function DrawingReportRow({
           onImport={dialogs.startImport}
           onDelete={dialogs.askDelete}
           onShowInTab={() => showReportInInspectionTab(file, report.id)}
+          onSetStatus={received ? (status) => void setStatusWithToast(report, status) : undefined}
+          onDownloadReturned={received ? () => void deliverReturned(report, false) : undefined}
         />
       )}
       {dialogs.dialogs}

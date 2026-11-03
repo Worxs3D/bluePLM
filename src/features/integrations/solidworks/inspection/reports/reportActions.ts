@@ -100,6 +100,11 @@ export interface GenerateReportParams {
   type: ReportTypeRequest
   /** The report this one replaces in the file list (a regeneration; schema 508). */
   supersedesReportId?: string | null
+  /**
+   * Rebuild an existing report's workbook (an overwrite of the same version): its id and number
+   * are printed in the workbook instead of a new id and the next number. Only with `localOnly`.
+   */
+  reuse?: { reportId: string; reportNumber: string | null }
   onPhase?: (phase: GeneratePhase) => void
 }
 
@@ -167,6 +172,14 @@ export interface LocalReportOutcome extends Omit<GenerateReportOutcome, 'report'
   workbook: Uint8Array
   /** The number printed in it (not reserved: the next recorded report may take it). */
   reportNumber: string
+  /** What an overwrite records with the workbook (`overwriteInspectionReport`). */
+  templateId: string | null
+  templateName: string
+  templateHash: string
+  drawingPdfHash: string | null
+  characteristicCount: number
+  /** Lot reports: part columns the workbook was laid out with; null otherwise. */
+  sampleColumns: number | null
 }
 
 /** The inspection rows of a version, as the Excel engine takes them. */
@@ -321,7 +334,7 @@ export async function generateReport(
   // The report number is printed in the workbook, so each attempt fills the workbook with the
   // number it then tries to record. Another user can take that number first (unique per drawing):
   // re-read the drawing's reports, take the next number, and fill the workbook again.
-  const reportId = crypto.randomUUID()
+  const reportId = params.reuse?.reportId ?? crypto.randomUUID()
   let existing: ReadonlyArray<
     Pick<InspectionReport, 'reportNumber' | 'fileVersionId'> & {
       sequence?: number | null
@@ -338,12 +351,9 @@ export async function generateReport(
       revisionOf,
       perType,
     )
-    const { reportNumber, sequence } = nextReportName(
-      naming.numberPattern,
-      values,
-      start,
-      existing.map((r) => r.reportNumber),
-    )
+    const { reportNumber, sequence } = params.reuse
+      ? { reportNumber: params.reuse.reportNumber ?? '', sequence: null }
+      : nextReportName(naming.numberPattern, values, start, existing.map((r) => r.reportNumber))
     const workbook = await generateInspectionReport({
       template: template.bytes,
       templateHash: template.hash,
@@ -376,6 +386,12 @@ export async function generateReport(
       return {
         workbook,
         reportNumber,
+        templateId: template.id,
+        templateName: template.name,
+        templateHash: template.hash,
+        drawingPdfHash: drawing.pdfHash,
+        characteristicCount: selection.rows.length,
+        sampleColumns: fields.sampleColumns ?? null,
         rowsExact: rows.exact,
         rowsSourceVersion: rows.exact ? null : rows.sourceVersion,
         drawingOmitted: drawing.omitted,
@@ -472,6 +488,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000
   for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
   return btoa(binary)
+}
+
+/** Open the workbook the supplier returned (desktop: default app; web: download). */
+export async function openReturned(report: InspectionReport): Promise<DeliverOutcome> {
+  if (!report.returnedHash) throw new Error('No returned workbook')
+  const bytes = await downloadInspectionContent(report.orgId, report.returnedHash)
+  return openWorkbook(reportFileName(report, true), bytes)
 }
 
 /** Save the workbook the supplier returned. */

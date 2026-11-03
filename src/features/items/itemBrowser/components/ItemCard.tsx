@@ -5,6 +5,7 @@ import { FileCardIcon } from '@/features/source/browser/components/FileGrid/File
 import type { ItemFileType, ItemImage, ItemRow } from '@/types/item'
 
 import { ItemThumbnail } from './ItemThumbnail'
+import { ItemWipNote } from './ItemWipNote'
 
 const FILE_TYPE_LABELS: Record<ItemFileType, string> = {
   part: 'PART',
@@ -107,6 +108,7 @@ export const ItemCard = memo(function ItemCard({
           {row.workflowStateName}
         </div>
       )}
+      {showDetails && <ItemWipNote release={row.release} className="mt-0.5" />}
 
       {/* File-type badges */}
       {showDetails && row.fileTypes.length > 0 && (

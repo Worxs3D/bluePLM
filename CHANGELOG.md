@@ -6,9 +6,32 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 508. No API or service change.
+Schemas 508 and 509. No API or service change.
 
 ### Added
+
+- **Released versions.** A file version is released when its file enters a releasing workflow
+  state (new "Releases the version" flag on a state; states named Released that are not editable
+  have it). It stays released while the file moves on: later versions are work in progress.
+  Version history marks it "Released", and the item browser shows the released revision and its
+  exports first, with the newer WIP version as secondary text.
+- **Release goes through review.** Releasing a drawing needs an approved review of that version.
+  Without one, a warning says the release process is being bypassed; it can be forced with a
+  reason, and the forced release is recorded in the version, the workflow history and the History
+  view.
+- **Released exports are frozen.** The PDF, STEP, IGES, STL, DXF and inspection reports of a
+  released version cannot be replaced, overwritten or deleted, and the released version itself
+  cannot be deleted while its file exists. Missing exports can still be generated for it.
+- **Default workflow.** WIP, In Review (a review stage that sends approved files to Released),
+  Released and Obsolete, with Submit for review, Return to WIP, Release, Release directly, Revise,
+  Obsolete and Reinstate.
+- **Sections under the chevron.** Parts and assemblies: Configurations, Drawings, Used in,
+  Exports. Drawings: their part(s) or assembly(ies), Exports, Inspection reports, Received
+  inspections. Released exports come first, tagged with their revision and version.
+- **Received inspections.** Filled-in workbooks that came back are listed in their own section
+  under the drawing and in a Received view of the Inspection tab, with Accept, Reject and Open.
+- **Regenerate at check-in, per export.** An export's menu has "Regenerate at check-in", on by
+  default: every kind a file already has is regenerated when it is checked in.
 
 - **STEP of a drawing.** Generate STEP on a drawing exports the part or assembly its views show
   (in the configuration they use), named with the drawing's metadata, and records it against the
@@ -29,6 +52,8 @@ Schema 508. No API or service change.
   the file's versions; one of an older version is marked stale, and regenerating it moves the row
   up to the latest version. A regenerated report replaces the one it was made from in the file list
   (schema 508 `inspection_report.supersedes_report_id`); Regenerate as copy keeps both.
+- **Regenerating a report overwrites it** for the same version (same number), unless the version
+  is released or a filled-in workbook came back for it; then a new report replaces it.
 - **No regenerating what is up to date.** Regenerate is offered only for an output or report of an
   older version. Stale marks show a spinner while they regenerate.
 

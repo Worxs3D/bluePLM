@@ -9,11 +9,14 @@ import type { InspectionReport, InspectionReportStatus } from '@/types/inspectio
 
 import {
   openReportWithToast,
+  overwriteReport,
   regenerateReport,
   saveReportCopy,
   saveReportNextToFile,
 } from './reportCommands'
 import { canDeleteReport, reportActions } from './reportModel'
+import { mayDeleteReport, regenerateMenu } from './regenerateModel'
+import { useReleasedVersionIds } from './useReleasedVersionIds'
 
 export interface ReportMenuProps {
   file: LocalFile
@@ -62,9 +65,11 @@ function Item({
 
 /**
  * The menu of one inspection report, the same in the file list (report rows under a drawing) and
- * in the Reports view: Open, Regenerate for version N (only when the drawing has a newer version;
- * the new report replaces this one in the file list), Regenerate as copy (a report of its own),
- * Save copy..., Save next to drawing (desktop), Import results, Delete.
+ * in the Reports view: Open, Regenerate (same version, overwritten in place; not for a released
+ * version or a report with a return), Regenerate for version N (only when the drawing has a newer
+ * version; the new report replaces this one in the file list), Regenerate as copy (a report of its
+ * own), Save copy..., Save next to drawing (desktop), Import results, Delete (not for a released
+ * version's report). See `regenerateModel.ts`.
  */
 export function ReportMenu(props: ReportMenuProps) {
   const { file, report, onClose } = props
@@ -73,12 +78,17 @@ export function ReportMenu(props: ReportMenuProps) {
   const hasPermission = usePDMStore((s) => s.hasPermission)
   const isAdmin = getEffectiveRole() === 'admin'
   const canEdit = isAdmin || hasPermission('module:explorer', 'edit')
-  const canDelete = canDeleteReport(report, user?.id, isAdmin)
+  const released = useReleasedVersionIds(file.pdmData?.id ?? report.fileId)
+  const regen = regenerateMenu({
+    report,
+    released,
+    reportVersion: props.reportVersion,
+    latestVersion: props.latestVersion,
+    canEdit,
+  })
+  const canDelete = mayDeleteReport(canDeleteReport(report, user?.id, isAdmin), regen.frozen)
   const actions = reportActions(report.status)
-  const newer =
-    props.latestVersion !== null && props.reportVersion !== null && props.latestVersion > props.reportVersion
-      ? props.latestVersion
-      : null
+  const newer = regen.forVersion
 
   const run = (fn: () => void) => {
     onClose()
@@ -113,15 +123,21 @@ export function ReportMenu(props: ReportMenuProps) {
           label={t('source.inspection.rptOpen')}
           onClick={() => run(() => void openReportWithToast(report))}
         />
-        {/* An up-to-date report is not regenerated in place; "as copy" makes a report of its own. */}
-        {canEdit && newer !== null && (
+        {regen.overwrite && (
+          <Item
+            icon={<RefreshCw size={14} />}
+            label={t('source.inspection.rptRegenerate')}
+            onClick={() => run(() => void overwriteReport(file, report))}
+          />
+        )}
+        {newer !== null && (
           <Item
             icon={<RefreshCw size={14} />}
             label={t('source.inspection.rptRegenerateFor', { version: newer })}
             onClick={() => run(() => void regenerateReport(file, report, 'latest'))}
           />
         )}
-        {canEdit && (
+        {regen.asCopy && (
           <Item
             icon={<Copy size={14} />}
             label={t('source.inspection.rptRegenerateAsCopy')}

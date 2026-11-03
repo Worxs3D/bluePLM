@@ -8,6 +8,7 @@ import {
   ScanSearch,
   CircleDot,
   FileSpreadsheet,
+  Inbox,
   Table2,
   Filter,
   History,
@@ -65,6 +66,7 @@ import { ColumnManager } from './ColumnManager'
 import { BulkEditBar } from './BulkEditBar'
 import { GoogleSheetTemplateMenu } from './GoogleSheetTemplateMenu'
 import { InspectionReportsView } from './reports/InspectionReportsView'
+import { ReceivedInspectionsView } from './reports/ReceivedInspectionsView'
 
 interface InspectionTabProps {
   file: LocalFile
@@ -100,7 +102,7 @@ const AUTOSAVE_DELAY_MS = 1000
 
 const CURRENT_VERSION = 'current'
 
-type InspectionView = 'table' | 'reports'
+type InspectionView = 'table' | 'reports' | 'received'
 
 interface VersionOption {
   id: string
@@ -190,9 +192,10 @@ export function InspectionTab({ file }: InspectionTabProps) {
   // Reset to current view whenever the selected file changes
   useEffect(() => {
     setSelectedVersion(CURRENT_VERSION)
-    setView('table')
+    // The Received view lists many drawings, so it stays open when another drawing is selected.
+    setView((v) => (v === 'received' && isDrawing ? v : 'table'))
     setFocusReportId(null)
-  }, [fileId])
+  }, [fileId, isDrawing])
 
   // "Show in Inspection tab" on a report row of the file list opens the Reports view
   useEffect(() => {
@@ -656,6 +659,11 @@ export function InspectionTab({ file }: InspectionTabProps) {
           label: t('source.inspection.rptViewReports'),
           icon: <FileSpreadsheet size={12} />,
         },
+        {
+          value: 'received',
+          label: t('source.inspection.rptViewReceived'),
+          icon: <Inbox size={12} />,
+        },
       ]}
     />
   ) : null
@@ -735,6 +743,10 @@ export function InspectionTab({ file }: InspectionTabProps) {
       {view === 'reports' ? (
         <div className="flex-1 overflow-hidden">
           <InspectionReportsView file={file} focusReportId={focusReportId} leading={viewSwitch} />
+        </div>
+      ) : view === 'received' ? (
+        <div className="flex-1 overflow-hidden">
+          <ReceivedInspectionsView file={file} leading={viewSwitch} />
         </div>
       ) : (
         <>

@@ -1,7 +1,9 @@
 /**
  * Outputs generated in the background after a successful check-in (5.5.0): the drawing PDF of
  * each checked-in drawing and a STEP of each checked-in part and assembly, per
- * `organization.settings.outputs.auto_on_checkin` (both on by default).
+ * `organization.settings.outputs.auto_on_checkin` (both on by default). Since 5.9.0 a file also
+ * regenerates every kind it already has an export of, unless it turned that kind off
+ * (`file.auto_outputs_off`, "Regenerate at check-in" in the output menu).
  *
  * Never part of the check-in: `queueCheckinOutputs` returns at once, waits for the check-in's
  * background reference extraction (so the closure is exact), and runs one job at a time. A batch
@@ -16,14 +18,15 @@ import { log } from '@/lib/logger'
 import { hasDesktop } from '@/lib/platform'
 import { pdfRenderUnavailableReason } from '@/lib/reviewPackage/pdf'
 import type { PdfUnavailableReason } from '@/lib/reviewPackage/types'
-import { getFileVersionId, getLatestFileVersion } from '@/lib/supabase/versionOutputs'
+import { listAutoOutputsOff } from '@/lib/supabase/releases'
+import { getFileVersionId, getLatestFileVersion, listOutputHeadsForFiles } from '@/lib/supabase/versionOutputs'
 import { usePDMStore } from '@/stores/pdmStore'
 import { outputJobKey, type OutputJob } from '@/stores/slices/outputsSlice'
 import type { LocalFile } from '@/stores/types'
-import type { VersionOutputKind } from '@/types/versionOutputs'
+import type { VersionedOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import { ensureVersionOutput, type EnsureVersionOutputResult } from './ensure'
-import { autoOutputSettings, isDrawingFile, isModelFile, type AutoOutputSettings } from './kinds'
+import { autoOutputSettings, isDrawingFile, isModelFile, outputKindsForPath, type AutoOutputSettings } from './kinds'
 import { loadOutputHeads, loadVersionOutputs } from './list'
 import { registerOutputQueueReset } from './queueReset'
 
@@ -63,28 +66,54 @@ export type CheckinOutputPlan =
   | { jobs: PlannedOutputJob[]; skipped: null }
   | { jobs: []; skipped: 'disabled' | 'batch_too_large' | 'nothing_to_do' }
 
-/** What a check-in of `files` generates under `settings`. Pure. */
+/** Per-file kinds for the check-in plan (schema 509). */
+export interface CheckinOutputFileKinds {
+  /** file id -> kinds the file already has an export of (saved configuration); regenerated too. */
+  existing?: ReadonlyMap<string, readonly VersionOutputKind[]>
+  /** file id -> kinds the file is not to regenerate at check-in (`file.auto_outputs_off`). */
+  off?: ReadonlyMap<string, readonly VersionOutputKind[]>
+}
+
+/**
+ * What a check-in of `files` generates: per file, the organization's automatic kind (PDF of a
+ * drawing, STEP of a part or assembly, per `settings`), plus every kind the file already has an
+ * export of, minus the kinds the file has turned off. Pure.
+ */
 export function planCheckinOutputs(
   files: readonly CheckinOutputCandidate[],
   settings: AutoOutputSettings,
   maxBatch = AUTO_OUTPUT_MAX_BATCH,
+  perFile: CheckinOutputFileKinds = {},
 ): CheckinOutputPlan {
-  if (!settings.pdf && !settings.step) return { jobs: [], skipped: 'disabled' }
+  const anyExisting = [...(perFile.existing?.values() ?? [])].some((kinds) => kinds.length > 0)
+  if (!settings.pdf && !settings.step && !anyExisting) return { jobs: [], skipped: 'disabled' }
   if (files.length > maxBatch) return { jobs: [], skipped: 'batch_too_large' }
   const jobs: PlannedOutputJob[] = []
   const seen = new Set<string>()
   for (const f of files) {
-    const kind: VersionOutputKind | null =
-      settings.pdf && isDrawingFile(f.path)
-        ? 'pdf'
-        : settings.step && isModelFile(f.path)
-          ? 'step'
-          : null
-    if (!kind || seen.has(`${f.fileId}:${kind}`)) continue
-    seen.add(`${f.fileId}:${kind}`)
-    jobs.push({ fileId: f.fileId, version: f.version, kind, fileName: f.fileName })
+    const wanted = new Set<VersionOutputKind>(perFile.existing?.get(f.fileId) ?? [])
+    if (settings.pdf && isDrawingFile(f.path)) wanted.add('pdf')
+    if (settings.step && isModelFile(f.path)) wanted.add('step')
+    const off = new Set(perFile.off?.get(f.fileId) ?? [])
+    for (const kind of outputKindsForPath(f.path)) {
+      if (!wanted.has(kind) || off.has(kind) || seen.has(`${f.fileId}:${kind}`)) continue
+      seen.add(`${f.fileId}:${kind}`)
+      jobs.push({ fileId: f.fileId, version: f.version, kind, fileName: f.fileName })
+    }
   }
   return jobs.length > 0 ? { jobs, skipped: null } : { jobs: [], skipped: 'nothing_to_do' }
+}
+
+/** The kinds each file has an export of in its saved configuration (the queue's configuration). Pure. */
+export function existingOutputKinds(
+  heads: ReadonlyMap<string, readonly Pick<VersionedOutput, 'kind' | 'configuration'>[]>,
+): Map<string, VersionOutputKind[]> {
+  const byFile = new Map<string, VersionOutputKind[]>()
+  for (const [fileId, outputs] of heads) {
+    const kinds = [...new Set(outputs.filter((o) => o.configuration === null).map((o) => o.kind))]
+    if (kinds.length > 0) byFile.set(fileId, kinds)
+  }
+  return byFile
 }
 
 /**
@@ -365,37 +394,61 @@ function queue(): OutputQueue {
   return appQueue
 }
 
+/** Read one per-file input of the plan; a database without it (before 509) gives none. */
+async function readOr<T>(what: string, read: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read()
+  } catch (err) {
+    log.debug('[Outputs]', `Automatic outputs: ${what} unavailable`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return fallback
+  }
+}
+
 /**
  * Queue the automatic outputs of a successful check-in. Returns at once and never throws.
  * `after` is the check-in's background reference extraction; generation starts once it settles.
+ * Per file: the organization's kind, plus the kinds it already has an export of (one batched read
+ * of the newest outputs), minus the kinds it has turned off (one batched read).
  */
 export function queueCheckinOutputs(files: readonly LocalFile[], after?: Promise<unknown>): void {
   if (!hasDesktop() || files.length === 0) return
-  const settings = autoOutputSettings(usePDMStore.getState().organization?.settings)
-  const plan = planCheckinOutputs(checkinCandidates(files), settings)
-  if (plan.skipped) {
-    if (plan.skipped === 'batch_too_large') {
-      log.info('[Outputs]', 'Automatic outputs skipped: check-in batch too large', {
-        files: files.length,
-        max: AUTO_OUTPUT_MAX_BATCH,
-      })
-    }
+  const candidates = checkinCandidates(files)
+  if (candidates.length === 0) return
+  if (candidates.length > AUTO_OUTPUT_MAX_BATCH) {
+    log.info('[Outputs]', 'Automatic outputs skipped: check-in batch too large', {
+      files: candidates.length,
+      max: AUTO_OUTPUT_MAX_BATCH,
+    })
     return
   }
+  const settings = autoOutputSettings(usePDMStore.getState().organization?.settings)
   const orgId = usePDMStore.getState().organization?.id ?? null
   void (async () => {
     try {
       await after?.catch(() => undefined)
       // Signed out or switched organization meanwhile: these jobs belong to the old session.
       if ((usePDMStore.getState().organization?.id ?? null) !== orgId) return
+      // A machine that cannot generate reads nothing: the check comes before the plan's reads.
       const unavailable: PdfUnavailableReason | null = await pdfRenderUnavailableReason()
       if (unavailable) {
         log.info('[Outputs]', 'Automatic outputs skipped: SOLIDWORKS unavailable', {
           reason: unavailable,
-          jobs: plan.jobs.length,
+          files: candidates.length,
         })
         return
       }
+      const ids = candidates.map((c) => c.fileId)
+      const [heads, off] = await Promise.all([
+        readOr('newest outputs', () => listOutputHeadsForFiles(ids), new Map<string, VersionedOutput[]>()),
+        readOr('per-file settings', () => listAutoOutputsOff(ids), new Map<string, VersionOutputKind[]>()),
+      ])
+      const plan = planCheckinOutputs(candidates, settings, AUTO_OUTPUT_MAX_BATCH, {
+        existing: existingOutputKinds(heads),
+        off,
+      })
+      if (plan.skipped) return
       queue().enqueue(plan.jobs)
     } catch (err) {
       log.warn('[Outputs]', 'Could not queue automatic outputs', {

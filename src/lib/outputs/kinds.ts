@@ -17,11 +17,12 @@ export function isModelFile(path: string): boolean {
 }
 
 /**
- * The outputs a file of this path can have: drawings PDF, STEP (of the model the drawing shows,
- * named with the drawing's metadata) and DXF; parts and assemblies STEP, IGES, STL.
+ * The outputs a file of this path can have, in the order the file list shows them: drawings PDF,
+ * DXF and STEP (of the model the drawing shows, named with the drawing's metadata); parts and
+ * assemblies STEP, IGES, STL.
  */
 export function outputKindsForPath(path: string): VersionOutputKind[] {
-  if (isDrawingFile(path)) return ['pdf', 'step', 'dxf']
+  if (isDrawingFile(path)) return ['pdf', 'dxf', 'step']
   if (isModelFile(path)) return ['step', 'iges', 'stl']
   return []
 }

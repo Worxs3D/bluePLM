@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, Box, FileText, Loader2, PenTool, Plus } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, Box, FileText, Loader2, PenTool, Plus } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/core/Dialog'
 import { t } from '@/lib/i18n'
@@ -39,6 +39,24 @@ function KindIcon({ kind }: { kind: VersionOutputKind }) {
   return <Box size={14} className="text-sky-400" />
 }
 
+
+/** "Released · Rev B v3" after a released export's name. */
+function ReleasedChip({ entry }: { entry: OutputRowEntry }) {
+  const release = entry.released
+  if (!release) return null
+  const label = release.revision
+    ? t('source.outputs.releasedChip', { revision: release.revision, version: release.version })
+    : t('source.outputs.releasedChipNoRevision', { version: release.version })
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-emerald-500/15 px-1 py-px text-[10px] text-emerald-400"
+      title={t('source.outputs.releasedTitle', { version: release.version })}
+    >
+      <BadgeCheck size={10} />
+      {label}
+    </span>
+  )
+}
 
 /**
  * A version output under an expanded file (after a drawing's referenced files, after a part's or
@@ -90,6 +108,7 @@ export const FileOutputRow = memo(function FileOutputRow({
         ? t('source.outputs.rowGenerateTitle', { kind })
         : undefined
   const ghost = !output
+  const wipTitle = entry.secondary && output ? t('source.outputs.wipTitle', { version: output.version }) : undefined
   const selected = usePDMStore(
     (s) => !!output && isChildSelected(s.childSelection, s.selectedFiles, `output:${output.id}`),
   )
@@ -153,10 +172,18 @@ export const FileOutputRow = memo(function FileOutputRow({
                   )
                 }
                 label={label}
-                title={title}
-                muted={ghost}
+                title={wipTitle ?? title}
+                // A work-in-progress export after the released one is secondary information.
+                muted={ghost || entry.secondary}
                 italic={ghost}
-                after={output?.configuration ? <ChildChip>{output.configuration}</ChildChip> : null}
+                after={
+                  output?.configuration || entry.released ? (
+                    <>
+                      {output?.configuration ? <ChildChip>{output.configuration}</ChildChip> : null}
+                      <ReleasedChip entry={entry} />
+                    </>
+                  ) : null
+                }
               />
             ) : column.id === 'description' && !output ? (
               <ChildText muted>
@@ -187,6 +214,7 @@ export const FileOutputRow = memo(function FileOutputRow({
           position={menu}
           busy={busy}
           stale={entry.stale}
+          released={entry.released !== null}
           onClose={() => setMenu(null)}
           onDelete={() => setConfirmingDelete(true)}
         />

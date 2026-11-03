@@ -3,10 +3,14 @@ import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
 import type { FileOutputVersion, OutputJob } from '@/stores/slices/outputsSlice'
 import type { InspectionReport } from '@/types/inspectionReports'
-import type { VersionedOutput } from '@/types/versionOutputs'
+import type { VersionRelease } from '@/types/releases'
+import type { VersionedOutput, VersionOutput } from '@/types/versionOutputs'
 
+import { receivedReports } from '@/features/integrations/solidworks/inspection/reports/receivedModel'
 import { fileOutputEntries } from '@/features/source/outputs/outputRowModel'
+import { outputKindsForPath } from '@/lib/outputs/kinds'
 import { reportHeads } from './childRowStatus'
+import { fileSectionExpanded, parentModelsKind, type FileSectionId, type ParentModelsKind } from './fileSections'
 
 import { getFileStatus } from '../../hooks/useFileStatus'
 import type { ConfigWithDepth } from '../../types'
@@ -16,6 +20,9 @@ import type { ConfigSectionGroup, SelectableRow, VirtualRow } from './rowTypes'
 const PART_EXTENSION = '.sldprt'
 const ASSEMBLY_EXTENSION = '.sldasm'
 const GROUP_ITEM_DEPTH = 1
+/** The `configName` of a file-level Drawings / Used in row (no configuration has this name). */
+export const SECTION_DRAWINGS = '::drawings'
+export const SECTION_USED_IN = '::used-in'
 /** Reports listed under an expanded drawing before a "n more" row; the rest are in the Inspection tab. */
 export const MAX_DRAWING_REPORT_ROWS = 10
 
@@ -53,16 +60,65 @@ export interface BuildVirtualRowsOptions {
     versions: ReadonlyMap<string, FileOutputVersion>
     heads: ReadonlyMap<string, readonly VersionedOutput[]>
     jobs: ReadonlyMap<string, OutputJob>
-    /** Desktop and allowed to generate: show "Generate PDF/STEP" ghost rows. */
+    /** Desktop and allowed to generate: show the Generate… row (and failed ghost rows). */
     canGenerate: boolean
+    /** Released versions per file id (store `fileReleases`): a released export is listed first. */
+    releases?: ReadonlyMap<string, readonly VersionRelease[]>
+    /** Outputs per file_version id (store `versionOutputs`): the released versions' exports. */
+    versionOutputs?: ReadonlyMap<string, readonly VersionOutput[]>
+  }
+  /** Chevron sections (`fileSections.ts`; store `fileSectionToggles`, `modelDrawings`, `modelUsedIn`). */
+  sections?: {
+    toggles: ReadonlySet<string>
+    /** part/assembly file id -> drawings that show it; absent until read. */
+    modelDrawings: ReadonlyMap<string, readonly DrawingRefItem[]>
+    /** part/assembly file id -> assemblies that reference it; absent until read. */
+    usedIn: ReadonlyMap<string, readonly DrawingRefItem[]>
   }
 }
 
-/** The newest outputs of an expanded file, one row per kind (and ghost / in-progress rows). */
+const NO_SECTIONS: NonNullable<BuildVirtualRowsOptions['sections']> = {
+  toggles: new Set(),
+  modelDrawings: new Map(),
+  usedIn: new Map(),
+}
+
+/**
+ * A section header, unless the section has nothing (`count` 0) and is not forced visible.
+ * Returns whether its rows are to follow (the section is open).
+ */
+function pushSection(
+  rows: VirtualRow[],
+  file: LocalFile,
+  section: FileSectionId,
+  count: number | null,
+  toggles: ReadonlySet<string>,
+  opts: { show?: boolean; isLoading?: boolean; parents?: ParentModelsKind } = {},
+): boolean {
+  const isExpanded = fileSectionExpanded(toggles, file.path, section)
+  if (count === 0 && !opts.show) return false
+  rows.push({
+    type: 'file-section',
+    file,
+    section,
+    count,
+    isExpanded,
+    isLoading: opts.isLoading === true,
+    ...(opts.parents ? { parents: opts.parents } : {}),
+  })
+  return isExpanded
+}
+
+/**
+ * The Exports section of an expanded file: per kind the released version's export first, then a
+ * newer work-in-progress one (`fileOutputEntries`), in-progress and failed rows, then
+ * "Generate…" for a user who can generate. A missing kind has no row of its own: Generate… offers it.
+ */
 export function appendFileOutputRows(
   rows: VirtualRow[],
   file: LocalFile,
   outputs: BuildVirtualRowsOptions['outputs'],
+  toggles: ReadonlySet<string> = NO_SECTIONS.toggles,
 ): void {
   const fileId = file.pdmData?.id
   if (!outputs || !fileId) return
@@ -73,28 +129,48 @@ export function appendFileOutputRows(
     heads: outputs.heads.get(fileId),
     jobs: outputs.jobs,
     canGenerate: outputs.canGenerate,
-  })
+    releases: outputs.releases?.get(fileId),
+    versionOutputs: outputs.versionOutputs,
+  }).filter((entry) => entry.state !== 'missing')
+  const kinds = outputKindsForPath(file.path)
+  const generate = outputs.canGenerate && !!file.pdmData?.version && kinds.length > 0
+  const recorded = entries.filter((entry) => entry.output !== null).length
+  const loading = outputs.heads.get(fileId) === undefined
+  if (entries.length === 0 && !generate) return
+  if (!pushSection(rows, file, 'exports', loading ? null : recorded, toggles, { show: true, isLoading: loading })) return
   for (const entry of entries) {
     rows.push({ type: 'file-output', file, entry, version: entry.output?.version ?? file.pdmData?.version ?? null })
   }
+  if (generate) rows.push({ type: 'file-generate', file, kinds })
 }
 
 /**
- * A drawing's reports that no other supersedes (`reportHeads`; newest first, at most
- * `MAX_DRAWING_REPORT_ROWS`), then a "n more" row.
+ * A drawing's Inspection reports section: the reports that no other supersedes (`reportHeads`;
+ * newest first, at most `MAX_DRAWING_REPORT_ROWS`), then a "n more" row. Then its Received
+ * inspections section: every report a filled-in workbook came back for (`receivedReports`),
+ * superseded ones included. Neither is shown until the reports are read, nor when empty.
  */
 export function appendDrawingReportRows(
   rows: VirtualRow[],
   file: LocalFile,
   reports: readonly InspectionReport[] | undefined,
+  toggles: ReadonlySet<string> = NO_SECTIONS.toggles,
 ): void {
   if (!reports || reports.length === 0) return
   const heads = reportHeads(reports)
-  for (const report of heads.slice(0, MAX_DRAWING_REPORT_ROWS)) {
-    rows.push({ type: 'drawing-report', file, report })
+  if (pushSection(rows, file, 'reports', heads.length, toggles)) {
+    for (const report of heads.slice(0, MAX_DRAWING_REPORT_ROWS)) {
+      rows.push({ type: 'drawing-report', file, report })
+    }
+    if (heads.length > MAX_DRAWING_REPORT_ROWS) {
+      rows.push({ type: 'drawing-report-more', file, hiddenCount: heads.length - MAX_DRAWING_REPORT_ROWS })
+    }
   }
-  if (heads.length > MAX_DRAWING_REPORT_ROWS) {
-    rows.push({ type: 'drawing-report-more', file, hiddenCount: heads.length - MAX_DRAWING_REPORT_ROWS })
+  const received = receivedReports(reports)
+  if (pushSection(rows, file, 'received', received.length, toggles)) {
+    for (const report of received.slice(0, MAX_DRAWING_REPORT_ROWS)) {
+      rows.push({ type: 'drawing-report', file, report, received: true })
+    }
   }
 }
 
@@ -175,6 +251,37 @@ function appendConfigGroupRows(
   })
 }
 
+/**
+ * A part's or assembly's Drawings section (drawings that show it, read when the file is expanded)
+ * and Used in section (assemblies that reference it, read when the section is first opened). Rows
+ * of files in the vault are selectable, like a configuration's drawings.
+ */
+function appendModelParentRows(
+  rows: VirtualRow[],
+  selectableRows: SelectableRow[],
+  files: LocalFile[],
+  selectedFiles: string[],
+  file: LocalFile,
+  sections: NonNullable<BuildVirtualRowsOptions['sections']>,
+): void {
+  const fileId = file.pdmData?.id
+  if (!fileId) return
+  const drawings = sections.modelDrawings.get(fileId)
+  if (pushSection(rows, file, 'drawings', drawings ? drawings.length : null, sections.toggles, { isLoading: !drawings })) {
+    appendConfigDrawingRows(rows, selectableRows, files, selectedFiles, file, SECTION_DRAWINGS, 0, 0, [...(drawings ?? [])])
+  }
+  const usedIn = sections.usedIn.get(fileId)
+  const usedInOpen = fileSectionExpanded(sections.toggles, file.path, 'usedIn')
+  if (
+    pushSection(rows, file, 'usedIn', usedIn ? usedIn.length : null, sections.toggles, {
+      show: usedInOpen,
+      isLoading: usedInOpen && !usedIn,
+    })
+  ) {
+    appendConfigDrawingRows(rows, selectableRows, files, selectedFiles, file, SECTION_USED_IN, 0, 0, [...(usedIn ?? [])])
+  }
+}
+
 export function buildVirtualRows({
   displayFiles,
   files,
@@ -199,6 +306,7 @@ export function buildVirtualRows({
   expandedDrawingRefFiles,
   drawingInspectionReports,
   outputs,
+  sections = NO_SECTIONS,
 }: BuildVirtualRowsOptions): { rows: VirtualRow[]; selectableRows: SelectableRow[] } {
   const rows: VirtualRow[] = []
   const selectableRows: SelectableRow[] = []
@@ -256,9 +364,17 @@ export function buildVirtualRows({
       file,
     })
 
+    const { toggles } = sections
+
     if (expandedDrawingRefs.has(file.path)) {
       const refItems = drawingRefData.get(file.path) || []
-      refItems.forEach((item) => {
+      const refsRead = drawingRefData.has(file.path)
+      const models = refItems.filter((item) => !item.unresolved)
+      const showRefs = pushSection(rows, file, 'parents', refsRead ? refItems.length : null, toggles, {
+        isLoading: !refsRead,
+        parents: parentModelsKind(models),
+      })
+      if (showRefs) refItems.forEach((item) => {
         rows.push({
           type: 'drawing-ref',
           file,
@@ -282,9 +398,9 @@ export function buildVirtualRows({
         }
       })
 
-      appendFileOutputRows(rows, file, outputs)
+      appendFileOutputRows(rows, file, outputs, toggles)
       const drawingId = file.pdmData?.id
-      if (drawingId) appendDrawingReportRows(rows, file, drawingInspectionReports?.get(drawingId))
+      if (drawingId) appendDrawingReportRows(rows, file, drawingInspectionReports?.get(drawingId), toggles)
     }
 
     if (!expandedConfigFiles.has(file.path)) return
@@ -295,8 +411,12 @@ export function buildVirtualRows({
     const isAssemblyFile = extension === ASSEMBLY_EXTENSION
     const isPartFile = extension === PART_EXTENSION
     const isConfigExpandable = isAssemblyFile || isPartFile
+    const configsRead = fileConfigurations.has(file.path)
+    const showConfigs = pushSection(rows, file, 'configurations', configsRead ? configs.length : null, toggles, {
+      isLoading: !configsRead,
+    })
 
-    configs.forEach((config) => {
+    if (showConfigs) configs.forEach((config) => {
       const configKey = `${file.path}::${config.name}`
       const isExpanded = expandedConfigSections.has(configKey)
       const isDrawingsExpanded = expandedConfigDrawings.has(configKey)
@@ -414,9 +534,10 @@ export function buildVirtualRows({
       }
     })
 
-    // A part's or assembly's outputs come after its configurations, as a drawing's come after its
-    // referenced files.
-    appendFileOutputRows(rows, file, outputs)
+    appendModelParentRows(rows, selectableRows, files, selectedFiles, file, sections)
+    // A part's or assembly's outputs come after its configurations and where it is used, as a
+    // drawing's come after its referenced files.
+    appendFileOutputRows(rows, file, outputs, toggles)
   })
 
   return { rows, selectableRows }

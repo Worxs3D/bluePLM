@@ -2,7 +2,9 @@
  * Loads the version outputs the file list shows: for files it expands (drawings through
  * `expandedDrawingRefs`, parts and assemblies through `expandedConfigFiles`) and, while the Outputs
  * column is shown, for the listed drawings it shows. Each file's newest output per kind across its
- * versions is one batched read (`loadOutputHeads`, which writes the store); an expanded file also
+ * versions is one batched read (`loadOutputHeads`, which writes the store), with its released
+ * versions (`loadFileReleases`, schema 509) and then the newest released version's outputs
+ * (`loadVersionOutputs`), so a released export is listed first; an expanded file also
  * gets its latest version id resolved, so a running job can be matched to its row. A file is read
  * again each time it is expanded, and when its version moves on (a check-in elsewhere). A failed
  * read is not retried for `RETRY_AFTER_MS`, so a database without schema 505 costs one query per
@@ -11,7 +13,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 
 import { log } from '@/lib/logger'
-import { loadOutputHeads } from '@/lib/outputs'
+import { loadFileReleases, loadOutputHeads, loadVersionOutputs } from '@/lib/outputs'
+import type { VersionRelease } from '@/types/releases'
 import { getFileVersionIdsByNumber } from '@/lib/supabase/versionOutputs'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
@@ -21,6 +24,24 @@ const RETRY_AFTER_MS = 60_000
 const MAX_FAILURES_KEPT = 500
 const MAX_HEADS_AT_KEPT = 2000
 const NO_PATHS: ReadonlySet<string> = new Set()
+
+/**
+ * The released versions of these files, or none for each when they cannot be read (a database
+ * before 509): the outputs are listed without a released one first rather than not at all.
+ */
+async function readReleases(fileIds: readonly string[]): Promise<Map<string, VersionRelease[]>> {
+  try {
+    return await loadFileReleases(fileIds)
+  } catch (err) {
+    log.debug('[FileList]', 'Released versions unavailable', {
+      count: fileIds.length,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    const none = new Map(fileIds.map((id) => [id, [] as VersionRelease[]]))
+    usePDMStore.getState().setFileReleases(none)
+    return none
+  }
+}
 
 export function useFileOutputsLoader(
   files: readonly LocalFile[],
@@ -84,7 +105,9 @@ export function useFileOutputsLoader(
           if (missing.length > 0) fail(missing, new Error('Version not found'))
         }
         if (plan.heads.length > 0) {
-          await loadOutputHeads(plan.heads)
+          const [, releases] = await Promise.all([loadOutputHeads(plan.heads), readReleases(plan.heads)])
+          const releasedVersionIds = [...releases.values()].flatMap((list) => (list[0] ? [list[0].fileVersionId] : []))
+          if (releasedVersionIds.length > 0) await loadVersionOutputs(releasedVersionIds)
           for (const id of plan.heads) {
             const version = versionOf.get(id)
             headsAt.current.delete(id)

@@ -81,8 +81,41 @@ export const versionOutputStrings: Record<string, string> = {
   reason_NO_EDIT_PERMISSION: 'You need edit access to files to generate outputs.',
   reason_NOT_FOUND: 'The file version was not found.',
   reason_NO_MODEL: 'The drawing shows no part or assembly to export.',
+  reason_RELEASED: 'This version is released: its exports are frozen and cannot be replaced or deleted.',
 
-  // Settings > Export
+  // Chevron sections under an expanded file (5.9.0)
+  sectionConfigurations: 'Configurations',
+  sectionDrawings: 'Drawings',
+  sectionUsedIn: 'Used in',
+  sectionExports: 'Exports',
+  sectionPart: 'Part',
+  sectionParts: 'Parts',
+  sectionAssembly: 'Assembly',
+  sectionAssemblies: 'Assemblies',
+  sectionPartsAndAssemblies: 'Parts & assemblies',
+  sectionReports: 'Inspection reports',
+  sectionReceived: 'Received inspections',
+  sectionLoading: 'Loading…',
+  sectionUsedInEmpty: 'Not used in any assembly',
+  sectionUsedInFailed: 'Could not read where this file is used: {{error}}',
+  generateRow: 'Generate…',
+  generateRowTitle: 'Generate an export of the latest checked-in version',
+  generateMenuSaved: 'Saved configuration',
+
+  // Released versions (5.9.0)
+  releasedChip: 'Released · Rev {{revision}} v{{version}}',
+  releasedChipNoRevision: 'Released · v{{version}}',
+  releasedTitle: 'The export of released version {{version}}: frozen, it cannot be replaced or deleted.',
+  wipTitle: 'Work in progress: version {{version}}, newer than the released version.',
+  deleteReleased: 'This {{kind}} is of a released version: it is frozen and cannot be deleted.',
+  autoRegenerate: 'Regenerate at check-in',
+  autoRegenerateOn: '{{kind}} of {{name}} will be regenerated at each check-in',
+  autoRegenerateOff: '{{kind}} of {{name}} will no longer be regenerated at check-in',
+  autoRegenerateFailed: 'Could not change the setting: {{error}}',
+  columnReleased: '{{kind}} of released version {{version}} (Rev {{revision}}). Click to preview.',
+  columnReleasedStale:
+    '{{kind}} of released version {{version}} (Rev {{revision}}). The newest {{kind}} is of version {{newest}}; the file is at version {{latest}}.',
+
   settingsTitle: 'Outputs at check-in',
   settingsDescription:
     'After a successful check-in, the desktop app generates these outputs in the background, one at a time, from the checked-in version. Check-ins of more than {{max}} files and computers without SOLIDWORKS are skipped. Check-in never waits for them.',

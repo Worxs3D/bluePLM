@@ -79,4 +79,37 @@ describe('inspection report strings (source.inspection, English only)', () => {
     expectKeys(REPORT_NUMBER_TOKENS.map((tok) => `source.inspection.rnTok_${tok}`))
     expectKeys(['drawing', 'revision'].map((s) => `source.inspection.rnScope_${s}`))
   })
+
+  it('has the overwrite and received inspection strings (5.9.0)', () => {
+    expectKeys(
+      [
+        'rptRegenerate',
+        'rptOverwritten',
+        'rptOverwriteReleased',
+        'rptOverwriteHasReturn',
+        'rptOverwriteLayoutChanged',
+        'rptReturnedOn',
+        'rptViewReceived',
+        'rptReceived',
+        'rptRecvScopeLabel',
+        'rptRecvScopeFolder',
+        'rptRecvScopeVault',
+        'rptRecvCountOne',
+        'rptRecvCountMany',
+        'rptRecvEmptyTitle',
+        'rptRecvEmptyBody',
+        'rptRecvEmptyFiltered',
+        'rptRecvStatusLabel',
+        'rptRecvStatusAll',
+        'rptRecvSupplier',
+        'rptRecvPo',
+        'rptRecvLot',
+        'rptRecvPoValue',
+        'rptRecvLotValue',
+        'rptRecvOpenReturned',
+        'rptRecvReject',
+        'rptRecvVersion',
+      ].map((k) => `source.inspection.${k}`),
+    )
+  })
 })

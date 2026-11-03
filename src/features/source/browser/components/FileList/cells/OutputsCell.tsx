@@ -4,7 +4,9 @@
  * shows it in the Preview tab; one of an older version than the drawing has an amber mark that
  * turns into a regenerate button on hover, and a click regenerates it for the latest version (a
  * spinner while that runs); a missing one is faint and a click generates it. Without permission
- * to generate, a stale or missing icon only explains itself.
+ * to generate, a stale or missing icon only explains itself. When the drawing has a released
+ * version with that export (schema 509), the icon shows and previews the released export, with a
+ * small green mark; the amber mark then tells the work in progress has moved on.
  */
 import { memo, type ReactNode } from 'react'
 import { Box, FileSpreadsheet, FileText, History, Loader2, RefreshCw } from 'lucide-react'
@@ -14,7 +16,7 @@ import {
   regenerateReport,
 } from '@/features/integrations/solidworks/inspection/reports/reportCommands'
 import { generateOutputs, regenerateOutput } from '@/features/source/outputs/outputCommands'
-import { isActiveJob, isStaleOutput } from '@/features/source/outputs/outputRowModel'
+import { columnOutput, isActiveJob } from '@/features/source/outputs/outputRowModel'
 import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import { t } from '@/lib/i18n'
 import { isDrawingFile } from '@/lib/outputs/kinds'
@@ -33,11 +35,14 @@ function Slot({
   icon,
   title,
   onClick,
+  released = false,
 }: {
   state: SlotState
   icon: ReactNode
   title: string
   onClick?: () => void
+  /** The icon shows a released version's export: a small green mark at the bottom right. */
+  released?: boolean
 }) {
   const tone =
     state === 'missing' ? 'opacity-30 hover:opacity-80' : state === 'busy' ? 'text-plm-fg-muted' : ''
@@ -65,6 +70,9 @@ function Slot({
       {state === 'stale' && (
         <History size={9} className="absolute -right-0.5 -top-0.5 text-amber-400 group-hover/slot:hidden" />
       )}
+      {released && state !== 'busy' && (
+        <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+      )}
     </button>
   )
 }
@@ -78,6 +86,8 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
   const fileId = file.pdmData?.id
   const latest = file.pdmData?.version ?? null
   const heads = usePDMStore((s) => (fileId ? s.fileOutputHeads.get(fileId) : undefined))
+  const releases = usePDMStore((s) => (fileId ? s.fileReleases.get(fileId) : undefined))
+  const versionOutputs = usePDMStore((s) => s.versionOutputs)
   const jobs = usePDMStore((s) => s.outputJobs)
   const reports = usePDMStore((s) => (fileId ? s.drawingInspectionReports.get(fileId) : undefined))
   const versionOf = usePDMStore((s) => s.reportVersionNumbers)
@@ -91,9 +101,11 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
 
   const outputSlot = (kind: 'pdf' | 'step') => {
     const label = kind.toUpperCase()
-    const head = heads?.find((o) => o.kind === kind && o.configuration === null) ?? null
+    const column = columnOutput(fileId, kind, latest, heads, releases, versionOutputs)
+    // The icon previews the released export when there is one; the newest one sets the stale mark.
+    const head = column.shown
     const busy = isActiveJob(jobs.get(outputJobKey(fileId, kind as VersionOutputKind, null)))
-    const stale = !!head && isStaleOutput(head, latest)
+    const stale = column.stale
     const state: SlotState = busy ? 'busy' : !head ? 'missing' : stale ? 'stale' : 'current'
     if (heads === undefined && !busy) {
       return <Slot key={kind} state="missing" icon={KIND_ICON[kind](true)} title={t('fileBrowser.outputsCell.loading')} />
@@ -101,8 +113,18 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
     const preview = head
       ? () => selectChildRow({ kind: 'output', filePath: file.path, fileId, version: head.version, output: head })
       : undefined
-    const title =
-      state === 'busy'
+    const release = column.released
+    const title = release
+      ? state === 'stale' || (column.newest && column.newest.version > release.version)
+        ? t('source.outputs.columnReleasedStale', {
+            kind: label,
+            version: release.version,
+            revision: release.revision ?? '',
+            newest: column.newest?.version ?? '',
+            latest,
+          })
+        : t('source.outputs.columnReleased', { kind: label, version: release.version, revision: release.revision ?? '' })
+      : state === 'busy'
         ? t('fileBrowser.outputsCell.generating', { kind: label })
         : state === 'missing'
           ? t(canGenerate ? 'fileBrowser.outputsCell.missing' : 'fileBrowser.outputsCell.missingReadOnly', { kind: label })
@@ -120,10 +142,19 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
           : undefined
         : state === 'stale'
           ? canGenerate
-            ? () => regenerateOutput(file, head!)
+            ? () => regenerateOutput(file, column.newest ?? head!)
             : preview
           : preview
-    return <Slot key={kind} state={state} icon={KIND_ICON[kind](state === 'missing')} title={title} onClick={onClick} />
+    return (
+      <Slot
+        key={kind}
+        state={state}
+        icon={KIND_ICON[kind](state === 'missing')}
+        title={title}
+        onClick={onClick}
+        released={!!release}
+      />
+    )
   }
 
   const reportSlot = () => {

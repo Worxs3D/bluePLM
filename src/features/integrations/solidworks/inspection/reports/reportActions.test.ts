@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   resultCount: 3,
   generatedRows: [] as Array<Array<{ id: string }>>,
   entries: [] as Array<Record<string, string> | undefined>,
+  reportIds: [] as Array<string | undefined>,
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -65,12 +66,14 @@ vi.mock('@/lib/inspection/excel', () => ({
   formatSpec: () => '',
   generateInspectionReport: vi.fn(
     async (input: {
+      reportId?: string
       scalars?: Record<string, string>
       rows: Array<{ id: string }>
       entryValues?: Record<string, string>
       logo?: unknown
       drawingCaption?: (i: number, n: number, name: string) => string
     }) => {
+      mocks.reportIds.push(input.reportId)
       mocks.captions.push(input.drawingCaption)
       mocks.generatedRows.push(input.rows)
       mocks.entries.push(input.entryValues)
@@ -136,6 +139,7 @@ beforeEach(() => {
   mocks.samples = []
   mocks.generatedRows = []
   mocks.entries = []
+  mocks.reportIds = []
 })
 
 describe('isReportNumberTaken', () => {
@@ -198,6 +202,27 @@ describe('generateReport', () => {
       }),
     )
     expect(mocks.created[0]).toMatchObject({ reportNumber: 'P_RevB_IRv1', sequence: 1 })
+  })
+
+  it('rebuilds an existing report with its id and number, recording nothing (overwrite)', async () => {
+    const naming = { ...DEFAULT_REPORT_NAMING, numberPattern: '{partNumber}_Rev{rev}_IRv{n}' }
+    const outcome = await generateReport({
+      ...params({ naming, existingReports: [existing('BR-103849-201_RevA_IRv4', 'v2', 4)] }),
+      localOnly: true,
+      reuse: { reportId: 'old-report', reportNumber: 'BR-103849-201_RevA_IRv4' },
+    })
+    expect(outcome.reportNumber).toBe('BR-103849-201_RevA_IRv4')
+    expect(mocks.reportIds[0]).toBe('old-report')
+    expect(mocks.scalars[0]).toMatchObject({ REPORT_NUMBER: 'BR-103849-201_RevA_IRv4' })
+    expect(mocks.created).toHaveLength(0)
+    expect(outcome).toMatchObject({
+      templateId: null,
+      templateName: 'Dimensional',
+      templateHash: 'd'.repeat(64),
+      drawingPdfHash: null,
+      characteristicCount: 1,
+      sampleColumns: 10,
+    })
   })
 
   it('leaves the logo out when the org turned it off', async () => {

@@ -88,14 +88,22 @@ describe('output rows', () => {
         },
       }),
     )
-    expect(rows.map((r) => r.type)).toEqual(['file', 'drawing-ref', 'file-output', 'drawing-report'])
-    const out = rows[2]
+    expect(rows.map((r) => r.type)).toEqual([
+      'file',
+      'file-section',
+      'drawing-ref',
+      'file-section',
+      'file-output',
+      'file-section',
+      'drawing-report',
+    ])
+    const out = rows[4]
     expect(out.type === 'file-output' && [out.entry.state, out.version]).toEqual(['ready', 3])
     // Output rows are not selectable files.
     expect(selectableRows).toHaveLength(1)
   })
 
-  it('lists a part STEP ghost after its configurations', () => {
+  it('ends a part with Exports and a Generate… row after its configurations', () => {
     const p = file('p.sldprt', 'p1', 2)
     const configs = [{ name: 'Default', depth: 0 }] as unknown as ConfigWithDepth[]
     const { rows } = buildVirtualRows(
@@ -112,9 +120,25 @@ describe('output rows', () => {
         },
       }),
     )
-    expect(rows.map((r) => r.type)).toEqual(['file', 'config', 'file-output'])
-    const out = rows[2]
-    expect(out.type === 'file-output' && [out.entry.kind, out.entry.state]).toEqual(['step', 'missing'])
+    // Drawings (not read yet) and Used in (read when opened) show their headers.
+    expect(rows.map((r) => r.type)).toEqual([
+      'file',
+      'file-section',
+      'config',
+      'file-section',
+      'file-section',
+      'file-section',
+      'file-generate',
+    ])
+    const sections = rows.flatMap((r) => (r.type === 'file-section' ? [[r.section, r.count, r.isExpanded]] : []))
+    expect(sections).toEqual([
+      ['configurations', 1, true],
+      ['drawings', null, true],
+      ['usedIn', null, false],
+      ['exports', 0, true],
+    ])
+    const generate = rows[6]
+    expect(generate.type === 'file-generate' && generate.kinds).toEqual(['step', 'iges', 'stl'])
   })
 
   it('after a new check-in, shows the older PDF as one stale row with the queued job on it', () => {
@@ -149,10 +173,9 @@ describe('output rows', () => {
       }),
     )
     const outs = rows.flatMap((r) => (r.type === 'file-output' ? [r] : []))
-    expect(outs.map((r) => [r.entry.kind, r.entry.state, r.entry.stale, r.version])).toEqual([
-      ['pdf', 'ready', true, 3],
-      ['step', 'missing', false, 4],
-    ])
+    // A missing STEP has no row of its own: Generate… offers it.
+    expect(outs.map((r) => [r.entry.kind, r.entry.state, r.entry.stale, r.version])).toEqual([['pdf', 'ready', true, 3]])
+    expect(rows[rows.length - 1].type).toBe('file-generate')
     expect(outs[0].entry.job?.status).toBe('queued')
   })
 
