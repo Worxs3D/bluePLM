@@ -27,6 +27,22 @@ const DEFAULT_CONFIG: TelemetryConfig = {
   enabled: false,
 }
 
+function normalizeSavedConfig(value: unknown): TelemetryConfig {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_CONFIG }
+  const saved = value as Partial<TelemetryConfig>
+  const sampleRateHz = Number.isFinite(saved.sampleRateHz)
+    ? Math.min(60, Math.max(1, Math.trunc(saved.sampleRateHz!)))
+    : DEFAULT_CONFIG.sampleRateHz
+  const retentionSeconds = Number.isFinite(saved.retentionSeconds)
+    ? Math.min(300, Math.max(10, Math.trunc(saved.retentionSeconds!)))
+    : DEFAULT_CONFIG.retentionSeconds
+  return {
+    sampleRateHz,
+    retentionSeconds,
+    enabled: false,
+  }
+}
+
 // Circular buffer for efficient time-series storage
 class CircularBuffer<T> {
   private buffer: T[]
@@ -105,6 +121,8 @@ class TelemetryService {
   // Configure the service
   configure(config: Partial<TelemetryConfig>): void {
     const wasEnabled = this.config.enabled
+    const wasRunning = this.isRunning()
+    const previousSampleRateHz = this.config.sampleRateHz
     this.config = { ...this.config, ...config }
 
     // Resize buffer if retention changed
@@ -119,19 +137,32 @@ class TelemetryService {
       this.start()
     } else if (!this.config.enabled && wasEnabled) {
       this.stop()
+    } else if (wasRunning && this.config.sampleRateHz !== previousSampleRateHz) {
+      if (this.intervalId !== null) clearInterval(this.intervalId)
+      this.intervalId = window.setInterval(() => this.sample(), 1000 / this.config.sampleRateHz)
     }
   }
 
   // Load saved config
   loadConfig(): TelemetryConfig {
-    const saved = localStorage.getItem('telemetry.config')
+    // A pop-out renderer can update the shared setting while this renderer is
+    // recording. Keep the active rate, retention, and history together.
+    if (this.isRunning()) return this.config
+
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem('telemetry.config')
+    } catch {
+      this.config = { ...DEFAULT_CONFIG }
+    }
     if (saved) {
       try {
-        this.config = { ...DEFAULT_CONFIG, ...JSON.parse(saved) }
+        this.config = normalizeSavedConfig(JSON.parse(saved))
       } catch {
-        // Ignore parse errors
+        this.config = { ...DEFAULT_CONFIG }
       }
     }
+    this.buffer.resize(this.config.sampleRateHz * this.config.retentionSeconds)
     return this.config
   }
 
