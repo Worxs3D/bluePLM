@@ -1161,6 +1161,18 @@ declare global {
         ) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
       }
 
+      versionOutputs: {
+        /**
+         * Download a stored output (signed URL) into a temp folder of its own, check it against
+         * `expectedHash` and open it in the default app.
+         */
+        open: (
+          url: string,
+          fileName: string,
+          expectedHash: string,
+        ) => Promise<{ success: boolean; path?: string; error?: string }>
+      }
+
       // RFQ Release Files API
       rfq: {
         getOutputDir: (

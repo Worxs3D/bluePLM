@@ -34,7 +34,7 @@ vi.mock('electron', () => ({
 }))
 import { registerMdbAuthIpc } from './mdbAuthIpc'
 import { createMdbAuthBridge } from '../preloadMdbAuth'
-import { resolveMdbBackend } from '../../src/lib/backend'
+import { resolveMdbBackend } from '../../src/lib/backend/mdbAdapter'
 import { mdbAuthDialogStrings } from '../backend/mdbAuthDialogStrings'
 import type { Language } from '../../src/lib/i18n/types'
 import { MDB_PASSWORD_MAX_LENGTH } from '../backend/mdbAuthTransport'

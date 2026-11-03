@@ -5,16 +5,16 @@ import { log } from '@/lib/logger'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import { getHighestUsedBalloonNumber, type InspectionRowInput } from '@/lib/supabase'
 import { hasLocalContent } from '@/lib/fileOperations/assemblyResolver'
-import {
-  checkSwServiceFeature,
-  SW_SERVICE_VERSION_NATIVE_INSPECTION,
-} from '@/lib/swServiceVersion'
+import { checkSwServiceFeature, SW_SERVICE_VERSION_NATIVE_INSPECTION } from '@/lib/swServiceVersion'
 import {
   applyCharacteristicMerge,
   planCharacteristicMerge,
 } from '@/lib/inspection/characteristicMerge'
 import type { GeneralToleranceBasis } from '@/lib/inspection/generalTolerance'
-import type { ExtractedDrawingCharacteristics } from '@/lib/inspection/types'
+import {
+  INSPECTION_BALLOON_ERROR_CODES,
+  type ExtractedDrawingCharacteristics,
+} from '@/lib/inspection/types'
 
 import {
   buildExtractPreview,
@@ -24,6 +24,7 @@ import {
   inspectionErrorKey,
   planBalloonRequests,
 } from './drawingCharacteristicsFlow'
+import { balloonOutcome } from './balloonOutcome'
 
 interface UseDrawingCharacteristicsOptions {
   file: LocalFile
@@ -41,7 +42,26 @@ interface UseDrawingCharacteristicsOptions {
   flushPendingSave: () => Promise<boolean>
   /** Replace the table with the merged rows and persist them; false when the save failed. */
   commitMergedRows: (next: InspectionRowInput[]) => Promise<boolean>
+  /** Records what each successful run saw, for change detection (`useDrawingSync`). */
+  sync: DrawingSyncRecorder
 }
+
+/** The change-detection side of the flows (see `drawingSync.ts`). */
+export interface DrawingSyncRecorder {
+  /** Content hash of the file now; null when it cannot be read. */
+  hashNow: (filePath: string) => Promise<string | null>
+  recordExtract: (fileId: string, hash: string) => void
+  recordBalloon: (fileId: string, hashAfter: string) => void
+  clearExtract: (fileId: string) => void
+}
+
+/** Options of one run. `auto`: started by Auto, so "nothing to do" stays quiet. */
+export interface FlowOptions {
+  auto?: boolean
+}
+
+/** Outcome of one run: `ok` false with the service's error code when it failed. */
+export type FlowResult = { ok: true } | { ok: false; errorCode?: string; skipped?: boolean }
 
 /** File and version a flow started on. A flow whose scope no longer matches stops silently. */
 interface FlowScope {
@@ -82,10 +102,27 @@ export function useDrawingCharacteristics({
   getRows,
   flushPendingSave,
   commitMergedRows,
+  sync,
 }: UseDrawingCharacteristicsOptions) {
   const addToast = usePDMStore((s) => s.addToast)
   const [isExtracting, setIsExtracting] = useState(false)
   const [isBallooning, setIsBallooning] = useState(false)
+  // Set synchronously, so Auto and a click in the same tick never start two runs.
+  const inFlightRef = useRef(false)
+  // Error code of the latest failure inside a run (the toast already said why).
+  const lastErrorCodeRef = useRef<string | undefined>(undefined)
+  // While Auto runs, an unsaved-changes refusal is not an error: Auto waits for the next save.
+  const quietUnsavedRef = useRef(false)
+  const toastError = useCallback(
+    (errorCode: string | undefined, message: string) => {
+      lastErrorCodeRef.current = errorCode
+      if (quietUnsavedRef.current && errorCode === INSPECTION_BALLOON_ERROR_CODES.unsavedChanges) {
+        return
+      }
+      addToast('error', message)
+    },
+    [addToast],
+  )
   // The general tolerance rule behind each row filled from it, from the latest extraction (for
   // the GT marker's tooltip). Not stored: the row keeps only `tolerance_source`.
   const [generalBasis, setGeneralBasis] = useState<Map<string, GeneralToleranceBasis>>(
@@ -118,7 +155,10 @@ export function useDrawingCharacteristics({
       return false
     }
     // Both commands arrived in one service release; an older service fails on the first call.
-    const feature = checkSwServiceFeature(serviceVersion ?? null, SW_SERVICE_VERSION_NATIVE_INSPECTION)
+    const feature = checkSwServiceFeature(
+      serviceVersion ?? null,
+      SW_SERVICE_VERSION_NATIVE_INSPECTION,
+    )
     if (feature.status === 'incompatible') {
       addToast(
         'error',
@@ -145,7 +185,10 @@ export function useDrawingCharacteristics({
       if (!isCurrent(scope)) return null
       if (!result?.success || !result.data) {
         const key = inspectionErrorKey(result?.errorCode)
-        addToast('error', key ? t(key) : result?.error || t('source.inspection.extractFailed'))
+        toastError(
+          result?.errorCode,
+          key ? t(key) : result?.error || t('source.inspection.extractFailed'),
+        )
         return null
       }
       if (result.data.skipped.length > 0) {
@@ -155,7 +198,7 @@ export function useDrawingCharacteristics({
       }
       return result.data
     },
-    [isCurrent, addToast],
+    [isCurrent, toastError],
   )
 
   /**
@@ -224,123 +267,197 @@ export function useDrawingCharacteristics({
         return
       }
       void commitMergedRows(outcome.previous).then((ok) => {
-        if (ok) addToast('info', t('source.inspection.extractUndone'))
+        if (!ok) return
+        // The table no longer matches the drawing: Extract is offered again.
+        sync.clearExtract(scope.fileId)
+        addToast('info', t('source.inspection.extractUndone'))
       })
     },
-    [isCurrent, getRows, commitMergedRows, addToast],
+    [isCurrent, getRows, commitMergedRows, addToast, sync],
   )
 
-  const handleExtract = useCallback(async () => {
-    if (busy || !checkReady() || !fileId) return
-    const scope: FlowScope = { fileId, version, filePath: file.path }
-    setIsExtracting(true)
-    try {
-      const outcome = await extractAndMerge(scope)
-      if (!outcome) return
-      if (outcome.data.characteristics.length === 0) {
-        addToast('info', t('source.inspection.extractNone'))
-        return
-      }
-      if (!outcome.changed) {
-        addToast('info', t('source.inspection.extractUpToDate'))
-        return
-      }
-      const { added, updated, removed, kept } = outcome.counts
-      const keptNote = kept > 0 ? ` ${t('source.inspection.extractKeptIncomplete', { count: kept })}` : ''
-      addToast(
-        'success',
-        `${t('source.inspection.extractApplied', { added, updated, removed })}${keptNote}`,
-        UNDO_TOAST_MS,
-        { label: t('source.inspection.undo'), onClick: () => undoMerge(scope, outcome) },
-      )
-    } catch (error) {
-      log.error('[InspectionTab]', 'Extract from drawing failed', { error: String(error) })
-      addToast('error', t('source.inspection.extractFailed'))
-    } finally {
-      setIsExtracting(false)
-    }
-  }, [busy, checkReady, fileId, version, file.path, extractAndMerge, undoMerge, addToast])
+  /** Claim the single run slot; false when a run is already going or the flow cannot run. */
+  const begin = useCallback((): boolean => {
+    if (inFlightRef.current || !checkReady() || !fileId) return false
+    inFlightRef.current = true
+    lastErrorCodeRef.current = undefined
+    return true
+  }, [checkReady, fileId])
 
-  const handleBalloon = useCallback(async () => {
-    if (busy || !checkReady() || !fileId) return
-    const scope: FlowScope = { fileId, version, filePath: file.path }
-    setIsBallooning(true)
-    try {
-      // Rows do not store the persist reference, so the drawing is read again; the same read
-      // brings the table up to date first, so every balloon matches the drawing as it is.
-      const outcome = await extractAndMerge(scope)
-      if (!outcome) return
-      if (outcome.changed) {
-        const { added, updated, removed } = outcome.counts
+  const failed = useCallback(
+    (): FlowResult => ({ ok: false, errorCode: lastErrorCodeRef.current }),
+    [],
+  )
+
+  const handleExtract = useCallback(
+    async (options: FlowOptions = {}): Promise<FlowResult> => {
+      if (!fileId || !begin()) return { ok: false, skipped: true }
+      const scope: FlowScope = { fileId, version, filePath: file.path }
+      quietUnsavedRef.current = !!options.auto
+      setIsExtracting(true)
+      try {
+        // Hashed before the read: a save during the read leaves the drawing "changed".
+        const hashBefore = await sync.hashNow(scope.filePath)
+        const outcome = await extractAndMerge(scope)
+        if (!outcome) return failed()
+        if (hashBefore && isCurrent(scope)) sync.recordExtract(scope.fileId, hashBefore)
+        if (outcome.data.characteristics.length === 0) {
+          if (!options.auto) addToast('info', t('source.inspection.extractNone'))
+          return { ok: true }
+        }
+        if (!outcome.changed) {
+          if (!options.auto) addToast('info', t('source.inspection.extractUpToDate'))
+          return { ok: true }
+        }
+        const { added, updated, removed, kept } = outcome.counts
+        const keptNote =
+          kept > 0 ? ` ${t('source.inspection.extractKeptIncomplete', { count: kept })}` : ''
         addToast(
-          'info',
-          t('source.inspection.extractApplied', { added, updated, removed }),
+          'success',
+          `${t('source.inspection.extractApplied', { added, updated, removed })}${keptNote}`,
           UNDO_TOAST_MS,
           { label: t('source.inspection.undo'), onClick: () => undoMerge(scope, outcome) },
         )
+        return { ok: true }
+      } catch (error) {
+        log.error('[InspectionTab]', 'Extract from drawing failed', { error: String(error) })
+        addToast('error', t('source.inspection.extractFailed'))
+        return { ok: false }
+      } finally {
+        quietUnsavedRef.current = false
+        inFlightRef.current = false
+        setIsExtracting(false)
       }
-      const plan = planBalloonRequests(outcome.next, outcome.data.characteristics)
-      if (plan.balloons.length === 0) {
-        addToast('info', t('source.inspection.balloonNothing'))
-        return
-      }
-      const result = await window.electronAPI?.solidworks?.applyInspectionBalloons(
-        scope.filePath,
-        plan.balloons,
-      )
-      if (!isCurrent(scope)) return
-      if (!result?.success || !result.data) {
-        const key = inspectionErrorKey(result?.errorCode)
-        if (key) {
-          addToast('error', t(key))
-        } else if (result?.data && !result.data.saved) {
-          // The balloons went in but the save failed; the service attaches its report.
-          log.warn('[InspectionTab]', 'Balloons placed but the drawing was not saved', {
-            error: result.error,
-            data: result.data,
-          })
-          addToast('error', t('source.inspection.balloonNotSaved', { placed: result.data.placed }))
-        } else {
-          addToast('error', result?.error || t('source.inspection.balloonFailed'))
+    },
+    [
+      begin,
+      failed,
+      fileId,
+      version,
+      file.path,
+      sync,
+      extractAndMerge,
+      isCurrent,
+      undoMerge,
+      addToast,
+    ],
+  )
+
+  const handleBalloon = useCallback(
+    async (options: FlowOptions = {}): Promise<FlowResult> => {
+      if (!fileId || !begin()) return { ok: false, skipped: true }
+      const scope: FlowScope = { fileId, version, filePath: file.path }
+      quietUnsavedRef.current = !!options.auto
+      setIsBallooning(true)
+      try {
+        const hashBefore = await sync.hashNow(scope.filePath)
+        // Rows do not store the persist reference, so the drawing is read again; the same read
+        // brings the table up to date first, so every balloon matches the drawing as it is.
+        const outcome = await extractAndMerge(scope)
+        if (!outcome) return failed()
+        if (outcome.changed) {
+          const { added, updated, removed } = outcome.counts
+          addToast(
+            'info',
+            t('source.inspection.extractApplied', { added, updated, removed }),
+            UNDO_TOAST_MS,
+            { label: t('source.inspection.undo'), onClick: () => undoMerge(scope, outcome) },
+          )
         }
-        return
-      }
-      const { placed, missing, removedPrevious, saved, keptPositions } = result.data
-      log.info('[InspectionTab]', 'Balloons applied', {
-        placed,
-        missing,
-        removedPrevious,
-        keptPositions,
-        saved,
-        unkeyed: plan.unkeyed,
-      })
-      if (!saved) {
-        addToast('warning', t('source.inspection.balloonNotSaved', { placed }))
-      } else {
-        const kept =
-          keptPositions > 0
-            ? ` ${t('source.inspection.balloonKeptPositions', { count: keptPositions })}`
-            : ''
-        addToast(
-          'success',
-          `${t('source.inspection.balloonApplied', { placed, removedPrevious })}${kept}`,
+        const plan = planBalloonRequests(outcome.next, outcome.data.characteristics)
+        if (plan.balloons.length === 0) {
+          // Nothing to balloon, and the drawing was not touched: it is in sync as it is.
+          if (hashBefore && isCurrent(scope)) sync.recordBalloon(scope.fileId, hashBefore)
+          if (!options.auto) addToast('info', t('source.inspection.balloonNothing'))
+          return { ok: true }
+        }
+        const result = await window.electronAPI?.solidworks?.applyInspectionBalloons(
+          scope.filePath,
+          plan.balloons,
         )
+        if (!isCurrent(scope)) return { ok: false, skipped: true }
+        if (!result?.success || !result.data) {
+          const key = inspectionErrorKey(result?.errorCode)
+          if (key) {
+            toastError(result?.errorCode, t(key))
+          } else if (result?.data && !result.data.saved) {
+            // The balloons went in but the save failed; the service attaches its report.
+            log.warn('[InspectionTab]', 'Balloons placed but the drawing was not saved', {
+              error: result.error,
+              data: result.data,
+            })
+            toastError(
+              result?.errorCode,
+              t('source.inspection.balloonNotSaved', { placed: result.data.placed }),
+            )
+          } else {
+            toastError(result?.errorCode, result?.error || t('source.inspection.balloonFailed'))
+          }
+          return failed()
+        }
+        const { placed, missing, removedPrevious, saved, keptPositions, kept, unchanged } =
+          result.data
+        log.info('[InspectionTab]', 'Balloons applied', {
+          placed,
+          missing,
+          removedPrevious,
+          keptPositions,
+          kept,
+          unchanged,
+          saved,
+          unkeyed: plan.unkeyed,
+          auto: !!options.auto,
+        })
+        const reply = balloonOutcome(result.data, !!options.auto)
+        const showToasts = () => {
+          for (const toast of reply.toasts) {
+            addToast(
+              toast.kind,
+              toast.parts.map((p) => t(`source.inspection.${p.key}`, p.values)).join(' '),
+            )
+          }
+        }
+        if (reply.status === 'notSaved') {
+          showToasts()
+          return { ok: false }
+        }
+        // The service's own save (or, from service 1.29.0, the untouched file when nothing had to
+        // change) is the new in-sync state, so it never reads as a change.
+        const hashAfter = await sync.hashNow(scope.filePath)
+        if (hashAfter && isCurrent(scope)) sync.recordBalloon(scope.fileId, hashAfter)
+        showToasts()
+        return { ok: true }
+      } catch (error) {
+        log.error('[InspectionTab]', 'Balloon drawing failed', { error: String(error) })
+        addToast('error', t('source.inspection.balloonFailed'))
+        return { ok: false }
+      } finally {
+        quietUnsavedRef.current = false
+        inFlightRef.current = false
+        setIsBallooning(false)
       }
-      if (missing.length > 0) {
-        addToast('warning', t('source.inspection.balloonMissing', { count: missing.length }))
-      }
-    } catch (error) {
-      log.error('[InspectionTab]', 'Balloon drawing failed', { error: String(error) })
-      addToast('error', t('source.inspection.balloonFailed'))
-    } finally {
-      setIsBallooning(false)
-    }
-  }, [busy, checkReady, fileId, version, file.path, extractAndMerge, undoMerge, isCurrent, addToast])
+    },
+    [
+      begin,
+      failed,
+      fileId,
+      version,
+      file.path,
+      sync,
+      extractAndMerge,
+      undoMerge,
+      isCurrent,
+      addToast,
+      toastError,
+    ],
+  )
 
   return {
     isExtracting,
     isBallooning,
     busy,
+    /** True from the moment a run is claimed (before React state catches up). */
+    isInFlight: () => inFlightRef.current,
     generalBasis,
     handleExtract,
     handleBalloon,

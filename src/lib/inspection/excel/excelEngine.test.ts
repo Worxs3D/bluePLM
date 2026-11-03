@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import type { Worksheet } from 'exceljs'
+import JSZip from 'jszip'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import { analyzeTemplate } from './analyze'
 import { builtInTemplates } from './builtIn'
 import type { InspectionReportRow } from './format'
+import { shiftFormula } from './formulaShift'
 import { generateInspectionReport, InspectionTemplateError } from './generate'
+import { imageSize, wrappedLines } from './place'
+import { rasterScale } from './rasterizePdf'
 import { readReturnedResults } from './results'
-import { cellText, META_SHEET, newWorkbook, readWorkbook, writeWorkbook } from './workbook'
+import { cellText, decodeRange, META_SHEET, newWorkbook, readWorkbook, writeWorkbook } from './workbook'
 
 // 1x1 PNG.
 const PNG = Uint8Array.from(
@@ -75,6 +80,12 @@ async function customTemplate(): Promise<Uint8Array> {
   return writeWorkbook(wb)
 }
 
+// exceljs loads lazily on first use; under a full-suite run that import alone can outlast the
+// first test's 5 s budget. Load it once here, so every test measures only its own work.
+beforeAll(async () => {
+  await readWorkbook(await writeWorkbook(await newWorkbook()))
+}, 60_000)
+
 describe('analyzeTemplate', () => {
   it('finds the row template, scalars, entries, results and the drawing anchor', async () => {
     const layout = await analyzeTemplate(await customTemplate())
@@ -138,16 +149,45 @@ describe('analyzeTemplate', () => {
   })
 })
 
+interface PlacedImage {
+  range: { tl: { nativeCol: number; nativeRow: number }; ext?: { width: number; height: number } }
+}
+
+function images(ws: Worksheet): PlacedImage[] {
+  return ws.getImages() as unknown as PlacedImage[]
+}
+
+/** Manual row breaks of a sheet, read from the XML (exceljs does not read them back). */
+async function rowBreaks(bytes: Uint8Array, sheetIndex = 1): Promise<number[]> {
+  const xml = await (await JSZip.loadAsync(bytes)).file(`xl/worksheets/sheet${sheetIndex}.xml`)!.async('string')
+  return [...xml.matchAll(/<brk id="(\d+)"/g)].map((m) => Number(m[1]))
+}
+
+const LOGO = { bytes: PNG, extension: 'png' as const }
+
 describe('builtInTemplates', () => {
-  it('ships the two starters and both analyze with no errors', async () => {
+  it('ships the starters and the report-type templates, and every one analyzes with no errors', async () => {
     const templates = await builtInTemplates()
-    expect(templates.map((t) => t.key)).toEqual(['dimensional-inspection', 'first-article-accountability'])
+    expect(templates.map((t) => t.key)).toEqual([
+      'dimensional-inspection',
+      'first-article-accountability',
+      'first-article-as9102',
+      'production-lot',
+      'receiving-inspection',
+      'reinspection',
+    ])
     for (const t of templates) {
       const layout = await analyzeTemplate(t.bytes)
       expect(layout.errors, t.key).toEqual([])
       expect(layout.warnings, t.key).toEqual([])
       expect(layout.resultCount).toBeGreaterThan(0)
       expect(layout.hasVerdict).toBe(true)
+      // One logo per sheet (the AS9102 workbook has three form sheets).
+      expect(layout.logoAnchors?.length ?? 0, t.key).toBeGreaterThanOrEqual(1)
+      expect(layout.drawingAnchor, t.key).toBeNull()
+      expect(layout.entries.map((e) => e.name), t.key).toEqual(
+        expect.arrayContaining(['inspected_by', 'inspection_date', 'approved_by', 'approval_date']),
+      )
     }
     const fai = await analyzeTemplate(templates[1].bytes)
     expect(fai.entries.map((e) => e.name)).toEqual(
@@ -155,22 +195,103 @@ describe('builtInTemplates', () => {
     )
   })
 
-  it('a starter generates and reads back', async () => {
-    const [dimensional] = await builtInTemplates()
-    const rows = [row(1), row(2), row(3), row(4)]
-    const bytes = await generateInspectionReport({
-      template: dimensional.bytes,
-      reportId: 'rep',
-      fileId: 'f',
-      fileVersionId: 'v',
-      rows,
-      drawingPages: [{ png: PNG, widthPx: 1700, heightPx: 1100 }],
-    })
-    const wb = await readWorkbook(bytes)
-    expect(wb.getWorksheet('Drawing')!.getImages()).toHaveLength(1)
-    const back = await readReturnedResults(bytes, { reportId: 'rep', rows })
-    expect(back.rows).toHaveLength(4)
-    expect(back.warnings).toEqual([])
+  it('label cells are wide enough for their text', async () => {
+    for (const t of await builtInTemplates()) {
+     for (const ws of (await readWorkbook(t.bytes)).worksheets) {
+      const merges = (ws.model.merges ?? []).map(decodeRange)
+      // Every column's width survives the write (exceljs drops a width of exactly 9).
+      for (let c = 1; c <= ws.columnCount; c++) expect(ws.getColumn(c).width, `${t.key} column ${c}`).toBeGreaterThan(5)
+      ws.eachRow((r, rowNumber) => {
+        r.eachCell((cell, col) => {
+          const text = cellText(cell)
+          if (!text || text.includes('{{') || (cell.isMerged && cell.master.address !== cell.address)) return
+          const box = merges.find((m) => m.top === rowNumber && m.left === col) ?? { left: col, right: col }
+          let width = 0
+          for (let c = box.left; c <= box.right; c++) width += ws.getColumn(c).width ?? 8.43
+          // Excel width units are digit widths at 11 pt; bold text runs about 10 % wider.
+          const factor = ((cell.font?.size ?? 11) / 11) * (cell.font?.bold ? 1.1 : 1)
+          const longest = cell.alignment?.wrapText ? Math.max(...text.split(/\s+/).map((w) => w.length)) : text.length
+          expect(longest * factor, `${t.key} ${ws.name} ${cell.address} "${text}"`).toBeLessThanOrEqual(width)
+        })
+      })
+     }
+    }
+  })
+
+  it('sets up printing, frozen panes, footer and conditional formats', async () => {
+    for (const t of await builtInTemplates()) {
+      const layout = await analyzeTemplate(t.bytes)
+      const ws = (await readWorkbook(t.bytes)).getWorksheet(layout.rowTemplate!.sheet)!
+      const header = layout.rowTemplate!.row - 1
+      expect(ws.pageSetup).toMatchObject({
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        printTitlesRow: `${header}:${header}`,
+      })
+      expect(ws.views[0]).toMatchObject({ state: 'frozen', ySplit: header })
+      expect(ws.headerFooter.oddFooter).toContain('{{REPORT_NUMBER}}')
+      expect(ws.headerFooter.oddFooter).toContain('Page &P of &N')
+      const cfs = (ws as unknown as { conditionalFormattings: { ref: string; rules: { formulae?: string[] }[] }[] }).conditionalFormattings
+      const formulae = cfs.flatMap((c) => c.rules.flatMap((r) => r.formulae ?? []))
+      expect(formulae).toEqual(expect.arrayContaining(['"PASS"', '"FAIL"', 'MOD(ROW(),2)=0']))
+      expect(ws.getCell(header, 1).fill).toMatchObject({ fgColor: { argb: 'FF1F3864' } })
+    }
+  })
+
+  it('a starter generates with logo, summary formulas and drawing pages under the table, and reads back', async () => {
+    for (const t of await builtInTemplates()) {
+      const layout = await analyzeTemplate(t.bytes)
+      const first = layout.rowTemplate!.row
+      const rows = [row(1), row(2), row(3), row(4)]
+      const bytes = await generateInspectionReport({
+        template: t.bytes,
+        reportId: 'rep',
+        fileId: 'f',
+        fileVersionId: 'v',
+        rows,
+        scalars: { REPORT_NUMBER: 'BR-1_RevA_IRv1', DRAWING_NAME: 'BR-1.SLDDRW' },
+        logo: LOGO,
+        drawingPages: [
+          { png: PNG, widthPx: 3300, heightPx: 2135 },
+          { png: PNG, widthPx: 3300, heightPx: 2135 },
+        ],
+      })
+      const wb = await readWorkbook(bytes)
+      const templateSheets = (await readWorkbook(t.bytes)).worksheets.map((w) => w.name)
+      expect(
+        wb.worksheets.map((w) => w.name),
+        t.key,
+      ).toEqual([...templateSheets, META_SHEET])
+      expect(templateSheets.at(-1), t.key).toBe(layout.rowTemplate!.sheet)
+      const ws = wb.getWorksheet(layout.rowTemplate!.sheet)!
+      const placed = images(ws)
+      expect(placed, t.key).toHaveLength(3)
+      expect(placed[0].range.tl.nativeRow).toBe(0)
+      // Summary ranges grew with the table.
+      const formulas: string[] = []
+      ws.eachRow((r) =>
+        r.eachCell((c) => {
+          const v = c.value as { formula?: string } | null
+          if (v && typeof v === 'object' && typeof v.formula === 'string' && c.master.address === c.address) formulas.push(v.formula)
+        }),
+      )
+      const last = first + rows.length - 1
+      expect(formulas.filter((f) => f.includes(`$${first}:$`) && f.includes(`$${last}`)), t.key).toHaveLength(3)
+      expect(ws.headerFooter.oddFooter).toContain('BR-1_RevA_IRv1')
+      const cfs = (ws as unknown as { conditionalFormattings: { ref: string }[] }).conditionalFormattings.map((c) => c.ref)
+      expect(cfs.some((r) => r.endsWith(`${last}`) && r.includes(`${first}:`))).toBe(true)
+      // Pages start below the last table row and the sign-off, one page break before each.
+      const pageRows = placed.slice(1).map((i) => i.range.tl.nativeRow + 1)
+      expect(Math.min(...pageRows)).toBeGreaterThan(last + 6)
+      expect(cellText(ws.getCell(pageRows[0] - 1, 1))).toBe('Drawing sheet 1 of 2: BR-1.SLDDRW')
+      expect(cellText(ws.getCell(pageRows[1] - 1, 1))).toBe('Drawing sheet 2 of 2: BR-1.SLDDRW')
+      expect(await rowBreaks(bytes, templateSheets.length)).toEqual(pageRows.map((r) => r - 2))
+      const back = await readReturnedResults(bytes, { reportId: 'rep', rows })
+      expect(back.rows).toHaveLength(4)
+      expect(back.warnings).toEqual([])
+    }
   })
 })
 
@@ -211,10 +332,43 @@ describe('generateInspectionReport', () => {
     expect(cellText(ws.getCell('B5'))).toBe('25.40 ±0.10')
     expect(cellText(ws.getCell('B7'))).toBe('10.1 (10.0 – 10.2)')
     const merges = ws.model.merges
-    expect(merges).toEqual(expect.arrayContaining(['B5:C5', 'B6:C6', 'B7:C7', 'B9:D9', 'A11:F22']))
+    expect(merges).toEqual(expect.arrayContaining(['B5:C5', 'B6:C6', 'B7:C7', 'B9:D9']))
     // Content below the table moved down by two rows.
     expect(cellText(ws.getCell('A9'))).toBe('Signed')
+    // The whole table fits the first page, so no title row repeats over the drawing pages.
+    expect(ws.pageSetup.printTitlesRow).toBeUndefined()
+  })
+
+  it('keeps the repeated header row when the table runs past the first page', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => row(i + 1))
+    const bytes = await generateInspectionReport({
+      template: await customTemplate(),
+      reportId: 'r',
+      fileId: 'f',
+      fileVersionId: 'v',
+      rows: many,
+      drawingPages: [{ png: PNG, widthPx: 1700, heightPx: 1100 }],
+    })
+    const ws = (await readWorkbook(bytes)).getWorksheet('Report')!
     expect(ws.pageSetup.printTitlesRow).toBe('4:4')
+  })
+
+  it('grows a row whose wrapped text needs more lines, and leaves short rows alone', async () => {
+    const [t] = await builtInTemplates()
+    const layout = await analyzeTemplate(t.bytes)
+    const first = layout.rowTemplate!.row
+    const long = 'Anodize per MIL-A-8625 Type II, Class 2, black, with masking of the bearing bore and threads'
+    const bytes = await generateInspectionReport({
+      template: t.bytes,
+      reportId: 'r',
+      fileId: 'f',
+      fileVersionId: 'v',
+      rows: [row(1), row(2, { char_type: 'Note', nominal_value: long, plus_tolerance: null, minus_tolerance: null })],
+    })
+    const ws = (await readWorkbook(bytes)).worksheets[0]
+    const template = (await readWorkbook(t.bytes)).worksheets[0].getRow(first).height
+    expect(ws.getRow(first).height).toBe(template)
+    expect(ws.getRow(first + 1).height).toBeGreaterThan((template ?? 15) * 1.8)
   })
 
   it('unlocks only the recipient cells and protects every sheet', async () => {
@@ -229,13 +383,84 @@ describe('generateInspectionReport', () => {
     }
   })
 
-  it('embeds the drawing at the anchor and adds a sheet for further pages', async () => {
-    const wb = await readWorkbook(await generate())
-    expect(wb.getWorksheet('Report')!.getImages()).toHaveLength(1)
-    const extra = wb.getWorksheet('Drawing 2')!
-    expect(extra.getImages()).toHaveLength(1)
-    expect(extra.pageSetup.orientation).toBe('landscape')
-    expect(extra.pageSetup.fitToPage).toBe(true)
+  it('stacks every drawing page from the anchor on the same sheet, with captions and page breaks', async () => {
+    const bytes = await generate()
+    const wb = await readWorkbook(bytes)
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Report', META_SHEET])
+    const ws = wb.getWorksheet('Report')!
+    const placed = images(ws)
+    expect(placed).toHaveLength(2)
+    // The anchor A9 moved to A11; its merge (A..F) sets the width, the first caption takes its row.
+    expect(cellText(ws.getCell('A11'))).toBe('Drawing sheet 1 of 2')
+    expect(placed[0].range.tl.nativeRow).toBe(11)
+    expect(placed[1].range.tl.nativeRow).toBeGreaterThan(11 + Math.floor(placed[0].range.ext!.height / 20))
+    for (const p of placed) expect(p.range.ext!.width).toBeLessThanOrEqual(6 * 64)
+    expect(await rowBreaks(bytes)).toHaveLength(2)
+  })
+
+  it('puts the pages of a template without {{DRAWING}} under its table, never on new sheets', async () => {
+    const wb = await newWorkbook()
+    const ws = wb.addWorksheet('T')
+    ws.getCell('A1').value = 'Balloon'
+    ws.getCell('A2').value = '{{COL:balloon_number}}'
+    ws.getCell('B2').value = '{{RESULT}}'
+    ws.getCell('A4').value = 'Checked'
+    const rows3 = [row(1), row(2), row(3)]
+    const bytes = await generateInspectionReport({
+      template: await writeWorkbook(wb),
+      reportId: 'r',
+      fileId: 'f',
+      fileVersionId: 'v',
+      rows: rows3,
+      drawingPages: [{ png: PNG, widthPx: 1700, heightPx: 1100 }],
+      drawingCaption: (i, n, name) => `Blatt ${i + 1}/${n} ${name}`,
+      scalars: { DRAWING_NAME: 'X' },
+    })
+    const out = await readWorkbook(bytes)
+    expect(out.worksheets.map((w) => w.name)).toEqual(['T', META_SHEET])
+    const t = out.getWorksheet('T')!
+    // "Checked" moved from row 4 to 6 (the last used row); the caption goes two rows below it.
+    expect(cellText(t.getCell('A6'))).toBe('Checked')
+    expect(cellText(t.getCell('A8'))).toBe('Blatt 1/1 X')
+    expect(images(t)[0].range.tl.nativeRow).toBe(8)
+    expect(await rowBreaks(bytes)).toEqual([7])
+    // Results cells are still found after the images were placed.
+    out.getWorksheet('T')!.getCell('B3').value = '25.41'
+    const back = await readReturnedResults(await writeWorkbook(out), { reportId: 'r', rows: rows3 })
+    expect(back.rows.map((r) => r.measured[0])).toEqual(['', '25.41', ''])
+    expect(back.warnings).toEqual([])
+  })
+
+  it('places the logo in its merged range with the aspect kept, and clears the cell without one', async () => {
+    const wb = await newWorkbook()
+    const ws = wb.addWorksheet('L')
+    ws.getColumn(1).width = 20
+    ws.getColumn(2).width = 20
+    ws.getRow(1).height = 30
+    ws.getRow(2).height = 30
+    ws.getCell('A1').value = '{{LOGO}}'
+    ws.mergeCells('A1:B2')
+    ws.getCell('A4').value = '{{COL:balloon_number}}'
+    ws.getCell('B4').value = '{{RESULT}}'
+    const template = await writeWorkbook(wb)
+    const layout = await analyzeTemplate(template)
+    expect(layout.logoAnchors).toEqual([{ sheet: 'L', cell: 'A1' }])
+    expect(layout.warnings).toEqual([])
+    // The 1x1 PNG with its header rewritten to 200 x 100.
+    const wide = PNG.slice()
+    new DataView(wide.buffer).setUint32(16, 200)
+    new DataView(wide.buffer).setUint32(20, 100)
+    const base = { template, reportId: 'r', fileId: 'f', fileVersionId: 'v', rows: [row(1)] }
+    const out = await readWorkbook(await generateInspectionReport({ ...base, logo: { bytes: wide, extension: 'png' } }))
+    const l = out.getWorksheet('L')!
+    const [logo] = images(l)
+    expect(logo.range.tl).toMatchObject({ nativeCol: 0, nativeRow: 0 })
+    // Box 290 x 80 px less an 8 px inset: height-limited at 72 px, twice as wide.
+    expect(logo.range.ext).toEqual({ width: 144, height: 72 })
+    expect(cellText(l.getCell('A1'))).toBe('')
+    const none = (await readWorkbook(await generateInspectionReport(base))).getWorksheet('L')!
+    expect(images(none)).toHaveLength(0)
+    expect(cellText(none.getCell('A1'))).toBe('')
   })
 
   it('writes a very hidden _blueplm sheet identifying the report and rows', async () => {
@@ -256,13 +481,30 @@ describe('generateInspectionReport', () => {
     ).rejects.toBeInstanceOf(InspectionTemplateError)
   })
 
-  it('keeps one blank row for a report with no characteristics', async () => {
-    const wb = await readWorkbook(
-      await generateInspectionReport({ template: await customTemplate(), reportId: 'r', fileId: 'f', fileVersionId: 'v', rows: [] }),
-    )
-    const ws = wb.getWorksheet('Report')!
-    expect(cellText(ws.getCell('A5'))).toBe('')
+  it('writes one merged "No characteristics" row for a report with no characteristics', async () => {
+    const bytes = await generateInspectionReport({ template: await customTemplate(), reportId: 'r', fileId: 'f', fileVersionId: 'v', rows: [] })
+    const ws = (await readWorkbook(bytes)).getWorksheet('Report')!
+    expect(cellText(ws.getCell('A5'))).toBe('No characteristics')
+    expect(ws.model.merges).toContain('A5:I5')
+    expect(ws.getCell('E5').protection?.locked).not.toBe(false)
     expect(cellText(ws.getCell('A7'))).toBe('Signed')
+    expect((await readReturnedResults(bytes)).rows).toEqual([])
+  })
+
+  it('fills scalar tokens in print headers and footers, escaping &', async () => {
+    const wb = await readWorkbook(await customTemplate())
+    wb.getWorksheet('Report')!.headerFooter = { oddFooter: '&L{{PART_NUMBER}} {{ORG_NAME}}&RPage &P' }
+    const out = await readWorkbook(
+      await generateInspectionReport({
+        template: await writeWorkbook(wb),
+        reportId: 'r',
+        fileId: 'f',
+        fileVersionId: 'v',
+        rows,
+        scalars: { PART_NUMBER: 'BR-1', ORG_NAME: 'A & B' },
+      }),
+    )
+    expect(out.getWorksheet('Report')!.headerFooter.oddFooter).toBe('&LBR-1 A && B&RPage &P')
   })
 
   describe('readReturnedResults', () => {
@@ -324,5 +566,45 @@ describe('generateInspectionReport', () => {
       expect(res.reportId).toBeNull()
       expect(res.warnings.map((w) => w.code)).toEqual(['NOT_A_REPORT'])
     })
+  })
+})
+
+describe('shiftFormula', () => {
+  it('grows ranges ending on the template row and moves references below it', () => {
+    expect(shiftFormula('COUNTIF($J$11:$J$11,"PASS")', 11, 4)).toBe('COUNTIF($J$11:$J$15,"PASS")')
+    expect(shiftFormula('SUM(A5:A12)+B12+B11+C3', 11, 2)).toBe('SUM(A5:A14)+B14+B11+C3')
+    expect(shiftFormula('A12&"A12"', 11, 1)).toBe('A13&"A12"')
+    expect(shiftFormula('LOG10(2)+Other!A20+ROW()', 11, 3)).toBe('LOG10(2)+Other!A20+ROW()')
+    expect(shiftFormula('A20', 11, 0)).toBe('A20')
+  })
+})
+
+describe('imageSize and rasterScale', () => {
+  it('reads PNG and JPEG sizes', () => {
+    expect(imageSize(PNG)).toEqual({ width: 1, height: 1 })
+    // SOI, APP0 (length 4), SOF0 with height 300 and width 640.
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x2c, 0x02, 0x80, 0x03, 0, 0, 0, 0, 0, 0])
+    expect(imageSize(jpeg)).toEqual({ width: 640, height: 300 })
+    expect(imageSize(new Uint8Array([1, 2, 3]))).toBeNull()
+  })
+
+  it('renders drawing pages legible on paper and within canvas limits', () => {
+    // Letter landscape (792 pt long side): at least 3300 px across.
+    expect(792 * rasterScale(792, 612)).toBeGreaterThanOrEqual(3300)
+    // B size (17 x 11 in): 3300 px would be 194 dpi, raised to the 200 dpi floor.
+    expect(rasterScale(1224, 792) * 72).toBeCloseTo(200)
+    // A0 is capped by the side limit.
+    expect(3370 * rasterScale(3370, 2384)).toBeLessThanOrEqual(8000)
+    expect(rasterScale(792, 612, 150)).toBeCloseTo(150 / 72)
+  })
+})
+
+describe('wrappedLines', () => {
+  it('wraps at word boundaries, and breaks a word longer than a line', () => {
+    expect(wrappedLines('Calipers', 16)).toBe(1)
+    expect(wrappedLines('11. Nonconformance number', 16)).toBe(3)
+    expect(wrappedLines('Surface Roughness Tester', 17)).toBe(2)
+    expect(wrappedLines('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10)).toBe(3)
+    expect(wrappedLines('', 10)).toBe(1)
   })
 })

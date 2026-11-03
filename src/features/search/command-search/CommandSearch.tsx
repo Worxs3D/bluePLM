@@ -1,10 +1,10 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
 import { logSearch } from '@/lib/userActionLogger'
 import type { CommandSearchProps, GoogleDriveFileResult, SearchFilter } from './types'
 import { FILTER_OPTIONS } from './constants'
-import { getCurrentFilter, getAvailableFilters } from './utils'
+import { getCurrentFilter, getAvailableFilters, showsQuickResults } from './utils'
 import {
   useSearchState,
   useGoogleDriveSearch,
@@ -75,6 +75,25 @@ export function CommandSearch({ maxWidth = 'max-w-lg' }: CommandSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // The dropdown stays collapsed while the pane lists the results; the box's toggle (or the down
+  // arrow) opens it. It collapses again whenever the dropdown closes.
+  const [quickResultsExpanded, setQuickResultsExpanded] = useState(false)
+  useEffect(() => {
+    if (!isOpen) setQuickResultsExpanded(false)
+  }, [isOpen])
+  const quickResultsShown = showsQuickResults(parsedQuery, quickResultsExpanded)
+
+  const toggleQuickResults = useCallback(() => {
+    setHighlightedIndex(-1)
+    if (isOpen && quickResultsExpanded) {
+      setQuickResultsExpanded(false)
+    } else {
+      setIsOpen(true)
+      setQuickResultsExpanded(true)
+    }
+    inputRef.current?.focus()
+  }, [isOpen, quickResultsExpanded, setIsOpen, setHighlightedIndex])
 
   // Total navigable results
   const totalResults = searchResults.length + driveResults.length + (recentSearches?.length || 0)
@@ -192,6 +211,20 @@ export function CommandSearch({ maxWidth = 'max-w-lg' }: CommandSearchProps) {
     onEscape: handleEscape,
   })
 
+  // The down arrow opens a collapsed dropdown before it moves through it
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'ArrowDown' && !(isOpen && quickResultsShown)) {
+        e.preventDefault()
+        setIsOpen(true)
+        setQuickResultsExpanded(true)
+        return
+      }
+      handleKeyDown(e)
+    },
+    [isOpen, quickResultsShown, setIsOpen, handleKeyDown],
+  )
+
   // Filter selection handler
   const handleFilterSelect = useCallback(
     (filter: SearchFilter) => {
@@ -272,10 +305,19 @@ export function CommandSearch({ maxWidth = 'max-w-lg' }: CommandSearchProps) {
           value={localQuery}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleInputKeyDown}
           placeholder={placeholder}
           inputRef={inputRef}
           onClear={handleClear}
+          quickResults={
+            parsedQuery.searchTerm && !showsQuickResults(parsedQuery, false)
+              ? {
+                  count: searchResults.length + driveResults.length,
+                  expanded: isOpen && quickResultsExpanded,
+                  onToggle: toggleQuickResults,
+                }
+              : undefined
+          }
         />
       </div>
 
@@ -292,7 +334,7 @@ export function CommandSearch({ maxWidth = 'max-w-lg' }: CommandSearchProps) {
 
       {/* Search Results */}
       <SearchResults
-        isOpen={isOpen}
+        isOpen={isOpen && quickResultsShown}
         showFilters={showFilters}
         currentFilter={parsedQuery.filter}
         localQuery={localQuery}

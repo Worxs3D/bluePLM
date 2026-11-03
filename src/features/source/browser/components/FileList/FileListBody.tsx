@@ -27,6 +27,13 @@ import { ConfigGroupRow } from './ConfigGroupRow'
 import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
+import { FileOutputRow } from './FileOutputRow'
+import { FileGenerateRow, FileSectionRow } from './FileSectionRow'
+import { useModelSectionsLoader } from './useModelSectionsLoader'
+import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
+import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
+import { hasDesktop } from '@/lib/platform'
+import { isDrawingFile } from '@/lib/outputs/kinds'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
 import { FileRow } from './FileRow'
 import type {
@@ -42,6 +49,10 @@ import type {
 } from './rowTypes'
 
 // Slim props interface - state comes from context
+/** Listed drawings whose outputs and reports the Outputs column reads (within the store bounds). */
+const MAX_OUTPUT_COLUMN_DRAWINGS = 200
+const NO_FILES: readonly LocalFile[] = []
+
 export interface FileListBodyProps {
   // Sorted/filtered files to display (computed in parent)
   displayFiles: LocalFile[]
@@ -188,7 +199,51 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     const checkoutHydration = usePDMStore((s) => s.checkoutHydration)
     const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
-    useDrawingReportsLoader(displayFiles, expandedDrawingRefs)
+    const childSelectedUnder = usePDMStore((s) => childSelectionParent(s.childSelection, s.selectedFiles))
+    // The Outputs column reads the outputs and reports of the listed drawings too (the first
+    // MAX_OUTPUT_COLUMN_DRAWINGS, inside the store's bounds), not only of expanded ones.
+    const outputsColumnShown = visibleColumns.some((c) => c.id === 'outputs')
+    const columnFiles = useMemo(
+      () =>
+        outputsColumnShown
+          ? displayFiles.filter((f) => !f.isDirectory && isDrawingFile(f.path)).slice(0, MAX_OUTPUT_COLUMN_DRAWINGS)
+          : NO_FILES,
+      [outputsColumnShown, displayFiles],
+    )
+    const columnPaths = useMemo(() => new Set(columnFiles.map((f) => f.path)), [columnFiles])
+    const reportDrawings = useMemo(
+      () => (columnPaths.size === 0 ? expandedDrawingRefs : new Set([...expandedDrawingRefs, ...columnPaths])),
+      [columnPaths, expandedDrawingRefs],
+    )
+    useDrawingReportsLoader(displayFiles, reportDrawings)
+    useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles, columnPaths)
+    useModelSectionsLoader(displayFiles, expandedConfigFiles)
+    const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
+    const fileOutputHeads = usePDMStore((s) => s.fileOutputHeads)
+    const outputJobs = usePDMStore((s) => s.outputJobs)
+    const fileReleases = usePDMStore((s) => s.fileReleases)
+    const versionOutputs = usePDMStore((s) => s.versionOutputs)
+    const fileSectionToggles = usePDMStore((s) => s.fileSectionToggles)
+    const modelDrawings = usePDMStore((s) => s.modelDrawings)
+    const modelUsedIn = usePDMStore((s) => s.modelUsedIn)
+    const sections = useMemo(
+      () => ({ toggles: fileSectionToggles, modelDrawings, usedIn: modelUsedIn }),
+      [fileSectionToggles, modelDrawings, modelUsedIn],
+    )
+    const canGenerateOutputs = usePDMStore(
+      (s) => hasDesktop() && (s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit')),
+    )
+    const outputs = useMemo(
+      () => ({
+        versions: fileOutputVersions,
+        heads: fileOutputHeads,
+        jobs: outputJobs,
+        canGenerate: canGenerateOutputs,
+        releases: fileReleases,
+        versionOutputs,
+      }),
+      [fileOutputVersions, fileOutputHeads, outputJobs, canGenerateOutputs, fileReleases, versionOutputs],
+    )
 
     // Get tab settings from organization serialization settings
     const serializationSettings = usePDMStore((s) => s.organization?.serialization_settings)
@@ -239,6 +294,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           drawingRefData,
           expandedDrawingRefFiles,
           drawingInspectionReports,
+          outputs,
+          sections,
         }),
       [
         displayFiles,
@@ -263,6 +320,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         drawingRefData,
         expandedDrawingRefFiles,
         drawingInspectionReports,
+        outputs,
+        sections,
       ],
     )
 
@@ -291,6 +350,9 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'drawing-ref':
           case 'drawing-report':
           case 'drawing-report-more':
+          case 'file-output':
+          case 'file-section':
+          case 'file-generate':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -406,7 +468,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             key={file.path}
             file={file}
             index={index}
-            isSelected={isSelected}
+            // While one of its output or report rows is selected, that row carries the highlight.
+            isSelected={isSelected && file.path !== childSelectedUnder}
             isProcessing={isProcessing}
             diffClass={diffClass}
             isDragTarget={isDragTarget}
@@ -447,6 +510,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         renderCellContent,
         user,
         checkoutHydration,
+        childSelectedUnder,
       ],
     )
 
@@ -768,10 +832,41 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             case 'drawing-report':
               return (
                 <DrawingReportRow
-                  key={`drawing-report::${row.file.path}::${row.report.id}`}
+                  key={`drawing-report::${row.file.path}::${row.received ? 'received' : 'report'}::${row.report.id}`}
+                  variant={row.received ? 'received' : 'generated'}
                   file={row.file}
                   report={row.report}
                   versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-output':
+              return (
+                <FileOutputRow
+                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.configuration ?? ''}::${row.entry.output?.id ?? 'none'}`}
+                  file={row.file}
+                  entry={row.entry}
+                  version={row.version}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-section':
+              return (
+                <FileSectionRow
+                  key={`file-section::${row.file.path}::${row.section}`}
+                  row={row}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-generate':
+              return (
+                <FileGenerateRow
+                  key={`file-generate::${row.file.path}`}
+                  file={row.file}
+                  kinds={row.kinds}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
                 />

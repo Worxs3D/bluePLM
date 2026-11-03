@@ -164,10 +164,12 @@ export function limitsOf(row: InspectionReportRow): Limits | null {
 }
 
 /**
- * Verdict from measured values: 'pass' when every non-blank value is within the limits, 'fail'
- * when any is outside, null when there is nothing to compute from.
+ * Verdict from measured values: 'fail' when any value is outside the limits, 'pass' when at least
+ * `required` values are there and all are within, null when there is nothing to compute from or
+ * values are still missing (a characteristic measured on 5 parts with one value is open, not
+ * passed). One out-of-tolerance value fails the characteristic whatever is still missing.
  */
-export function computeVerdict(row: InspectionReportRow, measured: readonly string[]): Verdict | null {
+export function computeVerdict(row: InspectionReportRow, measured: readonly string[], required = 1): Verdict | null {
   const limits = limitsOf(row)
   if (!limits) return null
   const values = measured.map((m) => m.trim()).filter((m) => m !== '')
@@ -181,7 +183,8 @@ export function computeVerdict(row: InspectionReportRow, measured: readonly stri
     if (v === null) return null
     if (v < limits.lower - eps || v > limits.upper + eps) pass = false
   }
-  return pass ? 'pass' : 'fail'
+  if (!pass) return 'fail'
+  return values.length >= required ? 'pass' : null
 }
 
 const PASS_WORDS = new Set(['pass', 'passed', 'p', 'ok', 'accept', 'accepted', 'acc', 'yes', 'y', 'go', 'conforming', 'conform', '✓', '✔'])

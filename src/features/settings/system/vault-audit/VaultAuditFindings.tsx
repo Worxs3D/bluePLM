@@ -37,7 +37,9 @@ import { FIELD_CLASS, Switch } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import type { VaultAuditCategoryKind, VaultAuditFinding } from '@/types/vaultAudit'
 
+import type { ConflictChoiceRules, ConflictChoicesPlan } from './conflictChoicesTable'
 import { rangeBetween } from './repairSelection'
+import { VaultAuditChoicesTable } from './VaultAuditChoicesTable'
 import { VaultAuditConflictActionBar } from './VaultAuditConflictActionBar'
 import { useVaultAuditPush } from './useVaultAuditPush'
 import { useVaultAuditConflict } from './useVaultAuditConflict'
@@ -318,6 +320,36 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
     conflict.setMany([row.finding.id], !selected)
   }
 
+  const choiceRules = useMemo<ConflictChoiceRules>(
+    () => ({
+      canUseBluePlm: (finding) =>
+        finding.field !== 'revision' && !push.heldByOthers.has(finding.fileId),
+      canUseFile: canAdoptFileValue,
+    }),
+    [push.heldByOthers, canAdoptFileValue],
+  )
+
+  const choiceState = useMemo(
+    () => ({ bluePlmFileIds: push.selectedFileIds, fileFindingIds: conflict.selectedFindingIds }),
+    [push.selectedFileIds, conflict.selectedFindingIds],
+  )
+
+  // A pasted table sets each file it names to exactly one side, the way the row buttons do, and
+  // leaves every file it does not name as it was.
+  const applyPastedChoices = (plan: ConflictChoicesPlan) => {
+    const bluePlm = new Set(plan.bluePlmFileIds)
+    const clearedFileValues = inCategory
+      .filter((finding) => finding.resolution === 'choose-a-side' && bluePlm.has(finding.fileId))
+      .map((finding) => finding.id)
+    conflict.setMany(clearedFileValues, false)
+    push.setManyFiles(plan.bluePlmFileIds, true)
+    push.setManyFiles(
+      plan.touchedFileIds.filter((fileId) => !bluePlm.has(fileId)),
+      false,
+    )
+    conflict.setMany(plan.fileFindingIds, true)
+  }
+
   if (!kind) {
     return (
       <p className="text-[13px] text-ui-fg-secondary">{t('vaultAudit.findings.selectPrompt')}</p>
@@ -396,6 +428,16 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
               })}
         </span>
 
+        {kind === 'conflicting' && (
+          <VaultAuditChoicesTable
+            findings={inCategory}
+            state={choiceState}
+            rules={choiceRules}
+            disabled={busy}
+            onApply={applyPastedChoices}
+          />
+        )}
+
         {groups.length > 1 && (
           <button
             type="button"
@@ -410,7 +452,9 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
       </div>
 
       {inCategory.length === 0 && (
-        <p className="px-4 py-6 text-[13px] text-ui-fg-secondary">{t('vaultAudit.findings.none')}</p>
+        <p className="px-4 py-6 text-[13px] text-ui-fg-secondary">
+          {t('vaultAudit.findings.none')}
+        </p>
       )}
 
       {inCategory.length > 0 && visibleRows.length === 0 && (
@@ -421,20 +465,20 @@ export function VaultAuditFindings({ findings, kind }: VaultAuditFindingsProps) 
 
       {visibleRows.length > 0 && (
         <>
-            <VaultAuditFileList
-              items={items}
-              showResolution={showResolution}
-              scrollResetKey={`${kind}|${filter}|${actionableOnly}|${sort.key}|${sort.direction}`}
-              disabled={busy}
-              allSelected={summary.allSelected}
-              someSelected={summary.someSelected}
-              canSelectAny={summary.selectableUnits > 0}
-              onToggleAll={() => applyBulk(summary.allSelected ? 'clear' : 'select-all')}
-              onToggle={handleToggle}
-              onToggleFile={handleToggleFile}
-              onToggleCollapsed={handleToggleCollapsed}
-              onChooseConflict={handleConflictChoice}
-            />
+          <VaultAuditFileList
+            items={items}
+            showResolution={showResolution}
+            scrollResetKey={`${kind}|${filter}|${actionableOnly}|${sort.key}|${sort.direction}`}
+            disabled={busy}
+            allSelected={summary.allSelected}
+            someSelected={summary.someSelected}
+            canSelectAny={summary.selectableUnits > 0}
+            onToggleAll={() => applyBulk(summary.allSelected ? 'clear' : 'select-all')}
+            onToggle={handleToggle}
+            onToggleFile={handleToggleFile}
+            onToggleCollapsed={handleToggleCollapsed}
+            onChooseConflict={handleConflictChoice}
+          />
 
           {/* Stays at the bottom of the scrolling settings area, so the button and the count of
               what it will write are in reach however far down the page the reader has gone. */}

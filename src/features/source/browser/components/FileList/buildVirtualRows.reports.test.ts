@@ -66,7 +66,15 @@ describe('drawing report rows', () => {
         drawingInspectionReports: new Map([['d1', [report('r1'), report('r2')]]]),
       }),
     )
-    expect(rows.map((r) => r.type)).toEqual(['file', 'drawing-ref', 'drawing-report', 'drawing-report'])
+    // Each group sits under its section header: the drawing's models, then its reports.
+    expect(rows.map((r) => r.type)).toEqual([
+      'file',
+      'file-section',
+      'drawing-ref',
+      'file-section',
+      'drawing-report',
+      'drawing-report',
+    ])
   })
 
   it('shows reports of a drawing with no references', () => {
@@ -79,8 +87,24 @@ describe('drawing report rows', () => {
         drawingInspectionReports: new Map([['d1', [report('r1')]]]),
       }),
     )
-    expect(rows.map((r) => r.type)).toEqual(['file', 'drawing-report'])
+    // No models: that section is not shown.
+    expect(rows.map((r) => r.type)).toEqual(['file', 'file-section', 'drawing-report'])
     expect(selectableRows).toHaveLength(1)
+  })
+
+  it('lists a regenerated report in place of the one it supersedes', () => {
+    const file = drawing('a.slddrw', 'd1')
+    const regenerated = { ...report('r2'), supersedesReportId: 'r1' } as InspectionReport
+    const { rows } = buildVirtualRows(
+      options({
+        displayFiles: [file],
+        files: [file],
+        expandedDrawingRefs: new Set([file.path]),
+        drawingInspectionReports: new Map([['d1', [regenerated, report('r1'), report('copy')]]]),
+      }),
+    )
+    const listed = rows.flatMap((r) => (r.type === 'drawing-report' ? [r.report.id] : []))
+    expect(listed).toEqual(['r2', 'copy'])
   })
 
   it('caps the list with a "more" row', () => {

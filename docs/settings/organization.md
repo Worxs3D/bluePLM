@@ -172,6 +172,19 @@ restore-metadata-from-files --path="ELEC"        # only one folder
 restore-metadata-from-files --exclude="_ARCHIVE" # leave a folder out
 ```
 
+**Conflicts** are values both sides hold differently. Each row needs a choice: **Use BluePLM**
+rewrites the whole document from BluePLM's metadata, and **Use file** copies only that value into
+BluePLM. The write button checks out the files nobody holds, writes them and, by default, checks
+them back in; files a colleague holds are never touched.
+
+To hand a set of choices to someone else, click **Copy choices**. It puts every conflict and the
+side picked for it on the clipboard as a table that pastes into a spreadsheet or a message. They
+click **Paste choices**, paste the table and check the preview, then **Set choices** and write as
+usual. A table needs a File column and a Choice column (`BluePLM` or `File`); a line with no field
+picks Use BluePLM for the whole file. Lines whose file or values no longer match the scan, or that
+pick both sides for one file, are listed as skipped and change nothing. Pasting only selects:
+nothing is written until the write button is pressed.
+
 ## RFQ Settings
 
 Configure request-for-quote workflow:

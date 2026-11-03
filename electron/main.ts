@@ -9,6 +9,7 @@ import {
   isGoogleDocumentUrl,
   openExternalSafely,
 } from './navigationGuard'
+import { adoptSettingsWindow, isSettingsWindowRequest, settingsWindowOptions } from './settingsWindow'
 import { app, BrowserWindow, screen, nativeTheme, session, Menu, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -1065,7 +1066,17 @@ function createWindow() {
   let googleAuthWindow: BrowserWindow | null = null
 
   // Handle popup windows from iframes (like Google sign-in)
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // Settings in its own window (electron/settingsWindow.ts). A perf boot refuses it, so the
+    // renderer falls back to its in-window panel, which ui-look can screenshot.
+    if (isSettingsWindowRequest(url, frameName) && mainWindow) {
+      if (isPerfBoot) return { action: 'deny' }
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: settingsWindowOptions(mainWindow, app.getPath('userData')),
+      }
+    }
+
     log('[Window] Popup requested: ' + url.substring(0, 100))
 
     if (isGoogleAuthUrl(url)) {
@@ -1116,6 +1127,15 @@ function createWindow() {
     log('[Window] Opening in external browser: ' + url.substring(0, 80))
     openExternalSafely(url, log)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('did-create-window', (win, details) => {
+    if (!mainWindow || !isSettingsWindowRequest(details.url, details.frameName)) return
+    adoptSettingsWindow(win, mainWindow, {
+      userData: app.getPath('userData'),
+      allowDevServer: isDev,
+      log,
+    })
   })
 
   mainWindow.on('closed', () => {

@@ -31,11 +31,13 @@
         "balloons"
       ],
       "responseData": [
+        "kept",
         "keptPositions",
         "missing",
         "placed",
         "removedPrevious",
-        "saved"
+        "saved",
+        "unchanged"
       ]
     },
     "createDocumentFromTemplate": {

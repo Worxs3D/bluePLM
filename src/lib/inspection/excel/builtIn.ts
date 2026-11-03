@@ -5,250 +5,175 @@
  * template reads the same whoever downloads it. An organization that wants other wording
  * downloads a starter, edits it, and uploads it as its own template.
  *
- * Both layouts are original. The first article layout covers the usual characteristic
- * accountability fields (part and drawing identity, serial / lot, supplier, characteristic
- * number, requirement, results, tool, pass / fail, sign-off) without copying any published form.
+ * Every layout is original and shares one design (`builtInStyle.ts`): a title band with the logo and the report
+ * identity, a part block, a summary strip counted by formula, the characteristic table (dark
+ * header, banded rows, PASS / FAIL colours), a sign-off block, and print setup (landscape, one
+ * page wide, header row repeated, footer with report number and page x of y). The drawing pages
+ * are added by the engine under the sign-off block. The first article layout names and numbers
+ * the AS9102 Form 3 fields it fills (part and report identity, characteristic number, reference
+ * location, designator, requirement, results, tooling, nonconformance number, comments) in a
+ * layout of its own. The report-type templates (AS9102 FAI forms, production lot, receiving,
+ * re-inspection) are in `builtInTypes.ts`.
  */
-import type { Borders, Fill, Font, Worksheet } from 'exceljs'
+import type { InspectionReportType } from '@/types/inspectionReports'
 
-import { columnLetter, newWorkbook, writeWorkbook } from './workbook'
+import { addReportSheet, type ReportSpec } from './builtInStyle'
+import { BUILT_IN_TYPED_TEMPLATES, FORM3_COLUMNS } from './builtInTypes'
+import { newWorkbook, writeWorkbook } from './workbook'
 
-export interface BuiltInTemplate {
+export interface BuiltInTemplateInfo {
   key: string
   name: string
   description: string
+  /** Report types the template serves; empty = any. */
+  reportTypes: InspectionReportType[]
+  /** Types it is the built-in default for (an organization's own default comes first). */
+  defaultFor: InspectionReportType[]
+}
+
+export interface BuiltInTemplate extends BuiltInTemplateInfo {
   bytes: Uint8Array
 }
 
-const THIN: Partial<Borders> = {
-  top: { style: 'thin' },
-  left: { style: 'thin' },
-  bottom: { style: 'thin' },
-  right: { style: 'thin' },
-}
-const HEADER_FILL: Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } }
-const INPUT_FILL: Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9E6' } }
-const BOLD: Partial<Font> = { bold: true }
-
-interface Column {
-  caption: string
-  token: string
-  width: number
-  input?: boolean
+/** Options of a built-in that depends on the report (production and receiving: samples per characteristic). */
+export interface BuiltInOptions {
+  /**
+   * Parts measured per characteristic. Up to `MAX_SAMPLE_COLUMNS` the table has one result column
+   * per sample; above it, one row per sample (`expandSampleRows`). Default 3.
+   */
+  samples?: number
 }
 
-function title(ws: Worksheet, text: string, lastCol: number): void {
-  ws.mergeCells(1, 1, 1, lastCol)
-  const cell = ws.getCell(1, 1)
-  cell.value = text
-  cell.font = { bold: true, size: 16 }
-  cell.alignment = { vertical: 'middle' }
-  ws.getRow(1).height = 28
+export interface BuiltInDefinition extends BuiltInTemplateInfo {
+  build: (options: BuiltInOptions) => Promise<Uint8Array>
 }
 
-/** Label / value pairs laid out two pairs per row; returns the next free row. */
-function infoBlock(ws: Worksheet, startRow: number, pairs: [string, string, boolean?][], lastCol: number): number {
-  const half = Math.floor(lastCol / 2)
-  pairs.forEach(([label, token, input], i) => {
-    const row = startRow + Math.floor(i / 2)
-    const left = i % 2 === 0 ? 1 : half + 1
-    const right = i % 2 === 0 ? half : lastCol
-    const labelCell = ws.getCell(row, left)
-    labelCell.value = label
-    labelCell.font = BOLD
-    labelCell.fill = HEADER_FILL
-    labelCell.border = THIN
-    ws.mergeCells(row, left + 1, row, right)
-    const valueCell = ws.getCell(row, left + 1)
-    valueCell.value = token
-    valueCell.border = THIN
-    valueCell.alignment = { wrapText: true, vertical: 'top' }
-    if (input) valueCell.fill = INPUT_FILL
-  })
-  return startRow + Math.ceil(pairs.length / 2)
-}
-
-function table(ws: Worksheet, headerRow: number, columns: Column[]): void {
-  columns.forEach((c, i) => {
-    ws.getColumn(i + 1).width = c.width
-    const header = ws.getCell(headerRow, i + 1)
-    header.value = c.caption
-    header.font = BOLD
-    header.fill = HEADER_FILL
-    header.border = THIN
-    header.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' }
-    const cell = ws.getCell(headerRow + 1, i + 1)
-    cell.value = c.token
-    cell.border = THIN
-    cell.alignment = { vertical: 'top', wrapText: true }
-    if (c.input) cell.fill = INPUT_FILL
-  })
-  ws.getRow(headerRow).height = 30
-}
-
-function signOff(ws: Worksheet, startRow: number, items: [string, string][], lastCol: number): void {
-  infoBlock(
-    ws,
-    startRow,
-    items.map(([label, token]) => [label, token, true]),
-    lastCol,
-  )
-}
-
-function pageSetup(ws: Worksheet, headerRow: number): void {
-  ws.pageSetup = {
-    ...ws.pageSetup,
-    orientation: 'landscape',
-    fitToPage: true,
-    fitToWidth: 1,
-    fitToHeight: 0,
-    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
-    printTitlesRow: `${headerRow}:${headerRow}`,
-  }
-  ws.headerFooter.oddFooter = '&L&F&RPage &P of &N'
-  ws.views = [{ state: 'frozen', ySplit: headerRow, xSplit: 0, topLeftCell: `A${headerRow + 1}`, activeCell: `A${headerRow + 1}` }]
-}
-
-async function dimensionalReport(): Promise<Uint8Array> {
+async function buildReport(spec: ReportSpec): Promise<Uint8Array> {
   const wb = await newWorkbook()
-  const ws = wb.addWorksheet('Inspection')
-  const columns: Column[] = [
-    { caption: 'Balloon', token: '{{COL:balloon_number}}', width: 9 },
-    { caption: 'Zone', token: '{{COL:zone}}', width: 7 },
-    { caption: 'Type', token: '{{COL:char_type}}', width: 11 },
-    { caption: 'Requirement', token: '{{COL:spec}}', width: 24 },
-    { caption: 'Unit', token: '{{COL:unit}}', width: 6 },
-    { caption: 'Method', token: '{{COL:inspection_method}}', width: 14 },
-    { caption: 'Measured 1', token: '{{RESULT:1}}', width: 12, input: true },
-    { caption: 'Measured 2', token: '{{RESULT:2}}', width: 12, input: true },
-    { caption: 'Measured 3', token: '{{RESULT:3}}', width: 12, input: true },
-    { caption: 'Result', token: '{{VERDICT}}', width: 9, input: true },
-    { caption: 'Remarks', token: '{{INPUT:remarks}}', width: 22, input: true },
-  ]
-  const last = columns.length
-  title(ws, 'Dimensional Inspection Report', last)
-  let row = infoBlock(
-    ws,
-    3,
-    [
-      ['Part number', '{{PART_NUMBER}}'],
-      ['Revision', '{{REVISION}}'],
-      ['Description', '{{DESCRIPTION}}'],
-      ['Report number', '{{REPORT_NUMBER}}'],
-      ['Drawing', '{{DRAWING_NAME}}'],
-      ['Drawing version', '{{DRAWING_VERSION}}'],
-      ['Organization', '{{ORG_NAME}}'],
-      ['Date issued', '{{DATE}}'],
-    ],
-    last,
-  )
-  ws.mergeCells(row, 2, row, last)
-  ws.getCell(row, 1).value = 'General tolerances'
-  ws.getCell(row, 1).font = BOLD
-  ws.getCell(row, 1).fill = HEADER_FILL
-  ws.getCell(row, 1).border = THIN
-  ws.getCell(row, 2).value = '{{GENERAL_TOLERANCES}}'
-  ws.getCell(row, 2).alignment = { wrapText: true, vertical: 'top' }
-  ws.getCell(row, 2).border = THIN
-  ws.getRow(row).height = 45
-  row += 2
-  const headerRow = row
-  table(ws, headerRow, columns)
-  signOff(
-    ws,
-    headerRow + 3,
-    [
-      ['Inspected by', '{{ENTRY:inspected_by}}'],
-      ['Inspection date', '{{ENTRY:inspection_date}}'],
-    ],
-    last,
-  )
-  pageSetup(ws, headerRow)
-
-  const drawing = wb.addWorksheet('Drawing', { views: [{ showGridLines: false }] })
-  drawing.pageSetup = { ...drawing.pageSetup, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1 }
-  drawing.getCell('A1').value = '{{DRAWING}}'
+  addReportSheet(wb, spec)
   return writeWorkbook(wb)
 }
 
-async function firstArticleAccountability(): Promise<Uint8Array> {
-  const wb = await newWorkbook()
-  const ws = wb.addWorksheet('Characteristics')
-  const columns: Column[] = [
-    { caption: 'Char. no.', token: '{{COL:balloon_number}}', width: 9 },
-    { caption: 'Drawing zone', token: '{{COL:zone}}', width: 9 },
-    { caption: 'Designator', token: '{{COL:classification}}', width: 12 },
-    { caption: 'Requirement', token: '{{COL:spec}}', width: 26 },
-    { caption: 'Units', token: '{{COL:unit}}', width: 7 },
-    { caption: 'Result', token: '{{RESULT:1}}', width: 14, input: true },
-    { caption: 'Measuring tool', token: '{{INPUT:tool}}', width: 16, input: true },
-    { caption: 'Pass / Fail', token: '{{VERDICT}}', width: 10, input: true },
-    { caption: 'Remarks', token: '{{INPUT:remarks}}', width: 24, input: true },
-  ]
-  const last = columns.length
-  title(ws, 'First Article Inspection — Characteristic Accountability', last)
-  let row = infoBlock(
-    ws,
-    3,
-    [
+function dimensionalReport(): Promise<Uint8Array> {
+  return buildReport({
+    sheet: 'Inspection',
+    title: 'Dimensional Inspection Report',
+    subtitle: '{{ORG_NAME}}',
+    columns: [
+      { caption: 'Balloon', token: '{{COL:balloon_number}}', width: 10 },
+      { caption: 'Zone', token: '{{COL:zone}}', width: 7 },
+      { caption: 'Characteristic', token: '{{COL:char_type}}', width: 14, align: 'left' },
+      { caption: 'Requirement', token: '{{COL:spec}}', width: 30, align: 'left' },
+      { caption: 'Unit', token: '{{COL:unit}}', width: 7 },
+      { caption: 'Method', token: '{{COL:inspection_method}}', width: 17, align: 'left' },
+      { caption: 'Measured 1', token: '{{RESULT:1}}', width: 12, input: true },
+      { caption: 'Measured 2', token: '{{RESULT:2}}', width: 12, input: true },
+      { caption: 'Measured 3', token: '{{RESULT:3}}', width: 12, input: true },
+      { caption: 'Result', token: '{{VERDICT}}', width: 11, input: true },
+      { caption: 'Remarks', token: '{{INPUT:remarks}}', width: 28, input: true, align: 'left' },
+    ],
+    mid: 6,
+    bandItems: [
+      ['Report no.', '{{REPORT_NUMBER}}'],
+      ['Date issued', '{{DATE}}'],
+      ['Drawing version', '{{DRAWING_VERSION}}'],
+    ],
+    pairs: [
       ['Part number', '{{PART_NUMBER}}'],
-      ['Part name', '{{PART_NAME}}'],
+      ['Revision', '{{REVISION}}'],
+      ['Description', '{{DESCRIPTION}}'],
+      ['Drawing', '{{DRAWING_NAME}}'],
+    ],
+    signOff: [
+      ['Inspected by', '{{ENTRY:inspected_by}}', true],
+      ['Date', '{{ENTRY:inspection_date}}', true],
+      ['Approved by', '{{ENTRY:approved_by}}', true],
+      ['Date', '{{ENTRY:approval_date}}', true],
+    ],
+    note: 'Columns with a lighter heading are completed by the inspector. Balloon numbers match the ballooned drawing pages that follow.',
+  })
+}
+
+/**
+ * Characteristic accountability laid out on the AS9102 Form 3 fields the drawing can fill
+ * truthfully, numbered as the standard numbers them (1-4 identity, 5-11 per characteristic,
+ * 14 comments). Fields only the supplier knows (serial number, results, tooling, nonconformance)
+ * are inputs; nothing is pre-filled that the drawing does not say.
+ */
+function firstArticleAccountability(): Promise<Uint8Array> {
+  return buildReport({
+    sheet: 'Characteristics',
+    title: 'First Article Inspection Report',
+    subtitle: 'Characteristic accountability (AS9102 Form 3 fields)  ·  {{ORG_NAME}}',
+    columns: FORM3_COLUMNS,
+    mid: 6,
+    bandItems: [
+      ['4. FAI report no.', '{{REPORT_NUMBER}}'],
+      ['Date issued', '{{DATE}}'],
+      ['Drawing version', '{{DRAWING_VERSION}}'],
+    ],
+    pairs: [
+      ['1. Part number', '{{PART_NUMBER}}'],
+      ['2. Part name', '{{PART_NAME}}'],
       ['Revision', '{{REVISION}}'],
       ['Drawing', '{{DRAWING_NAME}}'],
-      ['Drawing version', '{{DRAWING_VERSION}}'],
-      ['Report number', '{{REPORT_NUMBER}}'],
-      ['Serial number', '{{ENTRY:serial_number}}', true],
+      ['3. Serial number', '{{ENTRY:serial_number}}', true],
       ['Lot / batch', '{{ENTRY:lot_number}}', true],
       ['Supplier', '{{ENTRY:supplier}}', true],
       ['Purchase order', '{{ENTRY:purchase_order}}', true],
       ['Customer', '{{ORG_NAME}}'],
-      ['Date issued', '{{DATE}}'],
+      ['Reason for FAI', '{{ENTRY:fai_reason}}', true],
     ],
-    last,
-  )
-  ws.mergeCells(row, 2, row, last)
-  ws.getCell(row, 1).value = 'General tolerances'
-  ws.getCell(row, 1).font = BOLD
-  ws.getCell(row, 1).fill = HEADER_FILL
-  ws.getCell(row, 1).border = THIN
-  ws.getCell(row, 2).value = '{{GENERAL_TOLERANCES}}'
-  ws.getCell(row, 2).alignment = { wrapText: true, vertical: 'top' }
-  ws.getCell(row, 2).border = THIN
-  ws.getRow(row).height = 45
-  row += 2
-  const headerRow = row
-  table(ws, headerRow, columns)
-  signOff(
-    ws,
-    headerRow + 3,
-    [
-      ['Inspected by', '{{ENTRY:inspected_by}}'],
-      ['Inspection date', '{{ENTRY:inspection_date}}'],
-      ['Approved by', '{{ENTRY:approved_by}}'],
-      ['Approval date', '{{ENTRY:approval_date}}'],
+    signOff: [
+      ['Inspected by', '{{ENTRY:inspected_by}}', true],
+      ['Date', '{{ENTRY:inspection_date}}', true],
+      ['Approved by', '{{ENTRY:approved_by}}', true],
+      ['Date', '{{ENTRY:approval_date}}', true],
     ],
-    last,
-  )
-  pageSetup(ws, headerRow)
-  ws.getCell(`${columnLetter(1)}${headerRow + 6}`).value = 'Each characteristic on the drawing is listed once, numbered as ballooned on the attached drawing.'
-  ws.getCell(`${columnLetter(1)}${headerRow + 6}`).font = { italic: true, size: 9 }
-  return writeWorkbook(wb)
+    note: 'Numbered fields follow AS9102 Form 3. Each characteristic on the drawing is listed once, numbered as ballooned on the drawing pages that follow; the reference location is the drawing zone. Columns with a lighter heading are completed by the inspector.',
+  })
 }
 
-/** The starter templates offered to every organization. Each analyzes with no errors. */
+const BUILT_INS: readonly BuiltInDefinition[] = [
+  {
+    key: 'dimensional-inspection',
+    name: 'Dimensional inspection report',
+    description:
+      'Requirement, method, three measured values, result and remarks per characteristic, a summary and sign-off, with the ballooned drawing pages under the table.',
+    reportTypes: [],
+    defaultFor: [],
+    build: () => dimensionalReport(),
+  },
+  {
+    key: 'first-article-accountability',
+    name: 'First article inspection — characteristic accountability',
+    description:
+      'AS9102 Form 3 fields: part and report identity, serial, lot, supplier and purchase order, one row per ballooned characteristic with reference location, designator, requirement, result, tooling, nonconformance number and pass / fail, a summary, sign-off, and the drawing pages under the table.',
+    reportTypes: ['fai'],
+    defaultFor: [],
+    build: () => firstArticleAccountability(),
+  },
+  ...BUILT_IN_TYPED_TEMPLATES,
+]
+
+/** Every built-in (without bytes), in the order they are offered. */
+export function builtInTemplateInfo(): BuiltInTemplateInfo[] {
+  return BUILT_INS.map(({ build: _build, ...info }) => info)
+}
+
+/** Build one built-in for a report. Throws for an unknown key. */
+export async function buildBuiltInTemplate(key: string, options: BuiltInOptions = {}): Promise<Uint8Array> {
+  const def = BUILT_INS.find((b) => b.key === key)
+  if (!def) throw new Error(`Unknown built-in template: ${key}`)
+  return def.build(options)
+}
+
+/** The starter templates offered to every organization, with default options. Each analyzes with no errors. */
 export async function builtInTemplates(): Promise<BuiltInTemplate[]> {
-  return [
-    {
-      key: 'dimensional-inspection',
-      name: 'Dimensional inspection report',
-      description: 'Requirement, method, three measured values, result and remarks per characteristic, with the ballooned drawing on its own sheet.',
-      bytes: await dimensionalReport(),
-    },
-    {
-      key: 'first-article-accountability',
-      name: 'First article inspection — characteristic accountability',
-      description: 'Part and drawing identity, serial, lot, supplier and purchase order, one row per ballooned characteristic with result, measuring tool and pass / fail, and sign-off. Drawing pages are added as sheets.',
-      bytes: await firstArticleAccountability(),
-    },
-  ]
+  const out: BuiltInTemplate[] = []
+  for (const def of BUILT_INS) {
+    const { build, ...info } = def
+    out.push({ ...info, bytes: await build({}) })
+  }
+  return out
 }

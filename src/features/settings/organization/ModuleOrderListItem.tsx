@@ -28,6 +28,7 @@ import {
 
 import { Badge, Button, Switch } from '@/components/core/ui'
 import { ColorPicker } from '@/components/shared/ColorPicker'
+import { useHostWindow } from '@/hooks/useHostWindow'
 import {
   MODULE_GROUPS,
   MODULES,
@@ -112,6 +113,7 @@ export function ModuleOrderListItem({
 }) {
   const showDropBefore = dropIndicator?.index === index && dropIndicator.position === 'before'
   const showDropAfter = dropIndicator?.index === index && dropIndicator.position === 'after'
+  const host = useHostWindow()
   const [showParentSelect, setShowParentSelect] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
 
@@ -202,14 +204,14 @@ export function ModuleOrderListItem({
 
     // Delay to prevent immediate close
     const timeout = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
+      host.document.addEventListener('click', handleClickOutside)
     }, 0)
 
     return () => {
       clearTimeout(timeout)
-      document.removeEventListener('click', handleClickOutside)
+      host.document.removeEventListener('click', handleClickOutside)
     }
-  }, [showParentSelect, showColorPicker])
+  }, [showParentSelect, showColorPicker, host])
 
   // Common drag handlers with better reliability
   const handleDragEvents = {

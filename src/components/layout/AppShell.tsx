@@ -233,7 +233,7 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
 
       <Toast />
 
-      {/* Settings: a modal over the current view, opened from anywhere through openSettings() */}
+      {/* Settings: its own window (desktop) or a floating panel, opened through openSettings() */}
       {!isSignInScreen && <SettingsModal />}
 
       {/* Desktop-only dialogs: app updates, SOLIDWORKS, and the local vault's checkouts. BluePLM

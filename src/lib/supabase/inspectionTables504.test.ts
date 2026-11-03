@@ -149,8 +149,11 @@ describe('supabase/migrations/0504_inspection_tables.sql', () => {
     expect(tables('0504_inspection_tables.sql')).toEqual(
       [...tables('0501_server_backups.sql'), 'inspection_report', 'inspection_template'].sort(),
     )
-    // The API's backup worker exports exactly what the latest definition knows.
-    expect([...BACKUP_TABLES].sort()).toEqual(tables('0504_inspection_tables.sql'))
+    // Later migrations add tables (0505: version outputs); the worker's full list is checked
+    // against the latest one in versionOutputs505.test.ts.
+    expect(
+      tables('0504_inspection_tables.sql').filter((t) => !(BACKUP_TABLES as readonly string[]).includes(t)),
+    ).toEqual([])
     await actAsOwner(db)
     await db.exec('SET ROLE service_role')
     for (const t of ['inspection_report', 'inspection_template']) {

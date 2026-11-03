@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react'
 import { AlertTriangle, Info, AlertCircle } from 'lucide-react'
+import { useHostWindow } from '@/hooks/useHostWindow'
 import { Dialog } from './Dialog'
 import type { ConfirmDialogProps } from './types'
 
@@ -25,6 +26,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const config = variantConfig[variant]
   const Icon = config.icon
+  const host = useHostWindow()
 
   // Handle Enter key to confirm
   const handleKeyDown = useCallback(
@@ -43,9 +45,9 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (!open) return
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, handleKeyDown])
+    host.document.addEventListener('keydown', handleKeyDown)
+    return () => host.document.removeEventListener('keydown', handleKeyDown)
+  }, [open, handleKeyDown, host])
 
   return (
     <Dialog open={open} onClose={onClose} title={title}>

@@ -63,6 +63,8 @@ const FILE_DATA_TABLES = [
   'inspection_characteristic_version',
   'file_eco',
   'file_deviation',
+  'inspection_report',
+  'file_version_output',
 ]
 
 let db: PGlite
@@ -355,6 +357,7 @@ describe('every file-data policy applies the vault rule', () => {
       'modules/15-inspection.sql',
       'modules/20-change-control.sql',
       'migrations/0504_inspection_tables.sql', // inspection_report
+      'migrations/0505_version_outputs.sql', // file_version_output
     ]
     let policies = 0
     for (const name of files) {

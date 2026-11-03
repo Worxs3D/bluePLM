@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 
+import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 
 import {
@@ -35,7 +36,7 @@ export function BulkEditBar({ count, methodOptions, onManageMethods, onApply, on
           setField(e.target.value as BulkEditField)
           setValue(null)
         }}
-        className="bg-plm-bg border border-plm-border rounded px-1 py-0.5 text-xs"
+        className="h-7 rounded-md border border-ui-field-border bg-ui-field py-0 pl-1.5 pr-1 text-[12px] leading-[26px] text-ui-fg"
       >
         {BULK_EDIT_FIELDS.map((key) => {
           const def = COLUMNS.find((c) => c.key === key)
@@ -48,7 +49,7 @@ export function BulkEditBar({ count, methodOptions, onManageMethods, onApply, on
       </select>
       <span className="text-plm-fg/70">{t('source.inspection.bulkValue')}</span>
       {col && (
-        <div className="w-40">
+        <div className="w-44 rounded-md border border-ui-field-border bg-ui-field">
           <InspectionCell
             key={field}
             col={col}
@@ -60,13 +61,9 @@ export function BulkEditBar({ count, methodOptions, onManageMethods, onApply, on
           />
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => onApply(field, value)}
-        className="btn btn-primary btn-sm"
-      >
+      <Button variant="primary" size="sm" onClick={() => onApply(field, value)}>
         {t('source.inspection.bulkApply')}
-      </button>
+      </Button>
       <div className="flex-1" />
       <button
         type="button"

@@ -3,6 +3,8 @@ import { CrumbBar } from '@/components/layout'
 import { ViewToggle, type ViewMode } from './ViewToggle'
 import { SizeSlider } from './SizeSlider'
 import { AddMenu } from './AddMenu'
+import { GenerateMenu } from './GenerateMenu'
+import { usePDMStore } from '@/stores/pdmStore'
 import { PathActions } from './PathActions'
 import { SearchIndicator } from './SearchIndicator'
 import { CardViewFieldsPopover } from './CardViewFieldsPopover'
@@ -92,6 +94,7 @@ export const FileToolbar = memo(function FileToolbar({
   dragOverPath,
   getChildFolders,
 }: FileToolbarProps) {
+  const canGenerate = usePDMStore((s) => s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit'))
   return (
     <div className="crumb-bar-container h-12 bg-plm-bg-lighter border-b border-plm-border flex items-center px-3 flex-shrink-0 gap-2">
       {/* Breadcrumb / Search indicator */}
@@ -139,6 +142,7 @@ export const FileToolbar = memo(function FileToolbar({
         {hasDesktop() && (
           <>
             <AddMenu onAddFiles={onAddFiles} onAddFolder={onAddFolder} />
+            {canGenerate && <GenerateMenu currentFolder={currentPath} />}
 
             {/* Separator */}
             <div className="w-px h-5 bg-plm-border mx-1" />

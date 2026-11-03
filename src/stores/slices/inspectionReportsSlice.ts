@@ -33,6 +33,9 @@ export interface InspectionReportsSlice {
    * drawing opens its Reports view (and highlights the report), then clears the request.
    */
   inspectionReportsFocus: { fileId: string; reportId: string | null } | null
+  /** Reports being regenerated (`regenerateReport`), for the row's spinner. Session state. */
+  regeneratingReportIds: ReadonlySet<string>
+  setReportRegenerating: (reportId: string, regenerating: boolean) => void
   focusInspectionReports: (fileId: string, reportId?: string | null) => void
   clearInspectionReportsFocus: () => void
 }
@@ -69,6 +72,15 @@ export const createInspectionReportsSlice: StateCreator<
     })),
   clearDrawingInspectionReports: () =>
     set({ drawingInspectionReports: new Map(), reportVersionNumbers: new Map() }),
+  regeneratingReportIds: new Set<string>(),
+  setReportRegenerating: (reportId, regenerating) =>
+    set((state) => {
+      if (state.regeneratingReportIds.has(reportId) === regenerating) return {}
+      const next = new Set(state.regeneratingReportIds)
+      if (regenerating) next.add(reportId)
+      else next.delete(reportId)
+      return { regeneratingReportIds: next }
+    }),
   reportVersionNumbers: new Map(),
   setReportVersionNumbers: (numbers) =>
     set((state) => {

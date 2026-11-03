@@ -10,7 +10,7 @@
  * Order matters: the disk fake goes on `window` before any app module is evaluated, and the
  * Supabase stand-in is installed before the store or App import the client.
  */
-import { buildSyntheticVault, FIXTURE_VAULT_ROOT } from '@/lib/loadPipelineFixtures'
+import { buildSyntheticVault, FIXTURE_USER_ID, FIXTURE_VAULT_ROOT } from '@/lib/loadPipelineFixtures'
 
 import type { Misses } from './lenientClient'
 import { createPerfElectron, type PerfElectronHooks } from './perfElectron'
@@ -23,6 +23,8 @@ function stage(name: string): void {
 
 /** A ui-look boot (scripts/ui-look) renders screens, not scale: a vault this size loads in a moment. */
 const LOOK_FILE_COUNT = 600
+/** PERF_OTHER_USER_ID in backend.ts (not imported here: backend loads after the disk fake). */
+const LOOK_OTHER_USER_ID = 'user-other-0002'
 
 export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   const bootStartedAt = performance.now()
@@ -36,6 +38,9 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   const electronHooks = {} as PerfElectronHooks
   stage('vault')
   const vault = buildSyntheticVault(fileCount)
+  // ui-look: the inspection scenes' project folder (a ballooned drawing, its part, its outputs).
+  const lookFixtures = look ? await import('./lookInspectionFixtures') : null
+  lookFixtures?.prepareLookInspectionVault(vault, FIXTURE_VAULT_ROOT, FIXTURE_USER_ID, LOOK_OTHER_USER_ID)
   const misses: Misses = new Map()
 
   const real = (window as Window & { electronAPIReal?: NonNullable<Window['electronAPI']> }).electronAPIReal
@@ -46,10 +51,16 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   })
 
   stage('backend-import')
-  const [{ createPerfBackend, PERF_VAULT_ID }, { installPerfSupabaseClient }, { createRestFetch }] =
+  const [{ createPerfBackend, PERF_ORG_ID, PERF_VAULT_ID }, { installPerfSupabaseClient }, { createRestFetch }] =
     await Promise.all([import('./backend'), import('./supabaseClient'), import('./lenientClient')])
   stage('backend')
   const backend = createPerfBackend(vault, misses)
+  lookFixtures?.seedLookInspection(backend.db, {
+    orgId: PERF_ORG_ID,
+    vaultId: PERF_VAULT_ID,
+    userId: FIXTURE_USER_ID,
+    otherUserId: LOOK_OTHER_USER_ID,
+  })
   installPerfSupabaseClient(backend.client)
   window.fetch = createRestFetch(backend.client, misses)
 
@@ -80,7 +91,7 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   }
   if (look) {
     const { installLook } = await import('./look')
-    installLook(usePDMStore)
+    installLook(usePDMStore, backend)
   }
   stage('installed')
 }

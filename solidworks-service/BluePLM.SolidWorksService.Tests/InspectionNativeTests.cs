@@ -294,6 +294,101 @@ namespace BluePLM.SolidWorksService.Tests
             Assert.Equal(new int?[] { null, 1 }, m);
         }
 
+        // ---------------------------------------------------------------- incremental update (1.29.0)
+
+        static readonly InspectionNative.BalloonAction Keep = InspectionNative.BalloonAction.Keep;
+        static readonly InspectionNative.BalloonAction AtOld = InspectionNative.BalloonAction.InsertAtOld;
+        static readonly InspectionNative.BalloonAction New = InspectionNative.BalloonAction.InsertComputed;
+
+        [Fact]
+        public void A_rerun_with_the_same_balloons_keeps_all_and_does_nothing()
+        {
+            var old = new[] { Old("1", "Sheet1", "View1"), Old("2", "Sheet1", "View2") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("1", "Sheet1", "View1"), Target("2", "Sheet1", "View2") });
+            Assert.Equal(new[] { Keep, Keep }, p.Actions);
+            Assert.Equal(new int?[] { 0, 1 }, p.OldIndex);
+            Assert.Empty(p.Delete);
+            Assert.Equal(2, p.Kept);
+            Assert.Equal(0, p.Inserts);
+            Assert.True(p.NothingToDo);
+        }
+
+        [Fact]
+        public void A_new_request_is_inserted_and_a_dropped_label_is_deleted()
+        {
+            var old = new[] { Old("1", "Sheet1", "View1"), Old("2", "Sheet1", "View1") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("1", "Sheet1", "View1"), Target("3", "Sheet1", "View1") });
+            Assert.Equal(new[] { Keep, New }, p.Actions);
+            Assert.Equal(new int?[] { 0, null }, p.OldIndex);
+            Assert.Equal(new[] { 1 }, p.Delete);
+            Assert.False(p.NothingToDo);
+        }
+
+        [Fact]
+        public void An_annotation_moved_to_another_view_replaces_its_balloon_at_the_old_position()
+        {
+            var old = new[] { Old("4", "Sheet1", "View1", 0.1, 0.2) };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("4", "Sheet1", "View2") });
+            Assert.Equal(new[] { AtOld }, p.Actions);
+            Assert.Equal(new int?[] { 0 }, p.OldIndex);
+            Assert.Equal(new[] { 0 }, p.Delete);
+            Assert.Equal(0, p.Kept);
+        }
+
+        [Fact]
+        public void Duplicates_keep_the_first_in_the_view_and_delete_the_rest()
+        {
+            var old = new[] { Old("5", "Sheet1", "View2"), Old("5", "Sheet1", "View1"), Old("5", "Sheet1", "View1") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("5", "Sheet1", "View1") });
+            Assert.Equal(new[] { Keep }, p.Actions);
+            Assert.Equal(new int?[] { 1 }, p.OldIndex);
+            Assert.Equal(new[] { 0, 2 }, p.Delete);
+        }
+
+        [Fact]
+        public void An_edited_or_unreadable_note_is_deleted_and_its_number_placed_again()
+        {
+            var old = new[] { Old("6A", "Sheet1", "View1"), Old(null, "Sheet1", "View1"), Old("", "Sheet1", "View1") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("6", "Sheet1", "View1") });
+            Assert.Equal(new[] { New }, p.Actions);
+            Assert.Equal(new[] { 0, 1, 2 }, p.Delete);
+        }
+
+        [Fact]
+        public void Formatting_in_the_note_text_does_not_break_the_match()
+        {
+            var old = new[] { Old("<FONT size=5mm>7</FONT>\r\n", "Sheet1", "View1"), Old(" 8 ", "Sheet1", "View1") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("7", "Sheet1", "View1"), Target("8", "Sheet1", "View1") });
+            Assert.Equal(new[] { Keep, Keep }, p.Actions);
+            Assert.True(p.NothingToDo);
+        }
+
+        [Fact]
+        public void A_balloon_on_another_sheet_is_deleted_and_the_request_placed_fresh()
+        {
+            var old = new[] { Old("9", "Sheet2", "View1") };
+            var p = InspectionNative.PlanBalloonUpdate(old, new[] { Target("9", "Sheet1", "View1") });
+            Assert.Equal(new[] { New }, p.Actions);
+            Assert.Equal(new[] { 0 }, p.Delete);
+        }
+
+        [Fact]
+        public void No_requests_delete_every_old_balloon_and_no_old_balloons_insert_every_request()
+        {
+            var old = new[] { Old("1", "Sheet1", "View1"), Old("2", "Sheet1", null) };
+            var empty = InspectionNative.PlanBalloonUpdate(old, Array.Empty<InspectionNative.BalloonTarget>());
+            Assert.Empty(empty.Actions);
+            Assert.Equal(new[] { 0, 1 }, empty.Delete);
+
+            var fresh = InspectionNative.PlanBalloonUpdate(Array.Empty<InspectionNative.OldBalloon>(),
+                new[] { Target("1", "Sheet1", "View1"), Target("2", "Sheet1", null) });
+            Assert.Equal(new[] { New, New }, fresh.Actions);
+            Assert.Empty(fresh.Delete);
+
+            Assert.True(InspectionNative.PlanBalloonUpdate(Array.Empty<InspectionNative.OldBalloon>(),
+                Array.Empty<InspectionNative.BalloonTarget>()).NothingToDo);
+        }
+
         // ------------------------------------------------------------------ sheet notes
 
         [Fact]

@@ -152,7 +152,7 @@ describe('Main auth authority', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(await persistence.load()).toBeNull()
   })
-  it('clears the old authority after confirmation and before a failing health check', async () => {
+  it('preserves the old authority when a confirmed server fails its health check', async () => {
     const { persistence, fetchImpl } = setup()
     const authority = createMdbAuthAuthority({
       confirmServer: async () => true,
@@ -161,15 +161,42 @@ describe('Main auth authority', () => {
     })
     await authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
     await authority.verifyTotp('123456')
+    const saved = await persistence.load()
     fetchImpl.mockClear()
     fetchImpl.mockImplementation(async () => Response.json({ ok: false }))
     await expect(
       authority.signIn({ serverUrl: 'https://other.test/', email: 'a', password: 'b' }),
     ).rejects.toMatchObject({ code: 'invalid-json' })
-    expect(authority.state()).toEqual({ status: 'signed-out' })
-    expect(await persistence.load()).toBeNull()
+    expect(authority.state()).toMatchObject({ status: 'verified', principal: user })
+    expect(await persistence.load()).toEqual(saved)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect((fetchImpl.mock.calls[0] as unknown as [URL])[0].pathname).toBe('/health')
+  })
+  it('preserves the old authority and saved session when a new password is rejected', async () => {
+    const { persistence, fetchImpl } = setup()
+    const authority = createMdbAuthAuthority({
+      confirmServer: async () => true,
+      persistence,
+      fetchImpl,
+    })
+    await authority.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+    await authority.verifyTotp('123456')
+    const saved = await persistence.load()
+    fetchImpl.mockClear()
+    fetchImpl.mockImplementation(async (url) =>
+      url.pathname.endsWith('/health')
+        ? Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+        : new Response(null, { status: 401 }),
+    )
+
+    await expect(
+      authority.signIn({ serverUrl: 'https://other.test/', email: 'a', password: 'wrong' }),
+    ).rejects.toThrow()
+
+    expect(authority.state()).toMatchObject({ status: 'verified', principal: user })
+    expect(await persistence.load()).toEqual(saved)
+    expect(fetchImpl.mock.calls.map(([url]) => url.pathname)).toEqual(['/health', '/auth/login'])
+    await authority.signOut()
   })
   it('keeps pending and verified state free of secrets and clears before a fresh restore', async () => {
     const { create, fetchImpl } = setup()

@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 import mdbAuthDialogStrings from './mdbAuth.json'
 
@@ -41,6 +42,7 @@ export const pt: TranslationDict = {
   ...reviewsUiStrings.pt,
   reviewPackage: reviewPackageStrings.pt,
   dbUpgrade: dbUpgradeStrings.pt,
+  releases: releasesStrings.pt,
   securityMonitoring: securityMonitoringStrings.pt,
   checkoutDisplay: {
     you: 'Você',

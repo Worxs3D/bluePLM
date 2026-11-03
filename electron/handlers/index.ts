@@ -94,6 +94,7 @@ import {
   registerInspectionReportHandlers,
   unregisterInspectionReportHandlers,
 } from './inspectionReports'
+import { registerVersionOutputHandlers, unregisterVersionOutputHandlers } from './versionOutputs'
 import {
   initThumbnailStore,
   registerThumbnailProtocol,
@@ -263,6 +264,7 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerRfqHandlers(mainWindow, { log, logError })
   registerReviewPackageHandlers({ log, logError })
   registerInspectionReportHandlers(mainWindow, { log, logError })
+  registerVersionOutputHandlers({ log, logError })
   registerDbMigrationsHandlers(mainWindow, { log, logError })
 
   // Thumbnails are served over a custom scheme rather than IPC, so they are set
@@ -305,6 +307,7 @@ export function unregisterAllHandlers(): void {
   unregisterRfqHandlers()
   unregisterReviewPackageHandlers()
   unregisterInspectionReportHandlers()
+  unregisterVersionOutputHandlers()
   unregisterThumbnailProtocol()
   unregisterThumbnailIpcHandlers()
 }

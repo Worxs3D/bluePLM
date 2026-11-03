@@ -28,6 +28,7 @@ export const createUISlice: StateCreator<
 
   // Initial state - Settings navigation
   settingsOpen: false,
+  settingsOpenRequest: 0,
   settingsTab: 'profile' as SettingsTab,
   settingsSearchQuery: '',
   settingsSearchActiveIndex: 0,
@@ -62,6 +63,10 @@ export const createUISlice: StateCreator<
 
   // Initial state - Inspection table columns (persisted)
   inspectionColumnPrefs: null,
+  inspectionShowFilters: false,
+  inspectionAutoSync: true,
+  inspectionDrawingSync: {},
+  poppedOutTabs: [],
 
   // Actions - Clipboard
   setClipboard: (clipboard: Clipboard | null) => set({ clipboard }),
@@ -89,7 +94,7 @@ export const createUISlice: StateCreator<
   setActivityBarMode: (mode) => set({ activityBarMode: mode }),
 
   setActiveView: (activeView: SidebarView) => {
-    // Settings is a modal over the current view, so the 'settings' module opens it instead.
+    // Settings opens over the current view, so the 'settings' module opens it instead.
     if (activeView === 'settings') {
       get().openSettings()
       return
@@ -255,6 +260,7 @@ export const createUISlice: StateCreator<
   openSettings: (tab?: SettingsTab) =>
     set((state) => ({
       settingsOpen: true,
+      settingsOpenRequest: state.settingsOpenRequest + 1,
       settingsTab: tab ?? state.settingsTab,
       settingsSearchQuery: '',
       settingsSearchActiveIndex: 0,
@@ -285,6 +291,20 @@ export const createUISlice: StateCreator<
   setShowSolidworksVersionModal: (show) => set({ showSolidworksVersionModal: show }),
 
   setInspectionColumnPrefs: (inspectionColumnPrefs) => set({ inspectionColumnPrefs }),
+  setInspectionShowFilters: (inspectionShowFilters) => set({ inspectionShowFilters }),
+  setInspectionAutoSync: (inspectionAutoSync) => set({ inspectionAutoSync }),
+  setTabPoppedOut: (tab, open) =>
+    set((state) =>
+      state.poppedOutTabs.includes(tab) === open
+        ? state
+        : {
+            poppedOutTabs: open
+              ? [...state.poppedOutTabs, tab]
+              : state.poppedOutTabs.filter((t) => t !== tab),
+          },
+    ),
+  updateInspectionDrawingSync: (updater) =>
+    set((s) => ({ inspectionDrawingSync: updater(s.inspectionDrawingSync) })),
 
   // Actions - Review preview
 })

@@ -1,32 +1,19 @@
 /**
- * Fill an inspection report template: scalars, one row per characteristic, the drawing pages,
- * the `_blueplm` identity sheet, and sheet protection with only the recipient's cells unlocked.
+ * Fill an inspection report template: scalars, one row per characteristic, the logo, the drawing
+ * pages under the table (or at `{{DRAWING}}`), the `_blueplm` identity sheet, and sheet protection
+ * with only the recipient's cells unlocked.
  */
 import type { Cell, CellValue, Workbook, Worksheet } from 'exceljs'
 
 import { analyzeWorkbook, type LayoutIssue, type ScannedSheet, type TemplateLayout, type TemplateRowCell } from './analyze'
 import { fieldText, fieldValue, type InspectionReportRow } from './format'
 import { cellsFingerprint, sha256Hex, specFingerprint, SPEC_FIELDS } from './fingerprint'
+import { shiftSheetReferences } from './formulaShift'
+import { fitRowHeight, placeDrawingPages, placeLogo, type DrawingPageImage, type ReportLogo } from './place'
 import { DEFAULT_FIELD_CAPTIONS, parseTokens, type ParsedToken, type RowField, type ScalarName } from './tokens'
-import {
-  address,
-  columnLetter,
-  decodeAddress,
-  decodeRange,
-  encodeRange,
-  mergeRanges,
-  META_SHEET,
-  readWorkbook,
-  toArrayBuffer,
-  writeWorkbook,
-  type Box,
-} from './workbook'
+import { address, decodeAddress, decodeRange, encodeRange, mergeRanges, META_SHEET, readWorkbook, writeWorkbook, type Box } from './workbook'
 
-export interface DrawingPageImage {
-  png: Uint8Array
-  widthPx: number
-  heightPx: number
-}
+export type { DrawingPageImage, ReportLogo } from './place'
 
 export interface InspectionReportInput {
   /** The template .xlsx. */
@@ -40,10 +27,25 @@ export interface InspectionReportInput {
   rows: readonly InspectionReportRow[]
   /** Scalar token values. `PART_NAME` defaults to DESCRIPTION, then DRAWING_NAME; `DATE` to today. */
   scalars?: Partial<Record<ScalarName, string>>
+  /**
+   * Values already known for `{{ENTRY:<name>}}` cells (a lot number, a purchase order). The cell
+   * is written with the value and stays unlocked, so the recipient can correct it; the value read
+   * back is whatever the cell then holds.
+   */
+  entryValues?: Readonly<Record<string, string>>
   /** Custom property values for `{{PROP:<name>}}` (names match case-insensitively). */
   properties?: Readonly<Record<string, string>>
   /** Drawing page images (`rasterizePdf`). None: no drawing is embedded. */
   drawingPages?: readonly DrawingPageImage[]
+  /** Organization logo for `{{LOGO}}` cells. None: those cells are left empty. */
+  logo?: ReportLogo | null
+  /**
+   * Caption above each drawing page (`index` 0-based). Default English:
+   * "Drawing sheet 1 of 3: <DRAWING_NAME>". Workbook content, like the built-in captions.
+   */
+  drawingCaption?: (index: number, total: number, drawingName: string) => string
+  /** Text of the single merged row of a report with no characteristics (default "No characteristics"). */
+  noRowsText?: string
   /** Captions for legacy `{{INSPECTION_TABLE}}` header cells (default English). */
   columnLabels?: Partial<Record<RowField, string>>
   generatedAt?: Date
@@ -71,11 +73,6 @@ export interface MetaLayout {
   cells: TemplateRowCell[]
   entries: TemplateLayout['entries']
 }
-
-/** Drawing page box on a `Drawing` sheet, px at 96 dpi: fits Letter and A4 landscape with margins. */
-const PAGE_BOX = { width: 1008, height: 720 }
-const DEFAULT_COL_PX = 64
-const DEFAULT_ROW_PX = 20
 
 function clone<T>(value: T): T {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T)
@@ -113,6 +110,21 @@ function replaceIn(text: string, ctx: FillContext, legacyHeader: boolean): strin
   let out = text
   for (const t of parseTokens(text)) out = out.split(t.raw).join(tokenReplacement(t, ctx, legacyHeader))
   return out
+}
+
+const HEADER_FOOTER_KEYS = ['oddHeader', 'oddFooter', 'evenHeader', 'evenFooter', 'firstHeader', 'firstFooter'] as const
+
+/** Scalar tokens in print headers and footers (`&` in a value is escaped as `&&`). */
+function fillHeaderFooter(ws: Worksheet, ctx: FillContext): void {
+  const hf = ws.headerFooter as unknown as Partial<Record<(typeof HEADER_FOOTER_KEYS)[number], string>> | undefined
+  if (!hf) return
+  for (const key of HEADER_FOOTER_KEYS) {
+    const text = hf[key]
+    if (typeof text !== 'string' || !text.includes('{{')) continue
+    let out = text
+    for (const t of parseTokens(text)) out = out.split(t.raw).join(tokenReplacement(t, ctx, false).replace(/&/g, '&&'))
+    hf[key] = out
+  }
 }
 
 /** Replace header tokens in a cell, keeping rich text runs when each token sits inside one run. */
@@ -155,6 +167,7 @@ function expandRowTemplate(ws: Worksheet, t: number, extra: number): void {
   }
 
   ws.spliceRows(t + 1, 0, ...Array.from({ length: extra }, () => []))
+  shiftSheetReferences(ws, t, extra)
 
   const src = ws.getRow(t)
   for (let i = 1; i <= extra; i++) {
@@ -201,88 +214,6 @@ function writeFieldCell(cell: Cell, pattern: string, row: InspectionReportRow): 
   return out
 }
 
-function columnPx(ws: Worksheet, col: number): number {
-  const width = ws.getColumn(col).width
-  return width ? Math.round(width * 7 + 5) : DEFAULT_COL_PX
-}
-
-function rowPx(ws: Worksheet, row: number): number {
-  const height = ws.getRow(row).height
-  return height ? Math.round((height * 96) / 72) : DEFAULT_ROW_PX
-}
-
-function fit(page: DrawingPageImage, box: { width: number; height: number }): { width: number; height: number } {
-  const scale = Math.min(box.width / page.widthPx, box.height / page.heightPx)
-  return { width: Math.max(1, Math.round(page.widthPx * scale)), height: Math.max(1, Math.round(page.heightPx * scale)) }
-}
-
-function addPng(workbook: Workbook, page: DrawingPageImage): number {
-  return workbook.addImage({ buffer: toArrayBuffer(page.png), extension: 'png' })
-}
-
-function placeAtAnchor(workbook: Workbook, ws: Worksheet, anchorCell: string, page: DrawingPageImage): void {
-  const cell = ws.getCell(anchorCell)
-  const merge = mergeRanges(ws).map(decodeRange).find((m) => m.top === Number(cell.row) && m.left === Number(cell.col))
-  let box = PAGE_BOX
-  if (merge) {
-    let width = 0
-    let height = 0
-    for (let c = merge.left; c <= merge.right; c++) width += columnPx(ws, c)
-    for (let r = merge.top; r <= merge.bottom; r++) height += rowPx(ws, r)
-    box = { width, height }
-  }
-  const size = fit(page, box)
-  ws.addImage(addPng(workbook, page), {
-    tl: { col: Number(cell.col) - 1, row: Number(cell.row) - 1 },
-    ext: size,
-    editAs: 'oneCell',
-  })
-}
-
-function uniqueSheetName(workbook: Workbook, base: string): string {
-  const taken = new Set(workbook.worksheets.map((w) => w.name.toLowerCase()))
-  if (!taken.has(base.toLowerCase())) return base
-  for (let i = 2; ; i++) {
-    const name = `${base} (${i})`
-    if (!taken.has(name.toLowerCase())) return name
-  }
-}
-
-function addDrawingSheet(workbook: Workbook, name: string, page: DrawingPageImage): void {
-  const ws = workbook.addWorksheet(uniqueSheetName(workbook, name), {
-    views: [{ showGridLines: false }],
-    pageSetup: {
-      orientation: 'landscape',
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 1,
-      horizontalCentered: true,
-      verticalCentered: true,
-      margins: { left: 0.25, right: 0.25, top: 0.25, bottom: 0.25, header: 0, footer: 0 },
-    },
-  })
-  const size = fit(page, PAGE_BOX)
-  ws.addImage(addPng(workbook, page), { tl: { col: 0, row: 0 }, ext: size, editAs: 'oneCell' })
-  const cols = Math.max(1, Math.ceil(size.width / DEFAULT_COL_PX))
-  const rows = Math.max(1, Math.ceil(size.height / DEFAULT_ROW_PX))
-  ws.pageSetup.printArea = `A1:${columnLetter(cols)}${rows}`
-}
-
-function embedDrawing(workbook: Workbook, anchor: TemplateLayout['drawingAnchor'], pages: readonly DrawingPageImage[]): void {
-  if (pages.length === 0) return
-  let rest = pages
-  if (anchor) {
-    const ws = workbook.getWorksheet(anchor.sheet)
-    if (ws) {
-      placeAtAnchor(workbook, ws, anchor.cell, pages[0])
-      rest = pages.slice(1)
-      rest.forEach((page, i) => addDrawingSheet(workbook, `Drawing ${i + 2}`, page))
-      return
-    }
-  }
-  rest.forEach((page, i) => addDrawingSheet(workbook, rest.length === 1 ? 'Drawing' : `Drawing ${i + 1}`, page))
-}
-
 interface WrittenRow {
   sheetRow: number
   row: InspectionReportRow
@@ -320,6 +251,26 @@ function writeMetaSheet(
   return ws
 }
 
+/** A report with no characteristics: the row template becomes one merged, locked row saying so. */
+function writeNoRows(ws: Worksheet, rt: NonNullable<TemplateLayout['rowTemplate']>, text: string): void {
+  let left = Math.min(...rt.cells.map((c) => c.col))
+  let right = Math.max(...rt.cells.map((c) => c.col))
+  for (const range of mergeRanges(ws)) {
+    const box = decodeRange(range)
+    if (box.top === rt.row && box.bottom === rt.row) {
+      left = Math.min(left, box.left)
+      right = Math.max(right, box.right)
+      ws.unMergeCells(range)
+    }
+  }
+  for (let c = left; c <= right; c++) ws.getCell(rt.row, c).value = null
+  if (right > left) ws.mergeCells(rt.row, left, rt.row, right)
+  const cell = ws.getCell(rt.row, left)
+  cell.value = text
+  cell.font = { ...cell.font, italic: true, bold: false }
+  cell.alignment = { horizontal: 'center', vertical: 'middle' }
+}
+
 /** Texts of a row's locked (field) cells as they read in the sheet, in column order. */
 export function lockedCellTexts(read: (col: number) => string, cells: readonly TemplateRowCell[]): string[] {
   return cells.filter((c) => c.kind === 'field').map((c) => read(c.col))
@@ -345,13 +296,16 @@ export async function generateInspectionReport(input: InspectionReportInput): Pr
 
   // 1. Header tokens everywhere except the row template's own cells.
   const rowCellCols = new Set(rt.cells.map((c) => c.col))
-  const entryCells = new Set(layout.entries.map((e) => `${e.sheet}!${e.cell}`))
+  const entryNames = new Map(layout.entries.map((e) => [`${e.sheet}!${e.cell}`, e.name]))
+  const entryValue = (name: string | undefined): string => (name ? (input.entryValues?.[name] ?? '').trim() : '')
   for (const [sheetName, sheet] of scanned as Map<string, ScannedSheet>) {
     for (const c of sheet.cells) {
       if (sheetName === rt.sheet && c.row === rt.row && rowCellCols.has(c.col)) continue
       const cell = sheet.ws.getCell(c.row, c.col)
-      if (entryCells.has(`${sheetName}!${c.cell}`)) {
-        cell.value = null
+      const entryKey = `${sheetName}!${c.cell}`
+      if (entryNames.has(entryKey)) {
+        const known = entryValue(entryNames.get(entryKey))
+        cell.value = known === '' ? null : known
         unlock(cell, true)
         continue
       }
@@ -369,8 +323,8 @@ export async function generateInspectionReport(input: InspectionReportInput): Pr
   expandRowTemplate(ws, rt.row, count - 1)
 
   const written: WrittenRow[] = []
-  const rowsToFill = Math.max(count, 1)
-  for (let i = 0; i < rowsToFill; i++) {
+  if (count === 0) writeNoRows(ws, rt, input.noRowsText ?? 'No characteristics')
+  for (let i = 0; i < count; i++) {
     const r = rt.row + i
     const row = input.rows[i]
     const texts: string[] = []
@@ -379,8 +333,7 @@ export async function generateInspectionReport(input: InspectionReportInput): Pr
       if (c.kind === 'field') {
         const pattern =
           rt.legacyHeaderRow !== null || !patterns.has(c.col) ? c.fields.map((f) => `{{COL:${f}}}`).join(' ') : (patterns.get(c.col) ?? '')
-        texts.push(row ? writeFieldCell(cell, pattern, row) : '')
-        if (!row) cell.value = null
+        texts.push(writeFieldCell(cell, pattern, row))
       } else {
         cell.value = null
         unlock(cell, c.kind !== 'verdict')
@@ -389,18 +342,30 @@ export async function generateInspectionReport(input: InspectionReportInput): Pr
         }
       }
     }
-    if (row) written.push({ sheetRow: r, row, cellsFingerprint: cellsFingerprint(texts) })
+    fitRowHeight(ws, r)
+    written.push({ sheetRow: r, row, cellsFingerprint: cellsFingerprint(texts) })
   }
 
   if (rt.printTitleRows && !ws.pageSetup.printTitlesRow) ws.pageSetup.printTitlesRow = rt.printTitleRows
 
-  // 3. Drawing pages.
+  // 3. Print headers and footers, logo, drawing pages.
+  for (const sheet of workbook.worksheets) fillHeaderFooter(sheet, ctx)
   // Cells below the row template moved down by the inserted rows.
   const shifted = <T extends { sheet: string; cell: string }>(at: T): T => {
     const { row, col } = decodeAddress(at.cell)
     return at.sheet === rt.sheet && row > rt.row && count > 1 ? { ...at, cell: address(row + count - 1, col) } : at
   }
-  embedDrawing(workbook, layout.drawingAnchor ? shifted(layout.drawingAnchor) : null, input.drawingPages ?? [])
+  placeLogo(workbook, (layout.logoAnchors ?? []).map(shifted), input.logo)
+  const drawingName = ctx.scalars.DRAWING_NAME ?? ''
+  const caption = input.drawingCaption ?? ((i: number, n: number, name: string) => `Drawing sheet ${i + 1} of ${n}${name ? `: ${name}` : ''}`)
+  placeDrawingPages(workbook, {
+    anchor: layout.drawingAnchor ? shifted(layout.drawingAnchor) : null,
+    tableSheet: rt.sheet,
+    pages: input.drawingPages ?? [],
+    caption: (i, n) => caption(i, n, drawingName),
+  })
+  // Summary formulas lost their cached results when their ranges grew.
+  workbook.calcProperties = { ...workbook.calcProperties, fullCalcOnLoad: true }
 
   // 4. Identity sheet.
   const meta: MetaLayout = { sheet: rt.sheet, firstRow: rt.row, count, cells: rt.cells, entries: layout.entries.map(shifted) }

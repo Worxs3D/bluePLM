@@ -10,6 +10,7 @@ import type { ItemDesignation, ItemFileType, ItemImage, ItemRow } from '@/types/
 
 import { ItemThumbnail } from './ItemThumbnail'
 import { ItemExpandedSections } from './ItemExpandedSections'
+import { ItemWipNote } from './ItemWipNote'
 
 // Per-column metadata that is not persisted (filter kind + alignment).
 // Order / width / visibility all come from the store's ColumnConfig.
@@ -378,7 +379,12 @@ export function ItemTable({
         }
         return <span className="text-plm-fg-muted truncate">{row.designation || '-'}</span>
       case 'stage':
-        return <StageBadge name={row.workflowStateName} color={row.workflowStateColor} />
+        return (
+          <span className="inline-flex items-center gap-1.5 min-w-0">
+            <StageBadge name={row.workflowStateName} color={row.workflowStateColor} />
+            <ItemWipNote release={row.release} />
+          </span>
+        )
       case 'types':
         return (
           <span className="flex flex-wrap gap-1">

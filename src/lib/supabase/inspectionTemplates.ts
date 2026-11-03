@@ -20,7 +20,9 @@ import type {
   InspectionTemplate,
   InspectionTemplateCreate,
   InspectionTemplateUpdate,
+  InspectionReportType,
 } from '@/types/inspectionReports'
+import { isInspectionReportType } from '@/types/inspectionReports'
 
 /** inspection_template as the database returns it. */
 interface InspectionTemplateRow {
@@ -33,6 +35,9 @@ interface InspectionTemplateRow {
   original_filename: string | null
   revision: number
   is_default: boolean
+  /** Schema 506. */
+  report_types?: string[] | null
+  default_for?: string[] | null
   layout: Json
   archived_at: string | null
   created_by: string | null
@@ -42,10 +47,14 @@ interface InspectionTemplateRow {
 }
 
 const TEMPLATE_COLUMNS =
-  'id, org_id, name, description, storage_hash, file_size, original_filename, revision, is_default, layout, archived_at, created_by, created_at, updated_by, updated_at'
+  'id, org_id, name, description, storage_hash, file_size, original_filename, revision, is_default, report_types, default_for, layout, archived_at, created_by, created_at, updated_by, updated_at'
 
 function db(): SupabaseClient {
   return getSupabaseClient() as unknown as SupabaseClient
+}
+
+function reportTypeList(value: string[] | null | undefined): InspectionReportType[] {
+  return Array.isArray(value) ? value.filter(isInspectionReportType) : []
 }
 
 export function toInspectionTemplate(row: InspectionTemplateRow): InspectionTemplate {
@@ -59,6 +68,8 @@ export function toInspectionTemplate(row: InspectionTemplateRow): InspectionTemp
     originalFilename: row.original_filename,
     revision: row.revision,
     isDefault: row.is_default,
+    reportTypes: reportTypeList(row.report_types),
+    defaultFor: reportTypeList(row.default_for),
     layout: row.layout,
     archivedAt: row.archived_at,
     createdBy: row.created_by,
@@ -77,6 +88,8 @@ function toUpdateRow(patch: InspectionTemplateUpdate): Record<string, unknown> {
   if (patch.originalFilename !== undefined) row.original_filename = patch.originalFilename
   if (patch.revision !== undefined) row.revision = patch.revision
   if (patch.isDefault !== undefined) row.is_default = patch.isDefault
+  if (patch.reportTypes !== undefined) row.report_types = patch.reportTypes
+  if (patch.defaultFor !== undefined) row.default_for = patch.defaultFor
   if (patch.layout !== undefined) row.layout = patch.layout
   if (patch.archivedAt !== undefined) row.archived_at = patch.archivedAt
   return row
@@ -136,6 +149,8 @@ export async function createInspectionTemplate(
       file_size: input.fileSize,
       original_filename: input.originalFilename ?? null,
       is_default: input.isDefault ?? false,
+      report_types: input.reportTypes ?? [],
+      default_for: input.defaultFor ?? [],
       layout: input.layout ?? {},
     })
     .select(TEMPLATE_COLUMNS)
@@ -167,7 +182,7 @@ export function setDefaultInspectionTemplate(id: string): Promise<InspectionTemp
 
 /** Archive a template (it stops being offered and stops being the default; reports keep naming it). */
 export function archiveInspectionTemplate(id: string): Promise<InspectionTemplate> {
-  return updateInspectionTemplate(id, { isDefault: false, archivedAt: new Date().toISOString() })
+  return updateInspectionTemplate(id, { isDefault: false, defaultFor: [], archivedAt: new Date().toISOString() })
 }
 
 /**
