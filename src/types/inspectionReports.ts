@@ -86,6 +86,11 @@ export interface InspectionReport {
   templateName: string | null
   templateHash: string | null
   reportNumber: string | null
+  /**
+   * The report's number within its naming scope (the `{n}` of the organization's report number
+   * pattern), schema 505. Null on reports from before 505.
+   */
+  sequence: number | null
   title: string | null
   status: InspectionReportStatus
   /** SHA-256 of the generated workbook in the vault bucket. */
@@ -121,6 +126,8 @@ export interface InspectionReportCreate {
   templateName?: string | null
   templateHash?: string | null
   reportNumber?: string | null
+  /** The `{n}` the report number was built with (schema 505). */
+  sequence?: number | null
   title?: string | null
   status?: InspectionReportStatus
   storageHash: string
@@ -138,6 +145,7 @@ export interface InspectionReportCreate {
  */
 export interface InspectionReportUpdate {
   reportNumber?: string | null
+  sequence?: number | null
   title?: string | null
   status?: InspectionReportStatus
   storageHash?: string

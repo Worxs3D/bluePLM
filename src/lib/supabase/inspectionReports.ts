@@ -40,6 +40,7 @@ interface InspectionReportRow {
   template_name: string | null
   template_hash: string | null
   report_number: string | null
+  sequence: number | null
   title: string | null
   status: InspectionReportStatus
   storage_hash: string
@@ -59,7 +60,7 @@ interface InspectionReportRow {
 }
 
 const REPORT_COLUMNS =
-  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at'
+  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at'
 
 /** inspection_characteristic_version columns, tolerance_source included (schema 504). */
 const SNAPSHOT_COLUMNS =
@@ -110,6 +111,7 @@ export function toInspectionReport(row: InspectionReportRow): InspectionReport {
     templateName: row.template_name,
     templateHash: row.template_hash,
     reportNumber: row.report_number,
+    sequence: row.sequence ?? null,
     title: row.title,
     status: row.status,
     storageHash: row.storage_hash,
@@ -132,6 +134,7 @@ export function toInspectionReport(row: InspectionReportRow): InspectionReport {
 function toUpdateRow(patch: InspectionReportUpdate): Record<string, unknown> {
   const row: Record<string, unknown> = {}
   if (patch.reportNumber !== undefined) row.report_number = patch.reportNumber
+  if (patch.sequence !== undefined) row.sequence = patch.sequence
   if (patch.title !== undefined) row.title = patch.title
   if (patch.status !== undefined) row.status = patch.status
   if (patch.storageHash !== undefined) row.storage_hash = patch.storageHash
@@ -228,6 +231,7 @@ export async function createInspectionReport(
       template_name: input.templateName ?? null,
       template_hash: input.templateHash ?? null,
       report_number: input.reportNumber ?? null,
+      sequence: input.sequence ?? null,
       title: input.title ?? null,
       status: input.status ?? 'issued',
       storage_hash: input.storageHash,
