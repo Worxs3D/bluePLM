@@ -4,11 +4,54 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.5.0] - 2026-11-03
+
+Schema 505 (migration `0505_version_outputs.sql`, applied by the release before anything is
+published), API 4.2.2 and SolidWorks service 1.28.0. Release 5.4.0 keeps working on schema 505.
+API 4.2.2 also runs against a 504 database (the new table is skipped by backups until 505 is
+applied).
+
+### Added
+
+- **PDF and STEP outputs under the chevron.** Each checked-in version can carry outputs: a PDF for
+  a drawing (the same stored render reviews and reports use) and a STEP (or IGES, STL, DXF) for a
+  part or assembly. They are generated from the version's own staged references, never from a
+  working copy, stored once for everyone who can read the file, and listed under the file's chevron
+  with a "Generate PDF" / "Generate STEP" row when missing. Right-click a file to generate them for
+  a selection. An output opens in its default app, saves as a copy anywhere, or saves next to its
+  file as an ordinary local file named by the organization's export filename pattern. Outputs are
+  generated in the background after check-in (Settings > Export, on by default; skipped for batches
+  over 25 files and when SOLIDWORKS is not available; check-in never waits for them).
+- **Report naming** (Settings > Organization > Inspection templates). Report numbers follow an
+  organization pattern, by default `{partNumber}_Rev{rev}_IRv{n}` (for example
+  `BR-103849-201_RevB_IRv3`), numbered per drawing or per revision, with a live preview. The
+  workbook carries the organization logo.
+- **Regenerate.** Right-click a report, in the file list or the Reports view: Open, Regenerate,
+  Regenerate for a newer version, Save copy, Save next to drawing, Import results, Delete.
+  Regenerating makes a new report with the next number and keeps the old one.
+- **Inspection tab in its own window.** Right-click the Inspection tab and pop it out; it follows
+  the selected drawing.
+- **Auto extraction.** An "Auto" pill (on by default) balloons the drawing again a moment after it
+  changes on disk, once the drawing has been extracted. Extract and Balloon are enabled only when
+  the drawing changed since their last run.
 
 ### Changed
 
-- **API 4.2.1: server backups include inspection templates and inspection reports** (schema 504).
+- **Professional report workbooks.** A logo and title band, a summary with the overall result,
+  banded rows with pass and fail colours, a sign-off block, landscape printing one page wide with
+  the header repeated and a numbered footer. The ballooned drawing pages are on the same sheet,
+  under the table, at print resolution. The first article template follows AS9102 Form 3 for the
+  fields BluePLM can fill. Labels are no longer cut off.
+- **Reports come from a checked-in version that has rows.** Generating is refused for a version
+  with no inspection rows, and warns when the drawing has changes that are not checked in yet.
+  Part number, description and revision fall back to the file and then to the drawing's model.
+- **Inspection screens redesigned.** The toolbar stays on one line, the filter row is hidden until
+  turned on, locked drawing values show why they are locked, reports read as one aligned line
+  each, and the file list's references, outputs and reports share one layout.
+- **Balloons print.** The service makes the balloon layer visible and printable on every balloon
+  run, so drawing PDFs and reports include the balloons.
+- **API 4.2.1 and 4.2.2: server backups include inspection templates, inspection reports and
+  version outputs.**
 
 ## [5.4.0] - 2026-11-02
 
