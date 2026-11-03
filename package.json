@@ -4,6 +4,7 @@
   "description": "Open-source Product Lifecycle Management",
   "main": "dist-electron/main.js",
   "scripts": {
+    "predev": "node scripts/dev-sync.mjs",
     "dev": "vite",
     "dev:web": "vite --config vite.web.config.ts",
     "build": "npm run typecheck && npm run build:edrawings-preview && npm run build:edrawings-preview-host && vite build && npm run build-sw-service && electron-builder",
