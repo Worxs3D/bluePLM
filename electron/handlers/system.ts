@@ -218,10 +218,12 @@ export function registerSystemHandlers(
   })
 
   // Titlebar handlers
-  ipcMain.handle('app:get-titlebar-overlay-rect', () => {
-    if (!mainWindow) return { x: 0, y: 0, width: 138, height: 38 }
+  // Both act on the window that asks (the main window or a popped-out tab window).
+  ipcMain.handle('app:get-titlebar-overlay-rect', (event) => {
+    const sender = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    if (!sender) return { x: 0, y: 0, width: 138, height: 38 }
     // getTitleBarOverlayRect may not exist on all Electron versions
-    const win = mainWindow as BrowserWindow & {
+    const win = sender as BrowserWindow & {
       getTitleBarOverlayRect?: () => { x: number; y: number; width: number; height: number }
     }
     return win.getTitleBarOverlayRect?.() || { x: 0, y: 0, width: 138, height: 38 }
@@ -229,11 +231,12 @@ export function registerSystemHandlers(
 
   ipcMain.handle(
     'app:set-titlebar-overlay',
-    (_event, options: { color: string; symbolColor: string }) => {
-      if (!mainWindow) return { success: false }
+    (event, options: { color: string; symbolColor: string }) => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+      if (!win) return { success: false }
       try {
-        if (mainWindow.setTitleBarOverlay) {
-          mainWindow.setTitleBarOverlay({
+        if (win.setTitleBarOverlay) {
+          win.setTitleBarOverlay({
             color: options.color,
             symbolColor: options.symbolColor,
             height: 36,
@@ -326,6 +329,13 @@ export function registerSystemHandlers(
       minHeight: 300,
       title: parsed.title,
       backgroundColor: '#0a1929',
+      // Like the main window: the renderer draws the header (TabWindow), Electron the controls.
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#181818',
+        symbolColor: '#cccccc',
+        height: 36,
+      },
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
@@ -335,6 +345,8 @@ export function registerSystemHandlers(
         backgroundThrottling: false,
       },
     })
+    // No File / Edit / View menu: a tab window is one panel, not the application.
+    win.setMenu(null)
     tabWindows.set(parsed.key, win)
     // The pop-out closes with the main window; the listener goes when the pop-out closes first,
     // so reopening it for weeks does not pile listeners onto the main window.

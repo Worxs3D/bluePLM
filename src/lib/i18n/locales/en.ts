@@ -905,7 +905,7 @@ export const en: TranslationDict = {
       affectedConfigurations: 'Configurations affected: {{names}}',
     },
     details: {
-      popOut: 'Open {{tab}} in new window',
+      popOut: 'Open in new window',
       popoutShowWindow: 'Show its window',
       popoutPlaceholder: '{{tab}} is open in another window.',
       popoutBringBack: 'Bring it back here',

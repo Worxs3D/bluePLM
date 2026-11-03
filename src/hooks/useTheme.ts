@@ -1,15 +1,6 @@
 import { useEffect } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
-
-// Titlebar overlay colors for each theme
-const titleBarOverlayColors: Record<string, { color: string; symbolColor: string }> = {
-  dark: { color: '#181818', symbolColor: '#cccccc' },
-  'deep-blue': { color: '#071320', symbolColor: '#e3f2fd' },
-  light: { color: '#f0f0f0', symbolColor: '#333333' },
-  christmas: { color: '#1a0a0a', symbolColor: '#ff6b6b' },
-  halloween: { color: '#080808', symbolColor: '#ff6b2b' },
-  weather: { color: '#1c1916', symbolColor: '#fef3c7' }, // Default sunny, WeatherEffects will override
-}
+import { titleBarOverlayColors } from '@/lib/titleBarOverlay'
 
 /**
  * Apply theme to document and update titlebar overlay
@@ -50,8 +41,7 @@ export function useTheme() {
 
     // Update titlebar overlay colors (Windows only)
     // For weather theme, WeatherEffects will override this dynamically
-    const overlayColors = titleBarOverlayColors[effectiveTheme] || titleBarOverlayColors['dark']
-    window.electronAPI?.setTitleBarOverlay?.(overlayColors)
+    window.electronAPI?.setTitleBarOverlay?.(titleBarOverlayColors(effectiveTheme))
 
     // Listen for system preference changes when using system theme (or on sign-in screen)
     if (!isSignedIn || theme === 'system') {
@@ -60,8 +50,7 @@ export function useTheme() {
         const newTheme = e.matches ? 'dark' : 'light'
         document.documentElement.setAttribute('data-theme', newTheme)
         // Also update titlebar overlay
-        const colors = titleBarOverlayColors[newTheme] || titleBarOverlayColors['dark']
-        window.electronAPI?.setTitleBarOverlay?.(colors)
+        window.electronAPI?.setTitleBarOverlay?.(titleBarOverlayColors(newTheme))
       }
       mediaQuery.addEventListener('change', handleChange)
       return () => mediaQuery.removeEventListener('change', handleChange)

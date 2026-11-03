@@ -55,9 +55,7 @@ export function PanelTabMenu({ tab, poppedOut, position, onClose }: PanelTabMenu
         className={itemClass}
       >
         <ExternalLink size={14} />
-        {poppedOut
-          ? t('source.details.popoutShowWindow')
-          : t('source.details.popOut', { tab: popoutTabLabel(tab) })}
+        {poppedOut ? t('source.details.popoutShowWindow') : t('source.details.popOut')}
       </button>
       {poppedOut && (
         <button
