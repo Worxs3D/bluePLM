@@ -1,65 +1,16 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
+import { useState, useCallback } from 'react'
+import { usePDMStore, DetailsPanelTab } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
-import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
-import { useRetryableImage } from '@/hooks/useRetryableImage'
-import { getFileIconType } from '@/lib/utils'
-import { formatFileSize } from '@/lib/utils'
-import { resolvePartNumber, resolveRevision, resolvedText } from '@/lib/metadata/overlay'
 import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/DraggableTab'
-import { WhereUsedTab } from '@/features/integrations/solidworks'
-import { InspectionTab } from '@/features/integrations/solidworks'
-import { CadFilePreview } from '@/features/source/details/components/CadFilePreview'
-import { ChildPreview } from '@/features/source/outputs/preview/ChildPreview'
-import { activeChildSelection, childKey } from '@/features/source/outputs/preview/childPreviewModel'
-import { VendorsTab } from '@/features/source/details/VendorsTab'
+import { activeChildSelection } from '@/features/source/outputs/preview/childPreviewModel'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
-import { FileBox, Layers, File, Loader2, FilePen, ArrowLeft, ExternalLink } from 'lucide-react'
-import { t } from '@/lib/i18n'
-import { hasDesktop } from '@/lib/platform'
-import { requestInspectionPopoutClose } from '@/features/integrations/solidworks/inspection/popout/useInspectionPopoutHost'
-import { RightPanelTabMenu } from './RightPanelTabMenu'
-
-// Component to load OS icon for files
-function RightPanelIcon({ file, size = 24 }: { file: LocalFile; size?: number }) {
-  const iconUrl = useMemo(() => buildThumbnailUrl(file, 'grid'), [file])
-  const { src, onError } = useRetryableImage(iconUrl)
-
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        className="flex-shrink-0 rounded"
-        style={{ width: size, height: size }}
-        decoding="async"
-        onError={onError}
-      />
-    )
-  }
-
-  // Fallback to React icons
-  const iconType = getFileIconType(file.extension)
-  const iconClassMap: Record<string, string> = {
-    part: 'text-plm-accent',
-    assembly: 'text-amber-400',
-    drawing: 'text-sky-300',
-    step: 'text-orange-400',
-    pdf: 'text-red-400',
-    image: 'text-purple-400',
-  }
-  const iconClass = iconClassMap[iconType] || 'text-plm-fg-muted'
-  const iconMap: Record<string, typeof File> = {
-    part: FileBox,
-    assembly: Layers,
-    drawing: FilePen,
-  }
-  const IconComponent = iconMap[iconType] || File
-  return <IconComponent size={size} className={iconClass} />
-}
+import { ArrowLeft } from 'lucide-react'
+import { canPopOutTabs, isPopoutTab } from '../panelPopout/panelPopout'
+import { PanelTabMenu, PoppedOutPlaceholder } from '../panelPopout/PanelTabMenu'
+import { RightPanelTabContent } from './RightPanelTabContent'
 
 export function RightPanel() {
   const {
@@ -88,11 +39,14 @@ export function RightPanel() {
     })),
   )
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
-  const inspectionPoppedOut = usePDMStore((s) => s.inspectionPopoutOpen)
-  const [tabMenu, setTabMenu] = useState<{ x: number; y: number } | null>(null)
+  const poppedOutTabs = usePDMStore((s) => s.poppedOutTabs)
+  const [tabMenu, setTabMenu] = useState<{
+    tab: DetailsPanelTab
+    x: number
+    y: number
+  } | null>(null)
   const closeTabMenu = useCallback(() => setTabMenu(null), [])
-  // Only the desktop can open another window (the main process creates it).
-  const canPopOut = hasDesktop() && !!window.electronAPI?.openTabWindow
+  const canPopOut = canPopOutTabs()
   const extensionPanelWorkspace = usePDMStore((s) =>
     s.extensionRightPanel && s.extensionRightPanel === s.activeView
       ? (s.extensionWorkspaces.find((w) => w.id === s.extensionRightPanel && w.RightPanel) ?? null)
@@ -127,52 +81,6 @@ export function RightPanel() {
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
   // An output or report row selected under the file: Preview shows it instead of the file.
   const childTarget = usePDMStore((s) => activeChildSelection(s.childSelection, s.selectedFiles))
-
-  // PDF preview state
-  const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null)
-  const [pdfLoading, setPdfLoading] = useState(false)
-
-  // Load PDF when file changes
-  useEffect(() => {
-    const loadPdf = async () => {
-      if (!file?.path || file.extension?.toLowerCase() !== '.pdf' || rightPanelTab !== 'preview') {
-        setPdfDataUrl(null)
-        return
-      }
-      setPdfLoading(true)
-      try {
-        const result = await window.electronAPI?.readFile(file.path)
-        if (result?.success && result.data) {
-          setPdfDataUrl(`data:application/pdf;base64,${result.data}`)
-        }
-      } catch {
-      } finally {
-        setPdfLoading(false)
-      }
-    }
-    loadPdf()
-  }, [file?.path, file?.extension, rightPanelTab])
-
-  const ext = file?.extension?.toLowerCase() || ''
-  const isSolidWorksFile = ['.sldprt', '.sldasm', '.slddrw'].includes(ext)
-  const isCADFile = [
-    '.sldprt',
-    '.sldasm',
-    '.slddrw',
-    '.step',
-    '.stp',
-    '.stl',
-    '.iges',
-    '.igs',
-  ].includes(ext)
-  const isImageFile = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg'].includes(ext)
-  const isPDFFile = ext === '.pdf'
-
-  const getFileIcon = () => {
-    if (!file) return <File size={24} className="text-plm-fg-muted" />
-    // Use OS icons for files
-    return <RightPanelIcon file={file} size={24} />
-  }
 
   // The review package builder, opened from a file or version context menu, wins over the
   // view's own panel until it is closed: the user asked for it explicitly.
@@ -231,10 +139,10 @@ export function RightPanel() {
               key={tab}
               className="flex"
               onContextMenu={
-                tab === 'inspection' && canPopOut
+                canPopOut && isPopoutTab(tab)
                   ? (e) => {
                       e.preventDefault()
-                      setTabMenu({ x: e.clientX, y: e.clientY })
+                      setTabMenu({ tab, x: e.clientX, y: e.clientY })
                     }
                   : undefined
               }
@@ -254,7 +162,14 @@ export function RightPanel() {
               />
             </div>
           ))}
-          {tabMenu && <RightPanelTabMenu position={tabMenu} onClose={closeTabMenu} />}
+          {tabMenu && (
+            <PanelTabMenu
+              tab={tabMenu.tab}
+              poppedOut={poppedOutTabs.includes(tabMenu.tab)}
+              position={tabMenu}
+              onClose={closeTabMenu}
+            />
+          )}
         </div>
         <button
           onClick={() => rightPanelTab && moveTabToBottom(rightPanelTab)}
@@ -267,7 +182,9 @@ export function RightPanel() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
-        {selectedFileObjects.length === 0 ? (
+        {rightPanelTab && poppedOutTabs.includes(rightPanelTab) ? (
+          <PoppedOutPlaceholder tab={rightPanelTab} />
+        ) : selectedFileObjects.length === 0 ? (
           <div className="text-sm text-plm-fg-muted text-center py-8">
             Select a file to view details
           </div>
@@ -276,116 +193,9 @@ export function RightPanel() {
             {selectedFileObjects.length} files selected
           </div>
         ) : (
-          file && (
-            <>
-              {rightPanelTab === 'properties' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    {getFileIcon()}
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{file.name}</div>
-                      <div className="text-xs text-plm-fg-muted truncate">{file.relativePath}</div>
-                    </div>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-plm-fg-muted">Item Number</span>
-                      <span>{resolvedText(resolvePartNumber(file), '-')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-plm-fg-muted">Revision</span>
-                      <span>{resolvedText(resolveRevision(file), '-')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-plm-fg-muted">Version</span>
-                      <span>{file.pdmData?.version || 1}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-plm-fg-muted">Size</span>
-                      <span>{formatFileSize(file.size)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-plm-fg-muted">Status</span>
-                      <span>
-                        {file.pdmData
-                          ? 'Synced'
-                          : file.diffStatus === 'ignored'
-                            ? 'Local only (ignored)'
-                            : 'Local only'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {rightPanelTab === 'preview' && childTarget && (
-                <ChildPreview key={childKey(childTarget)} target={childTarget} />
-              )}
-
-              {rightPanelTab === 'preview' && !childTarget && (
-                <div className="flex flex-col h-full">
-                  {isPDFFile ? (
-                    pdfLoading ? (
-                      <div className="flex-1 flex items-center justify-center">
-                        <Loader2 className="animate-spin" size={24} />
-                      </div>
-                    ) : pdfDataUrl ? (
-                      <iframe
-                        src={pdfDataUrl}
-                        className="w-full h-full border-0 rounded bg-white"
-                      />
-                    ) : (
-                      <div className="flex-1 flex items-center justify-center text-plm-fg-muted">
-                        Failed to load PDF
-                      </div>
-                    )
-                  ) : isImageFile ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <img
-                        src={`file://${file.path}`}
-                        alt={file.name}
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    </div>
-                  ) : isCADFile ? (
-                    // The right panel shares the CAD fallback logic, but intentionally never owns
-                    // the single native child window. Embedded mode remains in DetailsPanel only.
-                    <CadFilePreview
-                      file={file}
-                      solidWorks={isSolidWorksFile}
-                      embeddedAvailable={false}
-                      preferThumbnailInExternalMode
-                    />
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-plm-fg-muted">
-                      No preview available
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {rightPanelTab === 'whereused' && <WhereUsedTab file={file} />}
-
-              {rightPanelTab === 'vendors' && <VendorsTab file={file} />}
-
-              {rightPanelTab === 'inspection' &&
-                ext === '.slddrw' &&
-                (inspectionPoppedOut ? (
-                  <div className="flex flex-col items-center justify-center gap-3 py-8 text-sm text-plm-fg-muted text-center">
-                    <ExternalLink size={22} className="opacity-60" />
-                    {t('source.inspection.popoutPlaceholder')}
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={requestInspectionPopoutClose}
-                    >
-                      {t('source.inspection.popoutBringBack')}
-                    </button>
-                  </div>
-                ) : (
-                  <InspectionTab file={file} />
-                ))}
-            </>
+          file &&
+          rightPanelTab && (
+            <RightPanelTabContent tab={rightPanelTab} file={file} childTarget={childTarget} />
           )
         )}
       </div>

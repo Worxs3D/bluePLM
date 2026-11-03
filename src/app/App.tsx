@@ -11,7 +11,7 @@ import { SetupScreen } from '@/components/shared/Screens'
 import { OnboardingScreen } from '@/components/shared/Screens'
 import { PerformanceWindow } from '@/features/dev-tools/performance'
 import { TabWindow, isTabWindowMode, parseTabWindowParams } from '@/components/layout'
-import { useInspectionPopoutHost } from '@/features/integrations/solidworks/inspection/popout/useInspectionPopoutHost'
+import { usePanelPopoutHost } from '@/components/layout/panelPopout/usePanelPopoutHost'
 import { AppShell } from '@/components/layout'
 import { DbUpgradeGate } from '@/features/dbUpgrade'
 import { executeTerminalCommand } from '@/lib/commands/parser'
@@ -73,8 +73,8 @@ export function App() {
   useTheme()
   useLanguage()
 
-  // Drives the popped-out Inspection window, when there is one (inspection/popout/).
-  useInspectionPopoutHost()
+  // Drives the popped-out tab windows, when there are any (components/layout/panelPopout/).
+  usePanelPopoutHost()
 
   // Context menus dispatch this event from below the application shell.
   useEffect(() => {

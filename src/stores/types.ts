@@ -678,8 +678,8 @@ export interface UISlice {
   inspectionAutoSync: boolean
   /** Per drawing (file id): what Extract / Balloon last saw, for change detection (persisted, bounded). */
   inspectionDrawingSync: Record<string, InspectionDrawingSyncStamp>
-  /** The Inspection tab is popped out into its own window (main window only; not persisted). */
-  inspectionPopoutOpen: boolean
+  /** Details tabs popped out into their own windows (main window only; not persisted). */
+  poppedOutTabs: DetailsPanelTab[]
 
   // Actions
   toggleSidebar: () => void
@@ -739,7 +739,7 @@ export interface UISlice {
   setInspectionColumnPrefs: (prefs: UISlice['inspectionColumnPrefs']) => void
   setInspectionShowFilters: (show: boolean) => void
   setInspectionAutoSync: (auto: boolean) => void
-  setInspectionPopoutOpen: (open: boolean) => void
+  setTabPoppedOut: (tab: DetailsPanelTab, open: boolean) => void
   updateInspectionDrawingSync: (
     updater: (stamps: UISlice['inspectionDrawingSync']) => UISlice['inspectionDrawingSync'],
   ) => void

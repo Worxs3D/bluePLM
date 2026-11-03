@@ -8,6 +8,7 @@ import {
   useExtensionWorkspace,
 } from '@/features/nativeExtensions/ExtensionViews'
 import { CORE_VIEW_IDS } from '@/lib/nativeExtensions/registry'
+import { popoutTabOf } from '../panelPopout/panelPopout'
 
 // Lazy loaded views
 const FileTree = lazy(() =>
@@ -64,14 +65,9 @@ const FilePane = lazy(() =>
 const GoogleDrivePanel = lazy(() =>
   import('@/features/integrations/google-drive').then((m) => ({ default: m.GoogleDrivePanel })),
 )
-const InspectionPopoutWindow = lazy(() =>
-  import('@/features/integrations/solidworks/inspection/popout/InspectionPopoutWindow').then(
-    (m) => ({ default: m.InspectionPopoutWindow }),
-  ),
+const PanelPopoutWindow = lazy(() =>
+  import('../panelPopout/PanelPopoutWindow').then((m) => ({ default: m.PanelPopoutWindow })),
 )
-
-/** `customData.panel` of a popped-out right-panel tab (inspection/popout/inspectionPopout.ts). */
-const INSPECTION_PANEL = 'inspection'
 
 // Loading fallback
 function ViewLoading() {
@@ -102,13 +98,13 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
   }, [theme])
 
   // Render the appropriate view based on the view type
-  const panel = typeof customData?.panel === 'string' ? customData.panel : null
+  const panel = popoutTabOf(customData)
   const renderView = useMemo(() => {
-    // A popped-out right-panel tab (Inspection): driven by the main window, not by a view.
-    if (panel === INSPECTION_PANEL) {
+    // A popped-out details tab: driven by the main window, not by a view (panelPopout/).
+    if (panel) {
       return (
         <Suspense fallback={<ViewLoading />}>
-          <InspectionPopoutWindow />
+          <PanelPopoutWindow tab={panel} />
         </Suspense>
       )
     }

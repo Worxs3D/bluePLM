@@ -65,7 +65,7 @@ export const createUISlice: StateCreator<
   inspectionShowFilters: false,
   inspectionAutoSync: true,
   inspectionDrawingSync: {},
-  inspectionPopoutOpen: false,
+  poppedOutTabs: [],
 
   // Actions - Clipboard
   setClipboard: (clipboard: Clipboard | null) => set({ clipboard }),
@@ -291,7 +291,16 @@ export const createUISlice: StateCreator<
   setInspectionColumnPrefs: (inspectionColumnPrefs) => set({ inspectionColumnPrefs }),
   setInspectionShowFilters: (inspectionShowFilters) => set({ inspectionShowFilters }),
   setInspectionAutoSync: (inspectionAutoSync) => set({ inspectionAutoSync }),
-  setInspectionPopoutOpen: (inspectionPopoutOpen) => set({ inspectionPopoutOpen }),
+  setTabPoppedOut: (tab, open) =>
+    set((state) =>
+      state.poppedOutTabs.includes(tab) === open
+        ? state
+        : {
+            poppedOutTabs: open
+              ? [...state.poppedOutTabs, tab]
+              : state.poppedOutTabs.filter((t) => t !== tab),
+          },
+    ),
   updateInspectionDrawingSync: (updater) =>
     set((s) => ({ inspectionDrawingSync: updater(s.inspectionDrawingSync) })),
 
