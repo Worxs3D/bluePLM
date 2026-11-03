@@ -76,6 +76,25 @@ When done editing, check in your changes:
 ### Multi-Select
 Hold `Ctrl` (or `Cmd` on Mac) to select multiple files for batch operations.
 
+### Generate and exports
+Right-click a file and choose **Generate**:
+- **On server** records outputs against the latest checked-in version, so everyone sees the same
+  file: PDF (drawings), STEP (drawings export the model they show; parts and assemblies), and
+  **Inspection report**, which lists your templates and shows the report already made from each.
+- **Local** writes ordinary files: the export options (PDF, STEP, IGES, STL, DXF), and an
+  inspection report workbook saved where you choose, recorded nowhere.
+
+The **Outputs** column shows each drawing's PDF, STEP and newest inspection report: click one to
+preview it, a faint one to generate it, and one with an amber mark (made from an older version) to
+generate it for the latest version. **Generate** in the toolbar does the same for the PDFs and STEPs
+that are missing or out of date in the selection, the folder, or the folder and its subfolders.
+
+Under a file's chevron, **Exports** lists one line per kind, the released one first. Each export's
+menu has **Regenerate at check-in** (on by default). An up-to-date export is never regenerated, and
+a released one never changes. Under a drawing, **Inspection reports** lists its reports
+(regenerating one overwrites it for the same version) and **Received inspections** the filled-in
+workbooks that came back, also listed in the Inspection tab's Received view.
+
 ## Pinned Folders
 
 Pin frequently-used folders for quick access:

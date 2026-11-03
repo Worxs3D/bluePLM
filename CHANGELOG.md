@@ -4,9 +4,12 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.9.0] - 2026-11-03
 
-Schemas 508 and 509. No API or service change.
+Schemas 508 and 509. No API or SolidWorks service change (API 4.2.2, SolidWorks service 1.29.0).
+The release upgrades the database to 509 before anything is published. A 5.8.0 app keeps
+working against 509: a drawing it moves to Released without an approved review is recorded as a
+forced release.
 
 ### Added
 
