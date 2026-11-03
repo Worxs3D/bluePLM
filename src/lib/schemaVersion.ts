@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 508
+export const EXPECTED_SCHEMA_VERSION = 509
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -66,6 +66,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Deleting version outputs. drawing_pdf_render_delete() and file_version_output_delete() delete a version's drawing PDF or export (the file's vault; an administrator, or the user who generated it with explorer edit). A drawing PDF of a version in an open review is kept. The content stays in the vault bucket.",
   508:
     'Inspection report lineage. inspection_report gains supersedes_report_id, the report of the same drawing that a regenerated report replaces; it is fixed once the report is issued and cleared only when the replaced report is deleted.',
+  509:
+    "Released versions. file_version records its release (when, by whom, the approved review or a forced release, the note and the revision), written only by a transition into a state that releases (workflow_state.releases_version). A drawing is released through an approved review of that version or forced with workflow_transition_execute(..., p_force_release), which is logged. A released version's exports and inspection reports cannot be replaced or deleted. inspection_report_overwrite() regenerates a report of the same version in place; file_set_auto_output() sets which exports a file keeps up to date at check-in; the default workflow is WIP, In Review, Released, Obsolete.",
 }
 
 export interface SchemaVersionInfo {
