@@ -27,6 +27,13 @@ export const versionOutputStrings: Record<string, string> = {
   saveNext: 'Save next to file',
   copyName: 'Copy file name',
   regenerate: 'Regenerate',
+  deleteTitle: 'Delete {{kind}}',
+  deleteMessage:
+    'Delete the {{kind}} of version {{version}} of {{name}}? It can be generated again from the checked-in version. Copies already saved are not touched.',
+  deleted: '{{kind}} of {{name}} deleted',
+  deleteFailed: 'Could not delete the {{kind}}: {{error}}',
+  deleteInReview: 'This {{kind}} is kept: the drawing version is in an open review, whose reviewers read it.',
+  deleteNotGenerator: 'Only an administrator or the person who generated this {{kind}} can delete it.',
 
   // File context menu
   generatePdf: 'Generate PDF',

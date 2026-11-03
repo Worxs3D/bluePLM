@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Copy, Download, ExternalLink, FolderDown, RefreshCw } from 'lucide-react'
+import { Copy, Download, ExternalLink, FolderDown, RefreshCw, Trash2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
@@ -23,12 +23,24 @@ export interface OutputMenuProps {
   /** A job for this output is queued or running. */
   busy: boolean
   onClose: () => void
+  /** Ask to delete the output (the row confirms). */
+  onDelete: () => void
 }
 
-function Item({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function Item({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  icon: ReactNode
+  label: string
+  onClick: () => void
+  danger?: boolean
+}) {
   return (
     <div
-      className="context-menu-item"
+      className={`context-menu-item${danger ? ' danger' : ''}`}
       role="menuitem"
       onClick={(e) => {
         e.stopPropagation()
@@ -43,15 +55,20 @@ function Item({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
 
 /**
  * The menu of one version output in the file list: Open, Save copy..., Save next to file
- * (desktop), Copy file name, Regenerate (administrators, desktop; it replaces the recorded one).
+ * (desktop), Copy file name, Regenerate (administrators, desktop; it replaces the recorded one),
+ * Delete (administrators, or the user who generated it).
  */
-export function OutputMenu({ file, output, position, busy, onClose }: OutputMenuProps) {
+export function OutputMenu({ file, output, position, busy, onClose, onDelete }: OutputMenuProps) {
   const getEffectiveRole = usePDMStore((s) => s.getEffectiveRole)
+  const hasPermission = usePDMStore((s) => s.hasPermission)
+  const userId = usePDMStore((s) => s.user?.id)
   const items = outputMenuItems({
     desktop: hasDesktop(),
     isAdmin: getEffectiveRole() === 'admin',
     hasLocalFolder: file.diffStatus !== 'moved_away',
     busy,
+    isGeneratorWithEdit:
+      !!userId && output.generatedBy === userId && hasPermission('module:explorer', 'edit'),
   })
   // The queue regenerates the saved configuration only.
   const canRegenerate = items.regenerate && output.configuration === null
@@ -121,6 +138,12 @@ export function OutputMenu({ file, output, position, busy, onClose }: OutputMenu
               label={t('source.outputs.regenerate')}
               onClick={() => run(() => regenerateOutput(file, output))}
             />
+          </>
+        )}
+        {items.delete && (
+          <>
+            <div className="context-menu-separator" />
+            <Item icon={<Trash2 size={14} />} label={t('common.delete')} onClick={() => run(onDelete)} danger />
           </>
         )}
       </div>

@@ -1,18 +1,26 @@
 import { memo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, Box, FileText, Loader2, PenTool, Plus } from 'lucide-react'
 
+import { ConfirmDialog } from '@/components/core/Dialog'
 import { t } from '@/lib/i18n'
 import { outputKindLabel } from '@/lib/outputs/kinds'
 import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
-import { generateOutputs, openOutput, outputReasonText } from '@/features/source/outputs/outputCommands'
+import {
+  deleteOutputWithToast,
+  generateOutputs,
+  openOutput,
+  outputReasonText,
+} from '@/features/source/outputs/outputCommands'
 import { OutputMenu } from '@/features/source/outputs/OutputMenu'
 import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
 import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import { outputCopyName, type OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
-import { ChildChip, ChildNameCell, ChildText } from './ChildRowParts'
+import { ChildChip, ChildNameCell, ChildText, ParentMetadataText } from './ChildRowParts'
+import { isParentMetadataColumn } from './childRowStatus'
 import type { VersionOutputKind } from '@/types/versionOutputs'
 
 interface FileOutputRowProps {
@@ -33,8 +41,9 @@ function KindIcon({ kind }: { kind: VersionOutputKind }) {
 /**
  * A version output under an expanded file (after a drawing's referenced files, after a part's or
  * assembly's configurations, before inspection reports). A click on a recorded output selects it
- * and shows it in the Preview tab (`selectChildRow`); double-click opens it; right-click has the
- * output menu. A missing primary output is a "Generate PDF" /
+ * and shows it in the Preview tab (`selectChildRow`); double-click opens it; right-click selects it
+ * and has the output menu (Delete asks first). Item number, revision and description are the
+ * parent file's, as its row shows them. A missing primary output is a "Generate PDF" /
  * "Generate STEP" ghost (click queues it); a queued or running job shows a spinner.
  */
 export const FileOutputRow = memo(function FileOutputRow({
@@ -45,6 +54,7 @@ export const FileOutputRow = memo(function FileOutputRow({
   visibleColumns,
 }: FileOutputRowProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const organization = usePDMStore((s) => s.organization)
   const kind = outputKindLabel(entry.kind)
   const output = entry.output
@@ -73,20 +83,22 @@ export const FileOutputRow = memo(function FileOutputRow({
   const selected = usePDMStore(
     (s) => !!output && isChildSelected(s.childSelection, s.selectedFiles, `output:${output.id}`),
   )
+  const target =
+    output && file.pdmData?.id
+      ? ({ kind: 'output', filePath: file.path, fileId: file.pdmData.id, version, output } as const)
+      : null
 
   return (
     <>
       <tr
-        className={`drawing-ref-row hover:bg-plm-bg-light/50 ${ghost && !busy ? 'cursor-pointer' : output ? 'cursor-default' : ''} ${selected ? 'selected' : ''}`}
+        className={`drawing-ref-row hover:bg-plm-bg-light/50 ${ghost && !busy ? 'cursor-pointer' : output ? 'cursor-default' : ''} ${selected || menu ? 'selected' : ''}`}
         aria-selected={output ? selected : undefined}
         style={{ height: rowHeight }}
         title={title}
         onClick={(e) => {
           e.stopPropagation()
           if (ghost && (entry.state === 'missing' || entry.state === 'failed')) generateOutputs([file], entry.kind)
-          else if (output && file.pdmData?.id && e.detail < 2) {
-            selectChildRow({ kind: 'output', filePath: file.path, fileId: file.pdmData.id, version, output })
-          }
+          else if (target && e.detail < 2) selectChildRow(target)
         }}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -95,7 +107,9 @@ export const FileOutputRow = memo(function FileOutputRow({
         onContextMenu={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          if (output) setMenu({ x: e.clientX, y: e.clientY })
+          if (!output) return
+          if (target) selectChildRow(target, { reveal: false })
+          setMenu({ x: e.clientX, y: e.clientY })
         }}
       >
         {visibleColumns.map((column) => (
@@ -120,17 +134,17 @@ export const FileOutputRow = memo(function FileOutputRow({
                 italic={ghost}
                 after={output?.configuration ? <ChildChip>{output.configuration}</ChildChip> : null}
               />
-            ) : column.id === 'description' ? (
-              <ChildText muted={ghost}>
-                {output
-                  ? t('source.outputs.rowDescription', { kind, version: version ?? '' })
-                  : busy
-                    ? t('source.outputs.rowWorkingDescription', { version: version ?? '' })
-                    : entry.state === 'failed'
-                      ? t('source.outputs.rowFailedShort')
+            ) : column.id === 'description' && !output ? (
+              <ChildText muted>
+                {busy
+                  ? t('source.outputs.rowWorkingDescription', { version: version ?? '' })
+                  : entry.state === 'failed'
+                    ? t('source.outputs.rowFailedShort')
                     : t('source.outputs.rowMissingDescription', { version: version ?? '' })}
               </ChildText>
-            ) : !output ? null : column.id === 'version' && version !== null ? (
+            ) : !output ? null : isParentMetadataColumn(column.id) ? (
+              <ParentMetadataText file={file} columnId={column.id} />
+            ) : column.id === 'version' && version !== null ? (
               <ChildText>{String(version)}</ChildText>
             ) : column.id === 'extension' ? (
               <ChildText>{kind.toLowerCase()}</ChildText>
@@ -143,8 +157,36 @@ export const FileOutputRow = memo(function FileOutputRow({
         ))}
       </tr>
       {menu && output && (
-        <OutputMenu file={file} output={output} position={menu} busy={busy} onClose={() => setMenu(null)} />
+        <OutputMenu
+          file={file}
+          output={output}
+          position={menu}
+          busy={busy}
+          onClose={() => setMenu(null)}
+          onDelete={() => setConfirmingDelete(true)}
+        />
       )}
+      {confirmingDelete &&
+        output &&
+        // In a portal, with events stopped, so the table row's handlers do not see the dialog.
+        createPortal(
+          <div onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+            <ConfirmDialog
+              open
+              onClose={() => setConfirmingDelete(false)}
+              title={t('source.outputs.deleteTitle', { kind })}
+              message={t('source.outputs.deleteMessage', { kind, version: version ?? '', name: file.name })}
+              confirmText={t('common.delete')}
+              cancelText={t('common.cancel')}
+              variant="danger"
+              onConfirm={() => {
+                setConfirmingDelete(false)
+                void deleteOutputWithToast(file, output)
+              }}
+            />
+          </div>,
+          document.body,
+        )}
     </>
   )
 })

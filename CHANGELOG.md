@@ -4,6 +4,30 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+Schema 507. No API or service change.
+
+### Added
+
+- **Delete a PDF or STEP.** Right-click an output under a file's chevron and choose Delete (in red,
+  after a confirmation). An administrator can delete any output; anyone else the ones they
+  generated. A drawing PDF of a version in an open review is kept, because reviewers read it. The
+  row becomes "Generate PDF" again. Schema 507 adds `drawing_pdf_render_delete()` and
+  `file_version_output_delete()`; the content stays in storage.
+- **Out-of-date reports are marked.** A report made of an older drawing version than the latest
+  (and not superseded by a newer report of the same type) has a stale mark at the left edge of its
+  row; hover it and click to generate a new report of the latest version.
+
+### Changed
+
+- **Output and report rows show the drawing's item number, revision and description**, as the
+  drawing's own row shows them. The report's type detail, title and results move to the tooltip,
+  with the results also as a chip after the number.
+- **Right-clicking an output or report row selects it**, so the row the menu acts on is
+  highlighted. It does not open the Preview panel; an open one follows the selection.
+- **Delete is red** in the report menu, as in the file menu.
+
 ## [5.7.0] - 2026-11-03
 
 SolidWorks service 1.29.0. No schema or API change (schema 506, API 4.2.2).

@@ -34,10 +34,20 @@ export interface ReportMenuProps {
   onDownloadReturned?: () => void
 }
 
-function Item({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function Item({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  icon: ReactNode
+  label: string
+  onClick: () => void
+  danger?: boolean
+}) {
   return (
     <div
-      className="context-menu-item"
+      className={`context-menu-item${danger ? ' danger' : ''}`}
       role="menuitem"
       onClick={(e) => {
         e.stopPropagation()
@@ -183,6 +193,7 @@ export function ReportMenu(props: ReportMenuProps) {
               icon={<Trash2 size={14} />}
               label={t('common.delete')}
               onClick={() => run(() => props.onDelete(report))}
+              danger
             />
           </>
         )}

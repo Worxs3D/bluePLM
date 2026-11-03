@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react'
+import { History, RefreshCw } from 'lucide-react'
+
+import { resolveFileMetadata } from '@/lib/metadata/overlay'
+import type { LocalFile } from '@/stores/pdmStore'
 
 /**
  * The shared look of the rows under an expanded file (referenced files, outputs, inspection
@@ -16,6 +20,7 @@ export function ChildNameCell({
   italic = false,
   before,
   after,
+  status,
   indentPx = CHILD_INDENT_PX,
 }: {
   rowHeight: number
@@ -28,13 +33,16 @@ export function ChildNameCell({
   before?: ReactNode
   /** After the name (a configuration or status chip). */
   after?: ReactNode
+  /** The status slot at the left edge of the row, under the parent's chevron (`ChildStaleButton`). */
+  status?: ReactNode
   indentPx?: number
 }) {
   return (
     <div
-      className="flex min-w-0 items-center gap-1.5"
+      className="relative flex min-w-0 items-center gap-1.5"
       style={{ minHeight: rowHeight - 8, paddingLeft: `${indentPx}px` }}
     >
+      {status && <span className="absolute left-0 top-1/2 flex -translate-y-1/2">{status}</span>}
       <span className="w-2.5 shrink-0 text-[10px] text-plm-fg-dim/70">├</span>
       {before}
       <span className="flex w-3.5 shrink-0 justify-center">{icon}</span>
@@ -79,4 +87,50 @@ export function ChildChip({ children, title }: { children: ReactNode; title?: st
       {children}
     </span>
   )
+}
+
+/**
+ * The status slot of an out-of-date child row: a stale mark that turns into a regenerate button
+ * on hover. Without `onRegenerate` (no permission) it is the mark alone, with its explanation.
+ */
+export function ChildStaleButton({ title, onRegenerate }: { title: string; onRegenerate?: () => void }) {
+  if (!onRegenerate) {
+    return (
+      <span className="flex h-4 w-4 items-center justify-center text-amber-400" title={title}>
+        <History size={12} />
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="group/stale flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:bg-plm-bg-light hover:text-plm-fg"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation()
+        onRegenerate()
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <History size={12} className="group-hover/stale:hidden" />
+      <RefreshCw size={12} className="hidden group-hover/stale:block" />
+    </button>
+  )
+}
+
+/**
+ * The parent file's item number, revision or description for a child row that belongs to it (an
+ * output or report of the file), as the parent row shows them; null for any other column.
+ */
+export function ParentMetadataText({ file, columnId }: { file: LocalFile; columnId: string }) {
+  const metadata = resolveFileMetadata(file)
+  const value =
+    columnId === 'itemNumber'
+      ? metadata.partNumber.value
+      : columnId === 'revision'
+        ? metadata.revision.value
+        : columnId === 'description'
+          ? metadata.description.value
+          : null
+  return value ? <ChildText>{value}</ChildText> : null
 }

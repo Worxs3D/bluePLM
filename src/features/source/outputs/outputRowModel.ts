@@ -102,6 +102,8 @@ export interface OutputMenuItems {
   copyName: boolean
   /** Replacing a recorded output is an administrator's (file_version_output_record). */
   regenerate: boolean
+  /** An administrator, or the user who generated it with explorer edit (schema 507). */
+  delete: boolean
 }
 
 export function outputMenuItems(opts: {
@@ -111,6 +113,8 @@ export function outputMenuItems(opts: {
   hasLocalFolder: boolean
   /** A job for this output is already queued or running. */
   busy: boolean
+  /** The signed-in user generated the output and has explorer edit. */
+  isGeneratorWithEdit?: boolean
 }): OutputMenuItems {
   return {
     open: true,
@@ -118,6 +122,7 @@ export function outputMenuItems(opts: {
     saveNextToFile: opts.desktop && opts.hasLocalFolder,
     copyName: true,
     regenerate: opts.desktop && opts.isAdmin && !opts.busy,
+    delete: (opts.isAdmin || !!opts.isGeneratorWithEdit) && !opts.busy,
   }
 }
 

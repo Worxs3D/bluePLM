@@ -106,6 +106,9 @@ export const inspectionReportStrings: Record<string, string> = {
   rptVersionGone: 'The drawing version of this report is no longer available.',
   rptRegenerate: 'Regenerate',
   rptRegenerateFor: 'Regenerate for version {{version}}',
+  rptOutdated:
+    'Out of date: made from version {{version}}, and the drawing is now at version {{latest}}. Click to generate a new report of version {{latest}}.',
+  rptOutdatedReadOnly: 'Out of date: made from version {{version}}, and the drawing is now at version {{latest}}.',
   rptSaveCopy: 'Save copy…',
   rptSaveNext: 'Save next to drawing',
   rptSavedNext: 'Report saved as {{path}}',

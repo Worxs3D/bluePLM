@@ -143,6 +143,7 @@ describe('menus', () => {
       saveNextToFile: true,
       copyName: true,
       regenerate: false,
+      delete: false,
     })
     const web = outputMenuItems({ desktop: false, isAdmin: true, hasLocalFolder: true, busy: false })
     expect(web.saveNextToFile).toBe(false)
@@ -150,6 +151,15 @@ describe('menus', () => {
     expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: true, busy: false }).regenerate).toBe(true)
     expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: true, busy: true }).regenerate).toBe(false)
     expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: false, busy: false }).saveNextToFile).toBe(false)
+  })
+
+  it('offers Delete to an administrator or the generator with explorer edit, not while a job runs', () => {
+    const base = { desktop: true, hasLocalFolder: true, busy: false }
+    expect(outputMenuItems({ ...base, isAdmin: true }).delete).toBe(true)
+    expect(outputMenuItems({ ...base, desktop: false, isAdmin: true }).delete).toBe(true)
+    expect(outputMenuItems({ ...base, isAdmin: false }).delete).toBe(false)
+    expect(outputMenuItems({ ...base, isAdmin: false, isGeneratorWithEdit: true }).delete).toBe(true)
+    expect(outputMenuItems({ ...base, isAdmin: true, busy: true }).delete).toBe(false)
   })
 
   it('counts checked-in drawings and models for Generate PDF / Generate STEP', () => {

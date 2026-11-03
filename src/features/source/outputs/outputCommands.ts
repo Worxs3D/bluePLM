@@ -1,6 +1,6 @@
 /**
  * The user's actions on version outputs (5.5.0): Generate PDF / Generate STEP on a selection,
- * Regenerate (administrators), Open, Save copy..., Save next to file and Copy file name. Shared by
+ * Regenerate (administrators), Delete, Open, Save copy..., Save next to file and Copy file name. Shared by
  * the file context menu, the output rows under an expanded file and their menu.
  *
  * Generation goes through the one background queue in `src/lib/outputs` (the check-in queue), so
@@ -13,6 +13,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import {
+  loadVersionOutputs,
   openVersionOutput,
   outputKindLabel,
   queueOutputs,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/outputs'
 import { hasDesktop } from '@/lib/platform'
 import { pdfRenderUnavailableReason } from '@/lib/reviewPackage/pdf'
+import { deleteVersionOutput, VersionOutputRpcError } from '@/lib/supabase/versionOutputs'
 import { usePDMStore } from '@/stores/pdmStore'
 import { outputJobKey, type OutputJob } from '@/stores/slices/outputsSlice'
 import type { LocalFile } from '@/stores/types'
@@ -213,4 +215,40 @@ export async function copyOutputName(file: LocalFile, output: VersionOutput): Pr
   const result = await copyToClipboard(copyName(file, output))
   if (result.success) toast('success', t('source.outputs.nameCopied'))
   else toast('error', t('source.outputs.copyFailed', { error: result.error ?? '' }))
+}
+
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a recorded output (an administrator, or the user who generated it), then read the
+ * version's outputs again so the row becomes a "Generate" row. The content stays in the vault.
+ */
+export async function deleteOutputWithToast(file: LocalFile, output: VersionOutput): Promise<boolean> {
+  const kind = outputKindLabel(output.kind)
+  try {
+    await deleteVersionOutput(output)
+  } catch (err) {
+    const code = err instanceof VersionOutputRpcError ? err.code : null
+    log.error('[Outputs]', 'Deleting an output failed', { outputId: output.id, code, error: errorText(err) })
+    toast(
+      'error',
+      code === 'IN_REVIEW'
+        ? t('source.outputs.deleteInReview', { kind })
+        : code === 'NOT_GENERATOR'
+          ? t('source.outputs.deleteNotGenerator', { kind })
+          : t('source.outputs.deleteFailed', { kind, error: errorText(err) }),
+    )
+    return false
+  }
+  const state = usePDMStore.getState()
+  if (state.childSelection?.target.kind === 'output' && state.childSelection.target.output.id === output.id) {
+    state.setChildSelection(null)
+  }
+  await loadVersionOutputs([output.fileVersionId]).catch((err) =>
+    log.warn('[Outputs]', 'Could not reload version outputs', { error: errorText(err) }),
+  )
+  toast('success', t('source.outputs.deleted', { kind, name: file.name }))
+  return true
 }
