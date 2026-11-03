@@ -1,4 +1,6 @@
+import { t } from '@/lib/i18n'
 import type { InspectionRowValues } from '@/lib/supabase'
+import { GEOMETRY_FIELDS } from '@/lib/inspection/characteristicMerge'
 
 export type ColumnType = 'text' | 'number' | 'select'
 
@@ -10,6 +12,13 @@ export interface ColumnDef {
   width: string
   /** Set by extraction only; never editable in the table. */
   readOnly?: boolean
+  /** i18n key of the header, used instead of `label` when set. */
+  labelKey?: string
+}
+
+/** Header text of a column. */
+export function columnLabel(col: ColumnDef): string {
+  return col.labelKey ? t(col.labelKey) : col.label
 }
 
 export const CHAR_TYPES = ['Dimension', 'GTOL', 'Note', 'Datum']
@@ -62,6 +71,14 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'upper_limit', label: 'Upper', type: 'text', width: 'w-20' },
   { key: 'lower_limit', label: 'Lower', type: 'text', width: 'w-20' },
   {
+    key: 'tolerance_source',
+    label: 'Tol. Source',
+    labelKey: 'source.inspection.toleranceSourceColumn',
+    type: 'text',
+    width: 'w-24',
+    readOnly: true,
+  },
+  {
     key: 'classification',
     label: 'Criticality',
     type: 'select',
@@ -78,6 +95,75 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'comments', label: 'Comments', type: 'text', width: 'w-48' },
 ]
 
-// Font stack that can render GD&T / technical symbols (⌓, ⌭, ⊥, ⌖, Ø, …) decoded from
-// SOLIDWORKS. 'Segoe UI Symbol' covers the Unicode Miscellaneous Technical block on Windows.
-export const SYMBOL_FONT = "'Segoe UI', 'Segoe UI Symbol', 'Cambria Math', system-ui, sans-serif"
+const GEOMETRY = new Set<keyof InspectionRowValues>(GEOMETRY_FIELDS)
+
+/**
+ * A cell the drawing owns: every geometry column (and the tolerance source) of a row extracted
+ * from the drawing. Such cells are never edited in the table; manual rows keep them editable.
+ */
+export function isDrawingOwnedCell(
+  row: Pick<InspectionRowValues, 'source_key'>,
+  key: keyof InspectionRowValues,
+): boolean {
+  return !!row.source_key?.trim() && GEOMETRY.has(key)
+}
+
+/** Columns the bulk editor may set on many rows at once: the user-owned ones. */
+export const BULK_EDIT_FIELDS = [
+  'inspection_method',
+  'classification',
+  'operation',
+  'aql',
+  'sample_size',
+  'supplier_inspection_rate',
+  'internal_inspection_rate',
+  'reference',
+  'comments',
+] as const satisfies readonly (keyof InspectionRowValues)[]
+
+export type BulkEditField = (typeof BULK_EDIT_FIELDS)[number]
+
+/** Per-user column layout: order of column keys and the hidden ones. */
+export interface InspectionColumnPrefs {
+  order: string[]
+  hidden: string[]
+}
+
+/**
+ * The columns to show, in the user's order. Keys the user never placed (columns added in a
+ * later release) keep their default position relative to the columns before them; unknown keys
+ * are ignored. Balloon cannot be hidden.
+ */
+export function resolveColumns(prefs: InspectionColumnPrefs | null | undefined): {
+  ordered: ColumnDef[]
+  visible: ColumnDef[]
+} {
+  if (!prefs) return { ordered: COLUMNS, visible: COLUMNS }
+  const byKey = new Map(COLUMNS.map((c) => [c.key as string, c]))
+  const ordered: ColumnDef[] = []
+  const placed = new Set<string>()
+  for (const key of prefs.order) {
+    const col = byKey.get(key)
+    if (col && !placed.has(key)) {
+      ordered.push(col)
+      placed.add(key)
+    }
+  }
+  COLUMNS.forEach((col, index) => {
+    if (placed.has(col.key)) return
+    // After the nearest default predecessor the user has placed; first when there is none.
+    let at = 0
+    for (let i = index - 1; i >= 0; i--) {
+      const pos = ordered.findIndex((c) => c.key === COLUMNS[i].key)
+      if (pos >= 0) {
+        at = pos + 1
+        break
+      }
+    }
+    ordered.splice(at, 0, col)
+    placed.add(col.key)
+  })
+  const hidden = new Set(prefs.hidden)
+  hidden.delete('balloon_number')
+  return { ordered, visible: ordered.filter((c) => !hidden.has(c.key)) }
+}

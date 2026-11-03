@@ -22,6 +22,7 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
   const [autoRev, setAutoRev] = useState(state.is_revision_auto_incremented)
   const [requiredRoles, setRequiredRoles] = useState<string[]>(state.required_workflow_roles || [])
   const [isReviewStage, setIsReviewStage] = useState(state.is_review_stage === true)
+  const [releasesVersion, setReleasesVersion] = useState(state.releases_version === true)
   const [approvedStateId, setApprovedStateId] = useState<string | null>(
     state.review_approved_state_id ?? null,
   )
@@ -37,9 +38,11 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
     setAutoRev(state.is_revision_auto_incremented)
     setRequiredRoles(state.required_workflow_roles || [])
     setIsReviewStage(state.is_review_stage === true)
+    setReleasesVersion(state.releases_version === true)
     setApprovedStateId(state.review_approved_state_id ?? null)
   }, [
     state.is_review_stage,
+    state.releases_version,
     state.review_approved_state_id,
     state.id,
     state.name,
@@ -259,6 +262,20 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
             </label>
           </div>
 
+          {/* Releasing state (schema 509): entering it releases the newest checked-in version */}
+          <div className="space-y-2 border-t border-plm-border pt-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={releasesVersion}
+                onChange={(e) => setReleasesVersion(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm">{t('releases.stateReleasesToggle')}</span>
+            </label>
+            <p className="text-[10px] text-plm-fg-muted">{t('releases.stateReleasesHint')}</p>
+          </div>
+
           {/* Review stage: files entering it go to a review; an approval moves them on */}
           <div className="space-y-2 border-t border-plm-border pt-3">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -320,6 +337,7 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
                 required_workflow_roles: requiredRoles,
                 is_review_stage: isReviewStage,
                 review_approved_state_id: isReviewStage ? approvedStateId : null,
+                releases_version: releasesVersion,
               })
             }
             className="px-3 py-1.5 text-sm bg-plm-accent hover:bg-plm-accent-hover text-white rounded"

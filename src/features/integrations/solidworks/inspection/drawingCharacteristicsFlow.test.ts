@@ -13,7 +13,9 @@ import {
 
 import {
   buildExtractPreview,
+  buildSheetContext,
   defaultRemoveIds,
+  generalBasisByKey,
   inspectionErrorKey,
   planBalloonRequests,
   rowSummary,
@@ -199,5 +201,45 @@ describe('inspectionErrorKey', () => {
     expect(new Set(keys).size).toBe(keys.length)
     expect(inspectionErrorKey('SW_TIMEOUT')).toBeNull()
     expect(inspectionErrorKey(undefined)).toBeNull()
+  })
+})
+
+describe('buildSheetContext / generalBasisByKey', () => {
+  const blockNote = { text: 'ISO 2768-mK', x: 0.3, y: 0.03, height: 0.0035, source: 'format' as const }
+  const data = {
+    units: 'mm' as const,
+    sheets: [
+      { name: 'Sheet1', widthM: 0.42, heightM: 0.297, notes: [blockNote] },
+      { name: 'Sheet2', widthM: 0.42, heightM: 0.297 },
+    ],
+    characteristics: [
+      char('a', { sheet: 'Sheet2', nominal: '10.00', plusTolerance: null, minusTolerance: null, toleranceType: 'None' }),
+      char('b'),
+    ],
+  }
+
+  it('gives every sheet the drawing-level rules; zone grids come from the border of each sheet', () => {
+    const context = buildSheetContext(data)
+    expect(context.get('Sheet1')?.rules?.iso2768?.linear).toBe('m')
+    expect(context.get('Sheet2')?.rules?.iso2768?.linear).toBe('m')
+    expect(context.get('Sheet1')?.grid).toBeNull()
+    expect(context.get('Sheet2')?.notesRead).toBe(true)
+  })
+
+  it('marks sheets whose notes were not read when no drawing-level rules exist', () => {
+    const context = buildSheetContext({
+      sheets: [
+        { name: 'Old', widthM: 0.42, heightM: 0.297 },
+        { name: 'Skipped', widthM: 0.42, heightM: 0.297, notes: [], notesRead: false },
+        { name: 'Read', widthM: 0.42, heightM: 0.297, notes: [] },
+      ],
+    })
+    expect([...context.values()].map((c) => c.notesRead)).toEqual([false, false, true])
+  })
+
+  it('lists the rule behind each characteristic that takes a general tolerance', () => {
+    const basis = generalBasisByKey(data, buildSheetContext(data))
+    expect([...basis.keys()]).toEqual(['a'])
+    expect(basis.get('a')).toMatchObject({ kind: 'iso2768', cls: 'm', toleranceMm: 0.2 })
   })
 })

@@ -96,10 +96,12 @@ async function cachedResult(fileVersionId: string): Promise<EnsureDrawingPdfResu
 export async function ensureDrawingPdf(
   fileVersionId: string,
   onProgress?: PdfProgressCallback,
+  /** `regenerate`: render again even when a PDF is recorded (only an administrator replaces it). */
+  options: { regenerate?: boolean } = {},
 ): Promise<EnsureDrawingPdfResult> {
   onProgress?.({ phase: 'checking' })
   try {
-    const cached = await cachedResult(fileVersionId)
+    const cached = options.regenerate ? null : await cachedResult(fileVersionId)
     if (cached) return cached
 
     const closure = await fetchMergedClosure([fileVersionId])

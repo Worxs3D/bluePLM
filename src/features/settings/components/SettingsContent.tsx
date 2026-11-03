@@ -73,6 +73,11 @@ const MetadataColumnsSettings = lazy(() =>
     default: m.MetadataColumnsSettings,
   })),
 )
+const InspectionTemplatesSettings = lazy(() =>
+  import('../organization/inspectionTemplates/InspectionTemplatesSettings').then((m) => ({
+    default: m.InspectionTemplatesSettings,
+  })),
+)
 const ItemDesignationsSettings = lazy(() =>
   import('../organization/ItemDesignationsSettings').then((m) => ({
     default: m.ItemDesignationsSettings,
@@ -217,6 +222,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SecurityMonitoringSettings />
       case 'item-designations':
         return <ItemDesignationsSettings />
+      case 'inspection-templates':
+        return <InspectionTemplatesSettings />
       case 'backup':
         return <BackupSettings />
       case 'solidworks':

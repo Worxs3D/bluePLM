@@ -5,6 +5,7 @@ import { t } from '@/lib/i18n'
 
 import type { UseVaultAuditConflictResult } from './useVaultAuditConflict'
 import type { UseVaultAuditPushResult } from './useVaultAuditPush'
+import { CheckInAfterToggle } from './VaultAuditActionBar'
 import { FooterMessage, VaultAuditFooter } from './VaultAuditFooter'
 import { countOf } from './vaultAuditLabels'
 
@@ -23,7 +24,8 @@ interface VaultAuditConflictActionBarProps {
 export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConflictActionBarProps) {
   const busy = conflict.applying || push.running
   const fileValues = conflict.selectedCount
-  const bluePlmFiles = push.eligibility.eligible.length
+  const bluePlmFiles = push.eligibility.eligible.length + push.eligibility.checkoutable.length
+  const checkingOut = push.eligibility.checkoutable.length > 0
   const nothingChosen = fileValues === 0 && push.eligibility.selected === 0
 
   return (
@@ -37,11 +39,14 @@ export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConfli
         ),
       }}
       messages={
-        conflict.error && (
-          <FooterMessage icon={AlertTriangle} tone="danger">
-            {conflict.error}
-          </FooterMessage>
-        )
+        <>
+          {conflict.error && (
+            <FooterMessage icon={AlertTriangle} tone="danger">
+              {conflict.error}
+            </FooterMessage>
+          )}
+          <CheckInAfterToggle push={push} />
+        </>
       }
       summary={
         nothingChosen ? (
@@ -88,7 +93,12 @@ export function VaultAuditConflictActionBar({ conflict, push }: VaultAuditConfli
             >
               {push.running
                 ? t('vaultAudit.push.running')
-                : t('vaultAudit.conflict.applyBluePlmPhrase', { files: countOf('files', bluePlmFiles) })}
+                : t(
+                    checkingOut
+                      ? 'vaultAudit.conflict.checkoutApplyBluePlmPhrase'
+                      : 'vaultAudit.conflict.applyBluePlmPhrase',
+                    { files: countOf('files', bluePlmFiles) },
+                  )}
             </Button>
           )}
         </>

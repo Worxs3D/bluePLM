@@ -10,7 +10,7 @@ import type { LocalFile } from '@/stores/pdmStore'
 
 vi.mock('@/stores/pdmStore', () => ({ usePDMStore: vi.fn() }))
 
-const { parseQuery, toPaneSearch, fromPaneSearch } = await import('./utils')
+const { parseQuery, toPaneSearch, fromPaneSearch, showsQuickResults } = await import('./utils')
 const { resultTarget } = await import('./hooks/useOpenResult')
 
 function row(relativePath: string, overrides: Partial<LocalFile> = {}): LocalFile {
@@ -111,5 +111,19 @@ describe('resultTarget', () => {
       folder: 'parts',
       select: 'parts/bracket.sldprt',
     })
+  })
+})
+
+describe('showsQuickResults', () => {
+  it('keeps the dropdown collapsed while the pane lists the matches', () => {
+    expect(showsQuickResults(parseQuery('t90', 'all'), false)).toBe(false)
+    expect(showsQuickResults(parseQuery('folder:t90', 'all'), false)).toBe(false)
+    expect(showsQuickResults(parseQuery('t90', 'all'), true)).toBe(true)
+  })
+
+  it('shows recent searches with no term, and filters only the dropdown can show', () => {
+    expect(showsQuickResults(parseQuery('', 'all'), false)).toBe(true)
+    expect(showsQuickResults(parseQuery('t90', 'checked-out'), false)).toBe(true)
+    expect(showsQuickResults(parseQuery('t90', 'drive'), false)).toBe(true)
   })
 })

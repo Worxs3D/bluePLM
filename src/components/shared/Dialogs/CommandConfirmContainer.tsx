@@ -10,11 +10,19 @@ import { memo, useEffect, useCallback } from 'react'
 import { AlertTriangle, File } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { resolveCommandConfirm } from '@/lib/commands/executor'
+import { promptHostFor, useChildHostsVersion, useHostWindow } from '@/hooks/useHostWindow'
 
 const MAX_VISIBLE_FILES = 5
 
+/**
+ * Mounted in the app shell and in the settings window; a confirmation shows in the window that
+ * had focus when it was raised (`promptHostFor`), so a command started from Settings asks there.
+ */
 export const CommandConfirmContainer = memo(function CommandConfirmContainer() {
-  const pendingConfirm = usePDMStore((s) => s.pendingCommandConfirm)
+  const host = useHostWindow()
+  useChildHostsVersion()
+  const raised = usePDMStore((s) => s.pendingCommandConfirm)
+  const pendingConfirm = raised && promptHostFor(raised) === host ? raised : null
 
   const handleConfirm = useCallback(() => {
     resolveCommandConfirm(true)
@@ -38,9 +46,9 @@ export const CommandConfirmContainer = memo(function CommandConfirmContainer() {
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [pendingConfirm, handleConfirm, handleCancel])
+    host.document.addEventListener('keydown', handleKeyDown)
+    return () => host.document.removeEventListener('keydown', handleKeyDown)
+  }, [pendingConfirm, handleConfirm, handleCancel, host])
 
   if (!pendingConfirm) return null
 

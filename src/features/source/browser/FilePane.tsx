@@ -66,6 +66,7 @@ import { useMetadataWritesInFlight } from './hooks/useMetadataWritesInFlight'
 import { useConfigCommitHandlers } from './hooks/useConfigCommitHandlers'
 import { useSorting } from './hooks/useSorting'
 import { findLocalFileByPath } from './utils/localFileLookup'
+import { settleBulkReleases } from '@/features/source/releases/forceRelease'
 import {
   childFoldersReader,
   folderCheckoutStatusReader,
@@ -1153,28 +1154,41 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
           })
 
           // A gated transition opens reviews instead of moving the file.
-          if (result.requiresReview) return 'review' as const
+          if (result.requiresReview) return { file, status: 'review' as const }
 
           if (result.success && result.file) {
             updateFileInStore(file.path, {
               pdmData: { ...file.pdmData!, ...result.file },
             })
-            return 'ok' as const
+            return { file, status: 'ok' as const }
           }
-          return 'failed' as const
+          return { file, status: 'failed' as const, errorCode: result.errorCode ?? null }
         } catch {
-          return 'failed' as const
+          return { file, status: 'failed' as const }
         }
       }),
     )
 
     for (const result of results) {
-      if (result === 'ok') succeeded++
-      else if (result === 'review') awaitingReview++
+      if (result.status === 'ok') succeeded++
+      else if (result.status === 'review') awaitingReview++
       else failed++
     }
 
     setStatusMessage('')
+
+    // Schema 509: drawings refused by the release gate are asked about once and forced with a
+    // reason; released drawings get their PDF and STEP.
+    const forced = await settleBulkReleases(
+      results,
+      newState as 'not_tracked' | 'wip' | 'in_review' | 'released' | 'obsolete',
+      user.id,
+    )
+    if (forced.length > 0) {
+      succeeded += forced.length
+      failed -= forced.length
+      onRefresh(true)
+    }
 
     if (awaitingReview > 0) {
       addToast('info', `${awaitingReview} file(s) are waiting on workflow approval`)

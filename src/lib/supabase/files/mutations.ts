@@ -832,7 +832,14 @@ export async function syncFile(
 // ============================================
 
 type LegacyStateChange =
-  | { success: boolean; file?: any; error?: string | null; requiresReview?: boolean }
+  | {
+      success: boolean
+      file?: any
+      error?: string | null
+      requiresReview?: boolean
+      /** The engine's refusal code, e.g. RELEASE_NOT_REVIEWED (schema 509), which the caller can force. */
+      errorCode?: string | null
+    }
   | 'unmanaged'
 
 /**
@@ -872,7 +879,11 @@ async function executeLegacyStateChange(
   }
 
   if (!result.success) {
-    return { success: false, error: result.error_message ?? 'Failed to change state' }
+    return {
+      success: false,
+      error: result.error_message ?? 'Failed to change state',
+      errorCode: result.error_code ?? null,
+    }
   }
 
   const { data: file } = await client.from('file').select('*').eq('id', fileId).single()
@@ -886,7 +897,13 @@ export async function updateFileMetadata(
     state?: 'not_tracked' | 'wip' | 'in_review' | 'released' | 'obsolete'
     workflow_state_id?: string
   },
-): Promise<{ success: boolean; file?: any; error?: string | null; requiresReview?: boolean }> {
+): Promise<{
+  success: boolean
+  file?: any
+  error?: string | null
+  requiresReview?: boolean
+  errorCode?: string | null
+}> {
   const client = getSupabaseClient()
 
   // Get current file to validate and log changes

@@ -42,6 +42,8 @@ import { ItemIconModal } from './components/ItemIconModal'
 import { ItemGrid } from './components/ItemGrid'
 import { ItemTable } from './components/ItemTable'
 import { useItems } from './hooks/useItems'
+import { useItemReleases } from './hooks/useItemReleases'
+import { applyItemReleases } from './hooks/itemReleases'
 
 export function ItemBrowserView() {
   const files = usePDMStore((s) => s.files)
@@ -94,13 +96,19 @@ export function ItemBrowserView() {
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const uploadTargetRef = useRef<string | null>(null)
 
-  const rows = useItems(
+  const latestRows = useItems(
     visibleFiles,
     itemDefinition,
     stages,
     organization?.serialization_settings,
     designations,
     designationAssignments,
+  )
+  // Schema 509: an item shows its released version first, the newer work in progress second.
+  const itemReleases = useItemReleases(latestRows, organization?.id ?? null)
+  const rows = useMemo(
+    () => applyItemReleases(latestRows, itemReleases, stages),
+    [latestRows, itemReleases, stages],
   )
 
   const canEditDesignation = hasPermission('system:item-designations', 'edit')

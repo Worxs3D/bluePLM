@@ -19,7 +19,11 @@
  * audit routinely finds hundreds of files that need a write and none of them checked out, so the
  * eligible count is almost always smaller than the selected count - often much smaller.
  *
- * That gap is reported before the button rather than discovered after it. A run that silently
+ * So the button closes the gap itself: ticked files nobody holds are checked out first, written, and
+ * (by default) checked back in, through the same commands a person would run - see
+ * `vaultAuditCheckoutWrite`. Files a colleague holds are still never touched.
+ *
+ * What remains of the gap is reported before the button rather than discovered after it. A run that silently
  * processed the eligible eighth of a selection and reported success would leave the admin believing
  * the vault had been brought into line, and the next scan would say otherwise with no explanation.
  *
@@ -28,9 +32,10 @@
  * yours at all, and those rows never become selectable here.
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
-import { syncMetadata } from '@/lib/commands'
+import { checkin, checkout, syncMetadata } from '@/lib/commands'
+import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 import type { VaultAuditFinding } from '@/types/vaultAudit'
@@ -41,12 +46,15 @@ import {
   type VaultAuditAvailabilityTally,
   type VaultAuditFileAvailability,
 } from './vaultAuditFileState'
+import { writeWithCheckout } from './vaultAuditCheckoutWrite'
 
 export interface VaultAuditPushEligibility {
   /** Files ticked, whether or not they can be written. */
   selected: number
   /** Of those, the ones Sync Metadata will accept: local-only, or checked out by this user. */
   eligible: LocalFile[]
+  /** Of those, the ones nobody holds. The run checks them out before writing. */
+  checkoutable: LocalFile[]
   /** How the ticked files break down, so the notice can name the two refusals apart. */
   tally: VaultAuditAvailabilityTally
 }
@@ -67,6 +75,9 @@ export interface UseVaultAuditPushResult {
   eligibility: VaultAuditPushEligibility
   running: boolean
   canRun: boolean
+  /** Check the files this run checked out back in once written. Files you already held stay out. */
+  checkInAfter: boolean
+  setCheckInAfter: (value: boolean) => void
   toggleFile: (fileId: string) => void
   setManyFiles: (fileIds: readonly string[], selected: boolean) => void
   run: () => Promise<void>
@@ -117,6 +128,8 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
   const startPush = usePDMStore((state) => state.startVaultAuditPush)
   const finishPush = usePDMStore((state) => state.finishVaultAuditPush)
 
+  const [checkInAfter, setCheckInAfter] = useState(true)
+
   const selectedFileIds = useMemo(() => new Set(push.selectedFileIds), [push.selectedFileIds])
   const writtenFileIds = useMemo(() => new Set(push.writtenFileIds), [push.writtenFileIds])
 
@@ -141,18 +154,22 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
     const files = resolveFiles(findings, loadedFiles)
     const selectedStates: VaultAuditFileAvailability[] = []
     const eligible: LocalFile[] = []
+    const checkoutable: LocalFile[] = []
 
     for (const fileId of selectedFileIds) {
       const state = availability.get(fileId)
       if (!state) continue
       selectedStates.push(state)
       const file = files.get(fileId)
-      if (state.state === 'writable' && file) eligible.push(file)
+      if (!file) continue
+      if (state.state === 'writable') eligible.push(file)
+      else if (state.state === 'not-checked-out') checkoutable.push(file)
     }
 
     return {
       selected: selectedFileIds.size,
       eligible,
+      checkoutable,
       tally: tallyAvailability(selectedStates),
     }
   }, [findings, loadedFiles, selectedFileIds, availability])
@@ -183,15 +200,38 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
   const run = useCallback(async () => {
     if (usePDMStore.getState().vaultAuditPush.running) return
 
-    const files = eligibility.eligible
-    if (files.length === 0) return
+    const { eligible, checkoutable } = eligibility
+    const userId = user?.id
+    if (!userId || eligible.length + checkoutable.length === 0) return
 
     startPush()
+    let written: string[] = []
     try {
-      // Revision is always driven by the file. Sync Metadata is per file, so a part ticked to fix
-      // its description would otherwise take the row's revision with it - a property the audit
-      // must never write back into a document.
-      await syncMetadata(files, undefined, { omitRevisionOnModels: true })
+      const outcome = await writeWithCheckout(
+        {
+          writable: eligible,
+          checkoutable,
+          userId,
+          checkInAfter,
+          checkinNote: t('vaultAudit.push.checkinNote'),
+        },
+        {
+          checkout: (files) => checkout(files),
+          // Revision is always driven by the file. Sync Metadata is per file, so a part ticked to
+          // fix its description would otherwise take the row's revision with it - a property the
+          // audit must never write back into a document.
+          syncMetadata: (files) => syncMetadata(files, undefined, { omitRevisionOnModels: true }),
+          checkin: (files) => checkin(files),
+          currentFiles: () => usePDMStore.getState().files,
+          setCheckinNote: (path, note) => usePDMStore.getState().updatePendingCheckinNote(path, note),
+        },
+      )
+      written = outcome.written
+      if (outcome.notCheckedOut.length > 0) {
+        log.warn('[VaultAudit]', 'Some files could not be checked out and were not written', {
+          count: outcome.notCheckedOut.length,
+        })
+      }
     } catch (error) {
       log.error('[VaultAudit]', 'Writing BluePLM values into files failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -201,9 +241,9 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
       // per-file outcome through the progress toast and re-offering the same batch here would
       // invite a second run over files that may already have been changed. A rescan is the honest
       // way to find out what landed, and it is one button away.
-      finishPush(files.map((file) => file.pdmData?.id).filter((id): id is string => Boolean(id)))
+      finishPush(written)
     }
-  }, [eligibility.eligible, startPush, finishPush])
+  }, [eligibility, user?.id, checkInAfter, startPush, finishPush])
 
   return {
     selectedFileIds,
@@ -212,7 +252,10 @@ export function useVaultAuditPush(findings: readonly VaultAuditFinding[]): UseVa
     availability,
     eligibility,
     running: push.running,
-    canRun: !push.running && eligibility.eligible.length > 0,
+    canRun:
+      !push.running && eligibility.eligible.length + eligibility.checkoutable.length > 0,
+    checkInAfter,
+    setCheckInAfter,
     toggleFile,
     setManyFiles,
     run,

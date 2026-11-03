@@ -88,6 +88,21 @@ export interface ItemRow {
   designationId: string | null
   // True when the designation comes from an explicit per-item override
   designationIsOverride: boolean
+  // The primary file's id: its released versions are looked up by it (5.9.0)
+  primaryFileId?: string | null
+  // Schema 509: the primary file's newest released version, shown as the item's revision and
+  // state, when it has one. Null or absent: nothing released, the row shows the latest version.
+  release?: ItemRowRelease | null
+}
+
+// The released version of an item's primary file, and the newer version in work after it.
+export interface ItemRowRelease {
+  fileVersionId: string
+  version: number
+  revision: string | null
+  forced: boolean
+  // The work-in-progress version after the release ("WIP v7"); null when the latest is released
+  wip: { version: number; revision: string | null; stateName: string | null } | null
 }
 
 // Per-item visual override (keyed by part_number, shared org-wide).

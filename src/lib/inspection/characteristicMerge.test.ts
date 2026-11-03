@@ -4,10 +4,15 @@ import { emptyRowValues } from '../supabase/files/inspectionRows'
 import type { InspectionRowInput } from '../supabase/files/inspection'
 import {
   applyCharacteristicMerge,
+  GEOMETRY_FIELDS,
+  geometryOf,
+  hasDrawingTolerance,
   inReadingOrder,
   normalizeValue,
   planCharacteristicMerge,
+  type SheetContext,
 } from './characteristicMerge'
+import type { ZoneGrid } from './zones'
 import type { ExtractedCharacteristic, ExtractedDrawingSheet } from './types'
 
 const SHEETS: ExtractedDrawingSheet[] = [
@@ -96,6 +101,7 @@ describe('planCharacteristicMerge', () => {
       minus_tolerance: '-0.10',
       source_sheet: 'Sheet1',
       source_view: 'Drawing View1',
+      tolerance_source: 'drawing',
       classification: 'Critical',
       inspection_method: 'CMM',
       operation: 'OP20',
@@ -296,5 +302,150 @@ describe('helpers', () => {
     const items = [char('b', { sheet: 'X', x: 0.2, y: 0.995 }), char('a', { sheet: 'X', x: 0.1, y: 1 })]
     // Band = 2% of 1 m: both on one line, left to right.
     expect(inReadingOrder(items, []).map((c) => c.sourceKey)).toEqual(['a', 'b'])
+  })
+})
+
+describe('sheet context: general tolerances and zones', () => {
+  const grid: ZoneGrid = {
+    rows: [
+      { label: 'A', center: 0.05 },
+      { label: 'B', center: 0.15 },
+    ],
+    columns: [
+      { label: '1', center: 0.05 },
+      { label: '2', center: 0.15 },
+    ],
+  }
+  const context: SheetContext = {
+    rules: {
+      unit: null,
+      decimal: [{ places: 2, tolerance: { value: 0.1, places: 1, text: '0.1' } }],
+      linear: null,
+      fractional: null,
+      angular: null,
+      iso2768: null,
+    },
+    grid,
+    notesRead: true,
+  }
+  const sheetContext = new Map([['Sheet1', context]])
+  const untoleranced = (key: string, over: Partial<ExtractedCharacteristic> = {}) =>
+    char(key, {
+      plusTolerance: null,
+      minusTolerance: null,
+      toleranceType: 'None',
+      x: 0.14,
+      y: 0.04,
+      ...over,
+    })
+
+  it('fills an untoleranced value from the general rules and marks it general', () => {
+    const g = geometryOf(untoleranced('k'), context, 'mm')
+    expect(g).toMatchObject({
+      plus_tolerance: '+0.10',
+      minus_tolerance: '-0.10',
+      upper_limit: '10.10',
+      lower_limit: '9.90',
+      tolerance_source: 'general',
+      zone: 'A2',
+    })
+  })
+
+  it('keeps the drawing tolerance and marks it drawing; the service zone wins over the grid', () => {
+    const g = geometryOf(char('k', { zone: 'C7', x: 0.14, y: 0.04 }), context, 'mm')
+    expect(g).toMatchObject({ plus_tolerance: '+0.10', tolerance_source: 'drawing', zone: 'C7' })
+  })
+
+  it('leaves the tolerance null with no rule for it, and with no context at all', () => {
+    expect(geometryOf(untoleranced('k', { nominal: '10.000' }), context, 'mm')).toMatchObject({
+      plus_tolerance: null,
+      tolerance_source: null,
+    })
+    expect(geometryOf(untoleranced('k'))).toMatchObject({ plus_tolerance: null, tolerance_source: null, zone: null })
+  })
+
+  it('applies the context to added and matched rows, and tolerance_source is a geometry column', () => {
+    expect(GEOMETRY_FIELDS).toContain('tolerance_source')
+    const existing = row('r', { balloon_number: '1', source_key: 'old', char_type: 'Dimension', nominal_value: '10.00' })
+    const p = planCharacteristicMerge({
+      rows: [existing],
+      extracted: [untoleranced('old'), untoleranced('new', { y: 0.16 })],
+      sheets: SHEETS,
+      highestUsedNumber: 1,
+      sheetContext,
+      units: 'mm',
+      newId: ids(),
+    })
+    expect(p.updated[0].after).toMatchObject({ tolerance_source: 'general', zone: 'A2', plus_tolerance: '+0.10' })
+    expect(p.updated[0].changedFields).toEqual(
+      expect.arrayContaining(['plus_tolerance', 'tolerance_source', 'zone']),
+    )
+    expect(p.added[0]).toMatchObject({ source_key: 'new', tolerance_source: 'general', zone: 'B2' })
+  })
+
+  it('keeps a general tolerance on a matched row when the notes were not read, and clears it when they were', () => {
+    const existing = row('r', {
+      balloon_number: '1',
+      source_key: 'k',
+      char_type: 'Dimension',
+      sub_type: 'Linear',
+      nominal_value: '10.00',
+      unit: 'mm',
+      plus_tolerance: '+0.10',
+      minus_tolerance: '-0.10',
+      upper_limit: '10.10',
+      lower_limit: '9.90',
+      tolerance_source: 'general',
+      source_sheet: 'Sheet1',
+      source_view: 'Drawing View1',
+    })
+    const run = (ctx: Map<string, SheetContext> | undefined, c = untoleranced('k')) =>
+      planCharacteristicMerge({
+        rows: [existing],
+        extracted: [c],
+        sheets: SHEETS,
+        highestUsedNumber: 1,
+        sheetContext: ctx,
+        units: 'mm',
+        newId: ids(),
+      })
+    // Older service: no context at all; or the service skipped the notes.
+    expect(run(undefined).updated.find((u) => u.rowId === 'r')?.after ?? existing).toMatchObject({
+      plus_tolerance: '+0.10',
+      tolerance_source: 'general',
+    })
+    const unread = new Map([['Sheet1', { rules: null, grid: null, notesRead: false }]])
+    expect(run(unread).updated.find((u) => u.rowId === 'r')?.after ?? existing).toMatchObject({
+      upper_limit: '10.10',
+      tolerance_source: 'general',
+    })
+    // Notes read, no rule any more: the drawing no longer gives one.
+    const readNoRules = new Map([['Sheet1', { rules: null, grid: null, notesRead: true }]])
+    expect(run(readNoRules).updated[0].after).toMatchObject({ plus_tolerance: null, tolerance_source: null })
+    // The value changed: the kept limits would be wrong, so they go.
+    expect(run(unread, untoleranced('k', { nominal: '12.00' })).updated[0].after).toMatchObject({
+      upper_limit: null,
+      tolerance_source: null,
+    })
+  })
+
+  it('treats Block, General and Unknown tolerance types as governed by the title block', () => {
+    for (const toleranceType of ['Block', 'General', 'Unknown']) {
+      const c = char('k', { toleranceType, plusTolerance: '+0.30', minusTolerance: '-0.30', x: 0.14, y: 0.04 })
+      expect(hasDrawingTolerance(c), toleranceType).toBe(false)
+      expect(geometryOf(c, context, 'mm'), toleranceType).toMatchObject({
+        plus_tolerance: '+0.10',
+        tolerance_source: 'general',
+      })
+    }
+  })
+
+  it('hasDrawingTolerance: values, fits and GTOL frames count; None, Basic and surface finish do not', () => {
+    expect(hasDrawingTolerance(char('a'))).toBe(true)
+    expect(hasDrawingTolerance(untoleranced('a', { toleranceType: 'Fit' }))).toBe(true)
+    expect(hasDrawingTolerance(untoleranced('a'))).toBe(false)
+    expect(hasDrawingTolerance(untoleranced('a', { toleranceType: 'Basic' }))).toBe(false)
+    expect(hasDrawingTolerance(untoleranced('a', { kind: 'gtol' }))).toBe(true)
+    expect(hasDrawingTolerance(untoleranced('a', { kind: 'surfaceFinish' }))).toBe(false)
   })
 })

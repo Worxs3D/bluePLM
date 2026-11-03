@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Traditional Chinese translations (繁體中文)
@@ -36,6 +37,7 @@ export const zhTW: TranslationDict = {
   ...reviewsUiStrings.zhTW,
   reviewPackage: reviewPackageStrings.zhTW,
   dbUpgrade: dbUpgradeStrings.zhTW,
+  releases: releasesStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
   checkoutDisplay: {
     you: '你',
@@ -297,6 +299,25 @@ export const zhTW: TranslationDict = {
     backupsWorking: '備份運作正常',
     needsAttention: '需要注意',
     backupFailed: '備份失敗',
+    catalogLabels: {
+      general: '一般',
+      devices: '裝置',
+      signedInDevices: '已登入裝置',
+      keyboardShortcuts: '鍵盤快速鍵',
+      company: '公司',
+      membersAndTeams: '成員與團隊',
+      moduleAccess: '模組存取權限',
+      signInMethods: '登入方式',
+      securityMonitoring: '安全性監控',
+      recoveryCodes: '復原碼',
+      fileMetadata: '檔案中繼資料',
+      fileWorkflows: '檔案工作流程',
+      itemDesignations: '項目標示',
+      export: '匯出',
+      rfq: 'RFQ',
+      solidworks: 'SOLIDWORKS',
+      developer: '開發人員',
+    },
     },
 
   preferences: {

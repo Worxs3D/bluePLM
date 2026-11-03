@@ -34,12 +34,17 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { describeVersion } from '@/lib/files/versionDisplay'
 import { AddVersionToPackageButton } from '@/features/source/reviewPackage/components/AddVersionToPackageButton'
+import { releaseOfVersionRow } from '@/features/source/releases/releaseModel'
+import { VersionReleaseBadge } from './VersionReleaseBadge'
+import { useVersionStateNames } from './useVersionStateNames'
 
 interface VersionEntry {
   id: string
   version: number
   revision: string
   state: string
+  /** The workflow state the version was checked in at. */
+  workflow_state_id?: string | null
   comment: string | null
   content_hash: string
   file_size: number
@@ -67,6 +72,9 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
   // Local (pending) version note editing
   const [editingLocalNote, setEditingLocalNote] = useState(false)
   const [localNoteValue, setLocalNoteValue] = useState('')
+
+  // Schema 509: the release columns come with the version rows (`select('*')`).
+  const stateNames = useVersionStateNames(versions.map((v) => v.workflow_state_id))
 
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -554,6 +562,13 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
                               Rolled back
                             </span>
                           )}
+                          <VersionReleaseBadge
+                            release={releaseOfVersionRow(version as unknown as Record<string, unknown>)}
+                            stateName={
+                              (version.workflow_state_id && stateNames.get(version.workflow_state_id)) ||
+                              null
+                            }
+                          />
 
                           {/* Actions */}
                           <div className="ml-auto flex items-center gap-1">

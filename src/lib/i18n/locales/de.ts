@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // German translations
@@ -39,6 +40,7 @@ export const de: TranslationDict = {
   ...reviewsUiStrings.de,
   reviewPackage: reviewPackageStrings.de,
   dbUpgrade: dbUpgradeStrings.de,
+  releases: releasesStrings.de,
   securityMonitoring: securityMonitoringStrings.de,
   checkoutDisplay: {
     you: 'Du',
@@ -314,6 +316,25 @@ export const de: TranslationDict = {
     backupsWorking: 'Sicherungen funktionieren',
     needsAttention: 'Überprüfung erforderlich',
     backupFailed: 'Sicherung fehlgeschlagen',
+    catalogLabels: {
+      general: 'Allgemein',
+      devices: 'Geräte',
+      signedInDevices: 'Angemeldete Geräte',
+      keyboardShortcuts: 'Tastenkürzel',
+      company: 'Unternehmen',
+      membersAndTeams: 'Mitglieder und Teams',
+      moduleAccess: 'Modulzugriff',
+      signInMethods: 'Anmeldemethoden',
+      securityMonitoring: 'Sicherheitsüberwachung',
+      recoveryCodes: 'Wiederherstellungscodes',
+      fileMetadata: 'Dateimetadaten',
+      fileWorkflows: 'Dateiworkflows',
+      itemDesignations: 'Artikelbezeichnungen',
+      export: 'Export',
+      rfq: 'RFQ',
+      solidworks: 'SOLIDWORKS',
+      developer: 'Entwickler',
+    },
     },
 
   preferences: {

@@ -17,7 +17,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       <select
         ref={ref}
         {...rest}
-        className={`${FIELD_CLASS} cursor-pointer appearance-none pr-9 ${size === 'sm' ? 'h-6 pl-2 text-[13px]' : 'h-7 pl-2.5'}`}
+        className={`${FIELD_CLASS} cursor-pointer appearance-none py-0 pr-9 ${size === 'sm' ? 'h-6 pl-2 text-[13px]' : 'h-7 pl-2.5'}`}
       >
         {children}
       </select>

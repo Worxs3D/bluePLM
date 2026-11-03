@@ -44,6 +44,7 @@ import {
   createPersistStorage,
   flushPersistStorageOnPageHide,
   memoizeByReference,
+  type PersistBackingStorage,
 } from './persistStorage'
 import { getStoreActionName } from './storeActionName'
 import { CURRENT_STORE_VERSION, runMigrations, getPersistedVersion } from './migrations'
@@ -83,6 +84,8 @@ import {
   createItemBrowserSlice,
   createVaultAuditSlice,
   createReviewsSlice,
+  createInspectionReportsSlice,
+  createOutputsSlice,
   createDbUpgradeSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
@@ -97,7 +100,29 @@ function getLocalStorage(): Storage | null {
   }
 }
 
-const persistStorage = createPersistStorage({ getStorage: getLocalStorage })
+/**
+ * A popped-out tab window (`?mode=tab`, TabWindow) reads the persisted state but never writes it:
+ * the main window owns it, and a second writer would put back its own stale copy of every key.
+ * The popped-out Inspection tab sends its preference changes to the main window instead.
+ */
+function getPersistBackingStorage(): PersistBackingStorage | null {
+  const storage = getLocalStorage()
+  if (!storage) return null
+  let tabWindow = false
+  try {
+    tabWindow = new URLSearchParams(window.location.search).get('mode') === 'tab'
+  } catch {
+    tabWindow = false
+  }
+  if (!tabWindow) return storage
+  return {
+    getItem: (name) => storage.getItem(name),
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  }
+}
+
+const persistStorage = createPersistStorage({ getStorage: getPersistBackingStorage })
 flushPersistStorageOnPageHide(persistStorage)
 
 /**
@@ -220,6 +245,8 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createItemBrowserSlice(...a),
       ...createVaultAuditSlice(...a),
       ...createReviewsSlice(...a),
+      ...createInspectionReportsSlice(...a),
+      ...createOutputsSlice(...a),
       ...createDbUpgradeSlice(...a),
     })),
     {
@@ -285,6 +312,10 @@ export const usePDMStore = create<PDMStoreState>()(
         itemListRowSize: state.itemListRowSize,
         itemIconSize: state.itemIconSize,
         itemColumns: state.itemColumns,
+        inspectionColumnPrefs: state.inspectionColumnPrefs,
+        inspectionShowFilters: state.inspectionShowFilters,
+        inspectionAutoSync: state.inspectionAutoSync,
+        inspectionDrawingSync: state.inspectionDrawingSync,
 
         // ═══════════════════════════════════════════════════════════════
         // Theme & Appearance
@@ -585,7 +616,9 @@ export const usePDMStore = create<PDMStoreState>()(
               .filter((c): c is (typeof currentState.columns)[number] => c !== null)
             for (const defaultCol of currentState.columns) {
               if (!persistedIds.has(defaultCol.id)) {
-                ordered.push(defaultCol)
+                // The Outputs column goes left of everything, as in the defaults.
+                if (defaultCol.id === 'outputs') ordered.unshift(defaultCol)
+                else ordered.push(defaultCol)
               }
             }
             return ordered.length > 0 ? ordered : currentState.columns

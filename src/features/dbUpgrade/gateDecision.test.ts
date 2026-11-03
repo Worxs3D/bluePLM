@@ -30,7 +30,7 @@ describe('decideGate', () => {
 
   it('lets a current app through a current database', () => {
     expect(decideGate(base)).toBe('clear')
-    expect(decideGate({ ...base, recordedVersion: 503 })).toBe('clear')
+    expect(decideGate({ ...base, recordedVersion: REQUIRED_SCHEMA_VERSION + 1 })).toBe('clear')
     expect(decideGate({ ...base, clientMinVersion: null })).toBe('clear')
   })
 

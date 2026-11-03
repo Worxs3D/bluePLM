@@ -109,7 +109,11 @@ export function SessionsSettings() {
   }
 
   if (!user) {
-    return <div className="py-12 text-center text-[14px] text-ui-fg-secondary">{t('accountSettings.notSignedIn')}</div>
+    return (
+      <div className="py-12 text-center text-[14px] text-ui-fg-secondary">
+        {t('accountSettings.notSignedIn')}
+      </div>
+    )
   }
 
   // Current device first
@@ -121,7 +125,7 @@ export function SessionsSettings() {
 
   return (
     <SettingsPage>
-      <SettingsSection title={t('accountSettings.sessions')}>
+      <SettingsSection title={t('settings.catalogLabels.signedInDevices')}>
         <SettingsGroup>
           {isLoading && sortedSessions.length === 0 ? (
             <div className="flex items-center gap-2 py-3 text-[14px] text-ui-fg-secondary">
@@ -129,7 +133,9 @@ export function SessionsSettings() {
               {t('accountSettings.loadingSessions')}
             </div>
           ) : sortedSessions.length === 0 ? (
-            <div className="py-3 text-[14px] text-ui-fg-secondary">{t('accountSettings.noActiveSessions')}</div>
+            <div className="py-3 text-[14px] text-ui-fg-secondary">
+              {t('accountSettings.noActiveSessions')}
+            </div>
           ) : (
             sortedSessions.map((session) => {
               const isCurrentDevice = session.machine_id === currentMachineId
@@ -143,7 +149,9 @@ export function SessionsSettings() {
                       {isCurrentDevice && <Badge>{t('accountSettings.thisDevice')}</Badge>}
                     </div>
                     <div className="text-[13px] text-ui-fg-secondary">
-                      <span className="capitalize">{session.platform || t('accountSettings.unknown')}</span>
+                      <span className="capitalize">
+                        {session.platform || t('accountSettings.unknown')}
+                      </span>
                       {session.app_version && <> · v{session.app_version}</>}
                       {' · '}
                       {formatLastSeen(session.last_seen_at, t)}
@@ -156,7 +164,11 @@ export function SessionsSettings() {
                     onClick={() =>
                       isCurrentDevice ? handleSignOut() : handleRemoteSignOut(session.id)
                     }
-                    title={isCurrentDevice ? t('accountSettings.signOut') : t('accountSettings.signOutDevice')}
+                    title={
+                      isCurrentDevice
+                        ? t('accountSettings.signOut')
+                        : t('accountSettings.signOutDevice')
+                    }
                   >
                     {t('accountSettings.signOut')}
                   </Button>

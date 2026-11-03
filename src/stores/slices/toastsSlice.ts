@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand'
-import type { PDMStoreState, ToastsSlice, ToastType, ToastMessage } from '../types'
+import type { PDMStoreState, ToastsSlice, ToastType, ToastMessage, ToastAction } from '../types'
 
 // ============================================================================
 // Progress Toast Update Batching
@@ -93,9 +93,11 @@ export const createToastsSlice: StateCreator<
   toasts: [],
 
   // Actions
-  addToast: (type: ToastType, message: string, duration = 5000) => {
+  addToast: (type: ToastType, message: string, duration = 5000, action?: ToastAction) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const toast: ToastMessage = { id, type, message, duration }
+    const toast: ToastMessage = action
+      ? { id, type, message, duration, action }
+      : { id, type, message, duration }
     set((state) => ({ toasts: capToasts([...state.toasts, toast]) }))
   },
 

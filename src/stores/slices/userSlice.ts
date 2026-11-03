@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand'
 import { resetLoadFilesCoordination } from '@/hooks/loadFilesCoordination'
 import { isAdminUser } from '@/lib/isAdminUser'
+import { resetOutputQueue } from '@/lib/outputs/queueReset'
 
 import type { PDMStoreState, UserSlice, ImpersonatedUser } from '../types'
 import type { User, Organization } from '../../types/pdm'
@@ -40,12 +41,16 @@ export const createUserSlice: StateCreator<
   // Actions
   setUser: (user: User | null) => set({ user, isAuthenticated: !!user }),
   setAuthInitialized: (authInitialized) => set({ authInitialized }),
-  setOrganization: (organization: Organization | null) =>
-    set({ organization, isConnecting: false }),
+  setOrganization: (organization: Organization | null) => {
+    // Another organization's output jobs must not run (or report) in this one.
+    if ((get().organization?.id ?? null) !== (organization?.id ?? null)) resetOutputQueue()
+    set({ organization, isConnecting: false })
+  },
   setOfflineMode: (isOfflineMode) => set({ isOfflineMode }),
   setIsConnecting: (isConnecting) => set({ isConnecting }),
   resetFileSessionState: () => {
     resetLoadFilesCoordination()
+    resetOutputQueue()
 
     const state = get()
     state.clearAllConfigCaches()
@@ -89,6 +94,16 @@ export const createUserSlice: StateCreator<
       loadingConfigBoms: new Set<string>(),
       expandedDrawingRefs: new Set<string>(),
       drawingRefData: new Map(),
+      drawingInspectionReports: new Map(),
+      reportVersionNumbers: new Map(),
+      versionOutputs: new Map(),
+      outputJobs: new Map(),
+      fileOutputVersions: new Map(),
+      fileOutputHeads: new Map(),
+      fileReleases: new Map(),
+      fileSectionToggles: new Set<string>(),
+      modelDrawings: new Map(),
+      modelUsedIn: new Map(),
       loadingDrawingRefs: new Set<string>(),
       expandedDrawingRefFiles: new Set<string>(),
       expandedConfigDrawings: new Set<string>(),

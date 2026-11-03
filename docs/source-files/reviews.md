@@ -80,6 +80,20 @@ own; the review says which files stayed and why.
 Turning **Use file workflows** off hides the Workflows view and every **Change State** entry, and
 the server refuses state changes. Workflows and file states are kept for when it is turned back on.
 
+## Releasing a drawing
+
+A state with **Releases the version** (Edit State; the default workflow's Released) releases the
+file's newest checked-in version when the file enters it. A drawing needs an approved review of that
+exact version first. Without one, BluePLM warns that the release process is being bypassed; you can
+still **Force release** with a reason, and the release is recorded as forced in the version
+history and the History view.
+
+A released version stays released while the file moves on: you can check out and keep working, and
+the new versions are work in progress. Its exports (PDF, STEP, IGES, STL, DXF) and inspection
+reports are frozen: nobody can replace, overwrite or delete them, and the released version cannot
+be deleted. Version history marks it **Released**, and the item browser shows the released revision
+and its exports first.
+
 ## When a reviewer can no longer answer
 
 A reviewer who leaves the organization, or loses access to the vault of a file they still owe, is

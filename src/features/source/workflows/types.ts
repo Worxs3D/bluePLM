@@ -137,10 +137,16 @@ export interface EditWorkflowDialogProps {
   onDelete: () => void
 }
 
+/**
+ * A workflow state with `releases_version` (schema 509): entering it releases the file's newest
+ * checked-in version. Optional until `src/types/supabase.ts` is regenerated against 509.
+ */
+export type ReleasableWorkflowState = WorkflowState & { releases_version?: boolean }
+
 export interface EditStateDialogProps {
-  state: WorkflowState
+  state: ReleasableWorkflowState
   onClose: () => void
-  onSave: (updates: Partial<WorkflowState>) => void
+  onSave: (updates: Partial<ReleasableWorkflowState>) => void
 }
 
 export interface EditTransitionDialogProps {

@@ -13,6 +13,8 @@ import { supabase } from '../../lib/supabase'
 import { IS_WEB_BUILD } from '../../lib/platform'
 
 const defaultColumns: ColumnConfig[] = [
+  // PDF, STEP and inspection report of each drawing (OutputsCell); first, left of the name.
+  { id: 'outputs', label: 'Outputs', width: 72, visible: true, sortable: false },
   { id: 'name', label: 'Name', width: 280, visible: true, sortable: true },
   { id: 'fileStatus', label: 'File Status', width: 100, visible: false, sortable: true },
   { id: 'checkedOutBy', label: 'Checked Out By', width: 150, visible: false, sortable: true },

@@ -157,7 +157,13 @@ namespace BluePLM.SolidWorksService.Tests
                 "persistRef", "plusTolerance", "sheet", "sourceKey", "subType", "toleranceType", "unit",
                 "upperLimit", "view", "x", "y", "zone",
             }, JsonNames(typeof(ExtractedCharacteristic)));
-            Assert.Equal(new[] { "heightM", "name", "widthM" }, JsonNames(typeof(ExtractedDrawingSheet)));
+            Assert.Equal(new[] { "heightM", "name", "notes", "notesRead", "widthM" }, JsonNames(typeof(ExtractedDrawingSheet)));
+            Assert.Equal(new[] { "height", "source", "text", "x", "y" }, JsonNames(typeof(ExtractedSheetNote)));
+            var extract = Manifest["actions"]!["extractDrawingCharacteristics"]!;
+            Assert.Equal(extract["sheetFields"]!.Values<string>()!.OrderBy(n => n, StringComparer.Ordinal).ToList(),
+                JsonNames(typeof(ExtractedDrawingSheet)));
+            Assert.Equal(extract["noteFields"]!.Values<string>()!.OrderBy(n => n, StringComparer.Ordinal).ToList(),
+                JsonNames(typeof(ExtractedSheetNote)));
             Assert.Equal(new[] { "baseKey", "reason", "sheet", "sourceKey" }, JsonNames(typeof(ExtractionSkip)));
             Assert.Equal(
                 Manifest["actions"]!["extractDrawingCharacteristics"]!["skippedFields"]!.Values<string>()!

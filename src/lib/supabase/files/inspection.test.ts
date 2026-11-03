@@ -19,6 +19,7 @@ let liveRows: Row[] = []
 let snapshotRows: Row[] = []
 let snapshotCalls: { eq: [string, unknown][]; range: [number, number] | null }[] = []
 let upserts: Row[][] = []
+let upsertErrors: ({ code: string; message: string } | null)[] = []
 
 function selectQuery(table: string) {
   const eqs: [string, unknown][] = []
@@ -74,7 +75,7 @@ vi.mock('../client', () => ({
       delete: () => deleteQuery(),
       upsert: async (payload: Row[]) => {
         upserts.push(payload)
-        return { error: null }
+        return { error: upsertErrors.shift() ?? null }
       },
     }),
   }),
@@ -85,6 +86,7 @@ beforeEach(() => {
   snapshotRows = []
   snapshotCalls = []
   upserts = []
+  upsertErrors = []
 })
 
 describe('maxNumericBalloonNumber', () => {
@@ -142,5 +144,37 @@ describe('saveInspectionRows', () => {
       source_sheet: 'Sheet1',
       source_view: 'Drawing View1',
     })
+  })
+})
+
+describe('saveInspectionRows before schema 504', () => {
+  it('writes tolerance_source, and saves again without it when the column does not exist', async () => {
+    const row: InspectionRowInput = {
+      ...emptyRowValues(0),
+      id: 'row-1',
+      source_key: 'abc123',
+      tolerance_source: 'general',
+    }
+    upsertErrors = [
+      {
+        code: 'PGRST204',
+        message: "Could not find the 'tolerance_source' column of 'inspection_characteristic' in the schema cache",
+      },
+    ]
+
+    const result = await saveInspectionRows(FILE_ID, 'org-1', USER_ID, [row])
+
+    expect(result.success).toBe(true)
+    expect(upserts).toHaveLength(2)
+    expect(upserts[0][0]).toMatchObject({ tolerance_source: 'general' })
+    expect(upserts[1][0]).not.toHaveProperty('tolerance_source')
+    expect(upserts[1][0]).toMatchObject({ id: 'row-1', source_key: 'abc123' })
+  })
+
+  it('does not retry on any other error', async () => {
+    upsertErrors = [{ code: '23505', message: 'duplicate key' }]
+    const result = await saveInspectionRows(FILE_ID, 'org-1', USER_ID, [{ ...emptyRowValues(0), id: 'r' }])
+    expect(result).toEqual({ success: false, error: 'duplicate key' })
+    expect(upserts).toHaveLength(1)
   })
 })

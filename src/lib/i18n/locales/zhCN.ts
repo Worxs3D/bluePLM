@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Simplified Chinese translations (简体中文)
@@ -36,6 +37,7 @@ export const zhCN: TranslationDict = {
   ...reviewsUiStrings.zhCN,
   reviewPackage: reviewPackageStrings.zhCN,
   dbUpgrade: dbUpgradeStrings.zhCN,
+  releases: releasesStrings.zhCN,
   securityMonitoring: securityMonitoringStrings.zhCN,
   checkoutDisplay: {
     you: '你',
@@ -297,6 +299,25 @@ export const zhCN: TranslationDict = {
     backupsWorking: '备份运行正常',
     needsAttention: '需要注意',
     backupFailed: '备份失败',
+    catalogLabels: {
+      general: '常规',
+      devices: '设备',
+      signedInDevices: '已登录设备',
+      keyboardShortcuts: '键盘快捷键',
+      company: '公司',
+      membersAndTeams: '成员和团队',
+      moduleAccess: '模块访问权限',
+      signInMethods: '登录方式',
+      securityMonitoring: '安全监控',
+      recoveryCodes: '恢复代码',
+      fileMetadata: '文件元数据',
+      fileWorkflows: '文件工作流',
+      itemDesignations: '项目标识',
+      export: '导出',
+      rfq: 'RFQ',
+      solidworks: 'SOLIDWORKS',
+      developer: '开发者',
+    },
     },
 
   preferences: {

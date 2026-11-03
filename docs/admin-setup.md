@@ -251,10 +251,16 @@ Create it in BluePLM, signed in as the admin from Step 7: open **Workflows** and
 the caller is an organization admin, so it cannot be run from the SQL Editor.
 
 This creates the standard release workflow with:
-- **WIP** (Work In Progress) - Initial state
-- **In Review** - Ready for approval
-- **Released** - Approved for use
-- **Obsolete** - Deprecated/retired
+- **WIP** (Work In Progress) - Initial state; files are edited here
+- **In Review** - A review stage: moving a drawing here puts it in a review, and an approval sends it
+  to Released
+- **Released** - Releases the version: its PDF, STEP and inspection reports are frozen, and the
+  revision goes up
+- **Obsolete** - Retired
+
+Transitions: Submit for review, Return to WIP, Release, Release directly (WIP to Released, which
+asks for a reason when the drawing has no approved review), Revise (back to WIP for the next
+revision), Obsolete and Reinstate.
 
 ## Step 10: Deploy REST API (Required for Invites)
 

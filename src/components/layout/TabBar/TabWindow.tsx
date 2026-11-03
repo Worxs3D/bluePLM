@@ -1,4 +1,4 @@
-import { useEffect, useMemo, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { usePDMStore, type SidebarView } from '@/stores/pdmStore'
 import {
@@ -8,6 +8,9 @@ import {
   useExtensionWorkspace,
 } from '@/features/nativeExtensions/ExtensionViews'
 import { CORE_VIEW_IDS } from '@/lib/nativeExtensions/registry'
+import { popoutTabOf } from '../panelPopout/panelPopout'
+import { BluePlmLogo } from '@/components/shared/BluePlmLogo'
+import { titleBarOverlayColors } from '@/lib/titleBarOverlay'
 
 // Lazy loaded views
 const FileTree = lazy(() =>
@@ -64,6 +67,9 @@ const FilePane = lazy(() =>
 const GoogleDrivePanel = lazy(() =>
   import('@/features/integrations/google-drive').then((m) => ({ default: m.GoogleDrivePanel })),
 )
+const PanelPopoutWindow = lazy(() =>
+  import('../panelPopout/PanelPopoutWindow').then((m) => ({ default: m.PanelPopoutWindow })),
+)
 
 // Loading fallback
 function ViewLoading() {
@@ -80,21 +86,49 @@ interface TabWindowProps {
   customData?: Record<string, unknown>
 }
 
-export function TabWindow({ view, title }: TabWindowProps) {
+export function TabWindow({ view, title, customData }: TabWindowProps) {
   const theme = usePDMStore((s) => s.theme)
   const extensionWorkspace = useExtensionWorkspace(view)
 
-  // Apply theme
+  // Apply theme, to the page and to the window controls Electron draws over the header
   useEffect(() => {
     let effectiveTheme = theme
     if (theme === 'system') {
       effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     }
     document.documentElement.setAttribute('data-theme', effectiveTheme)
+    window.electronAPI?.setTitleBarOverlay?.(titleBarOverlayColors(effectiveTheme))
   }, [theme])
 
+  // Room for those controls: top right on Windows and Linux, traffic lights top left on macOS.
+  const [controls, setControls] = useState({ left: 12, right: 140 })
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api) return
+    let cancelled = false
+    void Promise.all([api.getPlatform(), api.getTitleBarOverlayRect?.()]).then(
+      ([platform, rect]) => {
+        if (cancelled) return
+        if (platform === 'darwin') setControls({ left: 80, right: 12 })
+        else if (rect?.width) setControls({ left: 12, right: rect.width + 8 })
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Render the appropriate view based on the view type
+  const panel = popoutTabOf(customData)
   const renderView = useMemo(() => {
+    // A popped-out details tab: driven by the main window, not by a view (panelPopout/).
+    if (panel) {
+      return (
+        <Suspense fallback={<ViewLoading />}>
+          <PanelPopoutWindow tab={panel} />
+        </Suspense>
+      )
+    }
     // Native extension workspace (only when its extension is loaded in this window)
     if (extensionWorkspace) {
       return (
@@ -248,13 +282,17 @@ export function TabWindow({ view, title }: TabWindowProps) {
           </div>
         )
     }
-  }, [view, extensionWorkspace])
+  }, [view, extensionWorkspace, panel])
 
   return (
     <div className="h-screen flex flex-col bg-plm-bg overflow-hidden">
-      {/* Title bar area (for dragging) */}
-      <div className="h-9 bg-plm-activitybar border-b border-plm-border flex items-center px-4 titlebar-drag-region">
-        <span className="text-sm font-medium text-plm-fg titlebar-no-drag">{title}</span>
+      {/* Title bar (drag to move); Electron draws the window controls over it */}
+      <div
+        className="h-9 flex-shrink-0 bg-plm-activitybar border-b border-plm-border flex items-center gap-2 select-none titlebar-drag-region"
+        style={{ paddingLeft: controls.left, paddingRight: controls.right }}
+      >
+        <BluePlmLogo className="text-plm-accent flex-shrink-0" />
+        <span className="text-sm font-medium text-plm-fg truncate">{title}</span>
       </div>
 
       {/* Main content */}

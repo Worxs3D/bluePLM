@@ -16,6 +16,7 @@ export { ExtensionCell } from './ExtensionCell'
 export { SizeCell } from './SizeCell'
 export { ModifiedTimeCell } from './ModifiedTimeCell'
 export { CustomCell } from './CustomCell'
+export { OutputsCell } from './OutputsCell'
 
 // Types
 export type { CellRendererBaseProps, CellRendererComponent, CustomCellProps } from './types'

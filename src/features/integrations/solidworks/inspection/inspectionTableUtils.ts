@@ -54,3 +54,68 @@ export function matchesFilter(
   const text = value === null || value === undefined ? '' : String(value)
   return text.toLowerCase().includes(filterValue.toLowerCase())
 }
+
+/**
+ * Set one user-owned column on the selected rows. A field outside `bulkFields` (geometry, balloon,
+ * drawing link) changes nothing, so the drawing's values cannot be overwritten in bulk.
+ */
+export function applyBulkEdit(
+  rows: InspectionRowInput[],
+  selectedIds: ReadonlySet<string>,
+  field: keyof InspectionRowValues,
+  value: string | number | null,
+  bulkFields: readonly (keyof InspectionRowValues)[],
+): InspectionRowInput[] {
+  if (!bulkFields.includes(field) || selectedIds.size === 0) return rows
+  return rows.map((r) => (selectedIds.has(r.id) ? { ...r, [field]: value } : r))
+}
+
+/**
+ * Selection after clicking row `id` in the shown order: a plain click toggles that row, a
+ * shift-click selects the range from the last clicked row (`anchor`).
+ */
+export function toggleRowSelection(
+  selected: ReadonlySet<string>,
+  shownIds: readonly string[],
+  id: string,
+  anchor: string | null,
+  range: boolean,
+): Set<string> {
+  const next = new Set(selected)
+  const from = anchor ? shownIds.indexOf(anchor) : -1
+  const to = shownIds.indexOf(id)
+  if (range && from >= 0 && to >= 0) {
+    const [a, b] = from < to ? [from, to] : [to, from]
+    for (let i = a; i <= b; i++) next.add(shownIds[i])
+    return next
+  }
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
+/** Columns that may carry the GT marker, in the order the marker looks for one. */
+const GT_ORDER: readonly (keyof InspectionRowValues)[] = [
+  'plus_tolerance',
+  'minus_tolerance',
+  'upper_limit',
+  'lower_limit',
+]
+
+/**
+ * The one column of a row that carries the "GT" (general tolerance) marker, or null. None when the
+ * tolerance is the drawing's own, or when the Tol. Source column is shown (it says "General"
+ * itself); otherwise the first shown tolerance column holding a value, else the first one shown.
+ */
+export function generalToleranceMarkerColumn(
+  row: Pick<InspectionRowValues, 'tolerance_source' | 'plus_tolerance' | 'minus_tolerance' | 'upper_limit' | 'lower_limit'>,
+  shown: ReadonlySet<keyof InspectionRowValues>,
+): keyof InspectionRowValues | null {
+  if (row.tolerance_source !== 'general' || shown.has('tolerance_source')) return null
+  const candidates = GT_ORDER.filter((key) => shown.has(key))
+  const withValue = candidates.find((key) => {
+    const value = row[key as keyof typeof row]
+    return value !== null && value !== undefined && String(value).trim() !== ''
+  })
+  return withValue ?? candidates[0] ?? null
+}

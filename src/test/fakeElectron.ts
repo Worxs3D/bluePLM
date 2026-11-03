@@ -13,7 +13,10 @@
  */
 import { createHash } from 'node:crypto'
 
-import type { ExtractedDrawingCharacteristics, InspectionBalloonRequest } from '../lib/inspection/types'
+import type {
+  ExtractedDrawingCharacteristics,
+  InspectionBalloonRequest,
+} from '../lib/inspection/types'
 
 import { createFakeFsApi, type FakeFsOptions } from './fakeElectronFs'
 
@@ -383,7 +386,11 @@ export function createFakeElectron(
     errorCode: FAKE_SERVICE_ERROR_CODES.notADrawing,
   })
 
-  const writeScope = (doc: SwDocument, properties: Record<string, string>, configuration?: string) => {
+  const writeScope = (
+    doc: SwDocument,
+    properties: Record<string, string>,
+    configuration?: string,
+  ) => {
     if (!configuration) {
       Object.assign(doc.fileProperties, properties)
       return true
@@ -498,7 +505,9 @@ export function createFakeElectron(
         data: {
           filePath,
           configurationsProcessed: processed,
-          failedConfigurations: Object.keys(failedConfigurations).length ? failedConfigurations : null,
+          failedConfigurations: Object.keys(failedConfigurations).length
+            ? failedConfigurations
+            : null,
           propertiesSet,
           propertiesFailed: 0,
           failedProperties: null,
@@ -507,7 +516,8 @@ export function createFakeElectron(
     },
     async extractDrawingCharacteristics(filePath) {
       const replay = takeScript('extractDrawingCharacteristics')
-      if (replay) return replay as Awaited<ReturnType<SolidWorksAPI['extractDrawingCharacteristics']>>
+      if (replay)
+        return replay as Awaited<ReturnType<SolidWorksAPI['extractDrawingCharacteristics']>>
       const { document, error } = documentOf(filePath)
       if (!document) return { success: false, error }
       if (!document.drawing) return notADrawing(filePath)
@@ -521,18 +531,30 @@ export function createFakeElectron(
       if (!document.drawing) return notADrawing(filePath)
       if (entry.readonly) return readOnlyRefusal
       const keys = new Set(document.drawing.extraction.characteristics.map((c) => c.sourceKey))
-      const placed = balloons.filter((b) => keys.has(b.sourceKey))
-      const removedPrevious = document.drawing.balloons.length
-      document.drawing.balloons = placed.map((b) => ({ ...b }))
-      disk.touch(filePath)
+      const wanted = balloons.filter((b) => keys.has(b.sourceKey))
+      // Incremental, as service 1.29.0: a balloon with the same key and label is kept untouched.
+      const same = (
+        x: { sourceKey: string; label: string },
+        y: { sourceKey: string; label: string },
+      ) => x.sourceKey === y.sourceKey && x.label === y.label
+      const old = document.drawing.balloons
+      const kept = wanted.filter((b) => old.some((o) => same(o, b))).length
+      const removedPrevious = old.filter((o) => !wanted.some((b) => same(o, b))).length
+      const unchanged = kept === wanted.length && removedPrevious === 0
+      if (!unchanged) {
+        document.drawing.balloons = wanted.map((b) => ({ ...b }))
+        disk.touch(filePath)
+      }
       return {
         success: true,
         data: {
-          placed: placed.length,
+          placed: wanted.length - kept,
           missing: balloons.filter((b) => !keys.has(b.sourceKey)).map((b) => b.sourceKey),
           removedPrevious,
           keptPositions: 0,
-          saved: true,
+          kept,
+          unchanged,
+          saved: !unchanged,
         },
       }
     },
