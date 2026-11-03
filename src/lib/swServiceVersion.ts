@@ -135,6 +135,9 @@
  *                   or format, with evaluated text, sheet position, character height and source.
  *                   The app parses general tolerances and zone labels from them. Characteristics
  *                   with no zone get a second GetDrawingZone try with their sheet active
+ * - Version 1.28.0: applyInspectionBalloons makes the "BluePLM Inspection" layer visible and
+ *                   printable on every run (also an existing layer a user had hidden), so PDF
+ *                   exports of the drawing include the balloons
  *
  * When making service changes:
  * 1. Increment SERVICE_VERSION in Program.cs
@@ -144,7 +147,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.27.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.28.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -213,6 +216,8 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Review packages can be opened in SOLIDWORKS: the service rewrites the references of every assembly and drawing in a downloaded package so they point at the pinned copies inside the package instead of the vault, without needing a SOLIDWORKS seat',
   '1.27.0':
     'Extracting a drawing now also reads its title block and border: the service returns the notes of each sheet format, the notes on each sheet and the notes inside blocks, so BluePLM can apply the drawing\'s general tolerances to untoleranced dimensions and fill in zones from the border labels',
+  '1.28.0':
+    'Balloons now show up in PDFs of a drawing: each time BluePLM balloons a drawing it makes the "BluePLM Inspection" layer visible and printable, so drawing PDFs and inspection reports include the balloon numbers',
 }
 
 /**

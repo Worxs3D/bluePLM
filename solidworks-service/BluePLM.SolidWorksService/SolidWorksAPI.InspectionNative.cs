@@ -42,6 +42,11 @@ namespace BluePLM.SolidWorksService
     ///   R21 IView.GetAnnotations returns null for a drawing view with no annotations only; a view
     ///       that is lightweight (IsLightweight) or not loaded (IsModelLoaded false), or whose
     ///       GetAnnotationCount is not 0, may return null too, so its sheet is marked incomplete.
+    ///   R22 Setting ILayer.Visible and ILayer.Printable to true on the "BluePLM Inspection" layer
+    ///       (from 1.28.0, on every balloon run) takes effect, is saved with the drawing, and makes
+    ///       SaveAs PDF (drawing PDF renders, inspection reports) include the balloons. The members
+    ///       exist on the 32.1.0 interop; that SOLIDWORKS honours Printable in PDF export is not
+    ///       verified here.
     /// </summary>
     public partial class SolidWorksAPI
     {
@@ -997,6 +1002,32 @@ namespace BluePLM.SolidWorksService
             };
         }
 
+        /// <summary>
+        /// Turn the BluePLM balloon layer visible and printable (ILayer.Visible / ILayer.Printable,
+        /// checked by reflection on the interop). Returns true when either was changed. A setter
+        /// that does not take is logged, not fatal: the balloons are still placed (R22).
+        /// </summary>
+        private static bool EnsureBalloonLayerShown(LayerMgr layerMgr)
+        {
+            Layer? layer = null;
+            try { layer = layerMgr.GetLayer(InspectionNative.BalloonLayer) as Layer; } catch { }
+            if (layer == null) return false;
+            var changed = false;
+            try
+            {
+                if (!layer.Visible) { layer.Visible = true; changed = true; }
+                if (!layer.Visible) Console.Error.WriteLine($"[InspectionNative] Layer '{InspectionNative.BalloonLayer}' stayed hidden after Visible = true (R22)");
+            }
+            catch (Exception ex) { Console.Error.WriteLine($"[InspectionNative] Could not make layer '{InspectionNative.BalloonLayer}' visible: {ex.Message}"); }
+            try
+            {
+                if (!layer.Printable) { layer.Printable = true; changed = true; }
+                if (!layer.Printable) Console.Error.WriteLine($"[InspectionNative] Layer '{InspectionNative.BalloonLayer}' stayed non-printable after Printable = true (R22)");
+            }
+            catch (Exception ex) { Console.Error.WriteLine($"[InspectionNative] Could not make layer '{InspectionNative.BalloonLayer}' printable: {ex.Message}"); }
+            return changed;
+        }
+
         /// <param name="changed">Set as soon as the document is modified in memory (layer, removal or balloon).</param>
         private CommandResult PlaceBalloons(ModelDoc2 doc, string filePath, List<InspectionBalloonRequest> balloons, ref bool changed)
         {
@@ -1081,6 +1112,10 @@ namespace BluePLM.SolidWorksService
                 if (layerMgr.GetLayer(InspectionNative.BalloonLayer) == null)
                     return new CommandResult { Success = false, Error = $"Could not create the '{InspectionNative.BalloonLayer}' layer" };
             }
+            // Balloons must reach every PDF made from the drawing (drawing PDF renders, inspection
+            // reports): the layer is made visible and printable on every run, also when a user had
+            // hidden it or turned printing off (R22).
+            if (EnsureBalloonLayerShown(layerMgr)) changed = true;
 
             // 1. Record every note on the BluePLM layer (label, owner, position) so a balloon the user
             //    moved by hand is re-placed where it was, then remove them sheet by sheet (selection
