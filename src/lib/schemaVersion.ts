@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 507
+export const EXPECTED_SCHEMA_VERSION = 508
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -64,6 +64,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Inspection report types. inspection_report gains report_type (first article, production, receiving, re-inspection; none on older reports), the FAI scope, reason and baseline version, the lot, lot size, sampling plan (100 percent or a fixed sample) and sample columns, purchase order and supplier, the NCR reference, and the characteristics the report includes; all are fixed once the report is issued, and results on a typed report must be in the 5.6 format. inspection_template gains the report types it serves and the types it is the default for (one default per type per organization; archiving ends them).",
   507:
     "Deleting version outputs. drawing_pdf_render_delete() and file_version_output_delete() delete a version's drawing PDF or export (the file's vault; an administrator, or the user who generated it with explorer edit). A drawing PDF of a version in an open review is kept. The content stays in the vault bucket.",
+  508:
+    'Inspection report lineage. inspection_report gains supersedes_report_id, the report of the same drawing that a regenerated report replaces; it is fixed once the report is issued and cleared only when the replaced report is deleted.',
 }
 
 export interface SchemaVersionInfo {

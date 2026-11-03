@@ -73,10 +73,12 @@ interface InspectionReportRow {
   ncr_reference: string | null
   characteristic_ids: string[] | null
   sample_columns: number | null
+  // Schema 508.
+  supersedes_report_id: string | null
 }
 
 const REPORT_COLUMNS =
-  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at, report_type, fai_scope, fai_reason, fai_baseline_version_id, lot_number, lot_size, sampling, po_number, supplier_name, ncr_reference, characteristic_ids, sample_columns'
+  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at, report_type, fai_scope, fai_reason, fai_baseline_version_id, lot_number, lot_size, sampling, po_number, supplier_name, ncr_reference, characteristic_ids, sample_columns, supersedes_report_id'
 
 const FAI_REASON_SET: ReadonlySet<string> = new Set([
   'new_part',
@@ -209,6 +211,7 @@ export function toInspectionReport(row: InspectionReportRow): InspectionReport {
     createdAt: row.created_at,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
+    supersedesReportId: row.supersedes_report_id ?? null,
     ...toReportTypeFields(row),
   }
 }
@@ -323,6 +326,7 @@ export async function createInspectionReport(
       results: input.results ?? null,
       results_summary: input.resultsSummary ?? null,
       notes: input.notes ?? null,
+      supersedes_report_id: input.supersedesReportId ?? null,
       ...typeInsertColumns(input.type),
     })
     .select(REPORT_COLUMNS)

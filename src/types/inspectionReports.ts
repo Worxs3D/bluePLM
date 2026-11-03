@@ -205,6 +205,11 @@ export interface InspectionReport extends InspectionReportTypeFields {
   createdAt: string
   updatedBy: string | null
   updatedAt: string
+  /**
+   * The report of the same drawing this one replaces (a regeneration), schema 508. Fixed at
+   * insert; null when it replaces nothing or the replaced report was deleted.
+   */
+  supersedesReportId: string | null
 }
 
 export interface InspectionReportCreate {
@@ -233,6 +238,8 @@ export interface InspectionReportCreate {
   notes?: string | null
   /** Report type and its fields (schema 506); omitted = a report with no type. */
   type?: Partial<InspectionReportTypeFields>
+  /** The report of the same drawing this one replaces (schema 508). */
+  supersedesReportId?: string | null
 }
 
 /**

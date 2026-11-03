@@ -68,6 +68,7 @@ function report(over: Partial<InspectionReport>): InspectionReport {
     createdAt: '2026-11-01T10:00:00Z',
     updatedBy: null,
     updatedAt: '2026-11-01T10:00:00Z',
+    supersedesReportId: null,
     ...NO_REPORT_TYPE_FIELDS,
     ...over,
   }
