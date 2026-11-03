@@ -55,7 +55,14 @@ export interface RecordVersionOutputResult {
 }
 
 /** Why file_version_output_record() refused. */
-export type VersionOutputErrorCode = 'OUTPUT_EXISTS' | 'NOT_UPLOADER' | 'NO_EDIT_PERMISSION' | 'UNKNOWN'
+export type VersionOutputErrorCode =
+  | 'OUTPUT_EXISTS'
+  | 'NOT_UPLOADER'
+  | 'NO_EDIT_PERMISSION'
+  | 'NOT_GENERATOR'
+  | 'IN_REVIEW'
+  | 'NOT_FOUND'
+  | 'UNKNOWN'
 
 /** `organization.settings.outputs` (5.5.0). */
 export interface OrgOutputSettings {

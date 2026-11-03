@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 506
+export const EXPECTED_SCHEMA_VERSION = 507
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -62,6 +62,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Version outputs. file_version_output keeps the STEP, IGES, STL and DXF exports of a checked-in file version (per configuration) in the vault bucket; it follows the file's vault, clients only read it, and file_version_output_record() writes it (explorer edit, the file's vault, content the caller uploaded or can read; replacing a recorded output is for administrators). can_read_vault_object() reads output content; check_release_residue() covers the table; server backups export it. inspection_report gains sequence, the report's number within its naming scope.",
   506:
     "Inspection report types. inspection_report gains report_type (first article, production, receiving, re-inspection; none on older reports), the FAI scope, reason and baseline version, the lot, lot size, sampling plan (100 percent or a fixed sample) and sample columns, purchase order and supplier, the NCR reference, and the characteristics the report includes; all are fixed once the report is issued, and results on a typed report must be in the 5.6 format. inspection_template gains the report types it serves and the types it is the default for (one default per type per organization; archiving ends them).",
+  507:
+    "Deleting version outputs. drawing_pdf_render_delete() and file_version_output_delete() delete a version's drawing PDF or export (the file's vault; an administrator, or the user who generated it with explorer edit). A drawing PDF of a version in an open review is kept. The content stays in the vault bucket.",
 }
 
 export interface SchemaVersionInfo {

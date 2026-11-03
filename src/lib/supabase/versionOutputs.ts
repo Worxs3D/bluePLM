@@ -58,9 +58,12 @@ const ERROR_CODES: readonly VersionOutputErrorCode[] = [
   'OUTPUT_EXISTS',
   'NOT_UPLOADER',
   'NO_EDIT_PERMISSION',
+  'NOT_GENERATOR',
+  'IN_REVIEW',
+  'NOT_FOUND',
 ]
 
-/** A refused or failed file_version_output_record(); `code` is the RPC's hint. */
+/** A refused or failed output write or delete; `code` is the RPC's hint. */
 export class VersionOutputRpcError extends Error {
   readonly code: VersionOutputErrorCode
   readonly sqlState: string | null
@@ -259,5 +262,25 @@ export async function recordVersionOutput(
     replaced: r.replaced === true,
     storageHash: typeof r.storage_hash === 'string' ? r.storage_hash : input.storageHash,
     id: typeof r.id === 'string' ? r.id : null,
+  }
+}
+
+/**
+ * Delete a version's drawing PDF or export (schema 507): an administrator, or the user who
+ * generated it with explorer edit. A drawing PDF of a version in an open review is kept
+ * (`IN_REVIEW`). The content stays in the vault bucket. Throws `VersionOutputRpcError`.
+ */
+export async function deleteVersionOutput(output: Pick<VersionOutput, 'id' | 'kind'>): Promise<void> {
+  // Literal names, so rpcContract.test.ts can check each call against its SQL signature.
+  const fn = output.kind === 'pdf' ? 'drawing_pdf_render_delete' : 'file_version_output_delete'
+  const { error } =
+    output.kind === 'pdf'
+      ? await db().rpc('drawing_pdf_render_delete', { p_id: output.id })
+      : await db().rpc('file_version_output_delete', { p_id: output.id })
+  if (error) {
+    const hint = (error as { hint?: string | null }).hint ?? ''
+    const code = ERROR_CODES.find((c) => c === hint) ?? 'UNKNOWN'
+    log.warn('[VersionOutputs]', `${fn} failed`, { code, sqlState: error.code, message: error.message })
+    throw new VersionOutputRpcError(error.message, code, error.code ?? null)
   }
 }
