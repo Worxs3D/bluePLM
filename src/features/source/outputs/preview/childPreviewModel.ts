@@ -8,7 +8,8 @@
  * stays selected only while `selectedFiles` is still that array: any other selection change
  * (a click on any row, the parent included, Ctrl/Shift-click, arrow keys, Select All, a refresh
  * that renames or drops the parent) writes a new array and so deselects the child by itself.
- * No selection code has to know child rows exist.
+ * No selection code has to know child rows exist. Ctrl/Shift-click on child rows of the same parent
+ * selects several (`nextChildSelection`); the Preview shows the one clicked last.
  */
 
 import type { InspectionReport } from '@/types/inspectionReports'
@@ -33,7 +34,15 @@ export type ChildPreviewTarget =
     }
 
 export interface ChildSelection {
+  /** The row clicked last: the Preview tab shows it. */
   target: ChildPreviewTarget
+  /**
+   * Every selected row under the parent, `target` included, in list order (Ctrl/Shift-click).
+   * Absent: `target` alone.
+   */
+  targets?: readonly ChildPreviewTarget[]
+  /** Key of the row a Shift-click ranges from; absent: `target`. */
+  pivot?: string
   /** The `selectedFiles` array written when the child was selected. */
   anchor: readonly string[]
 }
@@ -41,6 +50,56 @@ export interface ChildSelection {
 /** Stable identity of a child row: `output:<id>` or `report:<id>`. */
 export function childKey(target: ChildPreviewTarget): string {
   return target.kind === 'output' ? `output:${target.output.id}` : `report:${target.report.id}`
+}
+
+/** Every selected child row (empty once the file selection has moved on). */
+export function activeChildTargets(
+  selection: ChildSelection | null,
+  selectedFiles: readonly string[],
+): readonly ChildPreviewTarget[] {
+  const target = activeChildSelection(selection, selectedFiles)
+  if (!target) return []
+  return selection?.targets ?? [target]
+}
+
+export type ChildClickMode = 'replace' | 'toggle' | 'range'
+
+/**
+ * The selection after a click on a child row: `replace` (plain click) selects it alone, `toggle`
+ * (Ctrl/Cmd) adds or removes it, `range` (Shift) selects every row of `order` from the pivot to
+ * it. `order` is the parent's selectable child rows in list order. Toggle and range only extend a
+ * selection under the same parent; otherwise they act as a plain click. Null: nothing is left
+ * selected (the parent file stays selected).
+ */
+export function nextChildSelection(
+  current: readonly ChildPreviewTarget[],
+  pivot: string | null,
+  clicked: ChildPreviewTarget,
+  mode: ChildClickMode,
+  order: readonly ChildPreviewTarget[],
+): Omit<ChildSelection, 'anchor'> | null {
+  const clickedKey = childKey(clicked)
+  const sameParent = current.length > 0 && current[0].filePath === clicked.filePath
+  const listed = order.some((c) => childKey(c) === clickedKey)
+  if (mode === 'toggle' && sameParent && listed) {
+    const has = current.some((c) => childKey(c) === clickedKey)
+    const keys = new Set(current.map(childKey))
+    if (has) keys.delete(clickedKey)
+    else keys.add(clickedKey)
+    const targets = order.filter((c) => keys.has(childKey(c)))
+    if (targets.length === 0) return null
+    const target = has ? targets[targets.length - 1] : clicked
+    return { target, targets, pivot: clickedKey }
+  }
+  if (mode === 'range' && sameParent && listed && pivot) {
+    const from = order.findIndex((c) => childKey(c) === pivot)
+    const to = order.findIndex((c) => childKey(c) === clickedKey)
+    if (from >= 0) {
+      const targets = order.slice(Math.min(from, to), Math.max(from, to) + 1)
+      return { target: clicked, targets, pivot }
+    }
+  }
+  return { target: clicked, targets: [clicked], pivot: clickedKey }
 }
 
 /** The selected child, or null once the file selection has moved on. */
@@ -53,14 +112,13 @@ export function activeChildSelection(
   return selection.target
 }
 
-/** Whether the row with this key is the selected child. */
+/** Whether the row with this key is one of the selected children. */
 export function isChildSelected(
   selection: ChildSelection | null,
   selectedFiles: readonly string[],
   key: string,
 ): boolean {
-  const target = activeChildSelection(selection, selectedFiles)
-  return target !== null && childKey(target) === key
+  return activeChildTargets(selection, selectedFiles).some((c) => childKey(c) === key)
 }
 
 /** Path of the file whose child is selected (that file's own row then shows as not selected). */

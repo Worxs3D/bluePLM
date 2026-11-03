@@ -231,7 +231,11 @@ export async function copyOutputName(file: LocalFile, output: VersionOutput): Pr
  * Delete a recorded output (an administrator, or the user who generated it), then read the
  * version's outputs again so the row becomes a "Generate" row. The content stays in the vault.
  */
-export async function deleteOutputWithToast(file: LocalFile, output: VersionOutput): Promise<boolean> {
+export async function deleteOutputWithToast(
+  file: LocalFile,
+  output: VersionOutput,
+  { quiet = false }: { quiet?: boolean } = {},
+): Promise<boolean> {
   const kind = outputKindLabel(output.kind)
   try {
     await deleteVersionOutput(output)
@@ -258,7 +262,7 @@ export async function deleteOutputWithToast(file: LocalFile, output: VersionOutp
     loadVersionOutputs([output.fileVersionId]),
     loadOutputHeads([output.fileId]),
   ]).catch((err) => log.warn('[Outputs]', 'Could not reload version outputs', { error: errorText(err) }))
-  toast('success', t('source.outputs.deleted', { kind, name: file.name }))
+  if (!quiet) toast('success', t('source.outputs.deleted', { kind, name: file.name }))
   return true
 }
 

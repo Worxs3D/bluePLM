@@ -16,11 +16,16 @@ import {
   outputReasonText,
 } from '@/features/source/outputs/outputCommands'
 import { OutputMenu } from '@/features/source/outputs/OutputMenu'
-import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
-import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
+import {
+  activeChildTargets,
+  isChildSelected,
+  type ChildPreviewTarget,
+} from '@/features/source/outputs/preview/childPreviewModel'
+import { childClickMode, clickChildRow, selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import { outputCopyName, type OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
+import { ChildSelectionMenu } from './ChildSelectionMenu'
 import { ChildChip, ChildNameCell, ChildStaleButton, ChildText, ParentMetadataText } from './ChildRowParts'
 import { isParentMetadataColumn } from './childRowStatus'
 import type { VersionOutputKind } from '@/types/versionOutputs'
@@ -31,6 +36,8 @@ interface FileOutputRowProps {
   version: number | null
   rowHeight: number
   visibleColumns: { id: string; width: number }[]
+  /** The selectable child rows under a file, in list order (Shift-click ranges). */
+  childOrder: (filePath: string) => readonly ChildPreviewTarget[]
 }
 
 function KindIcon({ kind }: { kind: VersionOutputKind }) {
@@ -74,8 +81,9 @@ export const FileOutputRow = memo(function FileOutputRow({
   version,
   rowHeight,
   visibleColumns,
+  childOrder,
 }: FileOutputRowProps) {
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; many?: readonly ChildPreviewTarget[] } | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const organization = usePDMStore((s) => s.organization)
   const kind = outputKindLabel(entry.kind)
@@ -127,7 +135,7 @@ export const FileOutputRow = memo(function FileOutputRow({
         onClick={(e) => {
           e.stopPropagation()
           if (ghost && (entry.state === 'missing' || entry.state === 'failed')) generateOutputs([file], entry.kind)
-          else if (target && e.detail < 2) selectChildRow(target)
+          else if (target && e.detail < 2) clickChildRow(target, childClickMode(e), () => childOrder(file.path))
         }}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -137,6 +145,13 @@ export const FileOutputRow = memo(function FileOutputRow({
           e.preventDefault()
           e.stopPropagation()
           if (!output) return
+          // A right-click inside a selection of several keeps it and offers what applies to all.
+          const s = usePDMStore.getState()
+          const many = selected ? activeChildTargets(s.childSelection, s.selectedFiles) : []
+          if (many.length > 1) {
+            setMenu({ x: e.clientX, y: e.clientY, many })
+            return
+          }
           if (target) selectChildRow(target, { reveal: false })
           setMenu({ x: e.clientX, y: e.clientY })
         }}
@@ -207,7 +222,10 @@ export const FileOutputRow = memo(function FileOutputRow({
           </td>
         ))}
       </tr>
-      {menu && output && (
+      {menu?.many && (
+        <ChildSelectionMenu file={file} targets={menu.many} position={menu} onClose={() => setMenu(null)} />
+      )}
+      {menu && !menu.many && output && (
         <OutputMenu
           file={file}
           output={output}

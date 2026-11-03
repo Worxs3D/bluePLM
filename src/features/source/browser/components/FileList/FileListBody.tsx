@@ -28,7 +28,8 @@ import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
 import { FileOutputRow } from './FileOutputRow'
-import { FileGenerateRow, FileSectionRow } from './FileSectionRow'
+import { childTargetsUnder } from './childRowOrder'
+import { FileSectionRow } from './FileSectionRow'
 import { useModelSectionsLoader } from './useModelSectionsLoader'
 import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
 import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
@@ -325,6 +326,17 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
       ],
     )
 
+    // Child rows read the list when clicked (Shift-click ranges) through one stable callback.
+    const rowsRef = useRef(virtualRows)
+    useEffect(() => {
+      rowsRef.current = virtualRows
+    }, [virtualRows])
+    const childOrder = useCallback(
+      (filePath: string) =>
+        childTargetsUnder(rowsRef.current, filePath, usePDMStore.getState().reportVersionNumbers),
+      [],
+    )
+
     useEffect(() => {
       onSelectableRowsChange(selectableRows)
     }, [onSelectableRowsChange, selectableRows])
@@ -352,7 +364,6 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'drawing-report-more':
           case 'file-output':
           case 'file-section':
-          case 'file-generate':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -839,6 +850,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                   versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
+                  childOrder={childOrder}
                 />
               )
             case 'file-output':
@@ -850,6 +862,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                   version={row.version}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
+                  childOrder={childOrder}
                 />
               )
             case 'file-section':
@@ -857,16 +870,6 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                 <FileSectionRow
                   key={`file-section::${row.file.path}::${row.section}`}
                   row={row}
-                  rowHeight={configBomRowHeight}
-                  visibleColumns={visibleColumns}
-                />
-              )
-            case 'file-generate':
-              return (
-                <FileGenerateRow
-                  key={`file-generate::${row.file.path}`}
-                  file={row.file}
-                  kinds={row.kinds}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
                 />

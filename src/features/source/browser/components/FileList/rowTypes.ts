@@ -67,13 +67,8 @@ export interface FileSectionVirtualRow {
   count: number | null
   isExpanded: boolean
   isLoading: boolean
-}
-
-/** "Generate…" at the end of a file's Exports: a menu of the kinds it can have (saved configuration). */
-export interface FileGenerateVirtualRow {
-  type: 'file-generate'
-  file: LocalFile
-  kinds: VersionOutputKind[]
+  /** Exports: the kinds a right-click on the header offers to generate (absent: none). */
+  generateKinds?: VersionOutputKind[]
 }
 
 /** "n more reports" after the first few of an expanded drawing. */
@@ -151,7 +146,6 @@ export type VirtualRow =
   | DrawingReportMoreVirtualRow
   | FileOutputVirtualRow
   | FileSectionVirtualRow
-  | FileGenerateVirtualRow
   | ConfigDrawingVirtualRow
   | ConfigGroupVirtualRow
   | ConfigEmptyVirtualRow

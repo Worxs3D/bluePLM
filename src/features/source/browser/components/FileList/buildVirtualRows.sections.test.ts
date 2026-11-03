@@ -254,7 +254,6 @@ describe('chevron sections', () => {
       'output:pdf',
       'output:dxf',
       'output:step',
-      'file-generate',
       'section:reports',
       'report:r1',
       'section:received',

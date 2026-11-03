@@ -596,13 +596,16 @@ export async function saveReportNextToFile(file: LocalFile, report: InspectionRe
   }
 }
 
-export async function deleteReportWithToast(report: InspectionReport): Promise<boolean> {
+export async function deleteReportWithToast(
+  report: InspectionReport,
+  { quiet = false }: { quiet?: boolean } = {},
+): Promise<boolean> {
   const { addToast } = usePDMStore.getState()
   try {
     await deleteInspectionReport(report.id)
     const list = storedReports(report.fileId)
     if (list) publishReports(report.fileId, list.filter((r) => r.id !== report.id))
-    addToast('success', t('source.inspection.rptDeleted', { number: report.reportNumber ?? '' }))
+    if (!quiet) addToast('success', t('source.inspection.rptDeleted', { number: report.reportNumber ?? '' }))
     return true
   } catch (err) {
     log.error('[InspectionReports]', 'Delete failed', { reportId: report.id, error: errorText(err) })

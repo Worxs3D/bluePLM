@@ -5,9 +5,11 @@ import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import {
   activeChildSelection,
+  activeChildTargets,
   childKey,
   childSelectionParent,
   isChildSelected,
+  nextChildSelection,
   PREVIEW_MAX_BYTES,
   previewContentOf,
   previewKindForOutput,
@@ -50,6 +52,51 @@ function report(over: Partial<InspectionReport> = {}): InspectionReport {
 
 const outputTarget = (o = output('pdf')): ChildPreviewTarget => ({ kind: 'output', filePath: PATH, fileId: 'file-1', version: 3, output: o })
 const reportTarget = (r = report()): ChildPreviewTarget => ({ kind: 'report', filePath: PATH, fileId: 'file-1', version: 3, report: r })
+
+describe('several child rows (Ctrl/Shift-click)', () => {
+  const pdf = outputTarget(output('pdf'))
+  const step = outputTarget(output('step'))
+  const r1 = reportTarget(report({ id: 'rep-1' }))
+  const r2 = reportTarget(report({ id: 'rep-2' }))
+  const order = [pdf, step, r1, r2]
+  const keys = (next: ReturnType<typeof nextChildSelection>) => next?.targets?.map(childKey) ?? null
+
+  it('Shift-click selects the range from the pivot, in list order, and keeps the pivot', () => {
+    const next = nextChildSelection([r2], childKey(r2), step, 'range', order)
+    expect(keys(next)).toEqual(['output:out-step', 'report:rep-1', 'report:rep-2'])
+    expect(next?.target).toBe(step)
+    expect(next?.pivot).toBe('report:rep-2')
+    // A second Shift-click ranges from the same pivot.
+    const again = nextChildSelection(next?.targets ?? [], next?.pivot ?? null, pdf, 'range', order)
+    expect(keys(again)).toEqual(['output:out-pdf', 'output:out-step', 'report:rep-1', 'report:rep-2'])
+  })
+
+  it('Ctrl-click adds and removes one row; removing the last leaves nothing selected', () => {
+    const added = nextChildSelection([pdf], childKey(pdf), r1, 'toggle', order)
+    expect(keys(added)).toEqual(['output:out-pdf', 'report:rep-1'])
+    expect(added?.target).toBe(r1)
+    const removed = nextChildSelection(added?.targets ?? [], added?.pivot ?? null, r1, 'toggle', order)
+    expect(keys(removed)).toEqual(['output:out-pdf'])
+    expect(removed?.target).toBe(pdf)
+    expect(nextChildSelection([pdf], childKey(pdf), pdf, 'toggle', order)).toBeNull()
+  })
+
+  it('acts as a plain click with nothing selected under the same parent', () => {
+    const other = { ...r1, filePath: 'C:\Vault\B.SLDDRW' }
+    expect(keys(nextChildSelection([other], childKey(other), step, 'range', order))).toEqual(['output:out-step'])
+    expect(keys(nextChildSelection([], null, step, 'toggle', order))).toEqual(['output:out-step'])
+  })
+
+  it('marks every selected row and the Preview follows the one clicked last', () => {
+    const anchor = [PATH]
+    const selection: ChildSelection = { target: r1, targets: [pdf, r1], anchor }
+    expect(activeChildTargets(selection, anchor)).toEqual([pdf, r1])
+    expect(isChildSelected(selection, anchor, 'output:out-pdf')).toBe(true)
+    expect(isChildSelected(selection, anchor, 'output:out-step')).toBe(false)
+    expect(activeChildSelection(selection, anchor)).toBe(r1)
+    expect(activeChildTargets(selection, [PATH])).toEqual([])
+  })
+})
 
 describe('child row selection', () => {
   it('is active only while the file selection is the array it was anchored to', () => {

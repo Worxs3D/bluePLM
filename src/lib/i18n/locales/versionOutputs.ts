@@ -92,11 +92,18 @@ export const versionOutputStrings: Record<string, string> = {
   sectionParents: 'Parents',
   sectionReports: 'Inspection reports',
   sectionReceived: 'Received inspections',
+  // Several child rows selected (Ctrl/Shift-click)
+  multiSaveNext: 'Save {{count}} next to file',
+  multiDelete: 'Delete {{count}}',
+  multiDeleteTitle: 'Delete {{count}} items',
+  multiDeleteMessage:
+    'Delete {{count}} exports and inspection reports of {{name}}? Their content stays in storage.',
+  multiDeleteSkipped: '{{count}} of the selected items cannot be deleted by you and are left as they are.',
+  multiDeleted: 'Deleted {{count}} of {{total}}',
   sectionLoading: 'Loading…',
   sectionUsedInEmpty: 'Not used in any assembly',
   sectionUsedInFailed: 'Could not read where this file is used: {{error}}',
-  generateRow: 'Generate…',
-  generateRowTitle: 'Generate an export of the latest checked-in version',
+  generateRowTitle: 'Right-click to generate an export of the latest checked-in version',
   generateMenuSaved: 'Saved configuration',
 
   // Released versions (5.9.0)

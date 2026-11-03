@@ -4,7 +4,7 @@ import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
 import type { FileOutputVersion, OutputJob } from '@/stores/slices/outputsSlice'
 import type { InspectionReport } from '@/types/inspectionReports'
 import type { VersionRelease } from '@/types/releases'
-import type { VersionedOutput, VersionOutput } from '@/types/versionOutputs'
+import type { VersionedOutput, VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import { receivedReports } from '@/features/integrations/solidworks/inspection/reports/receivedModel'
 import { fileOutputEntries } from '@/features/source/outputs/outputRowModel'
@@ -93,7 +93,7 @@ function pushSection(
   section: FileSectionId,
   count: number | null,
   toggles: ReadonlySet<string>,
-  opts: { show?: boolean; isLoading?: boolean } = {},
+  opts: { show?: boolean; isLoading?: boolean; generateKinds?: VersionOutputKind[] } = {},
 ): boolean {
   const isExpanded = fileSectionExpanded(toggles, file.path, section)
   if (count === 0 && !opts.show) return false
@@ -104,14 +104,15 @@ function pushSection(
     count,
     isExpanded,
     isLoading: opts.isLoading === true,
+    ...(opts.generateKinds ? { generateKinds: opts.generateKinds } : {}),
   })
   return isExpanded
 }
 
 /**
  * The Exports section of an expanded file: per kind the released version's export first, then a
- * newer work-in-progress one (`fileOutputEntries`), in-progress and failed rows, then
- * "Generate…" for a user who can generate. A missing kind has no row of its own: Generate… offers it.
+ * newer work-in-progress one (`fileOutputEntries`), in-progress and failed rows. For a user who can
+ * generate, a right-click on the header offers each kind; a missing kind has no row of its own.
  */
 export function appendFileOutputRows(
   rows: VirtualRow[],
@@ -136,11 +137,15 @@ export function appendFileOutputRows(
   const recorded = entries.filter((entry) => entry.output !== null).length
   const loading = outputs.heads.get(fileId) === undefined
   if (entries.length === 0 && !generate) return
-  if (!pushSection(rows, file, 'exports', loading ? null : recorded, toggles, { show: true, isLoading: loading })) return
+  const open = pushSection(rows, file, 'exports', loading ? null : recorded, toggles, {
+    show: true,
+    isLoading: loading,
+    generateKinds: generate ? kinds : undefined,
+  })
+  if (!open) return
   for (const entry of entries) {
     rows.push({ type: 'file-output', file, entry, version: entry.output?.version ?? file.pdmData?.version ?? null })
   }
-  if (generate) rows.push({ type: 'file-generate', file, kinds })
 }
 
 /**
