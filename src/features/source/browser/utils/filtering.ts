@@ -4,6 +4,7 @@
 import { isPathHidden, type HiddenFolderPaths } from '@/lib/hiddenFolders'
 import { resolveDescription, resolvePartNumber, resolveRevision } from '@/lib/metadata/overlay'
 import type { LocalFile } from '@/stores/pdmStore'
+import type { SearchScope } from '@/types/pdm'
 
 export interface FileFilter {
   search?: string
@@ -196,6 +197,24 @@ export function getFilesInFolder(files: LocalFile[], currentPath: string): Local
 
       return true
     }
+  })
+}
+
+/**
+ * The rows a search looks through. 'all-folders' is the whole vault; 'current-folder' is the
+ * current folder and everything under it (case-insensitive, either separator), or the whole
+ * vault at the root.
+ */
+export function searchPool<T extends Pick<LocalFile, 'relativePath'>>(
+  files: T[],
+  currentPath: string,
+  scope: SearchScope,
+): T[] {
+  const base = currentPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  if (scope !== 'current-folder' || !base) return files
+  return files.filter((file) => {
+    const rel = file.relativePath.replace(/\\/g, '/').toLowerCase()
+    return rel === base || rel.startsWith(base + '/')
   })
 }
 

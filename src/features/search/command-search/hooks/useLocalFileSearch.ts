@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useHiddenFolders } from '@/hooks/useHiddenFolders'
 import { isPathHidden } from '@/lib/hiddenFolders'
 import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
+import { searchPool } from '@/features/source/browser/utils/filtering'
 import type { SearchFilter, SearchScope } from '../types'
 
 /**
@@ -26,14 +27,8 @@ export function useLocalFileSearch(
 
     const term = searchTerm.toLowerCase()
 
-    const inFolder = (f: LocalFile) =>
-      currentFolder === '' ||
-      f.relativePath === currentFolder ||
-      f.relativePath.startsWith(currentFolder + '/')
-
     const visibleFiles = files.filter((f) => !isPathHidden(f.relativePath, enforcedHiddenPaths))
-    const scopedFiles =
-      searchScope === 'current-folder' ? visibleFiles.filter(inFolder) : visibleFiles
+    const scopedFiles = searchPool(visibleFiles, currentFolder, searchScope)
 
     return scopedFiles
       .filter((file: LocalFile) => {

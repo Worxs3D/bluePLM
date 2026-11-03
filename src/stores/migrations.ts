@@ -14,7 +14,7 @@ export interface StoreMigration {
 }
 
 // Current schema version - increment when adding migrations
-export const CURRENT_STORE_VERSION = 12
+export const CURRENT_STORE_VERSION = 13
 
 // In-development Quality modules that were previously nested under the
 // 'group-quality' cascade menu and are now removed from the default sidebar.
@@ -365,6 +365,13 @@ export const migrations: StoreMigration[] = [
       const { customersTab: _removed, ...rest } = state as Record<string, unknown>
       return rest
     },
+  },
+  {
+    version: 13,
+    description:
+      'Explorer search defaults to the whole vault: reset the old current-folder default, which hid item-number and description matches outside the open folder',
+    migrate: (state) =>
+      state.searchScope === 'current-folder' ? { ...state, searchScope: 'all-folders' } : state,
   },
 ]
 
