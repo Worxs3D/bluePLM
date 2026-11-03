@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 
-import { isUnknownTableError, SourceError, SupabaseBackupSource } from './source'
+import { isUnknownTableError, SourceError, SupabaseBackupSource } from './source.js'
 
 function sourceAnswering(error: { code: string; message: string }) {
   const admin = { rpc: async () => ({ data: null, error }) } as unknown as SupabaseClient
