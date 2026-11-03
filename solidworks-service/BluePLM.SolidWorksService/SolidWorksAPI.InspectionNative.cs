@@ -47,6 +47,19 @@ namespace BluePLM.SolidWorksService
     ///       SaveAs PDF (drawing PDF renders, inspection reports) include the balloons. The members
     ///       exist on the 32.1.0 interop; that SOLIDWORKS honours Printable in PDF export is not
     ///       verified here.
+    ///   R23 (1.29.0, incremental update) A balloon left in place is not affected by deleting other
+    ///       notes of the same view: DeleteSelection2 removes only the selected notes, and Select3
+    ///       with append never pulls in a kept balloon or its leader.
+    ///   R24 INote.GetText of a balloon the user restyled (size, fit, font, leader added or bent,
+    ///       attached to an edge) still returns just its label, so it is kept; a balloon whose text
+    ///       the user edited is not matched and is replaced by a new one.
+    ///   R25 The walk reports an old balloon with the same owning view name (ViewName) as the
+    ///       characteristic annotations of the view it was inserted in (R8), so a kept balloon stays matched
+    ///       after a sheet or view rename (view names compare exactly).
+    ///   R26 A run that deletes and inserts nothing and finds the layer visible and printable leaves
+    ///       a drawing the user has open without a new unsaved change: no save is called, and the
+    ///       read-only calls of the run (walk, GetText, activating the original sheet) do not set
+    ///       GetSaveFlag. Only the layer getters are read; R22 setters run only when a flag is off.
     /// </summary>
     public partial class SolidWorksAPI
     {
@@ -843,8 +856,10 @@ namespace BluePLM.SolidWorksService
         #region applyInspectionBalloons
 
         /// <summary>
-        /// Write BluePLM's numbered balloons into a drawing on the "BluePLM Inspection" layer,
-        /// replacing every balloon BluePLM placed before, then save it.
+        /// Write BluePLM's numbered balloons into a drawing on the "BluePLM Inspection" layer, then
+        /// save it. Incremental (1.29.0): a BluePLM balloon still matching a request (same label, same
+        /// view) is kept untouched, only unmatched ones are removed and only missing ones inserted;
+        /// a run that changes nothing does not save (data.unchanged).
         ///
         /// Resolves each requested key by walking the drawing's annotations and recomputing their
         /// keys exactly as extractDrawingCharacteristics does; a key the walk does not find is
@@ -1057,9 +1072,12 @@ namespace BluePLM.SolidWorksService
             }
             if (failure != null) return failure;
 
-            // Save, unless nothing changed.
+            // Save, unless nothing changed: a no-op run (Auto re-runs after every save) leaves the file untouched.
             if (!changed)
+            {
+                report.Unchanged = true;
                 return new CommandResult { Success = true, Data = report };
+            }
 
             string? saveFailure = null;
             try
@@ -1089,8 +1107,11 @@ namespace BluePLM.SolidWorksService
         }
 
         /// <summary>
-        /// The in-memory edits: layer, removal of the previous balloons, placement. Returns a failure
-        /// (and the caller discards the edits) rather than ever leaving a half-done set to be saved.
+        /// The in-memory edits, incremental (1.29.0): resolve the requested keys, plan against the
+        /// balloons already on the BluePLM layer (<see cref="InspectionNative.PlanBalloonUpdate"/>),
+        /// delete only the old balloons the plan does not keep, insert only the requests with no kept
+        /// balloon. A kept balloon is not touched, so whatever the user did to it survives. Returns a
+        /// failure (and the caller discards the edits) rather than ever leaving a half-done set to be saved.
         /// </summary>
         private CommandResult? ModifyDrawing(ModelDoc2 doc, DrawingDoc drw, LayerMgr layerMgr,
             List<InspectionBalloonRequest> balloons, AppliedInspectionBalloonsData report, ref bool changed)
@@ -1098,28 +1119,13 @@ namespace BluePLM.SolidWorksService
             var sheets = ReadInspectionSheets(drw);
             var sites = WalkAnnotationSites(doc, sheets);
 
-            // Replacing the old set needs every sheet read: a sheet the walk could not finish may hold
-            // previous balloons that would then stay next to the new ones.
+            // Updating the old set needs every sheet read: a sheet the walk could not finish may hold
+            // previous balloons that would then be duplicated or left stale.
             var incomplete = sheets.Where(s => s.Incomplete).Select(s => s.Name).ToList();
             if (incomplete.Count > 0)
                 return new CommandResult { Success = false, Error = $"Could not read every annotation on sheet(s) {string.Join(", ", incomplete)}; nothing was changed" };
 
-            if (layerMgr.GetLayer(InspectionNative.BalloonLayer) == null)
-            {
-                changed = true;
-                // COLORREF 0x00BBGGRR: blue, so BluePLM balloons are told apart from the drawing's own.
-                try { layerMgr.AddLayer(InspectionNative.BalloonLayer, "Inspection balloons placed by BluePLM", 0xFF0000, (int)swLineStyles_e.swLineCONTINUOUS, (int)swLineWeights_e.swLW_THIN); } catch { }
-                if (layerMgr.GetLayer(InspectionNative.BalloonLayer) == null)
-                    return new CommandResult { Success = false, Error = $"Could not create the '{InspectionNative.BalloonLayer}' layer" };
-            }
-            // Balloons must reach every PDF made from the drawing (drawing PDF renders, inspection
-            // reports): the layer is made visible and printable on every run, also when a user had
-            // hidden it or turned printing off (R22).
-            if (EnsureBalloonLayerShown(layerMgr)) changed = true;
-
-            // 1. Record every note on the BluePLM layer (label, owner, position) so a balloon the user
-            //    moved by hand is re-placed where it was, then remove them sheet by sheet (selection
-            //    is per active sheet). Delete only when exactly those notes, and nothing else, are selected.
+            // 1. Every note on the BluePLM layer (label, owner, position).
             var previousSites = sites
                 .Where(s => s.Type == (int)swAnnotationType_e.swNote
                             && string.Equals(s.Layer, InspectionNative.BalloonLayer, StringComparison.OrdinalIgnoreCase))
@@ -1130,8 +1136,55 @@ namespace BluePLM.SolidWorksService
                 try { label = (s.Annotation.GetSpecificAnnotation() as Note)?.GetText(); } catch { }
                 return new InspectionNative.OldBalloon { Label = label, Sheet = s.Sheet.Name, View = s.ViewName, X = s.X, Y = s.Y };
             }).ToList();
-            var previous = previousSites.GroupBy(s => s.Sheet.Name, StringComparer.OrdinalIgnoreCase);
-            foreach (var group in previous)
+
+            // 2. Resolve requested keys to annotations.
+            var byKey = new Dictionary<string, AnnotationSite>(StringComparer.Ordinal);
+            foreach (var s in sites)
+                if (s.BaseKey != null && IsCharacteristicType(s.Type) && !byKey.ContainsKey(s.BaseKey)) byKey[s.BaseKey] = s;
+
+            var groups = balloons
+                .Where(b => !string.IsNullOrWhiteSpace(b.SourceKey))
+                .GroupBy(b => InspectionNative.BaseKeyOf(b.SourceKey), StringComparer.Ordinal)
+                .ToList();
+
+            var placements = new List<(AnnotationSite site, List<InspectionBalloonRequest> items)>();
+            foreach (var g in groups)
+            {
+                var items = g.OrderBy(b => SubIndex(b.SourceKey)).ThenBy(b => b.SourceKey, StringComparer.Ordinal).ToList();
+                if (!byKey.TryGetValue(g.Key, out var site))
+                    site = ResolveByPersistRef(doc, sites, items);
+                if (site == null)
+                {
+                    report.Missing.AddRange(items.Select(b => b.SourceKey));
+                    continue;
+                }
+                placements.Add((site, items));
+            }
+
+            // 3. Plan: keep, re-place at the old position, or place new; delete what is not kept.
+            var ordered = placements.GroupBy(p => p.site.Sheet.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var targets = ordered.SelectMany(sg => sg.SelectMany(p => p.items.Select(b =>
+                new InspectionNative.BalloonTarget(b.Label, p.site.Sheet.Name, p.site.ViewName)))).ToList();
+            var plan = InspectionNative.PlanBalloonUpdate(oldBalloons, targets);
+            report.Kept = plan.Kept;
+
+            // The layer is created only when something will be inserted on it. An existing layer is
+            // made visible and printable on every run, so balloons reach every PDF made from the
+            // drawing (drawing PDF renders, inspection reports), also when a user had hidden it (R22).
+            if (plan.Inserts > 0 && layerMgr.GetLayer(InspectionNative.BalloonLayer) == null)
+            {
+                changed = true;
+                // COLORREF 0x00BBGGRR: blue, so BluePLM balloons are told apart from the drawing's own.
+                try { layerMgr.AddLayer(InspectionNative.BalloonLayer, "Inspection balloons placed by BluePLM", 0xFF0000, (int)swLineStyles_e.swLineCONTINUOUS, (int)swLineWeights_e.swLW_THIN); } catch { }
+                if (layerMgr.GetLayer(InspectionNative.BalloonLayer) == null)
+                    return new CommandResult { Success = false, Error = $"Could not create the '{InspectionNative.BalloonLayer}' layer" };
+            }
+            if (EnsureBalloonLayerShown(layerMgr)) changed = true;
+
+            // 4. Delete the old balloons the plan does not keep, sheet by sheet (selection is per
+            //    active sheet). Delete only when exactly those notes, and nothing else, are selected.
+            var toDelete = plan.Delete.Select(i => previousSites[i]).GroupBy(s => s.Sheet.Name, StringComparer.OrdinalIgnoreCase);
+            foreach (var group in toDelete)
             {
                 var expected = group.Count();
                 try { drw.ActivateSheet(group.Key); } catch { }
@@ -1158,8 +1211,8 @@ namespace BluePLM.SolidWorksService
                     return new CommandResult
                     {
                         Success = false,
-                        Error = $"Could not select exactly BluePLM's previous balloons on sheet {group.Key} " +
-                                $"({expected} found, {selected} selected); nothing was deleted there"
+                        Error = $"Could not select exactly the {expected} BluePLM balloon(s) to remove on sheet {group.Key} " +
+                                $"({selected} selected); nothing was deleted there"
                     };
                 }
 
@@ -1171,31 +1224,9 @@ namespace BluePLM.SolidWorksService
                 report.RemovedPrevious += selected;
             }
 
-            // 2. Resolve requested keys to annotations.
-            var byKey = new Dictionary<string, AnnotationSite>(StringComparer.Ordinal);
-            foreach (var s in sites)
-                if (s.BaseKey != null && IsCharacteristicType(s.Type) && !byKey.ContainsKey(s.BaseKey)) byKey[s.BaseKey] = s;
+            if (plan.Inserts == 0) return null;
 
-            var groups = balloons
-                .Where(b => !string.IsNullOrWhiteSpace(b.SourceKey))
-                .GroupBy(b => InspectionNative.BaseKeyOf(b.SourceKey), StringComparer.Ordinal)
-                .ToList();
-
-            var placements = new List<(AnnotationSite site, List<InspectionBalloonRequest> items)>();
-            foreach (var g in groups)
-            {
-                var items = g.OrderBy(b => SubIndex(b.SourceKey)).ThenBy(b => b.SourceKey, StringComparer.Ordinal).ToList();
-                if (!byKey.TryGetValue(g.Key, out var site))
-                    site = ResolveByPersistRef(doc, sites, items);
-                if (site == null)
-                {
-                    report.Missing.AddRange(items.Select(b => b.SourceKey));
-                    continue;
-                }
-                placements.Add((site, items));
-            }
-
-            // 3. Place the balloons. A balloon that cannot be placed fails the whole call.
+            // 5. Insert the requests with no kept balloon. A balloon that cannot be placed fails the whole call.
             double charHeight = 0;
             try { charHeight = doc.Extension.GetUserPreferenceTextFormat((int)swUserPreferenceTextFormat_e.swDetailingBalloonTextFormat, 0)?.CharHeight ?? 0; } catch { }
             if (charHeight <= 0)
@@ -1204,36 +1235,38 @@ namespace BluePLM.SolidWorksService
             }
             var diameter = InspectionNative.BalloonDiameter(charHeight);
 
-            if (placements.Count > 0)
-            {
-                try { layerMgr.SetCurrentLayer(InspectionNative.BalloonLayer); } catch { }
-            }
+            try { layerMgr.SetCurrentLayer(InspectionNative.BalloonLayer); } catch { }
 
-            // A request whose label matches an old balloon reuses that balloon's position.
-            var ordered = placements.GroupBy(p => p.site.Sheet.Name, StringComparer.OrdinalIgnoreCase).ToList();
-            var targets = ordered.SelectMany(sg => sg.SelectMany(p => p.items.Select(b =>
-                new InspectionNative.BalloonTarget(b.Label, p.site.Sheet.Name, p.site.ViewName)))).ToList();
-            var matches = InspectionNative.MatchOldBalloons(oldBalloons, targets);
             var targetIndex = 0;
-
             foreach (var sheetGroup in ordered)
             {
-                try { drw.ActivateSheet(sheetGroup.Key); } catch { }
+                var sheetActivated = false;
                 foreach (var (site, items) in sheetGroup)
                 {
+                    // Computed positions stay those of the full stack, so a new value of an annotation
+                    // goes where it would have gone and does not land on a kept sibling.
                     var (cx, cy) = OutwardCentre(site);
                     var positions = InspectionNative.BalloonPositions(site.X, site.Y, cx, cy, items.Count, diameter,
                         site.Sheet.WidthM, site.Sheet.HeightM);
 
                     for (var i = 0; i < items.Count; i++)
                     {
+                        var t = targetIndex++;
+                        var action = plan.Actions[t];
+                        if (action == InspectionNative.BalloonAction.Keep) continue;
+                        if (!sheetActivated)
+                        {
+                            try { drw.ActivateSheet(sheetGroup.Key); } catch { }
+                            sheetActivated = true;
+                        }
+
                         changed = true;
                         var (x, y) = positions[i];
-                        var match = matches[targetIndex++];
-                        if (match != null)
+                        if (action == InspectionNative.BalloonAction.InsertAtOld)
                         {
-                            x = oldBalloons[match.Value].X;
-                            y = oldBalloons[match.Value].Y;
+                            var old = oldBalloons[plan.OldIndex[t]!.Value];
+                            x = old.X;
+                            y = old.Y;
                             report.KeptPositions++;
                         }
                         if (!InsertBalloon(doc, drw, site, items[i].Label, x, y))

@@ -780,7 +780,7 @@ export const en: TranslationDict = {
       extractApplied: 'Table updated: {{added}} added, {{updated}} changed, {{removed}} removed',
       balloonDrawing: 'Balloon drawing',
       balloonTitle:
-        'Update the table from the drawing, then write numbered balloons for every linked row on the BluePLM Inspection layer, replacing earlier BluePLM balloons, and save the drawing.',
+        'Update the table from the drawing, then write numbered balloons for every linked row on the BluePLM Inspection layer, and save the drawing. Balloons already placed stay as you left them; only missing ones are added and ones no longer in the table are removed.',
       ballooning: 'Ballooning…',
       balloonNothing: 'No rows are linked to the drawing. Extract from the drawing first.',
       balloonApplied:
@@ -790,6 +790,11 @@ export const en: TranslationDict = {
         'Placed {{placed}} balloon(s), but the drawing could not be saved. Save it in SOLIDWORKS, then check it in.',
       balloonMissing:
         '{{count}} characteristic(s) were not found in the drawing and got no balloon.',
+      // Incremental balloon update (service 1.29.0).
+      balloonUpdated:
+        'Kept {{kept}} balloon(s), placed {{placed}}, removed {{removed}}, and saved the drawing. Check it in to share it.',
+      balloonUnchanged:
+        'The drawing already has every balloon ({{kept}} kept). Nothing was changed or saved.',
       // Change detection, Auto, filter row and pop-out (5.5.0).
       extractUpToDateTitle:
         'Up to date: the table was extracted from the drawing as it is now. Save a change to the drawing to extract again.',
@@ -797,11 +802,28 @@ export const en: TranslationDict = {
         "Up to date: the drawing already has BluePLM's balloons for the table as it is now. Save a change to the drawing to balloon again.",
       autoLabel: 'Auto',
       autoTitleOn:
-        'Auto is on: each time you save this drawing while it is checked out to you, BluePLM extracts it and re-balloons it. Click to turn it off.',
+        'Auto is on: while this drawing is checked out to you, BluePLM keeps the table and the balloons in sync with it, when you open it and each time you save it. Click to turn Auto off.',
       autoTitleOff:
-        'Auto is off. Click to extract and balloon the drawing automatically each time you save it.',
+        'Auto is off. Click to keep the table and the balloons in sync with the drawing automatically.',
       autoPaused:
         'Auto extract and balloon stopped after an error. It runs again the next time the drawing changes.',
+      // Auto status pill (5.7.0): with Auto on there is no Extract or Balloon to press.
+      autoStatusInSync: 'In sync',
+      autoStatusChecking: 'Checking…',
+      autoStatusSyncing: 'Syncing…',
+      autoStatusWaiting: 'Waiting for SOLIDWORKS',
+      autoStatusPaused: 'Auto paused',
+      autoStatusTitleInSync: 'The table and the balloons match the drawing as it is now.',
+      autoStatusTitleChecking: 'Comparing the drawing with the last extraction.',
+      autoStatusTitleSyncing: 'Extracting the drawing and placing its balloons.',
+      autoStatusTitleWaiting:
+        'The drawing changed, and Auto will bring it in sync as soon as the SOLIDWORKS service is running.',
+      autoStatusTitlePaused:
+        'Auto stopped after an error, or because the drawing has unsaved changes in SOLIDWORKS. Save it, then retry.',
+      autoRetry: 'Retry',
+      autoStart: 'Extract and balloon',
+      autoStartTitle:
+        'Read the characteristics from the drawing and balloon it. From then on Auto keeps the table and the balloons in sync each time you save the drawing.',
       filterToggle: 'Filters',
       filterShowTitle: 'Show the filter row',
       filterHideTitle: 'Hide the filter row and clear its filters',

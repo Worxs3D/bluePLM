@@ -138,6 +138,11 @@
  * - Version 1.28.0: applyInspectionBalloons makes the "BluePLM Inspection" layer visible and
  *                   printable on every run (also an existing layer a user had hidden), so PDF
  *                   exports of the drawing include the balloons
+ * - Version 1.29.0: applyInspectionBalloons updates incrementally: a BluePLM balloon whose label
+ *                   still matches a request in the same view is kept untouched (leader, size,
+ *                   attachment and position survive), only unmatched balloons are deleted and only
+ *                   missing ones inserted. data.kept counts kept balloons; data.unchanged is true
+ *                   when nothing changed, and the drawing is then not saved
  *
  * When making service changes:
  * 1. Increment SERVICE_VERSION in Program.cs
@@ -147,7 +152,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.28.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.29.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -161,14 +166,18 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
   '1.2.1': 'Use STA fallback in GetOpenDocuments for reliable COM reconnection after PLM restart',
   '1.2.2': 'Add process detection when COM connection fails',
   '1.2.3': 'Unified COM connection with caching/retry, add resetComConnection command',
-  '1.2.4': 'DM-first for file-level-only property writes (avoid SolidWorks cold start), SW fallback',
-  '1.3.0': 'Read SOLIDWORKS Inspection Bill of Characteristics from drawings (import into Inspection tab)',
+  '1.2.4':
+    'DM-first for file-level-only property writes (avoid SolidWorks cold start), SW fallback',
+  '1.3.0':
+    'Read SOLIDWORKS Inspection Bill of Characteristics from drawings (import into Inspection tab)',
   '1.3.1': 'Fix inspection characteristic ID parsing (handle double[]/int[] return types)',
   '1.3.2': 'UTF-8/ASCII-safe JSON responses so GD&T and symbol characters survive (no more "?")',
   '1.3.3': 'Decode SOLIDWORKS symbol-font (SWGDT) Private Use Area glyphs to readable GD&T text',
   '1.3.4': 'Include characteristic Type so the Type column auto-populates on import',
-  '1.4.0': 'Derive Type from SubType enum code, decode Classification labels, drop unused Key field',
-  '1.5.0': 'Experimental push: write inspection metadata (classification/method/operation/AQL/comments) back to the drawing',
+  '1.4.0':
+    'Derive Type from SubType enum code, decode Classification labels, drop unused Key field',
+  '1.5.0':
+    'Experimental push: write inspection metadata (classification/method/operation/AQL/comments) back to the drawing',
   '1.6.0': 'Push now saves the drawing after applying edits so changes persist to the file',
   '1.7.0':
     'Stop SolidWorks reopen churn: reuse already-open documents (no OpenDoc6/flicker), exports never close a doc you had open, and open-file detection fails safe during COM hiccups',
@@ -187,7 +196,7 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
   '1.14.0':
     'Metadata still reads when SolidWorks stops responding to other programs: the service falls back to the Document Manager library instead of failing, and when nothing can be read it now says the connection to SolidWorks is the problem rather than reporting a generic failure',
   '1.15.0':
-    'Writing a new property no longer needs SolidWorks open, and a file\'s references are found at last: the service was asking the Document Manager library to create properties of a type that does not exist and to search for references without ever asking it to look for references. It also now reports a refused write as a failure instead of as success, and names the real reason a file could not be opened',
+    "Writing a new property no longer needs SolidWorks open, and a file's references are found at last: the service was asking the Document Manager library to create properties of a type that does not exist and to search for references without ever asking it to look for references. It also now reports a refused write as a failure instead of as success, and names the real reason a file could not be opened",
   '1.16.0':
     'A property write that SolidWorks refuses is now reported as a failure on every path, not just the Document Manager one, and writing to a part with many configurations is a single pass over the file instead of one open-and-save per configuration',
   '1.17.0':
@@ -195,7 +204,7 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
   '1.17.1':
     'The built-in diagnostic that writes to a test file can no longer be tricked into writing somewhere else. It used to be fooled by a shortcut standing in for the test folder, by a path spelled in a form Windows does not tidy up, and by a path relative to wherever the service happened to be started from. It now refuses anything it cannot prove sits inside the test folder, and says which rule the path broke',
   '1.18.0':
-    'A read triggered by the file watcher can no longer open a document or start SolidWorks by any route, rather than being kept away from one by timing. Starting SolidWorks no longer takes ownership of an instance that was already running, so your own window cannot be hidden or closed by BluePLM. The built-in diagnostic keeps the read-only promise it makes: without --allow-write it now deletes, moves and restores nothing, it leaves hand-made .bak files alone, two of them running at once can no longer destroy each other\'s only copy, and it refuses a test folder too broad to confine anything instead of treating a whole drive as fair game',
+    "A read triggered by the file watcher can no longer open a document or start SolidWorks by any route, rather than being kept away from one by timing. Starting SolidWorks no longer takes ownership of an instance that was already running, so your own window cannot be hidden or closed by BluePLM. The built-in diagnostic keeps the read-only promise it makes: without --allow-write it now deletes, moves and restores nothing, it leaves hand-made .bak files alone, two of them running at once can no longer destroy each other's only copy, and it refuses a test folder too broad to confine anything instead of treating a whole drive as fair game",
   '1.19.0':
     'Clearing a metadata field now empties the custom property in the file instead of removing it, so a title block or note linked to that property keeps showing blank rather than breaking or falling back to the old value. The service also reports a property that exists and is empty, which it used to hide, so BluePLM can tell a field you cleared from one that was never filled in. Removing a property outright is still possible, but a caller now has to ask for it explicitly',
   '1.20.0':
@@ -215,9 +224,11 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
   '1.26.0':
     'Review packages can be opened in SOLIDWORKS: the service rewrites the references of every assembly and drawing in a downloaded package so they point at the pinned copies inside the package instead of the vault, without needing a SOLIDWORKS seat',
   '1.27.0':
-    'Extracting a drawing now also reads its title block and border: the service returns the notes of each sheet format, the notes on each sheet and the notes inside blocks, so BluePLM can apply the drawing\'s general tolerances to untoleranced dimensions and fill in zones from the border labels',
+    "Extracting a drawing now also reads its title block and border: the service returns the notes of each sheet format, the notes on each sheet and the notes inside blocks, so BluePLM can apply the drawing's general tolerances to untoleranced dimensions and fill in zones from the border labels",
   '1.28.0':
     'Balloons now show up in PDFs of a drawing: each time BluePLM balloons a drawing it makes the "BluePLM Inspection" layer visible and printable, so drawing PDFs and inspection reports include the balloon numbers',
+  '1.29.0':
+    'Running Balloon again no longer redoes the balloons you already have: a balloon whose number is still in the table stays exactly as you left it, with its leader, size and position, and only new numbers are added and removed numbers deleted. When nothing needs to change, the drawing is not touched or saved',
 }
 
 /**
@@ -245,6 +256,14 @@ export const SW_SERVICE_VERSION_RETARGET_REFERENCES = '1.26.0'
  * format, sheet and block notes, for general tolerances and zone labels). Older services omit it.
  */
 export const SW_SERVICE_VERSION_SHEET_NOTES = '1.27.0'
+
+/**
+ * First service version that updates BluePLM's balloons incrementally: matching balloons are kept
+ * as they are (position, leader, style) and a run with nothing to change does not save the drawing.
+ * The Inspection tab's Auto brings a drawing in sync when it is opened only with this service;
+ * with an older one a run would replace every balloon, so Auto waits for a change on disk.
+ */
+export const SW_SERVICE_VERSION_INCREMENTAL_BALLOONS = '1.29.0'
 
 export interface SwServiceVersionCheckResult {
   status: 'current' | 'outdated' | 'ahead' | 'incompatible' | 'unknown'

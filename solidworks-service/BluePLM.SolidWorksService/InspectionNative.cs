@@ -406,37 +406,110 @@ namespace BluePLM.SolidWorksService
         /// <summary>
         /// For each target, the index of the old balloon whose position it reuses, or null to place it
         /// at the computed position. Balloon numbers are stable, so an old balloon matches a target by
-        /// label (trimmed, exact). The first pass takes old balloons in the target annotation's own
+        /// label (normalized note text, exact). The first pass takes old balloons in the target annotation's own
         /// view; the second takes any remaining one with that label on the same sheet, first in
         /// drawing order. Each old balloon is used at most once. Positions are sheet coordinates, so
         /// a balloon on another sheet is never reused.
         /// </summary>
-        public static List<int?> MatchOldBalloons(IReadOnlyList<OldBalloon> old, IReadOnlyList<BalloonTarget> targets)
+        public static List<int?> MatchOldBalloons(IReadOnlyList<OldBalloon> old, IReadOnlyList<BalloonTarget> targets) =>
+            MatchOldBalloonsWithPass(old, targets).Select(m => m.Index).ToList();
+
+        /// <summary><see cref="MatchOldBalloons"/>, with whether each match came from the same-view pass.</summary>
+        private static List<(int? Index, bool SameView)> MatchOldBalloonsWithPass(IReadOnlyList<OldBalloon> old, IReadOnlyList<BalloonTarget> targets)
         {
-            var result = new List<int?>(new int?[targets.Count]);
+            var result = new List<(int? Index, bool SameView)>(new (int?, bool)[targets.Count]);
             var used = new bool[old.Count];
 
-            bool SameLabel(OldBalloon o, BalloonTarget t) =>
-                o.Label != null && string.Equals(o.Label.Trim(), (t.Label ?? "").Trim(), StringComparison.Ordinal)
-                && (t.Label ?? "").Trim().Length > 0;
+            bool SameLabel(OldBalloon o, BalloonTarget t)
+            {
+                var want = (t.Label ?? "").Trim();
+                return o.Label != null && want.Length > 0 && string.Equals(NormalizeNoteText(o.Label), want, StringComparison.Ordinal);
+            }
             bool SameSheet(OldBalloon o, BalloonTarget t) => string.Equals(o.Sheet, t.Sheet, StringComparison.OrdinalIgnoreCase);
             bool SameView(OldBalloon o, BalloonTarget t) => SameSheet(o, t) && string.Equals(o.View, t.View, StringComparison.Ordinal);
 
-            foreach (var pass in new Func<OldBalloon, BalloonTarget, bool>[] { SameView, SameSheet })
+            var passes = new (Func<OldBalloon, BalloonTarget, bool> Test, bool SameView)[] { (SameView, true), (SameSheet, false) };
+            foreach (var pass in passes)
             {
                 for (var t = 0; t < targets.Count; t++)
                 {
-                    if (result[t] != null) continue;
+                    if (result[t].Index != null) continue;
                     for (var o = 0; o < old.Count; o++)
                     {
-                        if (used[o] || !SameLabel(old[o], targets[t]) || !pass(old[o], targets[t])) continue;
+                        if (used[o] || !SameLabel(old[o], targets[t]) || !pass.Test(old[o], targets[t])) continue;
                         used[o] = true;
-                        result[t] = o;
+                        result[t] = (o, pass.SameView);
                         break;
                     }
                 }
             }
             return result;
+        }
+
+        /// <summary>What one balloon request does in an incremental balloon run.</summary>
+        internal enum BalloonAction
+        {
+            /// <summary>An old balloon with this label sits in the annotation's own view: left untouched.</summary>
+            Keep,
+            /// <summary>An old balloon with this label is on the sheet but in another view (the annotation
+            /// moved): that balloon is deleted and a new one inserted where it was.</summary>
+            InsertAtOld,
+            /// <summary>No old balloon with this label on the sheet: inserted at the computed position.</summary>
+            InsertComputed,
+        }
+
+        /// <summary>Result of <see cref="PlanBalloonUpdate"/>.</summary>
+        internal sealed class BalloonUpdatePlan
+        {
+            /// <summary>Per target, in target order.</summary>
+            public List<BalloonAction> Actions = new List<BalloonAction>();
+            /// <summary>Per target: the old balloon it keeps (Keep) or whose position it takes (InsertAtOld), else null.</summary>
+            public List<int?> OldIndex = new List<int?>();
+            /// <summary>Old balloons to delete, ascending: every old balloon a target does not keep.</summary>
+            public List<int> Delete = new List<int>();
+            public int Kept => Actions.Count(a => a == BalloonAction.Keep);
+            public int Inserts => Actions.Count - Kept;
+            /// <summary>True when the run deletes and inserts nothing.</summary>
+            public bool NothingToDo => Delete.Count == 0 && Inserts == 0;
+        }
+
+        /// <summary>
+        /// The incremental balloon update. Balloon numbers are stable, so an old balloon matches a
+        /// target by label (old text normalized as <see cref="NormalizeNoteText"/>, target trimmed,
+        /// exact, never empty), each old balloon at most once, in drawing order:
+        ///   1. an old balloon in the target annotation's own view is kept as it is (position, leader,
+        ///      size, style and attachment the user gave it all survive);
+        ///   2. else one on the same sheet in another view (the annotation moved to another view) is
+        ///      deleted and a new balloon is inserted at its position, so it belongs to the new view;
+        ///   3. else the target is inserted at the computed position.
+        /// Every old balloon not kept is deleted: a label no longer requested (row removed, or its
+        /// annotation gone from the drawing), a second balloon with a kept label (duplicate), a note
+        /// whose text the user changed so it is no longer a requested label, and any other note on
+        /// the BluePLM layer. A balloon on another sheet is never reused (positions are sheet
+        /// coordinates).
+        /// </summary>
+        public static BalloonUpdatePlan PlanBalloonUpdate(IReadOnlyList<OldBalloon> old, IReadOnlyList<BalloonTarget> targets)
+        {
+            var plan = new BalloonUpdatePlan();
+            var matches = MatchOldBalloonsWithPass(old, targets);
+            var kept = new bool[old.Count];
+            foreach (var (index, sameView) in matches)
+            {
+                if (index == null)
+                {
+                    plan.Actions.Add(BalloonAction.InsertComputed);
+                    plan.OldIndex.Add(null);
+                }
+                else
+                {
+                    plan.Actions.Add(sameView ? BalloonAction.Keep : BalloonAction.InsertAtOld);
+                    plan.OldIndex.Add(index);
+                    if (sameView) kept[index.Value] = true;
+                }
+            }
+            for (var o = 0; o < old.Count; o++)
+                if (!kept[o]) plan.Delete.Add(o);
+            return plan;
         }
 
         // ------------------------------------------------------------------ sheet notes
@@ -619,7 +692,13 @@ namespace BluePLM.SolidWorksService
         [JsonProperty("missing")] public List<string> Missing { get; set; } = new List<string>();
         [JsonProperty("removedPrevious")] public int RemovedPrevious { get; set; }
         [JsonProperty("saved")] public bool Saved { get; set; }
-        /// <summary>Balloons placed at the position of the old balloon with the same label (hand-moved ones stay put).</summary>
+        /// <summary>Balloons inserted at the position of an old balloon with the same label on the same
+        /// sheet whose annotation moved to another view (1.29.0; before it, every re-placed balloon).</summary>
         [JsonProperty("keptPositions")] public int KeptPositions { get; set; }
+        /// <summary>Old balloons left untouched because their label and view still match (1.29.0).</summary>
+        [JsonProperty("kept")] public int Kept { get; set; }
+        /// <summary>True when the run changed nothing (no delete, no insert, no layer change), so the
+        /// drawing was not saved (1.29.0).</summary>
+        [JsonProperty("unchanged")] public bool Unchanged { get; set; }
     }
 }

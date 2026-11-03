@@ -24,6 +24,7 @@ import {
   inspectionErrorKey,
   planBalloonRequests,
 } from './drawingCharacteristicsFlow'
+import { balloonOutcome } from './balloonOutcome'
 
 interface UseDrawingCharacteristicsOptions {
   file: LocalFile
@@ -394,34 +395,37 @@ export function useDrawingCharacteristics({
           }
           return failed()
         }
-        const { placed, missing, removedPrevious, saved, keptPositions } = result.data
+        const { placed, missing, removedPrevious, saved, keptPositions, kept, unchanged } =
+          result.data
         log.info('[InspectionTab]', 'Balloons applied', {
           placed,
           missing,
           removedPrevious,
           keptPositions,
+          kept,
+          unchanged,
           saved,
           unkeyed: plan.unkeyed,
           auto: !!options.auto,
         })
-        if (!saved) {
-          addToast('warning', t('source.inspection.balloonNotSaved', { placed }))
+        const reply = balloonOutcome(result.data, !!options.auto)
+        const showToasts = () => {
+          for (const toast of reply.toasts) {
+            addToast(
+              toast.kind,
+              toast.parts.map((p) => t(`source.inspection.${p.key}`, p.values)).join(' '),
+            )
+          }
+        }
+        if (reply.status === 'notSaved') {
+          showToasts()
           return { ok: false }
         }
-        // The service's own save is the new in-sync state, so it never reads as a change.
+        // The service's own save (or, from service 1.29.0, the untouched file when nothing had to
+        // change) is the new in-sync state, so it never reads as a change.
         const hashAfter = await sync.hashNow(scope.filePath)
         if (hashAfter && isCurrent(scope)) sync.recordBalloon(scope.fileId, hashAfter)
-        const kept =
-          keptPositions > 0
-            ? ` ${t('source.inspection.balloonKeptPositions', { count: keptPositions })}`
-            : ''
-        addToast(
-          'success',
-          `${t('source.inspection.balloonApplied', { placed, removedPrevious })}${kept}`,
-        )
-        if (missing.length > 0) {
-          addToast('warning', t('source.inspection.balloonMissing', { count: missing.length }))
-        }
+        showToasts()
         return { ok: true }
       } catch (error) {
         log.error('[InspectionTab]', 'Balloon drawing failed', { error: String(error) })
