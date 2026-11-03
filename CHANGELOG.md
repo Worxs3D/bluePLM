@@ -4,9 +4,9 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.8.0] - 2026-11-03
 
-Schema 507. No API or service change.
+Schema 507. No API or service change (API 4.2.2, SolidWorks service 1.29.0).
 
 ### Added
 
@@ -23,6 +23,14 @@ Schema 507. No API or service change.
   or a message, and Paste choices reads such a table back and sets the same choices. A line must
   name a conflict still in the scan with the values it was chosen against, and one direction per
   file; every other line is listed as skipped. Pasting only selects: Write still does the writing.
+- **Vault Audit checks out and fixes.** Writing BluePLM's values into documents no longer needs
+  the files checked out first: the button checks out the ticked files nobody holds, writes them and,
+  by default, checks them back in with a version note. Files you already had checked out stay
+  checked out, and files a colleague holds are never touched. Each file heading shows its part
+  number, description and the fields that differ.
+- **Any details tab in its own window.** Right-click Preview, Properties, Where Used, Vendors or
+  Inspection, in the right or the bottom panel, to open it in a window of its own that follows the
+  selection. The panel shows "Bring it back here" while the tab is out.
 
 ### Changed
 
