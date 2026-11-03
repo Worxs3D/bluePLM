@@ -23,20 +23,13 @@ import type { AvailableTransition } from '@/types/workflow'
 
 import { ContextSubmenu } from '../components'
 import { addFilesToReviewPackage } from '@/features/source/reviewPackage/addToPackage'
-
-/** Whether a state is a review stage (`triggers_review`): files entering it go to the review package. */
-async function isReviewStage(stateId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('workflow_state')
-    .select('is_review_stage')
-    .eq('id', stateId)
-    .maybeSingle()
-  if (error) {
-    log.warn('[Workflow]', 'Reading the target state failed', { error, stateId })
-    return false
-  }
-  return data?.is_review_stage === true
-}
+import { isReleaseRefusal } from '@/features/source/releases/releaseModel'
+import {
+  forceTransition,
+  queueReleasedDrawingOutputs,
+  readTargetState,
+  requestForcedReleaseReason,
+} from '@/features/source/releases/forceRelease'
 
 interface ChangeStateSubmenuProps {
   targetFile: LocalFile
@@ -143,6 +136,40 @@ export function ChangeStateSubmenu({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showStateSubmenu, fileId])
 
+  // The file moved into the target state: the follow-ups of a review stage or a release.
+  const afterMove = async (transition: AvailableTransition, stateName: string, forced: boolean) => {
+    addToast(
+      'success',
+      forced
+        ? t('releases.forcedDone', { name: targetFile.name })
+        : t('workflows.transition.moved', { state: stateName }),
+    )
+    onRefresh(true)
+    const target = await readTargetState(transition.to_state_id)
+    // Into a review stage: put the file in the review package so its reviewers can be chosen.
+    // The review's approval later moves it on (Settings > File Workflows).
+    if (target.isReviewStage) void addFilesToReviewPackage([targetFile])
+    // Released (schema 509): a released drawing gets its PDF and STEP, missing ones only.
+    if (target.releasesVersion) queueReleasedDrawingOutputs([targetFile])
+  }
+
+  // The release gate refused a drawing version without an approved review: warn, ask for a
+  // reason, and force the release with it (recorded as forced in the vault history).
+  const forceRefusedRelease = async (transition: AvailableTransition) => {
+    const reason = await requestForcedReleaseReason({
+      fileName: targetFile.name,
+      version: targetFile.pdmData?.version ?? null,
+      count: 1,
+    })
+    if (!reason) return
+    const outcome = await forceTransition(targetFile, transition.transition_id, reason)
+    if (!outcome.ok) {
+      addToast('error', t('releases.forceFailed', { name: targetFile.name, error: outcome.error }))
+      return
+    }
+    await afterMove(transition, outcome.result.new_state_name ?? transition.to_state_name, true)
+  }
+
   const handleTransitionClick = async (transition: AvailableTransition) => {
     if (!fileId || !user || executing) return
 
@@ -171,20 +198,17 @@ export function ChangeStateSubmenu({
       }
 
       if (result.success) {
-        addToast(
-          'success',
-          t('workflows.transition.moved', {
-            state: result.new_state_name ?? transition.to_state_name,
-          }),
-        )
-        onRefresh(true)
         onClose()
         setShowStateSubmenu(false)
-        // Into a review stage: put the file in the review package so its reviewers can be chosen.
-        // The review's approval later moves it on (Settings > File Workflows).
-        if (await isReviewStage(transition.to_state_id)) {
-          void addFilesToReviewPackage([targetFile])
-        }
+        await afterMove(transition, result.new_state_name ?? transition.to_state_name, false)
+        return
+      }
+
+      if (isReleaseRefusal(result.error_code)) {
+        // The warning opens in its own root, so the menu can close first.
+        onClose()
+        setShowStateSubmenu(false)
+        await forceRefusedRelease(transition)
         return
       }
 

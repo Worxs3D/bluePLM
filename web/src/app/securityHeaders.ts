@@ -3,8 +3,10 @@
 // name the exact Supabase host the build was pinned to (VITE_SUPABASE_URL).
 //
 // Decisions (see web/DEPLOY.md):
-// - script-src 'self' only. Vite emits one external module script and no inline code;
-//   `findInlineCode` fails the build if index.html ever gains some.
+// - script-src 'self' for code. Vite emits one external module script and no inline code;
+//   `findInlineCode` fails the build if index.html ever gains some. 'wasm-unsafe-eval' lets the
+//   page compile WebAssembly (the STEP/IGES tessellator of the output preview, a same-origin
+//   .wasm asset); it allows no JavaScript eval, which 'unsafe-eval' would.
 // - style-src 'self' without 'unsafe-inline'. Tailwind compiles to an external stylesheet, and
 //   React's `style={{...}}` writes through CSSOM (element.style), which CSP does not govern. Only a
 //   `style="..."` attribute in HTML or a `<style>` element would need 'unsafe-inline'.
@@ -69,7 +71,7 @@ export function buildContentSecurityPolicy(supabaseUrl: string, apiUrls: Readonl
   const supabase = supabaseOrigins(supabaseUrl)
   const directives: Array<[string, ...string[]]> = [
     ['default-src', "'self'"],
-    ['script-src', "'self'"],
+    ['script-src', "'self'", "'wasm-unsafe-eval'"],
     // Fonts are bundled (@fontsource/plus-jakarta-sans), so styles and fonts come from this origin only.
     ['style-src', "'self'"],
     // Google account avatars (users.avatar_url) are served from googleusercontent.com.

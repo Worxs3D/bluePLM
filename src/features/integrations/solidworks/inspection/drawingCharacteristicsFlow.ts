@@ -1,15 +1,60 @@
 /**
- * Pure parts of the Inspection tab's two native-inspection flows: the preview view model for
- * "Extract from drawing" and the request builder for "Balloon drawing". The tab and its dialogs
- * render what these return; nothing here talks to the service or the database.
+ * Pure parts of the Inspection tab's two native-inspection flows: the summary of a merge for
+ * "Extract from drawing" (counts for the toast), the sheet context the merge reads general
+ * tolerances and zones from, and the request builder for "Balloon drawing". Nothing here talks
+ * to the service or the database.
  */
 import type { InspectionRowInput, InspectionRowValues } from '@/lib/supabase'
-import type { CharacteristicMergePlan } from '@/lib/inspection/characteristicMerge'
+import type { CharacteristicMergePlan, SheetContext } from '@/lib/inspection/characteristicMerge'
+import {
+  generalToleranceFor,
+  generalTolerancesBySheet,
+  type GeneralToleranceBasis,
+} from '@/lib/inspection/generalTolerance'
+import { inferZoneGrid } from '@/lib/inspection/zones'
 import {
   INSPECTION_BALLOON_ERROR_CODES,
   type ExtractedCharacteristic,
+  type ExtractedDrawingCharacteristics,
   type InspectionBalloonRequest,
 } from '@/lib/inspection/types'
+
+/**
+ * Per sheet: the general tolerance rules (the sheet's own block, else the drawing's) and the zone
+ * grid of its border, both read from the sheet notes. Services before sheet notes give neither,
+ * and such a sheet (or one whose notes the service skipped, `notesRead: false`) is marked so the
+ * merge keeps the general tolerances rows already have.
+ */
+export function buildSheetContext(
+  data: Pick<ExtractedDrawingCharacteristics, 'sheets'>,
+): Map<string, SheetContext> {
+  const rules = generalTolerancesBySheet(data)
+  const context = new Map<string, SheetContext>()
+  for (const sheet of data.sheets) {
+    const sheetRules = rules.get(sheet.name) ?? null
+    const ownNotesRead = sheet.notes !== undefined && sheet.notesRead !== false
+    context.set(sheet.name, {
+      rules: sheetRules,
+      grid: inferZoneGrid(sheet, sheet.notes),
+      notesRead: ownNotesRead || sheetRules !== null,
+    })
+  }
+  return context
+}
+
+/** The general tolerance rule behind each characteristic that takes one, by source key. */
+export function generalBasisByKey(
+  data: Pick<ExtractedDrawingCharacteristics, 'characteristics' | 'units'>,
+  context: Map<string, SheetContext>,
+): Map<string, GeneralToleranceBasis> {
+  const out = new Map<string, GeneralToleranceBasis>()
+  for (const c of data.characteristics) {
+    const rules = context.get(c.sheet)?.rules ?? null
+    const general = generalToleranceFor(c, rules, data.units)
+    if (general) out.set(c.sourceKey, general.basis)
+  }
+  return out
+}
 
 /** One row of the preview lists. */
 export interface PreviewItem {

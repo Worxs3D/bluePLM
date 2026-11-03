@@ -19,8 +19,8 @@
  * file-driven revision in the documents it is given and will only touch a file that is local-only or
  * checked out by you. Both facts are stated before the click: the first because ticking one
  * description and changing a part number would otherwise be a surprise, and the second because a
- * vault-wide audit routinely selects hundreds of files of which almost none are checked out, and a
- * run that quietly processed the eligible eighth would leave the vault looking done.
+ * vault-wide audit routinely selects hundreds of files of which almost none are checked out. The
+ * button checks those out first, writes them and (by default) checks them back in, and says so.
  */
 
 import type { ReactNode } from 'react'
@@ -160,9 +160,40 @@ function WriteToVaultBar({
   )
 }
 
+/** "Check in when done", for the files a run checks out. Shared with the conflict bar. */
+export function CheckInAfterToggle({ push }: { push: UseVaultAuditPushResult }) {
+  if (push.eligibility.checkoutable.length === 0) return null
+  return (
+    <label
+      className="flex items-start gap-2 text-[13px] text-ui-fg-secondary cursor-pointer"
+      title={t('vaultAudit.push.checkInAfterHint')}
+    >
+      <input
+        type="checkbox"
+        checked={push.checkInAfter}
+        disabled={push.running}
+        onChange={(event) => push.setCheckInAfter(event.target.checked)}
+        className="mt-1 accent-ui-accent"
+      />
+      <span>{t('vaultAudit.push.checkInAfter')}</span>
+    </label>
+  )
+}
+
+/** The write button's label: names the checkout when the run will take one. */
+export function pushButtonLabel(push: UseVaultAuditPushResult): string {
+  if (push.running) return t('vaultAudit.push.running')
+  const total = push.eligibility.eligible.length + push.eligibility.checkoutable.length
+  if (total === 0) return t('vaultAudit.push.applyNone')
+  const files = countOf('files', total)
+  return push.eligibility.checkoutable.length > 0
+    ? t('vaultAudit.push.checkoutApplyPhrase', { files })
+    : t('vaultAudit.push.applyPhrase', { files })
+}
+
 function WriteToFileBar({ push, selection }: { push: UseVaultAuditPushResult; selection: ReactNode }) {
   const { eligibility } = push
-  const eligible = eligibility.eligible.length
+  const eligible = eligibility.eligible.length + eligibility.checkoutable.length
 
   return (
     <VaultAuditFooter
@@ -179,13 +210,16 @@ function WriteToFileBar({ push, selection }: { push: UseVaultAuditPushResult; se
               {t('vaultAudit.push.eligible', { eligible, selected: eligibility.selected })}
             </FooterMessage>
           )}
-          {/* Separate from the lock above because this one is yours to clear: these files are in
-              BluePLM and nobody is holding them, so a checkout makes them writable. */}
-          {eligibility.selected > 0 && eligibility.tally.notCheckedOut > 0 && (
+          {/* Separate from the lock above because this one the run clears: these files are in
+              BluePLM and nobody is holding them, so the button checks them out first. */}
+          {eligibility.checkoutable.length > 0 && (
             <FooterMessage icon={AlertTriangle} tone="warning">
-              {t('vaultAudit.push.notCheckedOut', { count: eligibility.tally.notCheckedOut })}
+              {push.checkInAfter
+                ? t('vaultAudit.push.willCheckOutAndIn', { count: eligibility.checkoutable.length })
+                : t('vaultAudit.push.willCheckOut', { count: eligibility.checkoutable.length })}
             </FooterMessage>
           )}
+          <CheckInAfterToggle push={push} />
           {eligibility.selected > 0 && eligibility.tally.notLoaded > 0 && (
             <FooterMessage>{t('vaultAudit.push.notLoaded', { count: eligibility.tally.notLoaded })}</FooterMessage>
           )}
@@ -201,11 +235,7 @@ function WriteToFileBar({ push, selection }: { push: UseVaultAuditPushResult; se
           onClick={() => void push.run()}
           disabled={!push.canRun}
         >
-          {push.running
-            ? t('vaultAudit.push.running')
-            : eligible > 0
-              ? t('vaultAudit.push.applyPhrase', { files: countOf('files', eligible) })
-              : t('vaultAudit.push.applyNone')}
+          {pushButtonLabel(push)}
         </Button>
       }
     />

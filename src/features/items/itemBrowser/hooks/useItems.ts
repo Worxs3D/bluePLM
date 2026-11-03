@@ -211,6 +211,7 @@ export function useItems(
         designation: resolvedDesignation.designation,
         designationId: resolvedDesignation.designationId,
         designationIsOverride: resolvedDesignation.isOverride,
+        primaryFileId: primaryPdm?.id ?? null,
       })
     }
 

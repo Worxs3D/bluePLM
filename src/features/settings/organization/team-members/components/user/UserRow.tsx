@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Badge, Button } from '@/components/core/ui'
 import { isAdminUser } from '@/lib/isAdminUser'
+import { windowOf } from '@/hooks/useHostWindow'
 import { getInitials, getEffectiveAvatarUrl } from '@/lib/utils'
 import { formatLastOnline, getTitleIcon, getTeamIcon, getRoleIcon } from '../../utils'
 import type { UserRowProps } from '../../types'
@@ -62,9 +63,7 @@ export function UserRow({
   const canManage = isAdmin
 
   return (
-    <div
-      className={`group flex items-center gap-3 ${compact ? 'py-2' : 'py-3'}`}
-    >
+    <div className={`group flex items-center gap-3 ${compact ? 'py-2' : 'py-3'}`}>
       <button
         onClick={onViewProfile}
         className="flex min-w-0 flex-1 items-center gap-3 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/60"
@@ -122,7 +121,9 @@ export function UserRow({
               setRolesDropdownOpen(false)
             }}
             className={`inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[12px] font-medium transition-colors cursor-pointer ${
-              user.job_title ? 'bg-ui-field text-ui-fg-secondary hover:text-ui-fg' : 'text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
+              user.job_title
+                ? 'bg-ui-field text-ui-fg-secondary hover:text-ui-fg'
+                : 'text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
             }`}
           >
             {user.job_title?.name || 'No title'}
@@ -150,7 +151,7 @@ export function UserRow({
                     if (btn) {
                       const rect = btn.getBoundingClientRect()
                       el.style.top = `${rect.bottom + 4}px`
-                      el.style.left = `${Math.min(rect.left, window.innerWidth - el.offsetWidth - 8)}px`
+                      el.style.left = `${Math.min(rect.left, windowOf(el).innerWidth - el.offsetWidth - 8)}px`
                     }
                   }
                 }}
@@ -322,7 +323,7 @@ export function UserRow({
                         if (btn) {
                           const rect = btn.getBoundingClientRect()
                           el.style.top = `${rect.bottom + 4}px`
-                          el.style.left = `${Math.min(rect.left, window.innerWidth - el.offsetWidth - 8)}px`
+                          el.style.left = `${Math.min(rect.left, windowOf(el).innerWidth - el.offsetWidth - 8)}px`
                         }
                       }
                     }}
@@ -475,7 +476,7 @@ export function UserRow({
                         if (btn) {
                           const rect = btn.getBoundingClientRect()
                           el.style.top = `${rect.bottom + 4}px`
-                          el.style.left = `${Math.min(rect.left, window.innerWidth - el.offsetWidth - 8)}px`
+                          el.style.left = `${Math.min(rect.left, windowOf(el).innerWidth - el.offsetWidth - 8)}px`
                         }
                       }
                     }}
@@ -630,7 +631,7 @@ export function UserRow({
                     if (btn) {
                       const rect = btn.getBoundingClientRect()
                       el.style.top = `${rect.bottom + 4}px`
-                      el.style.left = `${Math.min(rect.left, window.innerWidth - el.offsetWidth - 8)}px`
+                      el.style.left = `${Math.min(rect.left, windowOf(el).innerWidth - el.offsetWidth - 8)}px`
                     }
                   }
                 }}
@@ -759,12 +760,12 @@ export function UserRow({
                     if (btn) {
                       const rect = btn.getBoundingClientRect()
                       const menuHeight = el.offsetHeight
-                      const spaceBelow = window.innerHeight - rect.bottom
+                      const spaceBelow = windowOf(el).innerHeight - rect.bottom
                       const spaceAbove = rect.top
 
                       // Position above if not enough space below
                       if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-                        el.style.bottom = `${window.innerHeight - rect.top + 4}px`
+                        el.style.bottom = `${windowOf(el).innerHeight - rect.top + 4}px`
                         el.style.top = 'auto'
                       } else {
                         el.style.top = `${rect.bottom + 4}px`
@@ -772,7 +773,7 @@ export function UserRow({
                       }
 
                       // Align right edge with button
-                      el.style.right = `${window.innerWidth - rect.right}px`
+                      el.style.right = `${windowOf(el).innerWidth - rect.right}px`
                     }
                   }
                 }}
@@ -812,9 +813,7 @@ export function UserRow({
                     }}
                     disabled={isSimulating}
                     className={`w-full flex items-center gap-2 px-3 py-1.5 text-[14px] text-left transition-colors ${
-                      isSimulating
-                        ? 'bg-ui-selected text-ui-fg'
-                        : 'text-ui-fg hover:bg-ui-hover'
+                      isSimulating ? 'bg-ui-selected text-ui-fg' : 'text-ui-fg hover:bg-ui-hover'
                     }`}
                   >
                     <UserCog size={14} />

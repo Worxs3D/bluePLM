@@ -9,6 +9,8 @@ import { useRetryableImage } from '@/hooks/useRetryableImage'
 import { getFileIconType } from '@/lib/utils'
 import { formatFileSize } from '@/lib/utils'
 import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/DraggableTab'
+import { canPopOutTabs, isPopoutTab } from '@/components/layout/panelPopout/panelPopout'
+import { PanelTabMenu, PoppedOutPlaceholder } from '@/components/layout/panelPopout/PanelTabMenu'
 import { format } from 'date-fns'
 import { getNextSerialNumber } from '@/lib/serialization'
 import { stopIfFileNotWritable } from '@/lib/files/localReadonly'
@@ -21,10 +23,7 @@ import {
 } from '@/lib/metadata/overlay'
 import { propertiesToMirror } from '@/lib/metadata/configurationMirror'
 import { configurationScopeProperties } from '@/lib/metadata/divergence'
-import {
-  lockedDrawingFields,
-  type LockableDrawingField,
-} from '@/lib/metadata/drawingLockouts'
+import { lockedDrawingFields, type LockableDrawingField } from '@/lib/metadata/drawingLockouts'
 import { reportMetadataWrite } from '@/lib/metadata/reportMetadataWrite'
 import { writeMetadataWithVerification } from '@/lib/metadata/writeMetadataToFile'
 import { currentUnwritableFieldGroups } from '@/lib/metadata/writeOwnership'
@@ -39,6 +38,8 @@ import { hasDesktop } from '@/lib/platform'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
 import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
 import { CommentSidebar } from './components/CommentSidebar'
+import { ChildPreview } from '@/features/source/outputs/preview/ChildPreview'
+import { activeChildSelection, childKey } from '@/features/source/outputs/preview/childPreviewModel'
 import {
   FileBox,
   Layers,
@@ -177,6 +178,8 @@ export function DetailsPanel() {
     })),
   )
 
+  // An output or report row selected under the file: the Preview tab shows it instead of the file.
+  const childTarget = usePDMStore((s) => activeChildSelection(s.childSelection, s.selectedFiles))
   const selectedFileObjects = getSelectedFileObjects()
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
   const isFolder = file?.isDirectory || false
@@ -687,6 +690,17 @@ export function DetailsPanel() {
         })
       : filteredTabs
 
+  // Right-click a tab to pop it out into its own window (panelPopout/).
+  const poppedOutTabs = usePDMStore((s) => s.poppedOutTabs)
+  const [tabMenu, setTabMenu] = useState<{
+    tab: DetailsPanelTab
+    x: number
+    y: number
+  } | null>(null)
+  const closeTabMenu = useCallback(() => setTabMenu(null), [])
+  const canPopOut = canPopOutTabs()
+  const tabPoppedOut = poppedOutTabs.includes(detailsPanelTab)
+
   // Handle tab reorder within bottom panel
   const handleTabReorder = useCallback(
     (tabId: string, newIndex: number) => {
@@ -737,26 +751,48 @@ export function DetailsPanel() {
         tabCount={tabs.length}
       >
         {tabs.map((tab, index) => (
-          <DraggableTab
+          <div
             key={tab.id}
-            id={tab.id}
-            label={tab.label}
-            active={detailsPanelTab === tab.id}
-            location="bottom"
-            index={index}
-            onClick={() => setDetailsPanelTab(tab.id)}
-            onDoubleClick={() => moveTabToRight(tab.id)}
-            onDragStart={() => {}}
-            onDragEnd={() => {}}
-            onReorder={handleTabReorder}
-            tooltip={t('source.details.dragToReorder')}
-          />
+            className="contents"
+            onContextMenu={
+              canPopOut && isPopoutTab(tab.id)
+                ? (e) => {
+                    e.preventDefault()
+                    setTabMenu({ tab: tab.id, x: e.clientX, y: e.clientY })
+                  }
+                : undefined
+            }
+          >
+            <DraggableTab
+              id={tab.id}
+              label={tab.label}
+              active={detailsPanelTab === tab.id}
+              location="bottom"
+              index={index}
+              onClick={() => setDetailsPanelTab(tab.id)}
+              onDoubleClick={() => moveTabToRight(tab.id)}
+              onDragStart={() => {}}
+              onDragEnd={() => {}}
+              onReorder={handleTabReorder}
+              tooltip={t('source.details.dragToReorder')}
+            />
+          </div>
         ))}
+        {tabMenu && (
+          <PanelTabMenu
+            tab={tabMenu.tab}
+            poppedOut={poppedOutTabs.includes(tabMenu.tab)}
+            position={tabMenu}
+            onClose={closeTabMenu}
+          />
+        )}
       </TabDropZone>
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
-        {selectedFiles.length === 0 ? (
+        {tabPoppedOut ? (
+          <PoppedOutPlaceholder tab={detailsPanelTab} />
+        ) : selectedFiles.length === 0 ? (
           <div className="text-sm text-plm-fg-muted text-center py-8">
             {t('source.details.selectFileToView')}
           </div>
@@ -767,8 +803,12 @@ export function DetailsPanel() {
         ) : (
           file && (
             <>
+              {detailsPanelTab === 'preview' && childTarget && (
+                <ChildPreview key={childKey(childTarget)} target={childTarget} />
+              )}
+
               {/* Preview tab for SolidWorks files */}
-              {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
+              {detailsPanelTab === 'preview' && !childTarget && isSolidWorksFile && !isFolder && (
                 <CadFilePreview file={file} solidWorks />
               )}
 
@@ -981,8 +1021,8 @@ export function DetailsPanel() {
                             value={
                               checkoutDisplay.state === 'none'
                                 ? t('source.details.notCheckedOut')
-                                : checkoutDisplay.displayName ??
-                                  t('checkoutDisplay.ownerUnavailable')
+                                : (checkoutDisplay.displayName ??
+                                  t('checkoutDisplay.ownerUnavailable'))
                             }
                           />
                           <PropertyItem
@@ -1002,55 +1042,57 @@ export function DetailsPanel() {
                   </div>
                 ))}
 
-              {detailsPanelTab === 'preview' && !(isSolidWorksFile && !isFolder) && (
-                <div className="flex flex-col items-center justify-center h-full py-4">
-                  {!file ? (
-                    <div className="text-sm text-plm-fg-muted">
-                      {t('source.details.selectFileToPreview')}
-                    </div>
-                  ) : isPDFFile ? (
-                    // PDF preview with annotation support + comment sidebar
-                    <PdfWithComments file={file} />
-                  ) : isImageFile ? (
-                    // Image preview
-                    <div className="w-full h-full flex items-center justify-center overflow-hidden">
-                      <img
-                        src={`file://${file.path}`}
-                        alt={file.name}
-                        className="max-w-full max-h-full object-contain"
-                        onError={(e) => {
-                          ;(e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    </div>
-                  ) : isCADFile ? (
-                    <CadFilePreview file={file} />
-                  ) : (
-                    // Other files - no preview
-                    <div className="text-sm text-plm-fg-muted text-center">
-                      <Eye size={48} className="mx-auto mb-4 opacity-30" />
-                      <div>{t('source.details.noPreview')}</div>
-                      <div className="text-xs mt-2 opacity-70">
-                        {file.extension
-                          ? lowercaseExtensions !== false
-                            ? file.extension.toLowerCase()
-                            : file.extension.toUpperCase()
-                          : t('source.details.unknown')}{' '}
-                        {t('source.details.cannotPreview')}
+              {detailsPanelTab === 'preview' &&
+                !childTarget &&
+                !(isSolidWorksFile && !isFolder) && (
+                  <div className="flex flex-col items-center justify-center h-full py-4">
+                    {!file ? (
+                      <div className="text-sm text-plm-fg-muted">
+                        {t('source.details.selectFileToPreview')}
                       </div>
-                      {hasDesktop() && (
-                        <button
-                          onClick={() => window.electronAPI?.openFile(file.path)}
-                          className="btn btn-secondary gap-2 mt-4"
-                        >
-                          <ExternalLink size={14} />
-                          {t('source.details.openWithDefaultApp')}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                    ) : isPDFFile ? (
+                      // PDF preview with annotation support + comment sidebar
+                      <PdfWithComments file={file} />
+                    ) : isImageFile ? (
+                      // Image preview
+                      <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                        <img
+                          src={`file://${file.path}`}
+                          alt={file.name}
+                          className="max-w-full max-h-full object-contain"
+                          onError={(e) => {
+                            ;(e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    ) : isCADFile ? (
+                      <CadFilePreview file={file} />
+                    ) : (
+                      // Other files - no preview
+                      <div className="text-sm text-plm-fg-muted text-center">
+                        <Eye size={48} className="mx-auto mb-4 opacity-30" />
+                        <div>{t('source.details.noPreview')}</div>
+                        <div className="text-xs mt-2 opacity-70">
+                          {file.extension
+                            ? lowercaseExtensions !== false
+                              ? file.extension.toLowerCase()
+                              : file.extension.toUpperCase()
+                            : t('source.details.unknown')}{' '}
+                          {t('source.details.cannotPreview')}
+                        </div>
+                        {hasDesktop() && (
+                          <button
+                            onClick={() => window.electronAPI?.openFile(file.path)}
+                            className="btn btn-secondary gap-2 mt-4"
+                          >
+                            <ExternalLink size={14} />
+                            {t('source.details.openWithDefaultApp')}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {detailsPanelTab === 'whereused' && <WhereUsedTab file={file} />}
 

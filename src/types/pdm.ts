@@ -1,5 +1,7 @@
 // PDM Types for SolidWorks and CAD file management
 
+import type { OrgOutputSettings } from './versionOutputs'
+
 export interface CheckoutUserProfile {
   id: string
   email: string
@@ -721,6 +723,30 @@ export interface OrgSettings {
    * pipeline (release.yml migrate-db) applies them before publishing, and the app does not.
    */
   schema_upgrades?: 'in_app' | 'release'
+  /** Version outputs (5.5.0): auto-generation at check-in; read through `autoOutputSettings`. */
+  outputs?: OrgOutputSettings
+  /** Inspection report naming (5.5.0); read through `reportNamingFromSettings` (defaults applied). */
+  inspection_reports?: InspectionReportOrgSettings
+}
+
+/** `organization.settings.inspection_reports`: report number pattern, where `{n}` counts, logo. */
+export interface InspectionReportOrgSettings {
+  /**
+   * Tokens `{partNumber} {rev} {version} {drawing} {type} {date} {n}`; default
+   * `{partNumber}_Rev{rev}_{type}{n}` (5.6.0; 5.5.0's was `{partNumber}_Rev{rev}_IRv{n}`).
+   */
+  number_pattern?: string
+  /** `drawing` (default): `{n}` counts every report of the drawing; `revision`: restarts per revision. */
+  sequence_scope?: 'drawing' | 'revision'
+  /** Put the organization logo on reports (default true). */
+  include_logo?: boolean
+  /**
+   * Characteristics a production or receiving report includes when none are chosen (5.6.0):
+   * `classified` (default: critical, major and key ones) or `all`.
+   */
+  lot_characteristics?: 'classified' | 'all'
+  /** Parts measured per characteristic in a production or receiving report generated without options (default 5). */
+  default_sample_size?: number
 }
 
 /**

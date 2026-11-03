@@ -5,6 +5,7 @@ import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
 import pkg from './package.json'
 import { perfBuildPlugin } from './vite.perf'
+import { thirdPartyLicenses } from './web/src/app/thirdPartyLicenses'
 
 // The render-performance build (CI only, .github/workflows/render-perf.yml): `perf.html` instead of
 // `index.html`, with the fake backends of src/perf/app wired in. A release build never sets this.
@@ -66,6 +67,7 @@ export default defineConfig({
       },
     ]),
     renderer(),
+    thirdPartyLicenses(__dirname),
   ],
   resolve: {
     alias: {

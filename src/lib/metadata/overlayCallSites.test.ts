@@ -997,6 +997,24 @@ const DELIBERATE: readonly Allowance[] = [
       'Compares the two sides against each other to drop edits the database already has, which is the one job that needs them apart.',
   },
   {
+    file: 'features/integrations/solidworks/inspection/reports/reportSources.ts',
+    symbols: ['reportIdentity'],
+    reason:
+      'An inspection report is made from a checked-in drawing version, so its part number, description and revision are the committed ones. A pending edit is not in that version and must not be printed on a report a supplier receives for it.',
+  },
+  {
+    file: 'features/source/outputs/outputRowModel.ts',
+    symbols: ['outputCopyName'],
+    reason:
+      'Names the copy of a PDF or STEP output, which belongs to a checked-in version. Its name follows the committed metadata of that version, not an uncommitted edit.',
+  },
+  {
+    file: 'lib/outputs/ensure.ts',
+    symbols: ['loadedFileMetadata'],
+    reason:
+      'Names an output generated from a checked-in version, recorded on the server for everyone. A pending edit is not in that version.',
+  },
+  {
     file: 'stores/slices/filesSlice.ts',
     symbols: ['clearPendingConfigMetadata'],
     reason: 'The store layer that owns pendingMetadata and decides what an edit is.',

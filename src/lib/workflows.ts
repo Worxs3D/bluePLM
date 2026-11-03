@@ -1,6 +1,8 @@
 // Workflow Service Functions for BluePLM
 // Handles all Supabase interactions for workflow management
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 import { supabase } from './supabase'
 import type {
   WorkflowTemplate,
@@ -417,12 +419,16 @@ function readTransitionResult(value: unknown): TransitionResult {
 export async function executeTransition(
   fileId: string,
   transitionId: string,
-  options?: { comment?: string },
+  options?: { comment?: string; forceRelease?: boolean },
 ): Promise<{ data: TransitionResult | null; error: Error | null }> {
-  const { data, error } = await supabase.rpc('workflow_transition_execute', {
+  // Schema 509: always the 4-argument form. With p_force_release false, a release of a drawing
+  // version without an approved review is refused with RELEASE_NOT_REVIEWED; forced, it is recorded
+  // as a forced release. The 3-argument form is 5.8.0's: it releases an unreviewed drawing as forced.
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc('workflow_transition_execute', {
     p_file_id: fileId,
     p_transition_id: transitionId,
-    p_comment: options?.comment ?? undefined,
+    p_comment: options?.comment ?? null,
+    p_force_release: options?.forceRelease === true,
   })
 
   if (error) return { data: null, error: new Error(error.message) }

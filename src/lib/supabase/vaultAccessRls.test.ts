@@ -63,6 +63,8 @@ const FILE_DATA_TABLES = [
   'inspection_characteristic_version',
   'file_eco',
   'file_deviation',
+  'inspection_report',
+  'file_version_output',
 ]
 
 let db: PGlite
@@ -348,18 +350,29 @@ describe('every file-data policy applies the vault rule', () => {
     expect(r.rows).toEqual([])
   })
 
-  it('in every module file', () => {
+  it('in every module file, and in the migrations that add file-data tables', () => {
     const offenders: string[] = []
-    for (const name of ['10-source-files.sql', '15-inspection.sql', '20-change-control.sql']) {
-      const sql = readFileSync(resolve(SUPABASE, 'modules', name), 'utf8').replace(/\r\n/g, '\n')
+    const files = [
+      'modules/10-source-files.sql',
+      'modules/15-inspection.sql',
+      'modules/20-change-control.sql',
+      'migrations/0504_inspection_tables.sql', // inspection_report
+      'migrations/0505_version_outputs.sql', // file_version_output
+    ]
+    let policies = 0
+    for (const name of files) {
+      const sql = readFileSync(resolve(SUPABASE, name), 'utf8').replace(/\r\n/g, '\n')
       const re = /CREATE POLICY "([^"]+)"\s+ON (\w+) FOR (SELECT|ALL)([\s\S]*?);\n/g
       for (const m of sql.matchAll(re)) {
+        if (m[2] === 'inspection_report') policies++
         if (FILE_DATA_TABLES.includes(m[2]) && !m[4].includes('my_accessible_vault_ids()')) {
           offenders.push(`${name}: ${m[2]} / ${m[1]}`)
         }
       }
     }
     expect(offenders).toEqual([])
+    // The scan really reads 0504's read policy.
+    expect(policies).toBeGreaterThan(0)
   })
 
   it('the release manifest pins the vault rule on its helpers', async () => {

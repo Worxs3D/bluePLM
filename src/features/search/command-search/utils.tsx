@@ -45,6 +45,17 @@ export function toPaneSearch(parsed: ParsedQuery): PaneSearch {
 }
 
 /**
+ * Whether the results dropdown shows under the box. With a term the pane already lists the
+ * matches, so the dropdown stays collapsed and would only cover them, unless the user opened it
+ * or the filter is one the pane cannot show (its results exist only in the dropdown). With no
+ * term it shows recent searches.
+ */
+export function showsQuickResults(parsed: ParsedQuery, expanded: boolean): boolean {
+  if (!parsed.searchTerm) return true
+  return expanded || !toPaneSearch(parsed).query
+}
+
+/**
  * The search box text for a pane search that changed elsewhere (a tab switch restoring its
  * search), so the box shows the same filter the pane is using.
  */

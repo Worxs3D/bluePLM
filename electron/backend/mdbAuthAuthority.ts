@@ -59,14 +59,11 @@ export function createMdbAuthAuthority(options: {
   const listeners = new Set<(state: MdbAuthState) => void>()
   const state = (): MdbAuthState => {
     if (pending !== null && isExpired(pending.expiresAt, now)) pending = null
-    if (pending !== null) return { status: 'totp-required' }
     if (active !== null && isExpired(active.expiresAt, now)) {
       active = null
-      generation++
-      for (const controller of controllers) controller.abort()
-      controllers.clear()
       void clear().catch(() => undefined)
     }
+    if (pending !== null) return { status: 'totp-required' }
     if (active === null) return { status: 'signed-out' }
     return {
       status: 'verified',
@@ -117,21 +114,42 @@ export function createMdbAuthAuthority(options: {
         )
       }
     })
-  const scheduleExpiry = (expiresAt: string, expected: number) => {
+  const scheduleExpiry = (expected: number) => {
     if (expiryTimer !== undefined) clearTimeout(expiryTimer)
-    const remaining = Date.parse(expiresAt) - now().getTime()
+    expiryTimer = undefined
+    const expiries = [active?.expiresAt, pending?.expiresAt]
+      .filter((value): value is string => value !== undefined)
+      .map((value) => Date.parse(value))
+    if (expiries.length === 0) return
+    const remaining = Math.min(...expiries) - now().getTime()
     expiryTimer = setTimeout(
       () => {
         if (generation !== expected) return
-        if (Date.parse(expiresAt) > now().getTime()) {
-          scheduleExpiry(expiresAt, expected)
-          return
+        if (active !== null && isExpired(active.expiresAt, now)) {
+          active = null
+          void clear().catch(() => undefined)
         }
-        invalidate()
-        void clear().catch(() => undefined)
+        if (pending !== null && isExpired(pending.expiresAt, now)) pending = null
+        publish()
+        scheduleExpiry(expected)
       },
       Math.max(1, Math.min(2_147_000_000, remaining)),
     )
+  }
+  const beginSignIn = () => {
+    if (expiryTimer !== undefined) clearTimeout(expiryTimer)
+    expiryTimer = undefined
+    pending = null
+    generation++
+    for (const controller of controllers) controller.abort()
+    controllers.clear()
+    if (active !== null && isExpired(active.expiresAt, now)) {
+      active = null
+      void clear().catch(() => undefined)
+    }
+    if (active !== null) scheduleExpiry(generation)
+    publish()
+    return generation
   }
   const current = (expected: number) => {
     if (generation !== expected)
@@ -196,7 +214,7 @@ export function createMdbAuthAuthority(options: {
       pending = null
     })
     current(expected)
-    scheduleExpiry(expiresAt, expected)
+    scheduleExpiry(expected)
     publish()
   }
   return {
@@ -222,8 +240,7 @@ export function createMdbAuthAuthority(options: {
       if (!(await options.confirmServer(serverUrl, input.dialogStrings)))
         throw new MdbAuthAuthorityError('server-not-confirmed', 'Server not confirmed.')
       current(beforeConfirmation)
-      const expected = invalidate()
-      await clear()
+      const expected = beginSignIn()
       current(expected)
       await validateMdbHealth(serverUrl, options.fetchImpl)
       current(expected)
@@ -241,7 +258,7 @@ export function createMdbAuthAuthority(options: {
             expiresAt: result.expiresAt,
             generation: expected,
           }
-          scheduleExpiry(result.expiresAt, expected)
+          scheduleExpiry(expected)
           publish()
           return
         }

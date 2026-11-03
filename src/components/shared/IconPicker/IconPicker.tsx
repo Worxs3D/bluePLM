@@ -2,6 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import * as LucideIcons from 'lucide-react'
 import { Search, ChevronDown, X } from 'lucide-react'
 
+import { useHostWindow } from '@/hooks/useHostWindow'
+
 // Comprehensive icon list organized by category - deduplicated
 const ICON_LIBRARY_RAW = [
   // People & Teams (35)
@@ -1060,6 +1062,7 @@ export function IconPicker({
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
+  const host = useHostWindow()
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -1082,7 +1085,7 @@ export function IconPicker({
       if (!buttonRef.current) return
       const rect = buttonRef.current.getBoundingClientRect()
       const dropdownHeight = 340 // Approximate height of dropdown
-      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceBelow = host.innerHeight - rect.bottom
       const spaceAbove = rect.top
 
       // Decide whether to show above or below
@@ -1093,19 +1096,19 @@ export function IconPicker({
         position: 'fixed',
         left: rect.left,
         width: 320,
-        ...(showAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        ...(showAbove ? { bottom: host.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
       })
     }
 
     updatePosition()
-    window.addEventListener('scroll', updatePosition, true)
-    window.addEventListener('resize', updatePosition)
+    host.addEventListener('scroll', updatePosition, true)
+    host.addEventListener('resize', updatePosition)
 
     return () => {
-      window.removeEventListener('scroll', updatePosition, true)
-      window.removeEventListener('resize', updatePosition)
+      host.removeEventListener('scroll', updatePosition, true)
+      host.removeEventListener('resize', updatePosition)
     }
-  }, [isOpen, dropdownPosition])
+  }, [isOpen, dropdownPosition, host])
 
   // Close on click outside
   useEffect(() => {
@@ -1124,9 +1127,9 @@ export function IconPicker({
       }
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen])
+    host.document.addEventListener('mousedown', handleClickOutside)
+    return () => host.document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen, host])
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>

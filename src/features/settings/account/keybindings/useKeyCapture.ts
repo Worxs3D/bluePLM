@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useHostWindow } from '@/hooks/useHostWindow'
+
 import { eventToCombo } from '@/lib/keybindings'
 
 /**
@@ -13,6 +15,7 @@ export function useKeyCapture(
   onCombo: (combo: string) => void,
   onCancel: () => void,
 ): string[] {
+  const host = useHostWindow()
   const [held, setHeld] = useState<string[]>([])
   const onComboRef = useRef(onCombo)
   onComboRef.current = onCombo
@@ -45,13 +48,13 @@ export function useKeyCapture(
       else readHeld(e)
     }
     const onKeyUp = (e: KeyboardEvent) => readHeld(e)
-    window.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('keyup', onKeyUp, true)
+    host.addEventListener('keydown', onKeyDown, true)
+    host.addEventListener('keyup', onKeyUp, true)
     return () => {
-      window.removeEventListener('keydown', onKeyDown, true)
-      window.removeEventListener('keyup', onKeyUp, true)
+      host.removeEventListener('keydown', onKeyDown, true)
+      host.removeEventListener('keyup', onKeyUp, true)
     }
-  }, [active])
+  }, [active, host])
 
   return held
 }

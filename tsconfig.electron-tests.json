@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@web/*": ["web/src/*"]
+    }
+  },
+  "include": ["electron/handlers/mdbAuthIpc.test.ts"],
+  "exclude": []
+}

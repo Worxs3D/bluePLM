@@ -107,6 +107,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reloadApp: () => ipcRenderer.invoke('app:reload'),
   requestFocus: () => ipcRenderer.invoke('app:request-focus'),
   openPerformanceWindow: () => ipcRenderer.invoke('app:open-performance-window'),
+  openTabWindow: (request: {
+    key: string
+    view: string
+    title: string
+    customData?: Record<string, unknown>
+    width?: number
+    height?: number
+  }) => ipcRenderer.invoke('app:open-tab-window', request),
 
   // OAuth
   openOAuthWindow: (url: string) => ipcRenderer.invoke('auth:open-oauth-window', url),
@@ -636,6 +644,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('review-package:write-manifest', dir, files),
   },
 
+  // Inspection report workbooks (src/features/integrations/solidworks/inspection/reports)
+  inspectionReports: {
+    openWorkbook: (fileName: string, base64: string) =>
+      ipcRenderer.invoke('inspection-reports:open-workbook', fileName, base64),
+    saveWorkbook: (defaultName: string, base64: string) =>
+      ipcRenderer.invoke('inspection-reports:save-workbook', defaultName, base64),
+  },
+
+  // Version outputs (src/lib/outputs): open a stored PDF/STEP/IGES/STL/DXF in the default app
+  versionOutputs: {
+    open: (url: string, fileName: string, expectedHash: string) =>
+      ipcRenderer.invoke('version-outputs:open', url, fileName, expectedHash),
+  },
+
   // Archive (ZIP) operations
   archive: {
     createZip: (files: Array<{ path: string; relativePath: string }>, outputPath: string) =>
@@ -944,6 +966,14 @@ declare global {
       reloadApp: () => Promise<{ success: boolean; error?: string }>
       requestFocus: () => Promise<{ success: boolean; error?: string }>
       openPerformanceWindow: () => Promise<{ success: boolean; error?: string }>
+      openTabWindow: (request: {
+        key: string
+        view: string
+        title: string
+        customData?: Record<string, unknown>
+        width?: number
+        height?: number
+      }) => Promise<{ success: boolean; error?: string }>
 
       // OAuth
       openOAuthWindow: (
@@ -1353,6 +1383,8 @@ declare global {
             missing: string[]
             removedPrevious: number
             keptPositions: number
+            kept?: number
+            unchanged?: boolean
             saved: boolean
           }
           error?: string

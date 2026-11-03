@@ -1,7 +1,7 @@
 import type { BackendAdapter, BackendResolution } from './contracts'
 import { supabaseBackendAdapter } from './supabaseAdapter'
-import type { MdbAuthCapability } from './contracts/mdbAuth'
-import { createMdbAdapter, type MdbAdapter } from './mdbAdapter'
+
+export { resolveMdbBackend } from './mdbAdapter'
 
 export type {
   BackendAdapter,
@@ -12,11 +12,6 @@ export type {
 } from './contracts'
 export type { AuthStateListener, AuthStateSubscription } from '@/types/backend'
 export type { MdbAuthCapability, MdbAuthResult, MdbAuthState } from './contracts/mdbAuth'
-
-/** An MDB entry consumer must explicitly supply its Main-backed capability. */
-export function resolveMdbBackend(auth: MdbAuthCapability): MdbAdapter {
-  return createMdbAdapter(auth)
-}
 
 /** Select the production adapter without changing an operation's error handling. */
 export function getBackend(): BackendAdapter {

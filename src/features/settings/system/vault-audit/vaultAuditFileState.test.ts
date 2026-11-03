@@ -85,6 +85,19 @@ describe('availabilityOf', () => {
     expect(availabilityOf(undefined, ME)).toEqual({ state: 'not-loaded' })
   })
 
+  // A cloud row or a moved-away stub has nothing on disk: a checkout would not give it a document.
+  it('reports a file with no local content as not loaded, even when it is free to check out', () => {
+    for (const diffStatus of ['cloud', 'moved_away'] as const) {
+      const file = { ...fileOf({ id: 'f1', checked_out_by: null }), diffStatus } as LocalFile
+      expect(availabilityOf(file, ME)).toEqual({ state: 'not-loaded' })
+    }
+  })
+
+  it('still names a colleague holding a file this machine has not downloaded', () => {
+    const file = { ...fileOf({ id: 'f1', checked_out_by: SARAH }), diffStatus: 'cloud' } as LocalFile
+    expect(availabilityOf(file, ME)).toEqual({ state: 'held-by-other', holder: null })
+  })
+
   // A signed-out session must not read every checked-in file as its own.
   it('does not treat an absent user as the holder of an unheld file', () => {
     expect(availabilityOf(fileOf({ id: 'f1', checked_out_by: null }), undefined)).toEqual({

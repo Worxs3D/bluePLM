@@ -56,6 +56,8 @@ export interface ExportedState {
   is_review_stage: boolean
   /** Review stage: the key of the state an approval moves files to (schema 110). */
   review_approved?: string | null
+  /** Entering the state releases the file's newest checked-in version (schema 509). */
+  releases_version?: boolean
   sort_order: number
 }
 
@@ -129,6 +131,7 @@ export function buildExportPayload(
       is_revision_auto_incremented: s.is_revision_auto_incremented,
       is_review_stage: s.is_review_stage,
       review_approved: s.review_approved_state_id ?? null,
+      releases_version: (s as WorkflowState & { releases_version?: boolean }).releases_version === true,
       sort_order: s.sort_order,
     })),
     transitions: transitions.map((t) => ({
@@ -303,6 +306,7 @@ function normaliseState(state: Record<string, unknown>): ExportedState {
     ),
     is_review_stage: bool(state.is_review_stage ?? state.triggers_review, false),
     review_approved: nullableStr(state.review_approved),
+    releases_version: bool(state.releases_version, false),
     sort_order: num(state.sort_order, 0),
   }
 }

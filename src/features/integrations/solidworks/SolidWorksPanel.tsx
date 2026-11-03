@@ -22,6 +22,7 @@ import { currentUnwritableFieldGroups } from '@/lib/metadata/writeOwnership'
 import { buildMetadataWritePlan } from '@/lib/metadata/writePlan'
 import { pendingWithoutGroups } from '@/lib/metadata/writeState'
 import type { PendingMetadata } from '@/stores/types'
+import { findFileForNavigation } from '@/components/layout/panelPopout/panelPopout'
 import {
   FileBox,
   Layers,
@@ -153,7 +154,14 @@ interface WhereUsedResult {
   } | null
 }
 
-export function WhereUsedTab({ file }: { file: LocalFile }) {
+export function WhereUsedTab({
+  file,
+  onNavigate,
+}: {
+  file: LocalFile
+  /** A popped-out window has no vault: it hands the click to the main window instead. */
+  onNavigate?: (filePath: string) => void
+}) {
   const [isLoading, setIsLoading] = useState(false)
   const [usedIn, setUsedIn] = useState<WhereUsedResult[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -200,13 +208,14 @@ export function WhereUsedTab({ file }: { file: LocalFile }) {
   }, [isSolidWorks, fileId, findWhereUsed])
 
   const handleNavigate = (filePath: string) => {
-    const targetFile = files.find(
-      (f) =>
-        f.path.toLowerCase() === filePath.toLowerCase() ||
-        f.relativePath.toLowerCase() === filePath.toLowerCase(),
-    )
+    if (onNavigate) {
+      onNavigate(filePath)
+      return
+    }
+    const targetFile = findFileForNavigation(files, filePath)
     if (targetFile) {
-      setSelectedFiles([targetFile.relativePath])
+      // The selection holds full paths.
+      setSelectedFiles([targetFile.path])
     } else {
       addToast('info', 'File not found in vault')
     }
@@ -1166,10 +1175,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
 
       // Keep fields BluePLM does not own out of the plan, including a drawing revision even when
       // its editability lock is disabled. This prevents the button from mutating those fields.
-      const writable = pendingWithoutGroups(
-        pending,
-        currentUnwritableFieldGroups(file.extension),
-      )
+      const writable = pendingWithoutGroups(pending, currentUnwritableFieldGroups(file.extension))
       if (!writable) {
         addToast('info', t('metadataWrite.drawingNothingToWrite'))
         return
@@ -1266,7 +1272,11 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
   const keyProps = [
     { key: 'PartNumber', label: 'P/N', value: documentPartNumber },
     { key: 'Description', label: 'Desc', value: documentDescription },
-    { key: 'Revision', label: 'Rev', value: readProperty(viewProps, FILE_FIELD_READ_KEYS.revision) },
+    {
+      key: 'Revision',
+      label: 'Rev',
+      value: readProperty(viewProps, FILE_FIELD_READ_KEYS.revision),
+    },
     { key: 'Material', label: 'Mat', value: getPropertyValue('Material', ['MATERIAL']) },
   ]
   // The row's part number agrees with the document when any key BluePLM accepts holds it: `Number`
@@ -1276,8 +1286,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
     !readAllProperties(viewProps, PART_NUMBER_ACCEPT_KEYS).includes(
       normalizeValue(file.pdmData?.part_number) ?? '',
     )
-  const descriptionDiffers =
-    normalizeValue(file.pdmData?.description) !== documentDescription
+  const descriptionDiffers = normalizeValue(file.pdmData?.description) !== documentDescription
 
   // All properties for expanded view
   const allProps = resolvedPropertyView(fileProperties, configProperties)
@@ -1317,11 +1326,7 @@ export function SWPropertiesTab({ file }: { file: LocalFile }) {
         {/* Key Properties Grid - Always visible */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 p-2 rounded bg-plm-bg/50 border border-plm-border/50 mb-2 flex-shrink-0">
           {keyProps.map((prop) => (
-            <CompactProp
-              key={prop.key}
-              label={prop.label}
-              value={hasData ? prop.value : null}
-            />
+            <CompactProp key={prop.key} label={prop.label} value={hasData ? prop.value : null} />
           ))}
         </div>
 
