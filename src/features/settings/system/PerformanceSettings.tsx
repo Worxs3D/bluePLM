@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/core/ui'
 import { TelemetryDashboard } from '@/features/dev-tools/telemetry'
+import { t } from '@/lib/i18n'
 import { telemetry, TelemetryConfig, TelemetrySnapshot } from '@/lib/telemetry'
 import { formatBytes } from '@/lib/utils/format'
 
@@ -41,30 +42,41 @@ export function PerformanceSettings() {
   return (
     <SettingsPage>
       <SettingsSection
-        title="Live metrics"
+        title={t('performanceTelemetry.title')}
+        description={t('performanceTelemetry.description')}
         actions={
-          <Button size="sm" onClick={handlePopOut} title="Open in new window">
-            Pop Out
+          <Button size="sm" onClick={handlePopOut} title={t('performanceTelemetry.openWindow')}>
+            {t('performanceTelemetry.popOut')}
           </Button>
         }
       >
         <StatGrid>
-          <StatCard label="FPS" value={latestSnapshot?.fps ?? 0} />
-          <StatCard label="Tracked modules" value={modules.length} />
-          <StatCard label="Module heap" value={formatBytes(moduleHeap)} />
-          <StatCard label="Buffer size" value={bufferSamples.toLocaleString()} detail="samples" />
+          <StatCard label={t('performanceTelemetry.fps')} value={latestSnapshot?.fps ?? 0} />
+          <StatCard
+            label={t('performanceTelemetry.trackedModules')}
+            value={modules.length}
+          />
+          <StatCard
+            label={t('performanceTelemetry.moduleHeap')}
+            value={formatBytes(moduleHeap)}
+          />
+          <StatCard
+            label={t('performanceTelemetry.bufferSizeLabel')}
+            value={bufferSamples.toLocaleString()}
+            detail={t('performanceTelemetry.samples')}
+          />
         </StatGrid>
         <div className="border-t border-ui-divider pt-4">
           <TelemetryDashboard />
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Settings">
+      <SettingsSection title={t('performanceTelemetry.settings')}>
         <SettingsGroup>
           <SettingRow
-            label="Sample Rate"
+            label={t('performanceTelemetry.sampleRate')}
             htmlFor="perf-sample-rate"
-            description="How often to collect telemetry data"
+            description={t('performanceTelemetry.sampleRateHint')}
           >
             <input
               id="perf-sample-rate"
@@ -73,9 +85,8 @@ export function PerformanceSettings() {
               max="60"
               value={config.sampleRateHz}
               onChange={(e) => {
-                const newConfig = { ...config, sampleRateHz: parseInt(e.target.value) }
-                telemetry.configure(newConfig)
-                setConfig(newConfig)
+                telemetry.configure({ sampleRateHz: parseInt(e.target.value) })
+                setConfig(telemetry.getConfig())
               }}
               className={RANGE_CLASS}
             />
@@ -84,9 +95,9 @@ export function PerformanceSettings() {
             </span>
           </SettingRow>
           <SettingRow
-            label="Retention Time"
+            label={t('performanceTelemetry.retention')}
             htmlFor="perf-retention"
-            description="How long to keep telemetry history"
+            description={t('performanceTelemetry.retentionHint')}
           >
             <input
               id="perf-retention"
@@ -96,9 +107,8 @@ export function PerformanceSettings() {
               step="10"
               value={config.retentionSeconds}
               onChange={(e) => {
-                const newConfig = { ...config, retentionSeconds: parseInt(e.target.value) }
-                telemetry.configure(newConfig)
-                setConfig(newConfig)
+                telemetry.configure({ retentionSeconds: parseInt(e.target.value) })
+                setConfig(telemetry.getConfig())
               }}
               className={RANGE_CLASS}
             />
@@ -106,7 +116,10 @@ export function PerformanceSettings() {
               {config.retentionSeconds}s
             </span>
           </SettingRow>
-          <SettingRow label="Telemetry data" description={`Buffer size: ${bufferSamples} samples`}>
+          <SettingRow
+            label={t('performanceTelemetry.telemetryData')}
+            description={t('performanceTelemetry.bufferSize', { count: bufferSamples })}
+          >
             <Button
               variant="danger-subtle"
               size="sm"
@@ -115,7 +128,7 @@ export function PerformanceSettings() {
                 setLatestSnapshot(null)
               }}
             >
-              Clear Data
+              {t('performanceTelemetry.clearData')}
             </Button>
           </SettingRow>
         </SettingsGroup>

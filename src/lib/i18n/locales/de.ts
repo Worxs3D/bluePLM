@@ -1218,7 +1218,8 @@ export const de: TranslationDict = {
     decisionSaved: "Gespeichert.",
     downloadRefused: "Der gespeicherte Inhalt dieser Version ist beschädigt und wurde von einem Administrator als nicht wiederherstellbar markiert.",
     downloadDamaged: "Die auf dem Server gespeicherte Kopie ist beschädigt (sie passt nicht zu ihrem Hash). Ein Administrator kann sie unter Einstellungen > Sicherung > Beschädigte Dateien reparieren.",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: 'Leistung',
     description: 'FPS werden nur bei aktivierter Aufzeichnung erfasst.',
     popOut: 'Pop-out',
@@ -1242,5 +1243,10 @@ export const de: TranslationDict = {
     telemetrySettings: 'Telemetrie-Einstellungen',
     sampleRateHz: 'Abtastrate (Hz)',
     retentionSeconds: 'Aufbewahrung (Sekunden)',
+    trackedModules: 'Erfasste Module',
+    moduleHeap: 'Modul-Heap',
+    bufferSizeLabel: 'Puffergröße',
+    samples: 'Samples',
+    telemetryData: 'Telemetriedaten',
   },
 }

@@ -2794,7 +2794,8 @@ export const en: TranslationDict = {
     decisionSaved: "Saved.",
     downloadRefused: "This version's stored content is damaged and an administrator marked it unrecoverable.",
     downloadDamaged: "The copy stored on the server is damaged (it does not match its hash). An administrator can repair it under Settings > Backup > Damaged files.",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: 'Performance',
     description: 'Monitor FPS while recording is enabled.',
     popOut: 'Pop Out',
@@ -2818,5 +2819,10 @@ export const en: TranslationDict = {
     telemetrySettings: 'Telemetry Settings',
     sampleRateHz: 'Sample Rate (Hz)',
     retentionSeconds: 'Retention (seconds)',
+    trackedModules: 'Tracked modules',
+    moduleHeap: 'Module heap',
+    bufferSizeLabel: 'Buffer size',
+    samples: 'samples',
+    telemetryData: 'Telemetry data',
   },
 }

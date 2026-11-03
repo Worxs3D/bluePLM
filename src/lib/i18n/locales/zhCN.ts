@@ -1162,7 +1162,8 @@ export const zhCN: TranslationDict = {
     decisionSaved: "已保存。",
     downloadRefused: "此版本存储的内容已损坏，管理员已将其标记为无法恢复。",
     downloadDamaged: "服务器上存储的副本已损坏（与其哈希值不匹配）。管理员可以在 设置 > 备份 > 损坏的文件 中修复。",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: '性能',
     description: '仅在启用录制时监控 FPS。',
     popOut: '弹出窗口',
@@ -1186,5 +1187,10 @@ export const zhCN: TranslationDict = {
     telemetrySettings: '遥测设置',
     sampleRateHz: '采样率 (Hz)',
     retentionSeconds: '保留时间（秒）',
+    trackedModules: '跟踪的模块',
+    moduleHeap: '模块堆内存',
+    bufferSizeLabel: '缓冲区大小',
+    samples: '个样本',
+    telemetryData: '遥测数据',
   },
 }

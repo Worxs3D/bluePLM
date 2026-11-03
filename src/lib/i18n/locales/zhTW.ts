@@ -1162,7 +1162,8 @@ export const zhTW: TranslationDict = {
     decisionSaved: "已儲存。",
     downloadRefused: "此版本儲存的內容已損壞，管理員已將其標記為無法還原。",
     downloadDamaged: "伺服器上儲存的副本已損壞（與其雜湊值不相符）。管理員可以在 設定 > 備份 > 損壞的檔案 中修復。",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: '效能',
     description: '僅在啟用錄製時監控 FPS。',
     popOut: '彈出視窗',
@@ -1186,5 +1187,10 @@ export const zhTW: TranslationDict = {
     telemetrySettings: '遙測設定',
     sampleRateHz: '取樣率 (Hz)',
     retentionSeconds: '保留時間（秒）',
+    trackedModules: '追蹤的模組',
+    moduleHeap: '模組堆積記憶體',
+    bufferSizeLabel: '緩衝區大小',
+    samples: '個樣本',
+    telemetryData: '遙測資料',
   },
 }

@@ -218,10 +218,9 @@ export function TelemetryDashboard() {
     setIsRunning(!isRunning)
   }
 
-  const handleConfigChange = (key: keyof typeof config, value: number | boolean) => {
-    const newConfig = { ...config, [key]: value }
-    telemetry.configure(newConfig)
-    setConfig(newConfig)
+  const handleConfigChange = (key: 'sampleRateHz' | 'retentionSeconds', value: number) => {
+    telemetry.configure({ [key]: value })
+    setConfig(telemetry.getConfig())
     setIsRunning(telemetry.isRunning())
   }
 

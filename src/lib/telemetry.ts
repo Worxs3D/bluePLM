@@ -121,6 +121,8 @@ class TelemetryService {
   // Configure the service
   configure(config: Partial<TelemetryConfig>): void {
     const wasEnabled = this.config.enabled
+    const wasRunning = this.isRunning()
+    const previousSampleRateHz = this.config.sampleRateHz
     this.config = { ...this.config, ...config }
 
     // Resize buffer if retention changed
@@ -135,12 +137,18 @@ class TelemetryService {
       this.start()
     } else if (!this.config.enabled && wasEnabled) {
       this.stop()
+    } else if (wasRunning && this.config.sampleRateHz !== previousSampleRateHz) {
+      if (this.intervalId !== null) clearInterval(this.intervalId)
+      this.intervalId = window.setInterval(() => this.sample(), 1000 / this.config.sampleRateHz)
     }
   }
 
   // Load saved config
   loadConfig(): TelemetryConfig {
-    const wasRunning = this.isRunning()
+    // A pop-out renderer can update shared settings while this renderer is
+    // recording. Keep its active rate, retention, and history together.
+    if (this.isRunning()) return this.config
+
     let saved: string | null = null
     try {
       saved = localStorage.getItem('telemetry.config')
@@ -151,14 +159,10 @@ class TelemetryService {
       try {
         this.config = normalizeSavedConfig(JSON.parse(saved))
       } catch {
-        // Ignore parse errors
         this.config = { ...DEFAULT_CONFIG }
       }
     }
     this.buffer.resize(this.config.sampleRateHz * this.config.retentionSeconds)
-    // Persisted settings never start recording, but reloading them must not
-    // stop a recording that is already active in this renderer session.
-    this.config.enabled = wasRunning
     return this.config
   }
 

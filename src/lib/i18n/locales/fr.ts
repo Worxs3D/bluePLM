@@ -1214,7 +1214,8 @@ export const fr: TranslationDict = {
     decisionSaved: "Enregistré.",
     downloadRefused: "Le contenu stocké de cette version est endommagé et un administrateur l'a marqué irrécupérable.",
     downloadDamaged: "La copie stockée sur le serveur est endommagée (elle ne correspond pas à son empreinte). Un administrateur peut la réparer dans Paramètres > Sauvegarde > Fichiers endommagés.",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: 'Performances',
     description: "Surveille les FPS lorsque l'enregistrement est activé.",
     popOut: 'Fenêtre séparée',
@@ -1238,5 +1239,10 @@ export const fr: TranslationDict = {
     telemetrySettings: 'Paramètres de télémétrie',
     sampleRateHz: 'Fréquence (Hz)',
     retentionSeconds: 'Rétention (secondes)',
+    trackedModules: 'Modules suivis',
+    moduleHeap: 'Mémoire des modules',
+    bufferSizeLabel: 'Taille du tampon',
+    samples: 'échantillons',
+    telemetryData: 'Données de télémétrie',
   },
 }

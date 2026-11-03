@@ -1207,7 +1207,8 @@ export const es: TranslationDict = {
     decisionSaved: "Guardado.",
     downloadRefused: "El contenido almacenado de esta versión está dañado y un administrador lo marcó como irrecuperable.",
     downloadDamaged: "La copia almacenada en el servidor está dañada (no coincide con su hash). Un administrador puede repararla en Configuración > Copia de seguridad > Archivos dañados.",
-  },  performanceTelemetry: {
+  },
+  performanceTelemetry: {
     title: 'Rendimiento',
     description: 'Supervisa los FPS mientras la grabación está activa.',
     popOut: 'Ventana independiente',
@@ -1231,5 +1232,10 @@ export const es: TranslationDict = {
     telemetrySettings: 'Ajustes de telemetría',
     sampleRateHz: 'Frecuencia (Hz)',
     retentionSeconds: 'Retención (segundos)',
+    trackedModules: 'Módulos seguidos',
+    moduleHeap: 'Memoria de módulos',
+    bufferSizeLabel: 'Tamaño del búfer',
+    samples: 'muestras',
+    telemetryData: 'Datos de telemetría',
   },
 }
