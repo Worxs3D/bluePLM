@@ -7,6 +7,7 @@ import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
 import {
   AUTO_DEBOUNCE_MS,
+  AUTO_OPEN_DELAY_MS,
   AUTO_SETTLE_MS,
   clearExtract,
   decideAutoRun,
@@ -81,11 +82,13 @@ export function useDrawingSync(options: {
 }
 
 /**
- * Auto: when the open drawing changes on disk (the watcher updates its modified time or size),
- * wait `AUTO_DEBOUNCE_MS`, then extract and balloon it if `decideAutoRun` says so. Never on
- * opening the tab, never while a run is in flight, never on BluePLM's own save (the post-balloon
- * hash is recorded as in sync, and a change within `AUTO_SETTLE_MS` of it is adopted), and after
- * a failure not again until the drawing's content changes.
+ * Auto keeps an open drawing and its table in sync: when the drawing changes on disk (the watcher
+ * updates its modified time or size) it waits `AUTO_DEBOUNCE_MS`, and when a drawing is opened, or
+ * Auto turned on or able to run again, it waits `AUTO_OPEN_DELAY_MS`; then it extracts and
+ * balloons the drawing if `decideAutoRun` says so. Never while a run is in flight, never on
+ * BluePLM's own save (the post-balloon hash is recorded as in sync, and a change within
+ * `AUTO_SETTLE_MS` of it is adopted), never on a drawing nothing was read from yet, and after a
+ * failure not again until the drawing's content changes or the user retries (`paused`, `retry`).
  */
 export function useAutoInspection(options: {
   file: LocalFile
@@ -98,11 +101,30 @@ export function useAutoInspection(options: {
   isInFlight: () => boolean
   recorder: DrawingSyncRecorder
   runBalloon: (options: FlowOptions) => Promise<FlowResult>
-}): void {
+  /**
+   * The service keeps matching balloons and does not save a drawing it did not change
+   * (`SW_SERVICE_VERSION_INCREMENTAL_BALLOONS`): only then does Auto run on opening a drawing.
+   */
+  catchUp: boolean
+}): { failedHash: string | null; retry: () => void } {
   const addToast = usePDMStore((s) => s.addToast)
   const latest = useRef(options)
   latest.current = options
   const failedHashRef = useRef<string | null>(null)
+  // Mirrors failedHashRef for rendering: Auto is paused while the drawing still has this content.
+  const [failedHash, setFailedHashState] = useState<string | null>(null)
+  const setFailedHash = useCallback((hash: string | null) => {
+    failedHashRef.current = hash
+    setFailedHashState(hash)
+  }, [])
+  // An evaluation that outlives the tab (a hash or a run still going) must not start anything.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
   const settleUntilRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seenRef = useRef<{ path: string; key: string } | null>(null)
@@ -115,7 +137,7 @@ export function useAutoInspection(options: {
     const path = o.file.path
     const currentHash = o.autoEnabled && o.editable ? await o.recorder.hashNow(path) : null
     const now = latest.current
-    if (now.fileId !== fileId || now.file.path !== path) return
+    if (!mountedRef.current || now.fileId !== fileId || now.file.path !== path) return
     const decision = decideAutoRun({
       autoEnabled: now.autoEnabled,
       editable: now.editable,
@@ -145,38 +167,60 @@ export function useAutoInspection(options: {
     }
     log.info('[InspectionTab]', 'Auto extract and balloon', { fileId })
     const result = await now.runBalloon({ auto: true })
+    if (!mountedRef.current) return
     if (result.ok) {
-      failedHashRef.current = null
+      setFailedHash(null)
       settleUntilRef.current = Date.now() + AUTO_SETTLE_MS
       return
     }
     if (result.skipped) return
-    failedHashRef.current = currentHash
+    setFailedHash(currentHash)
     // Unsaved edits open in SOLIDWORKS: not an error, the next save brings Auto back.
     if (result.errorCode === INSPECTION_BALLOON_ERROR_CODES.unsavedChanges) return
     addToast('warning', t('source.inspection.autoPaused'))
-  }, [addToast])
+  }, [addToast, setFailedHash])
   const evaluateRef = useRef(evaluate)
   evaluateRef.current = evaluate
 
-  const { file, fileId } = options
+  const schedule = useCallback(
+    (delay: number) => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => void evaluate(), delay)
+    },
+    [evaluate],
+  )
+
+  const { file, fileId, autoEnabled, editable, hasLinkedRows, ready, catchUp } = options
   const key = diskKey(file)
   useEffect(() => {
     const seen = seenRef.current
     seenRef.current = { path: file.path, key }
-    // The first look at a drawing (opening the tab, switching files) is not a change.
+    // A change on disk: wait for the save to settle. The first look is handled below.
     if (!seen || seen.path !== file.path || seen.key === key) return
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => void evaluate(), AUTO_DEBOUNCE_MS)
-  }, [file.path, key, fileId, evaluate])
+    schedule(AUTO_DEBOUNCE_MS)
+  }, [file.path, key, fileId, schedule])
+
+  // Opening a drawing, turning Auto on, or Auto becoming able to run (checked out, service up,
+  // first rows read): bring a drawing that changed while nobody was watching back in sync.
+  const canRun = autoEnabled && editable && hasLinkedRows && ready && catchUp
+  useEffect(() => {
+    if (canRun) schedule(AUTO_OPEN_DELAY_MS)
+  }, [canRun, fileId, schedule])
 
   // A pending run belongs to the drawing it was scheduled for.
   useEffect(() => {
-    failedHashRef.current = null
+    setFailedHash(null)
     settleUntilRef.current = 0
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = null
     }
-  }, [fileId])
+  }, [fileId, setFailedHash])
+
+  const retry = useCallback(() => {
+    setFailedHash(null)
+    schedule(0)
+  }, [schedule, setFailedHash])
+
+  return { failedHash, retry }
 }

@@ -12,6 +12,9 @@ import {
   Filter,
   History,
   Zap,
+  CircleCheck,
+  CirclePause,
+  RotateCw,
 } from 'lucide-react'
 
 import { ActionBar, Button, SegmentedControl, type ToolbarAction } from '@/components/core/ui'
@@ -30,7 +33,11 @@ import {
 } from '@/lib/supabase'
 import { log } from '@/lib/logger'
 import { hasLocalContent } from '@/lib/fileOperations/assemblyResolver'
-import { checkSwServiceFeature, SW_SERVICE_VERSION_NATIVE_INSPECTION } from '@/lib/swServiceVersion'
+import {
+  checkSwServiceFeature,
+  SW_SERVICE_VERSION_INCREMENTAL_BALLOONS,
+  SW_SERVICE_VERSION_NATIVE_INSPECTION,
+} from '@/lib/swServiceVersion'
 
 import { useSolidWorksService } from '../SolidWorksPanel'
 import {
@@ -52,7 +59,7 @@ import { MethodManagerModal } from './MethodManagerModal'
 import { useDrawingCharacteristics } from './useDrawingCharacteristics'
 import { useInspectionMethods } from './useInspectionMethods'
 import { useAutoInspection, useDrawingSync } from './useDrawingSync'
-import { isOffered, syncReasonKey } from './drawingSync'
+import { autoBarState, type AutoBarState, isOffered, syncReasonKey } from './drawingSync'
 import { InspectionTable } from './InspectionTable'
 import { ColumnManager } from './ColumnManager'
 import { BulkEditBar } from './BulkEditBar'
@@ -61,6 +68,32 @@ import { InspectionReportsView } from './reports/InspectionReportsView'
 
 interface InspectionTabProps {
   file: LocalFile
+}
+
+type AutoStatus = Extract<AutoBarState, { mode: 'auto' }>['status']
+
+/** Label and tooltip of the Auto pill in each state. */
+const AUTO_STATUS_KEYS: Record<AutoStatus, { label: string; title: string }> = {
+  inSync: {
+    label: 'source.inspection.autoStatusInSync',
+    title: 'source.inspection.autoStatusTitleInSync',
+  },
+  checking: {
+    label: 'source.inspection.autoStatusChecking',
+    title: 'source.inspection.autoStatusTitleChecking',
+  },
+  syncing: {
+    label: 'source.inspection.autoStatusSyncing',
+    title: 'source.inspection.autoStatusTitleSyncing',
+  },
+  waiting: {
+    label: 'source.inspection.autoStatusWaiting',
+    title: 'source.inspection.autoStatusTitleWaiting',
+  },
+  paused: {
+    label: 'source.inspection.autoStatusPaused',
+    title: 'source.inspection.autoStatusTitlePaused',
+  },
 }
 
 const AUTOSAVE_DELAY_MS = 1000
@@ -342,7 +375,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
       'incompatible' &&
     hasLocalContent(file)
   const hasLinkedRows = useMemo(() => rows.some((r) => !!r.source_key?.trim()), [rows])
-  useAutoInspection({
+  const auto = useAutoInspection({
     file,
     fileId,
     autoEnabled: autoSync,
@@ -353,6 +386,11 @@ export function InspectionTab({ file }: InspectionTabProps) {
     isInFlight: drawing.isInFlight,
     recorder: drawingSync.recorder,
     runBalloon: drawing.handleBalloon,
+    // A known service that keeps balloons; an unknown or older one would replace them all.
+    catchUp:
+      !!swStatus.version &&
+      checkSwServiceFeature(swStatus.version, SW_SERVICE_VERSION_INCREMENTAL_BALLOONS).status !==
+        'incompatible',
   })
 
   // Flush pending save on unmount
@@ -483,10 +521,66 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   const extractOffered = isOffered(drawingSync.status.extract)
   const balloonOffered = isOffered(drawingSync.status.balloon)
+  const bar = autoBarState({
+    autoEnabled: autoSync,
+    hasLinkedRows,
+    busy: drawing.busy,
+    ready: autoReady,
+    // Paused only while the drawing still has the content Auto failed on.
+    paused: auto.failedHash !== null && auto.failedHash === drawingSync.currentHash,
+    balloon: drawingSync.status.balloon,
+  })
+  const autoToggle: ToolbarAction = {
+    id: 'auto',
+    label: t('source.inspection.autoLabel'),
+    icon: <Zap size={13} />,
+    onClick: () => setAutoSync(!autoSync),
+    pressed: autoSync,
+    title: t(autoSync ? 'source.inspection.autoTitleOn' : 'source.inspection.autoTitleOff'),
+  }
 
   // Actions in priority order: what fits stays in the bar, the rest goes in the More menu.
   const actions: ToolbarAction[] = []
-  if (editable && isDrawing) {
+  if (editable && isDrawing && bar.mode === 'auto') {
+    // Auto owns the drawing: no Extract or Balloon to press, the pill says where it stands.
+    const status = bar.status
+    actions.push({
+      ...autoToggle,
+      label: t(AUTO_STATUS_KEYS[status].label),
+      icon:
+        status === 'inSync' ? (
+          <CircleCheck size={13} />
+        ) : status === 'paused' ? (
+          <CirclePause size={13} />
+        ) : (
+          <Zap size={13} />
+        ),
+      loading: status === 'syncing' || status === 'checking',
+      title: `${t(AUTO_STATUS_KEYS[status].title)} ${t('source.inspection.autoTitleOn')}`,
+    })
+    if (status === 'paused') {
+      actions.push({
+        id: 'autoRetry',
+        label: t('source.inspection.autoRetry'),
+        icon: <RotateCw size={13} />,
+        onClick: auto.retry,
+        primary: true,
+      })
+    }
+  } else if (editable && isDrawing && bar.mode === 'start') {
+    // Auto takes over once the table has been read from the drawing; the first read is a click.
+    actions.push({
+      id: 'start',
+      label: drawing.busy ? t('source.inspection.ballooning') : t('source.inspection.autoStart'),
+      icon: <ScanSearch size={13} />,
+      onClick: () => void drawing.handleBalloon(),
+      disabled: drawing.busy,
+      loading: drawing.busy,
+      title: t('source.inspection.autoStartTitle'),
+      primary: !drawing.busy,
+    })
+    actions.push(autoToggle)
+  } else if (editable && isDrawing) {
     actions.push({
       id: 'extract',
       label: drawing.isExtracting
@@ -513,14 +607,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
         title: t(syncReasonKey('balloon', drawingSync.status.balloon)),
       })
     }
-    actions.push({
-      id: 'auto',
-      label: t('source.inspection.autoLabel'),
-      icon: <Zap size={13} />,
-      onClick: () => setAutoSync(!autoSync),
-      pressed: autoSync,
-      title: t(autoSync ? 'source.inspection.autoTitleOn' : 'source.inspection.autoTitleOff'),
-    })
+    actions.push(autoToggle)
   }
   if (editable) {
     actions.push({
@@ -554,95 +641,95 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   const viewSwitch = isDrawing ? (
     <SegmentedControl<InspectionView>
-            size="sm"
-            value={view}
-            onChange={setView}
-            aria-label={t('source.inspection.rptViewSwitch')}
-            options={[
-              {
-                value: 'table',
-                label: t('source.inspection.rptViewTable'),
-                icon: <Table2 size={12} />,
-              },
-              {
-                value: 'reports',
-                label: t('source.inspection.rptViewReports'),
-                icon: <FileSpreadsheet size={12} />,
-              },
-            ]}
-          />
+      size="sm"
+      value={view}
+      onChange={setView}
+      aria-label={t('source.inspection.rptViewSwitch')}
+      options={[
+        {
+          value: 'table',
+          label: t('source.inspection.rptViewTable'),
+          icon: <Table2 size={12} />,
+        },
+        {
+          value: 'reports',
+          label: t('source.inspection.rptViewReports'),
+          icon: <FileSpreadsheet size={12} />,
+        },
+      ]}
+    />
   ) : null
 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar: one line at any width. View and version on the left, actions on the right. */}
       {view === 'table' && (
-      <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 border-b border-plm-border px-3">
-        {viewSwitch}
+        <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 border-b border-plm-border px-3">
+          {viewSwitch}
 
-        {view === 'table' && (
-          <>
-            <label
-              className="flex shrink-0 items-center gap-1.5 text-[12px] text-ui-fg-secondary"
-              title={t('source.inspection.version')}
-            >
-              <History size={13} aria-hidden />
-              <span className="sr-only">{t('source.inspection.version')}</span>
-              <select
-                value={selectedVersion}
-                onChange={(e) => setSelectedVersion(e.target.value)}
-                className="h-7 rounded-md border border-ui-field-border bg-ui-field py-0 pl-1.5 pr-1 text-[12px] leading-[26px] text-ui-fg"
+          {view === 'table' && (
+            <>
+              <label
+                className="flex shrink-0 items-center gap-1.5 text-[12px] text-ui-fg-secondary"
+                title={t('source.inspection.version')}
               >
-                <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
-                {versions.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {t('source.inspection.versionOption', { version: v.version })}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <History size={13} aria-hidden />
+                <span className="sr-only">{t('source.inspection.version')}</span>
+                <select
+                  value={selectedVersion}
+                  onChange={(e) => setSelectedVersion(e.target.value)}
+                  className="h-7 rounded-md border border-ui-field-border bg-ui-field py-0 pl-1.5 pr-1 text-[12px] leading-[26px] text-ui-fg"
+                >
+                  <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
+                  {versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {t('source.inspection.versionOption', { version: v.version })}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            {isSaving && (
-              <span className="flex shrink-0 items-center gap-1 text-[12px] text-ui-fg-secondary">
-                <Loader2 size={12} className="animate-spin" />
-                {t('source.inspection.saving')}
-              </span>
-            )}
-
-            {!editable && (
-              <span
-                className="flex min-w-0 items-center gap-1 rounded-md bg-ui-field px-1.5 py-0.5 text-[12px] text-ui-fg-secondary"
-                title={
-                  viewingCurrent
-                    ? t('source.inspection.readOnlyCheckout')
-                    : t('source.inspection.readOnlySnapshot')
-                }
-              >
-                <Lock size={11} className="shrink-0" />
-                <span className="truncate">
-                  {viewingCurrent
-                    ? t('source.inspection.readOnlyShort')
-                    : t('source.inspection.snapshotShort')}
+              {isSaving && (
+                <span className="flex shrink-0 items-center gap-1 text-[12px] text-ui-fg-secondary">
+                  <Loader2 size={12} className="animate-spin" />
+                  {t('source.inspection.saving')}
                 </span>
-              </span>
-            )}
+              )}
 
-            <ActionBar actions={actions} moreLabel={t('source.inspection.moreActions')} />
+              {!editable && (
+                <span
+                  className="flex min-w-0 items-center gap-1 rounded-md bg-ui-field px-1.5 py-0.5 text-[12px] text-ui-fg-secondary"
+                  title={
+                    viewingCurrent
+                      ? t('source.inspection.readOnlyCheckout')
+                      : t('source.inspection.readOnlySnapshot')
+                  }
+                >
+                  <Lock size={11} className="shrink-0" />
+                  <span className="truncate">
+                    {viewingCurrent
+                      ? t('source.inspection.readOnlyShort')
+                      : t('source.inspection.snapshotShort')}
+                  </span>
+                </span>
+              )}
 
-            {canGenerateTemplate && (
-              <GoogleSheetTemplateMenu
-                file={file}
-                fileId={fileId}
-                orgId={orgId}
-                templateFolderId={templateFolderId}
-                rows={displayRows}
-              />
-            )}
+              <ActionBar actions={actions} moreLabel={t('source.inspection.moreActions')} />
 
-            <ColumnManager />
-          </>
-        )}
-      </div>
+              {canGenerateTemplate && (
+                <GoogleSheetTemplateMenu
+                  file={file}
+                  fileId={fileId}
+                  orgId={orgId}
+                  templateFolderId={templateFolderId}
+                  rows={displayRows}
+                />
+              )}
+
+              <ColumnManager />
+            </>
+          )}
+        </div>
       )}
 
       {view === 'reports' ? (
@@ -684,7 +771,20 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 </div>
                 {editable && (
                   <div className="mt-2 flex items-center gap-2">
-                    {isDrawing && (
+                    {isDrawing && bar.mode === 'start' && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={<ScanSearch size={13} />}
+                        loading={drawing.busy}
+                        disabled={drawing.busy}
+                        title={t('source.inspection.autoStartTitle')}
+                        onClick={() => void drawing.handleBalloon()}
+                      >
+                        {t('source.inspection.autoStart')}
+                      </Button>
+                    )}
+                    {isDrawing && bar.mode === 'manual' && (
                       <Button
                         size="sm"
                         variant="primary"

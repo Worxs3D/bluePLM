@@ -131,6 +131,9 @@ export function clearExtract(
 /** Debounce after the last change on disk before Auto runs. */
 export const AUTO_DEBOUNCE_MS = 2500
 
+/** Delay before Auto looks at a drawing just opened, or Auto just turned on. */
+export const AUTO_OPEN_DELAY_MS = 600
+
 /**
  * After BluePLM's own balloon save, a change seen this soon is taken as that save (a late second
  * write) and adopted as in sync instead of starting another run: Auto never loops on itself.
@@ -188,6 +191,41 @@ export function decideAutoRun(input: AutoRunInput): AutoRunDecision {
   // Only a drawing BluePLM has ballooned before can have a late second write of its own save.
   if (status.balloon === 'changed' && input.now < input.settleUntil) return { action: 'adopt' }
   return { action: 'run' }
+}
+
+/**
+ * What the toolbar offers for keeping a drawing and its table in sync.
+ * - `manual`: Auto is off; Extract and Balloon are offered when the drawing changed.
+ * - `start`: Auto is on but nothing has been read from this drawing yet, and Auto never starts
+ *   inspecting a drawing on its own: one "Extract and balloon" action.
+ * - `auto`: Auto owns the drawing. No Extract or Balloon action: the pill says where it stands,
+ *   and only a paused Auto offers a Retry.
+ */
+export type AutoBarState =
+  | { mode: 'manual' }
+  | { mode: 'start' }
+  | { mode: 'auto'; status: 'inSync' | 'checking' | 'syncing' | 'waiting' | 'paused' }
+
+export function autoBarState(input: {
+  autoEnabled: boolean
+  hasLinkedRows: boolean
+  /** An extract or balloon run is in progress. */
+  busy: boolean
+  /** Service running and new enough, file present locally. */
+  ready: boolean
+  /** Auto stopped after a failure at the drawing's current content. */
+  paused: boolean
+  balloon: DrawingSyncReason
+}): AutoBarState {
+  if (!input.autoEnabled) return { mode: 'manual' }
+  if (!input.hasLinkedRows) return { mode: 'start' }
+  if (input.busy) return { mode: 'auto', status: 'syncing' }
+  if (input.paused) return { mode: 'auto', status: 'paused' }
+  if (input.balloon === 'inSync') return { mode: 'auto', status: 'inSync' }
+  if (!input.ready) return { mode: 'auto', status: 'waiting' }
+  if (input.balloon === 'unknown') return { mode: 'auto', status: 'checking' }
+  // Changed, never ballooned or read by another service version: Auto is about to run.
+  return { mode: 'auto', status: 'syncing' }
 }
 
 /** Tooltip key for a disabled or enabled Extract / Balloon button. */

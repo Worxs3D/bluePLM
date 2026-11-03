@@ -39,7 +39,10 @@ const SAMPLE_NOW = { rev: 'B', version: '5', n: 3 } as const
 const SAMPLE_NEXT_REV = { rev: 'C', version: '6' } as const
 
 /** A signed URL for the organization logo, as the menu bar shows it (null without one). */
-function useOrgLogoUrl(path: string | null | undefined, fallback: string | null | undefined): string | null {
+function useOrgLogoUrl(
+  path: string | null | undefined,
+  fallback: string | null | undefined,
+): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -81,11 +84,17 @@ export function ReportNamingSettings() {
   const logoUrl = useOrgLogoUrl(organization?.logo_storage_path, organization?.logo_url)
   const [logoFailed, setLogoFailed] = useState(false)
   const date = reportDate(new Date())
-  const preview = useMemo(
-    () =>
-      `${formatReportNumber(pattern, { ...SAMPLE, date, rev: SAMPLE_NOW.rev, version: SAMPLE_NOW.version, n: String(SAMPLE_NOW.n) })}.xlsx`,
-    [pattern, date],
-  )
+  // Without {n} the third report of the same number is told apart by `_3` (`nextReportName`).
+  const preview = useMemo(() => {
+    const base = formatReportNumber(pattern, {
+      ...SAMPLE,
+      date,
+      rev: SAMPLE_NOW.rev,
+      version: SAMPLE_NOW.version,
+      n: String(SAMPLE_NOW.n),
+    })
+    return `${patternHasSequence(pattern) ? base : `${base}_${SAMPLE_NOW.n}`}.xlsx`
+  }, [pattern, date])
   // The next report after a revision change: the count goes on (per drawing) or restarts (per revision).
   const nextPreview = useMemo(
     () =>
@@ -110,7 +119,10 @@ export function ReportNamingSettings() {
         .eq('id', organization.id)
         .single()
       const base = (current?.settings ?? organization.settings ?? {}) as OrgSettings
-      const settings: OrgSettings = { ...base, inspection_reports: { ...base.inspection_reports, ...patch } }
+      const settings: OrgSettings = {
+        ...base,
+        inspection_reports: { ...base.inspection_reports, ...patch },
+      }
       const { data, error } = await supabase
         .from('organization')
         .update({ settings: settings as never })
@@ -124,7 +136,12 @@ export function ReportNamingSettings() {
       addToast('success', t('source.inspection.rnSaved'))
     } catch (error) {
       log.error('[InspectionTemplates]', 'Saving the report naming failed', { error })
-      addToast('error', t('source.inspection.rnSaveFailed', { error: error instanceof Error ? error.message : String(error) }))
+      addToast(
+        'error',
+        t('source.inspection.rnSaveFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
     } finally {
       setSaving(false)
     }
@@ -133,7 +150,8 @@ export function ReportNamingSettings() {
   const [sampleDraft, setSampleDraft] = useState<string | null>(null)
   const sampleText = sampleDraft ?? String(naming.defaultSampleSize)
   const sampleValue = /^\d+$/.test(sampleText.trim()) ? Number(sampleText.trim()) : null
-  const sampleValid = sampleValue !== null && sampleValue >= 1 && sampleValue <= MAX_DEFAULT_SAMPLE_SIZE
+  const sampleValid =
+    sampleValue !== null && sampleValue >= 1 && sampleValue <= MAX_DEFAULT_SAMPLE_SIZE
   const saveSample = () => {
     if (sampleDraft === null) return
     if (!sampleValid || sampleValue === naming.defaultSampleSize) {
@@ -143,7 +161,8 @@ export function ReportNamingSettings() {
     void save({ default_sample_size: sampleValue }).then(() => setSampleDraft(null))
   }
 
-  const insertToken = (token: string) => setDraft(`${pattern}{${token}}`.slice(0, MAX_PATTERN_LENGTH))
+  const insertToken = (token: string) =>
+    setDraft(`${pattern}{${token}}`.slice(0, MAX_PATTERN_LENGTH))
 
   const scopeOptions: { value: ReportSequenceScope; label: string }[] = [
     { value: 'drawing', label: t('source.inspection.rnScope_drawing') },
@@ -154,11 +173,17 @@ export function ReportNamingSettings() {
     <SettingsSection
       title={t('source.inspection.rnTitle')}
       description={
-        isAdmin ? t('source.inspection.rnIntro') : `${t('source.inspection.rnIntro')} ${t('source.inspection.tplAdminOnly')}`
+        isAdmin
+          ? t('source.inspection.rnIntro')
+          : `${t('source.inspection.rnIntro')} ${t('source.inspection.tplAdminOnly')}`
       }
     >
       <SettingsGroup>
-        <SettingRow label={t('source.inspection.rnPattern')} description={t('source.inspection.rnPatternHint')} stacked>
+        <SettingRow
+          label={t('source.inspection.rnPattern')}
+          description={t('source.inspection.rnPatternHint')}
+          stacked
+        >
           <div className="flex w-full flex-col gap-2">
             <div className="flex items-center gap-2">
               <TextInput
@@ -181,7 +206,9 @@ export function ReportNamingSettings() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => void save({ number_pattern: pattern.trim() || DEFAULT_REPORT_NUMBER_PATTERN })}
+                onClick={() =>
+                  void save({ number_pattern: pattern.trim() || DEFAULT_REPORT_NUMBER_PATTERN })
+                }
                 disabled={disabled || !dirty}
                 loading={saving && dirty}
                 title={dirty ? undefined : t('source.inspection.rnNoChanges')}
@@ -207,7 +234,11 @@ export function ReportNamingSettings() {
             )}
             <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-ui-border bg-ui-field/50 px-3 py-2.5 text-[12px]">
               <span className="text-ui-fg-secondary">
-                {t('source.inspection.rnExampleNow', { rev: SAMPLE_NOW.rev, version: SAMPLE_NOW.version, n: SAMPLE_NOW.n })}
+                {t('source.inspection.rnExampleNow', {
+                  rev: SAMPLE_NOW.rev,
+                  version: SAMPLE_NOW.version,
+                  n: SAMPLE_NOW.n,
+                })}
               </span>
               <span className="truncate font-mono text-[13px] text-ui-fg" title={preview}>
                 {preview}
@@ -220,13 +251,20 @@ export function ReportNamingSettings() {
                 {nextPreview}
               </span>
             </div>
-            {!patternHasSequence(pattern) && <Callout tone="warning">{t('source.inspection.rnNoSequence')}</Callout>}
+            {!patternHasSequence(pattern) && (
+              <Callout tone="warning">{t('source.inspection.rnNoSequence')}</Callout>
+            )}
             {unknown.length > 0 && (
-              <Callout tone="warning">{t('source.inspection.rnUnknownTokens', { tokens: unknown.join(', ') })}</Callout>
+              <Callout tone="warning">
+                {t('source.inspection.rnUnknownTokens', { tokens: unknown.join(', ') })}
+              </Callout>
             )}
           </div>
         </SettingRow>
-        <SettingRow label={t('source.inspection.rnScope')} description={t('source.inspection.rnScopeHint')}>
+        <SettingRow
+          label={t('source.inspection.rnScope')}
+          description={t('source.inspection.rnScopeHint')}
+        >
           <SegmentedControl
             value={naming.sequenceScope}
             options={scopeOptions.map((o) => ({ ...o, disabled }))}
@@ -238,7 +276,9 @@ export function ReportNamingSettings() {
         <SettingRow
           label={t('source.inspection.rnLogo')}
           description={
-            organization?.logo_storage_path ? t('source.inspection.rnLogoHint') : t('source.inspection.rnLogoNone')
+            organization?.logo_storage_path
+              ? t('source.inspection.rnLogoHint')
+              : t('source.inspection.rnLogoNone')
           }
         >
           <div className="flex items-center gap-3">
@@ -278,7 +318,10 @@ export function ReportNamingSettings() {
         {t('source.inspection.rnLotTitle')}
       </h4>
       <SettingsGroup>
-        <SettingRow label={t('source.inspection.rnLotScope')} description={t('source.inspection.rnLotScopeHint')}>
+        <SettingRow
+          label={t('source.inspection.rnLotScope')}
+          description={t('source.inspection.rnLotScopeHint')}
+        >
           <SegmentedControl
             value={naming.lotScope}
             options={(['classified', 'all'] as const).map((value) => ({
@@ -291,7 +334,10 @@ export function ReportNamingSettings() {
             aria-label={t('source.inspection.rnLotScope')}
           />
         </SettingRow>
-        <SettingRow label={t('source.inspection.rnSampleSize')} description={t('source.inspection.rnSampleSizeHint')}>
+        <SettingRow
+          label={t('source.inspection.rnSampleSize')}
+          description={t('source.inspection.rnSampleSizeHint')}
+        >
           <TextInput
             value={sampleText}
             onChange={(e) => setSampleDraft(e.target.value)}

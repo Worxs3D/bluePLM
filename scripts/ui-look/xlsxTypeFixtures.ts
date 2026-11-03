@@ -64,7 +64,7 @@ export async function typeWorkbooks(
     {
       key: 'fai-full',
       template: 'first-article-as9102',
-      number: 'BR-103849-201_RevB_FAIR1',
+      number: 'BR-103849-201_RevB_FAIR',
       request: { reportType: 'fai', faiScope: 'full', faiReason: 'new_part' },
     },
     {
@@ -76,7 +76,7 @@ export async function typeWorkbooks(
     {
       key: 'production',
       template: 'production-lot',
-      number: 'BR-103849-201_RevB_PIR2',
+      number: 'BR-103849-201_RevB_PIR_2',
       request: { reportType: 'production', lotNumber: 'L-2611', lotSize: 120, sampling: { plan: 'fixed', n: 5 }, lotScope: 'classified' },
     },
     {

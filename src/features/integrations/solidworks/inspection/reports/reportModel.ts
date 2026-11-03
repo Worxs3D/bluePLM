@@ -4,7 +4,12 @@
  * so it is unit-tested directly (`reportModel.test.ts`).
  */
 import type { BadgeTone } from '@/components/core/ui'
-import { formatSpec, type InspectionReportRow, type ReturnedResults, type Verdict } from '@/lib/inspection/excel'
+import {
+  formatSpec,
+  type InspectionReportRow,
+  type ReturnedResults,
+  type Verdict,
+} from '@/lib/inspection/excel'
 import type { Json } from '@/types/supabase'
 import { reportTypeCode, templateServes } from '@/lib/inspection/reportTypes'
 import type {
@@ -28,14 +33,24 @@ function numberSegment(value: string | null | undefined): string {
 }
 
 /**
- * Default report number pattern: `BR-103849-201_RevA_FAIR1`, `..._PIR3`. `{n}` counts per type
- * because the pattern has `{type}`. An organization's saved pattern is kept as saved (5.5.0's
- * default was `{partNumber}_Rev{rev}_IRv{n}`).
+ * Default report number pattern: `BR-103849-201_RevA_FAIR`, `..._PIR`. The part, revision and type
+ * already say which report it is (the version is in the report's history), so there is no counter:
+ * a second report with the same number becomes `..._PIR_2`, `..._PIR_3`. An organization's saved
+ * pattern is kept as saved (5.5.0's default was `{partNumber}_Rev{rev}_IRv{n}`, 5.6.0's
+ * `{partNumber}_Rev{rev}_{type}{n}`).
  */
-export const DEFAULT_REPORT_NUMBER_PATTERN = '{partNumber}_Rev{rev}_{type}{n}'
+export const DEFAULT_REPORT_NUMBER_PATTERN = '{partNumber}_Rev{rev}_{type}'
 
 /** Tokens a report number pattern may use, in the order the settings list them. */
-export const REPORT_NUMBER_TOKENS = ['partNumber', 'rev', 'version', 'drawing', 'type', 'date', 'n'] as const
+export const REPORT_NUMBER_TOKENS = [
+  'partNumber',
+  'rev',
+  'version',
+  'drawing',
+  'type',
+  'date',
+  'n',
+] as const
 export type ReportNumberToken = (typeof REPORT_NUMBER_TOKENS)[number]
 
 /** Where `{n}` counts: over every report of the drawing, or restarting for each revision. */
@@ -72,8 +87,14 @@ export const MAX_REPORT_NUMBER_LENGTH = 120
 
 /** Read the stored setting; anything missing or malformed takes the default. */
 export function reportNamingFromSettings(raw: unknown): ReportNaming {
-  const value = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
-  const pattern = typeof value.number_pattern === 'string' ? value.number_pattern.trim().slice(0, MAX_PATTERN_LENGTH) : ''
+  const value =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  const pattern =
+    typeof value.number_pattern === 'string'
+      ? value.number_pattern.trim().slice(0, MAX_PATTERN_LENGTH)
+      : ''
   return {
     numberPattern: pattern || DEFAULT_REPORT_NUMBER_PATTERN,
     sequenceScope: value.sequence_scope === 'revision' ? 'revision' : 'drawing',
@@ -127,10 +148,13 @@ export function formatReportNumber(pattern: string, values: ReportNumberValues):
   const byName = new Map<string, string>(
     REPORT_NUMBER_TOKENS.map((tok) => [tok.toLowerCase(), numberSegment(values[tok])]),
   )
-  const filled = (pattern || DEFAULT_REPORT_NUMBER_PATTERN).replace(/\{([^{}]*)\}/g, (_all, name: string) => {
-    const known = byName.get(name.trim().toLowerCase())
-    return known ?? name
-  })
+  const filled = (pattern || DEFAULT_REPORT_NUMBER_PATTERN).replace(
+    /\{([^{}]*)\}/g,
+    (_all, name: string) => {
+      const known = byName.get(name.trim().toLowerCase())
+      return known ?? name
+    },
+  )
   const cleaned = Array.from(filled)
     .filter((ch) => ch.charCodeAt(0) >= 32)
     .join('')
@@ -145,8 +169,12 @@ export function formatReportNumber(pattern: string, values: ReportNumberValues):
 const LEGACY_SEQUENCE = /[-_]IRv?(\d+)$/i
 
 /** A report's place in its drawing's sequence: the stored `sequence`, else parsed from the number. */
-export function reportSequence(report: { reportNumber: string | null; sequence?: number | null }): number | null {
-  if (typeof report.sequence === 'number' && Number.isFinite(report.sequence)) return report.sequence
+export function reportSequence(report: {
+  reportNumber: string | null
+  sequence?: number | null
+}): number | null {
+  if (typeof report.sequence === 'number' && Number.isFinite(report.sequence))
+    return report.sequence
   const match = report.reportNumber ? LEGACY_SEQUENCE.exec(report.reportNumber.trim()) : null
   return match ? Number(match[1]) : null
 }
@@ -188,8 +216,10 @@ export function nextReportSequence(
 
 /**
  * The next report number and its sequence. Report numbers are unique per drawing (and are file
- * names), so a number another report already has moves on to the next `n`; a pattern without
- * `{n}` gets `_<n>` appended once its plain number is taken. Bounded by the number of reports.
+ * names), so a number another report already has moves on to the next `n`. A pattern without `{n}`
+ * keeps its plain number while it is free, then gets `_2`, `_3`, ... counted on that number alone,
+ * so `RevC_PIR` follows `RevB_PIR_3` instead of jumping to the drawing-wide count. Bounded by the
+ * number of reports.
  */
 export function nextReportName(
   pattern: string,
@@ -199,15 +229,28 @@ export function nextReportName(
 ): { reportNumber: string; sequence: number } {
   const taken = new Set(existingNumbers.filter((n): n is string => !!n).map((n) => n.toLowerCase()))
   const hasN = patternHasSequence(pattern)
+  if (!hasN) {
+    const base = formatReportNumber(pattern, { ...values, n: String(startSequence) })
+    if (!taken.has(base.toLowerCase())) return { reportNumber: base, sequence: startSequence }
+    for (let k = 2; k <= taken.size + 2; k++) {
+      const candidate = `${base}_${k}`
+      if (!taken.has(candidate.toLowerCase()))
+        return { reportNumber: candidate, sequence: startSequence }
+    }
+  }
   const limit = startSequence + taken.size + 1
   for (let n = startSequence; n <= limit; n++) {
     const base = formatReportNumber(pattern, { ...values, n: String(n) })
-    const candidate = hasN || (n === startSequence && !taken.has(base.toLowerCase())) ? base : `${base}_${n}`
+    const candidate =
+      hasN || (n === startSequence && !taken.has(base.toLowerCase())) ? base : `${base}_${n}`
     if (!taken.has(candidate.toLowerCase())) return { reportNumber: candidate, sequence: n }
   }
   // Unreachable: more candidates were tried than numbers exist.
   const n = limit + 1
-  return { reportNumber: `${formatReportNumber(pattern, { ...values, n: String(n) })}_${n}`, sequence: n }
+  return {
+    reportNumber: `${formatReportNumber(pattern, { ...values, n: String(n) })}_${n}`,
+    sequence: n,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +282,11 @@ export function resolveReportIdentity(
     }
     return null
   }
-  return { partNumber: pick('partNumber'), description: pick('description'), revision: pick('revision') }
+  return {
+    partNumber: pick('partNumber'),
+    description: pick('description'),
+    revision: pick('revision'),
+  }
 }
 
 /** Whether a later source is needed for any field. */
@@ -276,7 +323,10 @@ export function newerVersionThan(
   versions: readonly VersionInfo[],
 ): VersionInfo | null {
   const own = versions.find((v) => v.id === report.fileVersionId)
-  const latest = versions.reduce<VersionInfo | null>((best, v) => (!best || v.version > best.version ? v : best), null)
+  const latest = versions.reduce<VersionInfo | null>(
+    (best, v) => (!best || v.version > best.version ? v : best),
+    null,
+  )
   if (!latest || latest.id === report.fileVersionId) return null
   if (own && latest.version <= own.version) return null
   return latest
@@ -287,7 +337,9 @@ export function newerVersionThan(
  * it is still live, else a built-in of the same name, else the default.
  */
 export function regenerateTemplateChoice(
-  report: Pick<InspectionReport, 'templateId' | 'templateName'> & { reportType?: InspectionReportType | null },
+  report: Pick<InspectionReport, 'templateId' | 'templateName'> & {
+    reportType?: InspectionReportType | null
+  },
   choices: readonly TemplateChoice[],
 ): TemplateChoice | null {
   if (report.templateId) {
@@ -399,7 +451,8 @@ export interface ReportActions {
 export function reportActions(status: InspectionReportStatus): ReportActions {
   return {
     markSent: status === 'issued',
-    importResults: status === 'issued' || status === 'sent' || status === 'returned' || status === 'rejected',
+    importResults:
+      status === 'issued' || status === 'sent' || status === 'returned' || status === 'rejected',
     accept: status === 'returned' || status === 'rejected',
     reject: status === 'returned' || status === 'accepted',
   }
@@ -432,7 +485,10 @@ export function safeFileName(name: string, fallback = 'inspection-report'): stri
   return cleaned || fallback
 }
 
-export function reportFileName(report: Pick<InspectionReport, 'reportNumber' | 'title'>, returned = false): string {
+export function reportFileName(
+  report: Pick<InspectionReport, 'reportNumber' | 'title'>,
+  returned = false,
+): string {
   const base = safeFileName(report.reportNumber || report.title || 'inspection-report')
   return `${base}${returned ? '-returned' : ''}.xlsx`
 }
@@ -526,7 +582,6 @@ export function defaultTemplateChoice(
   )
 }
 
-
 // ---------------------------------------------------------------------------
 // Returned results as stored in inspection_report.results
 // ---------------------------------------------------------------------------
@@ -578,10 +633,14 @@ export function toStoredResults(
   typed = false,
 ): StoredResults {
   const byId = new Map(expectedRows.map((r) => [r.id, r]))
-  const byKey = new Map(expectedRows.filter((r) => r.source_key).map((r) => [r.source_key as string, r]))
+  const byKey = new Map(
+    expectedRows.filter((r) => r.source_key).map((r) => [r.source_key as string, r]),
+  )
   const matched = new Set<string>()
   const rows: StoredResultRow[] = returned.rows.map((r) => {
-    const exp = (r.rowId ? byId.get(r.rowId) : undefined) ?? (r.sourceKey ? byKey.get(r.sourceKey) : undefined)
+    const exp =
+      (r.rowId ? byId.get(r.rowId) : undefined) ??
+      (r.sourceKey ? byKey.get(r.sourceKey) : undefined)
     if (exp) matched.add(exp.id)
     return {
       rowId: r.rowId,
@@ -598,9 +657,7 @@ export function toStoredResults(
     }
   })
   rows.sort((a, b) => balloonOrder(a.balloon, b.balloon))
-  const missing = expectedRows
-    .filter((r) => !matched.has(r.id))
-    .map((r) => r.balloon_number ?? '')
+  const missing = expectedRows.filter((r) => !matched.has(r.id)).map((r) => r.balloon_number ?? '')
   return {
     format: typed ? 'blueplm-inspection-results/2' : 'blueplm-inspection-results/1',
     entries: returned.entries,

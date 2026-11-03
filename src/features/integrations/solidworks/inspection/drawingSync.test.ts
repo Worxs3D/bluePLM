@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_DRAWING_SYNC_STAMPS,
+  autoBarState,
   boundStamps,
   clearExtract,
   decideAutoRun,
@@ -135,5 +136,63 @@ describe('decideAutoRun', () => {
   it('runs for a drawing extracted but never ballooned', () => {
     const stamp = recordExtract({}, 'f', 'h3', V, 1).f
     expect(decideAutoRun(base({ stamp, settleUntil: 999_999 }))).toEqual({ action: 'run' })
+  })
+})
+
+describe('autoBarState', () => {
+  const base = {
+    autoEnabled: true,
+    hasLinkedRows: true,
+    busy: false,
+    ready: true,
+    paused: false,
+    balloon: 'inSync' as const,
+  }
+
+  it('leaves the manual buttons when Auto is off', () => {
+    expect(autoBarState({ ...base, autoEnabled: false })).toEqual({ mode: 'manual' })
+    expect(autoBarState({ ...base, autoEnabled: false, hasLinkedRows: false })).toEqual({
+      mode: 'manual',
+    })
+  })
+
+  it('offers one start action before anything was read from the drawing', () => {
+    expect(autoBarState({ ...base, hasLinkedRows: false, balloon: 'never' })).toEqual({
+      mode: 'start',
+    })
+    expect(autoBarState({ ...base, hasLinkedRows: false, busy: true })).toEqual({ mode: 'start' })
+  })
+
+  it('offers nothing to press when the drawing is in sync', () => {
+    expect(autoBarState(base)).toEqual({ mode: 'auto', status: 'inSync' })
+    // In sync stays in sync while SOLIDWORKS is not running.
+    expect(autoBarState({ ...base, ready: false })).toEqual({ mode: 'auto', status: 'inSync' })
+  })
+
+  it('says what Auto is doing when the drawing is not in sync', () => {
+    expect(autoBarState({ ...base, busy: true })).toEqual({ mode: 'auto', status: 'syncing' })
+    for (const balloon of ['changed', 'never', 'service'] as const) {
+      expect(autoBarState({ ...base, balloon })).toEqual({ mode: 'auto', status: 'syncing' })
+    }
+    expect(autoBarState({ ...base, balloon: 'unknown' })).toEqual({
+      mode: 'auto',
+      status: 'checking',
+    })
+    expect(autoBarState({ ...base, balloon: 'changed', ready: false })).toEqual({
+      mode: 'auto',
+      status: 'waiting',
+    })
+  })
+
+  it('shows a paused Auto, which is the only state with something to press', () => {
+    expect(autoBarState({ ...base, balloon: 'changed', paused: true })).toEqual({
+      mode: 'auto',
+      status: 'paused',
+    })
+    // A run in progress wins over an old pause.
+    expect(autoBarState({ ...base, paused: true, busy: true })).toEqual({
+      mode: 'auto',
+      status: 'syncing',
+    })
   })
 })
