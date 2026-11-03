@@ -23,6 +23,7 @@
  * Pure: no React, no store, no I/O.
  */
 
+import { hasLocalContent } from '@/hooks/useLoadFiles/fileClassification'
 import type { LocalFile } from '@/stores/pdmStore'
 import { isCheckoutProfileForOwner } from '@/types/pdm'
 
@@ -62,10 +63,15 @@ export function availabilityOf(
   const checkedOutBy = file.pdmData?.checked_out_by
   const isLocalOnly = !file.pdmData?.id
 
+  if (checkedOutBy && checkedOutBy !== currentUserId) {
+    return { state: 'held-by-other', holder: holderOf(file) }
+  }
+  // A cloud row or a moved-away stub has no document on disk, so neither a checkout nor a write
+  // can reach it. Sync Metadata skips these too.
+  if (!hasLocalContent(file)) return { state: 'not-loaded' }
   if (isLocalOnly || checkedOutBy === currentUserId) return { state: 'writable' }
-  if (!checkedOutBy) return { state: 'not-checked-out' }
 
-  return { state: 'held-by-other', holder: holderOf(file) }
+  return { state: 'not-checked-out' }
 }
 
 /** What a set of files amounts to, for the line above the button. */

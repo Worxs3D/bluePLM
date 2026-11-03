@@ -1987,8 +1987,6 @@ export const en: TranslationDict = {
       eligible: '{{eligible}} of {{selected}} selected files can be written now.',
       heldByOthers:
         '{{count}} files in this category are checked out by other people and cannot be ticked. Writing to a document somebody is working in would be overwritten by their check-in, so the audit leaves them alone.',
-      notCheckedOut:
-        '{{count}} are not checked out to you. Sync Metadata will not touch a file you do not hold; check them out in the file browser and they become writable.',
       notLoaded:
         '{{count}} have no local copy loaded, so there is nothing on disk to write to. Download them first.',
       selectPrompt: 'Tick the files whose documents should take BluePLM’s values.',
@@ -1999,6 +1997,15 @@ export const en: TranslationDict = {
       selectedPhrase: '{{files}} selected',
       applyPhrase: 'Write {{files}}',
       applyNone: 'Write files',
+      checkoutApplyPhrase: 'Check out and write {{files}}',
+      willCheckOut:
+        '{{count}} are not checked out. The button checks them out to you first, then writes them, and leaves them checked out.',
+      willCheckOutAndIn:
+        '{{count}} are not checked out. The button checks them out to you, writes them, and checks them back in as a new version. Files you already had checked out stay checked out.',
+      checkInAfter: 'Check in the files this checks out when done',
+      checkInAfterHint:
+        'Without a check-in the fix exists only on this computer. Files you had checked out before are never checked in by this.',
+      checkinNote: 'Metadata written from BluePLM (Vault Audit)',
     },
 
     conflict: {
@@ -2023,6 +2030,7 @@ export const en: TranslationDict = {
       bluePlmChoice: 'Use BluePLM: {{files}}',
       applyFilePhrase: 'Copy {{values}} into BluePLM',
       applyBluePlmPhrase: 'Write {{files}}',
+      checkoutApplyBluePlmPhrase: 'Check out and write {{files}}',
     },
 
     findings: {
@@ -2038,6 +2046,10 @@ export const en: TranslationDict = {
       columnDatabase: 'BluePLM',
       columnFile2: 'File',
       columnResolution: 'To resolve',
+      partNumber: 'Part number',
+      noPartNumber: 'No part number',
+      noDescription: 'No description',
+      issuesHint: 'The fields that differ in this file',
       directionNote:
         'Unambiguous rows show the write direction with an arrow. “Pick a side” rows have action buttons so you can choose which value wins.',
       selectAll: 'Select all {{count}} {{unit}}',
