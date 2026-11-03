@@ -602,8 +602,8 @@ export const usePDMStore = create<PDMStoreState>()(
             (persisted.christmasSleighDirection as 'push' | 'pull') || 'push',
           // Restore columns in the user's saved order (not the default order),
           // merging in any fixed fields (label/sortable) from the current defaults.
-          // Widths/visibility come from the persisted config; new built-in columns
-          // added since the user last saved are appended at the end.
+          // Widths/visibility come from the persisted config; a built-in column
+          // added since the user last saved goes after its predecessor in the defaults.
           columns: (() => {
             const persistedColumns =
               (persisted.columns as typeof currentState.columns) || []
@@ -614,13 +614,12 @@ export const usePDMStore = create<PDMStoreState>()(
                 return defaultCol ? { ...defaultCol, ...persistedCol } : null
               })
               .filter((c): c is (typeof currentState.columns)[number] => c !== null)
-            for (const defaultCol of currentState.columns) {
-              if (!persistedIds.has(defaultCol.id)) {
-                // The Outputs column goes left of everything, as in the defaults.
-                if (defaultCol.id === 'outputs') ordered.unshift(defaultCol)
-                else ordered.push(defaultCol)
-              }
-            }
+            currentState.columns.forEach((defaultCol, index) => {
+              if (persistedIds.has(defaultCol.id)) return
+              const previousId = currentState.columns[index - 1]?.id
+              const at = ordered.findIndex((c) => c.id === previousId)
+              ordered.splice(at + 1, 0, defaultCol)
+            })
             return ordered.length > 0 ? ordered : currentState.columns
           })(),
           // Ensure cardViewFields have all fields (merge persisted with defaults for new fields)
