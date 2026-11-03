@@ -4,7 +4,7 @@ import type { LocalFile } from '@/stores/pdmStore'
 import { outputJobKey, type OutputJob } from '@/stores/slices/outputsSlice'
 import type { DrawingRefItem } from '@/stores/types'
 import type { InspectionReport } from '@/types/inspectionReports'
-import type { VersionOutput } from '@/types/versionOutputs'
+import type { VersionedOutput } from '@/types/versionOutputs'
 
 import type { ConfigWithDepth } from '../../types'
 import { buildVirtualRows, type BuildVirtualRowsOptions } from './buildVirtualRows'
@@ -22,12 +22,13 @@ function file(path: string, id: string | null, version = 3): LocalFile {
   } as unknown as LocalFile
 }
 
-function pdf(fileId: string, fileVersionId: string): VersionOutput {
+function pdf(fileId: string, fileVersionId: string): VersionedOutput {
   return {
     id: `${fileVersionId}-pdf`,
     kind: 'pdf',
     fileId,
     fileVersionId,
+    version: Number(fileVersionId.replace(/\D/g, '')),
     configuration: null,
     storageHash: 'a'.repeat(64),
     fileSize: 1,
@@ -81,7 +82,7 @@ describe('output rows', () => {
         drawingInspectionReports: new Map([['d1', [report]]]),
         outputs: {
           versions: new Map([['d1', { version: 3, fileVersionId: 'dv3' }]]),
-          byVersion: new Map([['dv3', [pdf('d1', 'dv3')]]]),
+          heads: new Map([['d1', [pdf('d1', 'dv3')]]]),
           jobs: new Map(),
           canGenerate: false,
         },
@@ -105,7 +106,7 @@ describe('output rows', () => {
         fileConfigurations: new Map([[p.path, configs]]),
         outputs: {
           versions: new Map([['p1', { version: 2, fileVersionId: 'pv2' }]]),
-          byVersion: new Map([['pv2', []]]),
+          heads: new Map([['p1', []]]),
           jobs: new Map(),
           canGenerate: true,
         },
@@ -116,7 +117,7 @@ describe('output rows', () => {
     expect(out.type === 'file-output' && [out.entry.kind, out.entry.state]).toEqual(['step', 'missing'])
   })
 
-  it('shows a queued job before the version is resolved, and nothing stale after a new check-in', () => {
+  it('after a new check-in, shows the older PDF as one stale row with the queued job on it', () => {
     const d = file('a.slddrw', 'd1', 4)
     const queued: OutputJob = {
       key: outputJobKey('d1', 'pdf', null),
@@ -139,17 +140,20 @@ describe('output rows', () => {
       options({
         ...base,
         outputs: {
-          // Version 3 is what was resolved; the file is now at 4, so v3's PDF is not shown.
+          // The file is now at version 4; v3's PDF is its newest, so it is shown, out of date.
           versions: new Map([['d1', { version: 3, fileVersionId: 'dv3' }]]),
-          byVersion: new Map([['dv3', [pdf('d1', 'dv3')]]]),
+          heads: new Map([['d1', [pdf('d1', 'dv3')]]]),
           jobs: new Map([[queued.key, queued]]),
           canGenerate: true,
         },
       }),
     )
-    const outs = rows.filter((r) => r.type === 'file-output')
-    expect(outs).toHaveLength(1)
-    expect(outs[0].type === 'file-output' && [outs[0].entry.state, outs[0].entry.output]).toEqual(['queued', null])
+    const outs = rows.flatMap((r) => (r.type === 'file-output' ? [r] : []))
+    expect(outs.map((r) => [r.entry.kind, r.entry.state, r.entry.stale, r.version])).toEqual([
+      ['pdf', 'ready', true, 3],
+      ['step', 'missing', false, 4],
+    ])
+    expect(outs[0].entry.job?.status).toBe('queued')
   })
 
   it('lists nothing for a collapsed file', () => {
@@ -159,7 +163,7 @@ describe('output rows', () => {
         displayFiles: [d],
         outputs: {
           versions: new Map([['d1', { version: 3, fileVersionId: 'dv3' }]]),
-          byVersion: new Map([['dv3', [pdf('d1', 'dv3')]]]),
+          heads: new Map([['d1', [pdf('d1', 'dv3')]]]),
           jobs: new Map(),
           canGenerate: true,
         },

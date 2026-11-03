@@ -83,6 +83,21 @@ describe('drawing report rows', () => {
     expect(selectableRows).toHaveLength(1)
   })
 
+  it('lists a regenerated report in place of the one it supersedes', () => {
+    const file = drawing('a.slddrw', 'd1')
+    const regenerated = { ...report('r2'), supersedesReportId: 'r1' } as InspectionReport
+    const { rows } = buildVirtualRows(
+      options({
+        displayFiles: [file],
+        files: [file],
+        expandedDrawingRefs: new Set([file.path]),
+        drawingInspectionReports: new Map([['d1', [regenerated, report('r1'), report('copy')]]]),
+      }),
+    )
+    const listed = rows.flatMap((r) => (r.type === 'drawing-report' ? [r.report.id] : []))
+    expect(listed).toEqual(['r2', 'copy'])
+  })
+
   it('caps the list with a "more" row', () => {
     const file = drawing('a.slddrw', 'd1')
     const many = Array.from({ length: MAX_DRAWING_REPORT_ROWS + 3 }, (_, i) => report(`r${i}`))

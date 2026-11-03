@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ClipboardList, Download, ExternalLink, FileDown, FolderDown, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react'
+import { Check, ClipboardList, Copy, Download, ExternalLink, FileDown, FolderDown, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
@@ -62,8 +62,9 @@ function Item({
 
 /**
  * The menu of one inspection report, the same in the file list (report rows under a drawing) and
- * in the Reports view: Open, Regenerate, Regenerate for version N, Save copy..., Save next to
- * drawing (desktop), Import results, Delete.
+ * in the Reports view: Open, Regenerate for version N (only when the drawing has a newer version;
+ * the new report replaces this one in the file list), Regenerate as copy (a report of its own),
+ * Save copy..., Save next to drawing (desktop), Import results, Delete.
  */
 export function ReportMenu(props: ReportMenuProps) {
   const { file, report, onClose } = props
@@ -112,18 +113,19 @@ export function ReportMenu(props: ReportMenuProps) {
           label={t('source.inspection.rptOpen')}
           onClick={() => run(() => void openReportWithToast(report))}
         />
-        {canEdit && (
-          <Item
-            icon={<RefreshCw size={14} />}
-            label={t('source.inspection.rptRegenerate')}
-            onClick={() => run(() => void regenerateReport(file, report, 'same'))}
-          />
-        )}
+        {/* An up-to-date report is not regenerated in place; "as copy" makes a report of its own. */}
         {canEdit && newer !== null && (
           <Item
             icon={<RefreshCw size={14} />}
             label={t('source.inspection.rptRegenerateFor', { version: newer })}
             onClick={() => run(() => void regenerateReport(file, report, 'latest'))}
+          />
+        )}
+        {canEdit && (
+          <Item
+            icon={<Copy size={14} />}
+            label={t('source.inspection.rptRegenerateAsCopy')}
+            onClick={() => run(() => void regenerateReport(file, report, newer !== null ? 'latest' : 'same', { asCopy: true }))}
           />
         )}
         <div className="context-menu-separator" />

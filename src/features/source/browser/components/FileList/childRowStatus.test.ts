@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { outdatedReportVersion } from './childRowStatus'
+import { outdatedReportVersion, reportHeads } from './childRowStatus'
 
 const report = (id: string, version: string, reportType: 'fai' | 'production' | null, createdAt = '2026-01-01') => ({
   id,
@@ -51,5 +51,22 @@ describe('outdatedReportVersion', () => {
     const all = [fai, production, legacy]
     expect(outdatedReportVersion(production, all, versions, 3)).toBe(3)
     expect(outdatedReportVersion(legacy, all, versions, 3)).toBe(3)
+  })
+})
+
+describe('reportHeads', () => {
+  const r = (id: string, supersedesReportId: string | null = null) => ({ id, supersedesReportId })
+
+  it('drops a report another listed report supersedes, keeping copies and pre-508 reports', () => {
+    const heads = reportHeads([r('new', 'old'), r('old'), r('copy'), r('legacy')])
+    expect(heads.map((x) => x.id)).toEqual(['new', 'copy', 'legacy'])
+  })
+
+  it('follows a chain of regenerations to its newest report', () => {
+    expect(reportHeads([r('c', 'b'), r('b', 'a'), r('a')]).map((x) => x.id)).toEqual(['c'])
+  })
+
+  it('keeps a report whose successor is not listed', () => {
+    expect(reportHeads([r('b', 'gone')]).map((x) => x.id)).toEqual(['b'])
   })
 })

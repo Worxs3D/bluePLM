@@ -9,6 +9,10 @@
  * the file to the vault bucket by content hash, records it against the version
  * (`file_version_output_record`) and removes the temp folder. Without SOLIDWORKS it says so
  * (`needs_solidworks`) and changes nothing.
+ *
+ * A drawing's STEP is the STEP of the part or assembly its views show (the first model reference
+ * of the staged drawing, in the configuration the views use), recorded against the drawing's
+ * version and named with the drawing's metadata, as "Export STEP (Model)" names a local copy.
  */
 
 import { log } from '@/lib/logger'
@@ -28,7 +32,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import type { ModelOutputKind, VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import { baseNameOf, outputFileName } from './fileName'
-import { kindTakesConfiguration, outputExtension, supportsOutputKind } from './kinds'
+import { isDrawingFile, kindTakesConfiguration, outputExtension, supportsOutputKind } from './kinds'
 import { orgExportFilenamePattern } from './naming'
 
 /** The staging subfolder exports are written to, next to the staged vault tree. */
@@ -156,6 +160,7 @@ export async function ensureVersionOutput(
     const root = closure.files.find((f) => f.fileVersionId === fileVersionId)
     if (!root) return { status: 'failed', error: 'File version not found', errorCode: 'NOT_FOUND' }
     if (!supportsOutputKind(root.filePath, kind)) return { status: 'unsupported' }
+    if (configuration && !kindTakesConfiguration(kind, root.filePath)) return { status: 'unsupported' }
 
     const unavailable = await pdfRenderUnavailableReason()
     if (unavailable) return { status: 'needs_solidworks', reason: unavailable }
@@ -200,6 +205,18 @@ async function runExport(
       return { success: r.success, outputFile: r.data?.outputFile, error: r.error }
     }
   }
+}
+
+/** The first part or assembly a staged drawing references that is on disk, with the configuration its views use. */
+async function drawingModel(drawingPath: string): Promise<{ path: string; configuration: string | null } | null> {
+  const result = await window.electronAPI!.solidworks.getReferences(drawingPath, 'background')
+  if (!result.success || !result.data) return null
+  for (const ref of result.data.references) {
+    const type = ref.fileType?.toLowerCase()
+    if ((type !== 'part' && type !== 'assembly') || !ref.exists) continue
+    return { path: ref.path, configuration: ref.configurations?.[0] ?? ref.configuration ?? null }
+  }
+  return null
 }
 
 async function exportAndRecord(
@@ -261,6 +278,18 @@ async function exportAndRecord(
     const retargetClean =
       retarget.data.summary.failed === 0 && retarget.data.summary.missingReferences === 0
 
+    // A drawing's STEP exports the model its views show, from the staged (retargeted) copy.
+    let exportPath = source.localPath
+    let exportConfiguration = configuration
+    if (kind === 'step' && isDrawingFile(root.filePath)) {
+      const model = await drawingModel(source.localPath)
+      if (!model) {
+        return { status: 'failed', errorCode: 'NO_MODEL', error: 'The drawing shows no part or assembly' }
+      }
+      exportPath = model.path
+      exportConfiguration = model.configuration
+    }
+
     const meta = loadedFileMetadata(root.fileId)
     const fileName = outputFileName(
       orgExportFilenamePattern(usePDMStore.getState().organization),
@@ -277,9 +306,9 @@ async function exportAndRecord(
     onProgress?.({ phase: 'exporting' })
     const exported = await runExport(
       kind,
-      source.localPath,
+      exportPath,
       joinLocalPath(stagingDir, `${OUTPUT_DIR}/${fileName}`),
-      configuration,
+      exportConfiguration,
     )
     if (!exported.success || !exported.outputFile) {
       return {

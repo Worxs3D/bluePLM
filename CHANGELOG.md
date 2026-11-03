@@ -4,6 +4,34 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+Schema 508. No API or service change.
+
+### Added
+
+- **STEP of a drawing.** Generate STEP on a drawing exports the part or assembly its views show
+  (in the configuration they use), named with the drawing's metadata, and records it against the
+  drawing's version like its PDF.
+- **Generate menu.** Right-click > Generate (above Reviews) has On server (PDF, STEP, and
+  Inspection report with one entry per template; a template that already has a report shows it,
+  and clicking an out-of-date one regenerates it) and Local (the export options that write ordinary
+  files, and an inspection report workbook saved to disk without recording anything). The Export
+  submenu moved into Local.
+- **Outputs column.** The first column shows the PDF, STEP and newest inspection report of each
+  drawing: click to preview; a stale one regenerates, a missing one generates.
+- **Generate in the toolbar.** Generates the PDFs and STEPs that are missing or out of date for
+  the selection, this folder, or this folder and its subfolders.
+
+### Changed
+
+- **One line per output and report.** Under a file's chevron each output kind is the newest across
+  the file's versions; one of an older version is marked stale, and regenerating it moves the row
+  up to the latest version. A regenerated report replaces the one it was made from in the file list
+  (schema 508 `inspection_report.supersedes_report_id`); Regenerate as copy keeps both.
+- **No regenerating what is up to date.** Regenerate is offered only for an output or report of an
+  older version. Stale marks show a spinner while they regenerate.
+
 ## [5.8.0] - 2026-11-03
 
 Schema 507. No API or service change (API 4.2.2, SolidWorks service 1.29.0).

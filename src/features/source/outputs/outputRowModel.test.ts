@@ -7,10 +7,12 @@ import {
   type OutputJob,
 } from '@/stores/slices/outputsSlice'
 import type { LocalFile } from '@/stores/types'
-import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
+import type { VersionedOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import {
   fileOutputEntries,
+  filesInFolder,
+  filesNeedingOutput,
   generateJobs,
   generateMenuKinds,
   outputCopyName,
@@ -34,12 +36,18 @@ function local(path: string, id: string | null, version = 3, extra: Partial<Loca
   } as unknown as LocalFile
 }
 
-function output(kind: VersionOutputKind, configuration: string | null = null, fileId = 'f1'): VersionOutput {
+function output(
+  kind: VersionOutputKind,
+  configuration: string | null = null,
+  fileId = 'f1',
+  version = 3,
+): VersionedOutput {
   return {
-    id: `${kind}-${configuration ?? ''}`,
+    id: `${kind}-${configuration ?? ''}-${version}`,
     kind,
     fileId,
-    fileVersionId: 'v3',
+    fileVersionId: `v${version}`,
+    version,
     configuration,
     storageHash: 'a'.repeat(64),
     fileSize: 10,
@@ -69,7 +77,7 @@ function job(fileId: string, kind: VersionOutputKind, over: Partial<OutputJob>):
 const latest: FileOutputVersion = { version: 3, fileVersionId: 'v3' }
 
 function inputs(over: Partial<OutputRowInputs> = {}): OutputRowInputs {
-  return { latest, outputs: [], jobs: new Map(), canGenerate: true, ...over }
+  return { latest, heads: [], jobs: new Map(), canGenerate: true, ...over }
 }
 
 const jobs = (...list: OutputJob[]) => new Map(list.map((j) => [j.key, j]))
@@ -78,20 +86,24 @@ describe('fileOutputEntries', () => {
   const drawing = local('a/D.SLDDRW', 'f1')
   const part = local('a/P.sldprt', 'f1')
 
-  it('shows a Generate ghost for the primary kind only, once the outputs are loaded', () => {
-    expect(fileOutputEntries(drawing, inputs())).toEqual([{ kind: 'pdf', output: null, job: null, state: 'missing' }])
+  it('shows a Generate ghost for the primary kinds only, once the outputs are loaded', () => {
+    expect(fileOutputEntries(drawing, inputs())).toEqual([
+      { kind: 'pdf', output: null, job: null, state: 'missing', stale: false },
+      { kind: 'step', output: null, job: null, state: 'missing', stale: false },
+    ])
     expect(fileOutputEntries(part, inputs()).map((e) => [e.kind, e.state])).toEqual([['step', 'missing']])
-    expect(fileOutputEntries(drawing, inputs({ outputs: undefined }))).toEqual([])
+    expect(fileOutputEntries(drawing, inputs({ heads: undefined }))).toEqual([])
     expect(fileOutputEntries(drawing, inputs({ canGenerate: false }))).toEqual([])
   })
 
   it('lists recorded outputs of every kind, the primary first', () => {
-    const rows = fileOutputEntries(drawing, inputs({ outputs: [output('pdf'), output('dxf')] }))
+    const rows = fileOutputEntries(drawing, inputs({ heads: [output('pdf'), output('step'), output('dxf')] }))
     expect(rows.map((e) => [e.kind, e.state])).toEqual([
       ['pdf', 'ready'],
+      ['step', 'ready'],
       ['dxf', 'ready'],
     ])
-    const stepRows = fileOutputEntries(part, inputs({ outputs: [output('step'), output('step', 'Long'), output('stl')] }))
+    const stepRows = fileOutputEntries(part, inputs({ heads: [output('step'), output('step', 'Long'), output('stl')] }))
     expect(stepRows.map((e) => [e.kind, e.output?.configuration])).toEqual([
       ['step', null],
       ['step', 'Long'],
@@ -101,7 +113,10 @@ describe('fileOutputEntries', () => {
 
   it('shows queued and running jobs, also for kinds without a ghost', () => {
     const queued = fileOutputEntries(drawing, inputs({ jobs: jobs(job('f1', 'pdf', {})) }))
-    expect(queued.map((e) => e.state)).toEqual(['queued'])
+    expect(queued.map((e) => [e.kind, e.state])).toEqual([
+      ['pdf', 'queued'],
+      ['step', 'missing'],
+    ])
     const running = fileOutputEntries(
       part,
       inputs({ canGenerate: false, jobs: jobs(job('f1', 'iges', { status: 'running', fileVersionId: 'v3' })) }),
@@ -109,13 +124,18 @@ describe('fileOutputEntries', () => {
     expect(running.map((e) => [e.kind, e.state])).toEqual([['iges', 'running']])
   })
 
-  it('keeps a recorded output ready while it is regenerated', () => {
+  it('shows one row per kind: an output of an older version is stale, and its generation for the latest runs on it', () => {
+    const old = output('pdf', null, 'f1', 2)
+    const idle = fileOutputEntries(drawing, inputs({ heads: [old] }))
+    expect(idle[0]).toMatchObject({ kind: 'pdf', output: old, state: 'ready', stale: true, job: null })
     const rows = fileOutputEntries(
       drawing,
-      inputs({ outputs: [output('pdf')], jobs: jobs(job('f1', 'pdf', { status: 'running', fileVersionId: 'v3' })) }),
+      inputs({ heads: [old], jobs: jobs(job('f1', 'pdf', { status: 'running', fileVersionId: 'v3' })) }),
     )
-    expect(rows[0].state).toBe('ready')
+    expect(rows.filter((e) => e.kind === 'pdf')).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ state: 'ready', stale: true })
     expect(rows[0].job?.status).toBe('running')
+    expect(fileOutputEntries(drawing, inputs({ heads: [output('pdf')] }))[0].stale).toBe(false)
   })
 
   it('shows a failed job of this version, and ignores jobs of other versions', () => {
@@ -128,7 +148,7 @@ describe('fileOutputEntries', () => {
   })
 
   it('ignores outputs of another file, folders, local-only files and other file types', () => {
-    expect(fileOutputEntries(drawing, inputs({ outputs: [output('pdf', null, 'other')] }))[0].state).toBe('missing')
+    expect(fileOutputEntries(drawing, inputs({ heads: [output('pdf', null, 'other')] }))[0].state).toBe('missing')
     expect(fileOutputEntries(local('a/D.slddrw', null), inputs())).toEqual([])
     expect(fileOutputEntries(local('a/notes.txt', 'f1'), inputs())).toEqual([])
     expect(fileOutputEntries({ ...drawing, isDirectory: true }, inputs())).toEqual([])
@@ -136,8 +156,9 @@ describe('fileOutputEntries', () => {
 })
 
 describe('menus', () => {
-  it('offers Save next to file on the desktop only and Regenerate to administrators', () => {
-    expect(outputMenuItems({ desktop: true, isAdmin: false, hasLocalFolder: true, busy: false })).toEqual({
+  it('offers Save next to file on the desktop only, and Regenerate only for an out-of-date output', () => {
+    const base = { canGenerate: true, stale: false }
+    expect(outputMenuItems({ ...base, desktop: true, isAdmin: false, hasLocalFolder: true, busy: false })).toEqual({
       open: true,
       saveCopy: true,
       saveNextToFile: true,
@@ -145,16 +166,20 @@ describe('menus', () => {
       regenerate: false,
       delete: false,
     })
-    const web = outputMenuItems({ desktop: false, isAdmin: true, hasLocalFolder: true, busy: false })
+    const web = outputMenuItems({ ...base, stale: true, desktop: false, isAdmin: true, hasLocalFolder: true, busy: false })
     expect(web.saveNextToFile).toBe(false)
     expect(web.regenerate).toBe(false)
-    expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: true, busy: false }).regenerate).toBe(true)
-    expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: true, busy: true }).regenerate).toBe(false)
-    expect(outputMenuItems({ desktop: true, isAdmin: true, hasLocalFolder: false, busy: false }).saveNextToFile).toBe(false)
+    const desk = { desktop: true, isAdmin: false, hasLocalFolder: true, busy: false }
+    expect(outputMenuItems({ ...desk, canGenerate: true, stale: false }).regenerate).toBe(false)
+    expect(outputMenuItems({ ...desk, isAdmin: true, canGenerate: true, stale: false }).regenerate).toBe(false)
+    expect(outputMenuItems({ ...desk, canGenerate: true, stale: true }).regenerate).toBe(true)
+    expect(outputMenuItems({ ...desk, canGenerate: false, stale: true }).regenerate).toBe(false)
+    expect(outputMenuItems({ ...desk, canGenerate: true, stale: true, busy: true }).regenerate).toBe(false)
+    expect(outputMenuItems({ ...desk, ...base, hasLocalFolder: false }).saveNextToFile).toBe(false)
   })
 
   it('offers Delete to an administrator or the generator with explorer edit, not while a job runs', () => {
-    const base = { desktop: true, hasLocalFolder: true, busy: false }
+    const base = { desktop: true, hasLocalFolder: true, busy: false, canGenerate: true, stale: false }
     expect(outputMenuItems({ ...base, isAdmin: true }).delete).toBe(true)
     expect(outputMenuItems({ ...base, desktop: false, isAdmin: true }).delete).toBe(true)
     expect(outputMenuItems({ ...base, isAdmin: false }).delete).toBe(false)
@@ -162,7 +187,7 @@ describe('menus', () => {
     expect(outputMenuItems({ ...base, isAdmin: true, busy: true }).delete).toBe(false)
   })
 
-  it('counts checked-in drawings and models for Generate PDF / Generate STEP', () => {
+  it('counts checked-in drawings and models for Generate PDF / Generate STEP (a drawing has both)', () => {
     const files = [
       local('D1.slddrw', 'd1'),
       local('D2.SLDDRW', 'd2'),
@@ -171,14 +196,17 @@ describe('menus', () => {
       local('New.sldprt', null),
       local('notes.pdf', 'n'),
     ]
-    expect(generateMenuKinds(files)).toEqual({ pdf: 2, step: 2 })
-    expect(generateMenuKinds([local('New.slddrw', null)])).toEqual({ pdf: 0, step: 0 })
+    expect(generateMenuKinds(files)).toEqual({ pdf: 2, step: 4, drawings: 2 })
+    expect(generateMenuKinds([local('New.slddrw', null)])).toEqual({ pdf: 0, step: 0, drawings: 0 })
   })
 
   it('plans one job per checked-in file of the kind, with its version', () => {
     const files = [local('D.slddrw', 'd', 4), local('P.sldprt', 'p', 2), local('P.sldprt', 'p', 2), local('New.slddrw', null)]
     expect(generateJobs(files, 'pdf')).toEqual([{ fileId: 'd', version: 4, kind: 'pdf', fileName: 'D.slddrw' }])
-    expect(generateJobs(files, 'step')).toEqual([{ fileId: 'p', version: 2, kind: 'step', fileName: 'P.sldprt' }])
+    expect(generateJobs(files, 'step')).toEqual([
+      { fileId: 'd', version: 4, kind: 'step', fileName: 'D.slddrw' },
+      { fileId: 'p', version: 2, kind: 'step', fileName: 'P.sldprt' },
+    ])
     expect(generateJobs(files, 'pdf', true)[0].regenerate).toBe(true)
   })
 
@@ -200,28 +228,80 @@ describe('outputsToLoad', () => {
   const p = local('P.sldprt', 'p', 2)
   const expanded = new Set([d.path, p.path])
 
-  it('resolves unknown or outdated versions and loads the rest when newly expanded', () => {
+  it('resolves unknown or outdated versions and reads heads of newly expanded files', () => {
     const versions = new Map([
       ['d', { version: 3, fileVersionId: 'dv3' }],
       ['p', { version: 1, fileVersionId: 'pv1' }],
     ])
-    const plan = outputsToLoad([d, p], expanded, new Set(), versions, new Map([['dv3', []]]), new Set())
-    expect(plan).toEqual({ resolve: [{ fileId: 'p', version: 2 }], load: ['dv3'] })
+    const heads = new Map([['d', []]])
+    const plan = outputsToLoad([d, p], expanded, new Set(), versions, heads, new Map([['d', 3]]), new Set())
+    expect(plan).toEqual({ resolve: [{ fileId: 'p', version: 2 }], heads: ['d', 'p'] })
   })
 
-  it('reads nothing for files that stayed expanded and are loaded, or are in flight', () => {
+  it('reads nothing for files that stayed expanded and are loaded at their version, or are in flight', () => {
     const versions = new Map([['d', { version: 3, fileVersionId: 'dv3' }]])
-    expect(outputsToLoad([d], expanded, expanded, versions, new Map([['dv3', []]]), new Set())).toEqual({
+    const heads = new Map([['d', []]])
+    expect(outputsToLoad([d], expanded, expanded, versions, heads, new Map([['d', 3]]), new Set())).toEqual({
       resolve: [],
-      load: [],
+      heads: [],
     })
-    expect(outputsToLoad([p], expanded, new Set(), new Map(), new Map(), new Set(['p']))).toEqual({ resolve: [], load: [] })
+    // Read at an older version of the file: read again.
+    expect(outputsToLoad([d], expanded, expanded, versions, heads, new Map([['d', 2]]), new Set()).heads).toEqual(['d'])
+    expect(outputsToLoad([p], expanded, new Set(), new Map(), new Map(), new Map(), new Set(['p']))).toEqual({
+      resolve: [],
+      heads: [],
+    })
+  })
+
+  it('reads the heads of drawings the Outputs column shows without resolving their version', () => {
+    const plan = outputsToLoad([d, p], new Set(), new Set(), new Map(), new Map(), new Map(), new Set(), new Set([d.path]))
+    expect(plan).toEqual({ resolve: [], heads: ['d'] })
   })
 
   it('skips collapsed, local-only and non-CAD files', () => {
     const files = [local('X.slddrw', 'x'), local('L.sldprt', null), local('n.pdf', 'n')]
     const all = new Set(files.map((f) => f.path).filter((path) => path !== 'X.slddrw'))
-    expect(outputsToLoad(files, all, new Set(), new Map(), new Map(), new Set())).toEqual({ resolve: [], load: [] })
+    expect(outputsToLoad(files, all, new Set(), new Map(), new Map(), new Map(), new Set())).toEqual({
+      resolve: [],
+      heads: [],
+    })
+  })
+})
+
+describe('bulk generate (toolbar)', () => {
+  it('takes the files of a folder, directly or at any depth', () => {
+    const files = [local('a/D.slddrw', 'd'), local('a/b/P.sldprt', 'p'), local('c/Q.sldprt', 'q')]
+    expect(filesInFolder(files, 'a', false).map((f) => f.path)).toEqual(['a/D.slddrw'])
+    expect(filesInFolder(files, 'a', true).map((f) => f.path)).toEqual(['a/D.slddrw', 'a/b/P.sldprt'])
+    expect(filesInFolder(files, '', true)).toHaveLength(3)
+  })
+
+  it('needs an output that is missing, out of date or not read, and not one that is current or on the way', () => {
+    const files = [
+      local('D1.slddrw', 'd1', 3),
+      local('D2.slddrw', 'd2', 3),
+      local('D3.slddrw', 'd3', 3),
+      local('D4.slddrw', 'd4', 3),
+      local('D5.slddrw', 'd5', 3),
+      local('P.sldprt', 'p', 3),
+    ]
+    const heads = new Map([
+      ['d1', [output('pdf', null, 'd1', 3)]],
+      ['d2', [output('pdf', null, 'd2', 2)]],
+      ['d3', []],
+      ['d5', []],
+      ['p', []],
+    ])
+    const running = jobs(job('d5', 'pdf', { status: 'running' }))
+    expect(filesNeedingOutput(files, 'pdf', heads, running).map((f) => f.pdmData?.id)).toEqual(['d2', 'd3', 'd4'])
+    expect(filesNeedingOutput(files, 'step', heads, running).map((f) => f.pdmData?.id)).toEqual([
+      'd1',
+      'd2',
+      'd3',
+      'd4',
+      'd5',
+      'p',
+    ])
   })
 })
 

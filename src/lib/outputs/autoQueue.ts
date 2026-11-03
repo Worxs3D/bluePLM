@@ -24,7 +24,7 @@ import type { VersionOutputKind } from '@/types/versionOutputs'
 
 import { ensureVersionOutput, type EnsureVersionOutputResult } from './ensure'
 import { autoOutputSettings, isDrawingFile, isModelFile, type AutoOutputSettings } from './kinds'
-import { loadVersionOutputs } from './list'
+import { loadOutputHeads, loadVersionOutputs } from './list'
 import { registerOutputQueueReset } from './queueReset'
 
 export { resetOutputQueue } from './queueReset'
@@ -33,6 +33,8 @@ export { resetOutputQueue } from './queueReset'
 export const AUTO_OUTPUT_MAX_BATCH = 25
 /** Jobs that may wait at once; later ones are dropped. */
 export const AUTO_OUTPUT_MAX_QUEUED = 50
+/** The app's queue: room for a folder's worth of outputs asked for from the toolbar, still bounded. */
+export const APP_OUTPUT_MAX_QUEUED = 1000
 /** How long a job blocked by a same-named open document waits before trying again. */
 export const SAME_NAME_RETRY_MS = 60_000
 /** Tries for a job blocked by a same-named open document. */
@@ -73,7 +75,11 @@ export function planCheckinOutputs(
   const seen = new Set<string>()
   for (const f of files) {
     const kind: VersionOutputKind | null =
-      settings.pdf && isDrawingFile(f.path) ? 'pdf' : settings.step && isModelFile(f.path) ? 'step' : null
+      settings.pdf && isDrawingFile(f.path)
+        ? 'pdf'
+        : settings.step && isModelFile(f.path)
+          ? 'step'
+          : null
     if (!kind || seen.has(`${f.fileId}:${kind}`)) continue
     seen.add(`${f.fileId}:${kind}`)
     jobs.push({ fileId: f.fileId, version: f.version, kind, fileName: f.fileName })
@@ -117,7 +123,7 @@ export interface OutputQueueDeps {
   /** Every state a job goes through. */
   onJob: (job: OutputJob) => void
   /** A version has a new or confirmed output. */
-  onOutput: (fileVersionId: string) => void
+  onOutput: (fileVersionId: string, fileId: string) => void
 }
 
 interface QueuedJob {
@@ -210,7 +216,8 @@ export function createOutputQueue(
     const gen = generation
     q.attempts++
     try {
-      const fileVersionId = q.job.fileVersionId ?? (await deps.resolveVersion(q.job.fileId, q.version))
+      const fileVersionId =
+        q.job.fileVersionId ?? (await deps.resolveVersion(q.job.fileId, q.version))
       if (!fileVersionId) {
         emit(q, { status: 'skipped', detail: 'NO_VERSION' }, gen)
         return
@@ -227,7 +234,7 @@ export function createOutputQueue(
         case 'cached':
         case 'generated':
           emit(q, { status: 'done', detail: result.status }, gen)
-          deps.onOutput(fileVersionId)
+          deps.onOutput(fileVersionId, q.job.fileId)
           return
         case 'needs_solidworks':
           emit(q, { status: 'skipped', detail: result.reason }, gen)
@@ -265,7 +272,10 @@ export function createOutputQueue(
         const queueKey = queuedJobKey(planned)
         if (waiting.some((q) => q.queueKey === queueKey)) continue
         if (waiting.length >= maxQueued) {
-          log.warn('[Outputs]', 'Output queue full; job dropped', { fileId: planned.fileId, kind: planned.kind })
+          log.warn('[Outputs]', 'Output queue full; job dropped', {
+            fileId: planned.fileId,
+            kind: planned.kind,
+          })
           continue
         }
         const q: QueuedJob = {
@@ -296,7 +306,9 @@ export function createOutputQueue(
     },
     size: () => waiting.length + (running ? 1 : 0),
     idle: () =>
-      running || waiting.length > 0 ? new Promise<void>((resolve) => idleWaiters.push(resolve)) : Promise.resolve(),
+      running || waiting.length > 0
+        ? new Promise<void>((resolve) => idleWaiters.push(resolve))
+        : Promise.resolve(),
     reset: () => {
       generation++
       waiting.length = 0
@@ -316,26 +328,35 @@ let appQueue: OutputQueue | null = null
 
 function queue(): OutputQueue {
   if (appQueue) return appQueue
-  appQueue = createOutputQueue({
-    now: () => Date.now(),
-    setTimer: (run, ms) => {
-      setTimeout(run, ms)
+  appQueue = createOutputQueue(
+    {
+      now: () => Date.now(),
+      setTimer: (run, ms) => {
+        setTimeout(run, ms)
+      },
+      resolveVersion: async (fileId, version) =>
+        (version !== null ? await getFileVersionId(fileId, version) : null) ??
+        (await getLatestFileVersion(fileId))?.id ??
+        null,
+      ensure: (fileVersionId, kind, options) => ensureVersionOutput(fileVersionId, kind, options),
+      onJob: (job) => usePDMStore.getState().upsertOutputJob(job),
+      onOutput: (fileVersionId, fileId) => {
+        loadOutputHeads([fileId]).catch((err) =>
+          log.warn('[Outputs]', 'Could not reload the newest outputs', {
+            fileId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+        loadVersionOutputs([fileVersionId]).catch((err) =>
+          log.warn('[Outputs]', 'Could not reload version outputs', {
+            fileVersionId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      },
     },
-    resolveVersion: async (fileId, version) =>
-      (version !== null ? await getFileVersionId(fileId, version) : null) ??
-      (await getLatestFileVersion(fileId))?.id ??
-      null,
-    ensure: (fileVersionId, kind, options) => ensureVersionOutput(fileVersionId, kind, options),
-    onJob: (job) => usePDMStore.getState().upsertOutputJob(job),
-    onOutput: (fileVersionId) => {
-      loadVersionOutputs([fileVersionId]).catch((err) =>
-        log.warn('[Outputs]', 'Could not reload version outputs', {
-          fileVersionId,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      )
-    },
-  })
+    APP_OUTPUT_MAX_QUEUED,
+  )
   const created = appQueue
   registerOutputQueueReset(() => {
     created.reset()

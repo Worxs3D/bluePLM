@@ -33,6 +33,11 @@ export interface VersionOutput {
   generatedAt: string
 }
 
+/** An output with the number of the version it was generated from. */
+export interface VersionedOutput extends VersionOutput {
+  version: number
+}
+
 /** Arguments of file_version_output_record(). */
 export interface RecordVersionOutputInput {
   fileVersionId: string

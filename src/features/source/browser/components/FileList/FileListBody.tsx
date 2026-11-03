@@ -31,6 +31,7 @@ import { FileOutputRow } from './FileOutputRow'
 import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
 import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
 import { hasDesktop } from '@/lib/platform'
+import { isDrawingFile } from '@/lib/outputs/kinds'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
 import { FileRow } from './FileRow'
 import type {
@@ -46,6 +47,10 @@ import type {
 } from './rowTypes'
 
 // Slim props interface - state comes from context
+/** Listed drawings whose outputs and reports the Outputs column reads (within the store bounds). */
+const MAX_OUTPUT_COLUMN_DRAWINGS = 200
+const NO_FILES: readonly LocalFile[] = []
+
 export interface FileListBodyProps {
   // Sorted/filtered files to display (computed in parent)
   displayFiles: LocalFile[]
@@ -193,10 +198,25 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
     const childSelectedUnder = usePDMStore((s) => childSelectionParent(s.childSelection, s.selectedFiles))
-    useDrawingReportsLoader(displayFiles, expandedDrawingRefs)
-    useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles)
+    // The Outputs column reads the outputs and reports of the listed drawings too (the first
+    // MAX_OUTPUT_COLUMN_DRAWINGS, inside the store's bounds), not only of expanded ones.
+    const outputsColumnShown = visibleColumns.some((c) => c.id === 'outputs')
+    const columnFiles = useMemo(
+      () =>
+        outputsColumnShown
+          ? displayFiles.filter((f) => !f.isDirectory && isDrawingFile(f.path)).slice(0, MAX_OUTPUT_COLUMN_DRAWINGS)
+          : NO_FILES,
+      [outputsColumnShown, displayFiles],
+    )
+    const columnPaths = useMemo(() => new Set(columnFiles.map((f) => f.path)), [columnFiles])
+    const reportDrawings = useMemo(
+      () => (columnPaths.size === 0 ? expandedDrawingRefs : new Set([...expandedDrawingRefs, ...columnPaths])),
+      [columnPaths, expandedDrawingRefs],
+    )
+    useDrawingReportsLoader(displayFiles, reportDrawings)
+    useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles, columnPaths)
     const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
-    const versionOutputs = usePDMStore((s) => s.versionOutputs)
+    const fileOutputHeads = usePDMStore((s) => s.fileOutputHeads)
     const outputJobs = usePDMStore((s) => s.outputJobs)
     const canGenerateOutputs = usePDMStore(
       (s) => hasDesktop() && (s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit')),
@@ -204,11 +224,11 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     const outputs = useMemo(
       () => ({
         versions: fileOutputVersions,
-        byVersion: versionOutputs,
+        heads: fileOutputHeads,
         jobs: outputJobs,
         canGenerate: canGenerateOutputs,
       }),
-      [fileOutputVersions, versionOutputs, outputJobs, canGenerateOutputs],
+      [fileOutputVersions, fileOutputHeads, outputJobs, canGenerateOutputs],
     )
 
     // Get tab settings from organization serialization settings
@@ -805,7 +825,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             case 'file-output':
               return (
                 <FileOutputRow
-                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.id ?? 'pending'}`}
+                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.configuration ?? ''}`}
                   file={row.file}
                   entry={row.entry}
                   version={row.version}

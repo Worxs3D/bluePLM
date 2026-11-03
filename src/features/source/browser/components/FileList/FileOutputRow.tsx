@@ -4,12 +4,14 @@ import { AlertTriangle, Box, FileText, Loader2, PenTool, Plus } from 'lucide-rea
 
 import { ConfirmDialog } from '@/components/core/Dialog'
 import { t } from '@/lib/i18n'
+import { hasDesktop } from '@/lib/platform'
 import { outputKindLabel } from '@/lib/outputs/kinds'
 import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
 import {
   deleteOutputWithToast,
   generateOutputs,
+  regenerateOutput,
   openOutput,
   outputReasonText,
 } from '@/features/source/outputs/outputCommands'
@@ -19,7 +21,7 @@ import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow
 import { outputCopyName, type OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
-import { ChildChip, ChildNameCell, ChildText, ParentMetadataText } from './ChildRowParts'
+import { ChildChip, ChildNameCell, ChildStaleButton, ChildText, ParentMetadataText } from './ChildRowParts'
 import { isParentMetadataColumn } from './childRowStatus'
 import type { VersionOutputKind } from '@/types/versionOutputs'
 
@@ -40,7 +42,9 @@ function KindIcon({ kind }: { kind: VersionOutputKind }) {
 
 /**
  * A version output under an expanded file (after a drawing's referenced files, after a part's or
- * assembly's configurations, before inspection reports). A click on a recorded output selects it
+ * assembly's configurations, before inspection reports): the newest of its kind across the file's
+ * versions. One of an older version has a stale mark at the left that generates it for the latest
+ * version (a spinner while that runs); the row then moves up to that version. A click on a recorded output selects it
  * and shows it in the Preview tab (`selectChildRow`); double-click opens it; right-click selects it
  * and has the output menu (Delete asks first). Item number, revision and description are the
  * parent file's, as its row shows them. A missing primary output is a "Generate PDF" /
@@ -59,6 +63,12 @@ export const FileOutputRow = memo(function FileOutputRow({
   const kind = outputKindLabel(entry.kind)
   const output = entry.output
   const busy = entry.job !== null && (entry.job.status === 'queued' || entry.job.status === 'running')
+  const canGenerate = usePDMStore(
+    (s) => hasDesktop() && (s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit')),
+  )
+  const latestVersion = file.pdmData?.version ?? null
+  // The queue generates the saved configuration only.
+  const canRegenerate = canGenerate && !!output && output.configuration === null
 
   const name = output ? outputCopyName(output, file, organization) : null
   const label = output
@@ -117,8 +127,22 @@ export const FileOutputRow = memo(function FileOutputRow({
             {column.id === 'name' ? (
               <ChildNameCell
                 rowHeight={rowHeight}
+                status={
+                  entry.stale && output ? (
+                    <ChildStaleButton
+                      busy={busy}
+                      busyTitle={t('source.outputs.rowRegeneratingTitle', { kind })}
+                      title={t(canRegenerate ? 'source.outputs.rowOutdated' : 'source.outputs.rowOutdatedReadOnly', {
+                        kind,
+                        version: output.version,
+                        latest: latestVersion ?? '',
+                      })}
+                      onRegenerate={canRegenerate ? () => regenerateOutput(file, output) : undefined}
+                    />
+                  ) : null
+                }
                 icon={
-                  busy ? (
+                  busy && !entry.stale ? (
                     <Loader2 size={14} className="animate-spin text-plm-fg-muted" />
                   ) : entry.state === 'failed' ? (
                     <AlertTriangle size={14} className="text-amber-400" />
@@ -162,6 +186,7 @@ export const FileOutputRow = memo(function FileOutputRow({
           output={output}
           position={menu}
           busy={busy}
+          stale={entry.stale}
           onClose={() => setMenu(null)}
           onDelete={() => setConfirmingDelete(true)}
         />

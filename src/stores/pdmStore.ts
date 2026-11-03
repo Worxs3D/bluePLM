@@ -616,7 +616,9 @@ export const usePDMStore = create<PDMStoreState>()(
               .filter((c): c is (typeof currentState.columns)[number] => c !== null)
             for (const defaultCol of currentState.columns) {
               if (!persistedIds.has(defaultCol.id)) {
-                ordered.push(defaultCol)
+                // The Outputs column goes left of everything, as in the defaults.
+                if (defaultCol.id === 'outputs') ordered.unshift(defaultCol)
+                else ordered.push(defaultCol)
               }
             }
             return ordered.length > 0 ? ordered : currentState.columns

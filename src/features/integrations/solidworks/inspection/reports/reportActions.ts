@@ -98,6 +98,8 @@ export interface GenerateReportParams {
   logo: ReportLogo | null
   /** What the report is (type, FAI scope, lot, sampling, chosen characteristics). */
   type: ReportTypeRequest
+  /** The report this one replaces in the file list (a regeneration; schema 508). */
+  supersedesReportId?: string | null
   onPhase?: (phase: GeneratePhase) => void
 }
 
@@ -158,6 +160,13 @@ export interface GenerateReportOutcome {
   selectionNote: SelectionNote | null
   /** Partial FAI: false when the baseline version had no own snapshot (an older one was compared). */
   baselineExact: boolean
+}
+
+/** A report built as a workbook only (`localOnly`): nothing uploaded or recorded. */
+export interface LocalReportOutcome extends Omit<GenerateReportOutcome, 'report'> {
+  workbook: Uint8Array
+  /** The number printed in it (not reserved: the next recorded report may take it). */
+  reportNumber: string
 }
 
 /** The inspection rows of a version, as the Excel engine takes them. */
@@ -231,7 +240,15 @@ export function isReportNumberTaken(err: unknown): boolean {
   return code === 'REPORT_NUMBER_TAKEN' || (err instanceof Error && err.message.includes('REPORT_NUMBER_TAKEN'))
 }
 
-export async function generateReport(params: GenerateReportParams): Promise<GenerateReportOutcome> {
+export async function generateReport(params: GenerateReportParams & { localOnly: true }): Promise<LocalReportOutcome>
+export async function generateReport(params: GenerateReportParams): Promise<GenerateReportOutcome>
+/**
+ * Build a report workbook from a version's inspection rows and a template, upload it and record
+ * it. `localOnly` (Generate > Local) stops once the workbook is built and returns it instead.
+ */
+export async function generateReport(
+  params: GenerateReportParams & { localOnly?: boolean },
+): Promise<GenerateReportOutcome | LocalReportOutcome> {
   const { orgId, fileId, version, onPhase, identity, naming } = params
   const request: ReportTypeRequest = isLotType(params.type.reportType)
     ? {
@@ -355,6 +372,18 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
       generatedAt,
     })
 
+    if (params.localOnly) {
+      return {
+        workbook,
+        reportNumber,
+        rowsExact: rows.exact,
+        rowsSourceVersion: rows.exact ? null : rows.sourceVersion,
+        drawingOmitted: drawing.omitted,
+        selectionNote: selection.note,
+        baselineExact,
+      }
+    }
+
     onPhase?.('upload')
     const uploaded = await uploadInspectionContent(orgId, workbook)
 
@@ -376,6 +405,7 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
         fileSize: uploaded.size,
         characteristicCount: selection.rows.length,
         drawingPdfHash: drawing.pdfHash,
+        supersedesReportId: params.supersedesReportId ?? null,
         type: fields,
       })
     } catch (err) {

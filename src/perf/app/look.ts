@@ -174,6 +174,18 @@ function showFileList(store: Store, content?: Partial<Record<VersionOutputKind, 
       [lookVersionId('BR-103849-100.SLDASM', 4), []],
     ]),
   )
+  // The rows and the Outputs column show each file's newest output per kind, with its version.
+  state.setFileOutputHeads(
+    new Map([
+      [LOOK_FILE_IDS[LOOK_DRAWING], [{ ...output(LOOK_DRAWING, 3, 'pdf', 1_303_000, null), version: 3 }]],
+      [LOOK_FILE_IDS[LOOK_EMPTY_DRAWING], []],
+      [
+        LOOK_FILE_IDS['BR-103849-201.SLDPRT'],
+        [{ ...output('BR-103849-201.SLDPRT', 6, 'step', 2_830_000, 'BR-103849-201_RevB.step'), version: 6 }],
+      ],
+      [LOOK_FILE_IDS['BR-103849-100.SLDASM'], []],
+    ]),
+  )
   state.upsertOutputJob({
     key: `${LOOK_FILE_IDS[LOOK_EMPTY_DRAWING]}:pdf:`,
     fileId: LOOK_FILE_IDS[LOOK_EMPTY_DRAWING],

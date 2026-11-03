@@ -433,6 +433,29 @@ export const en: TranslationDict = {
 
   // File browser
   fileBrowser: {
+    outputs: 'Outputs',
+    generateMenu: {
+      title: 'Generate the PDFs and STEPs that are missing or out of date, on the server',
+      selection: 'Selected files',
+      folder: 'This folder',
+      tree: 'This folder and subfolders',
+      item: '{{kind}}: missing or out of date',
+    },
+    outputsCell: {
+      loading: 'Reading outputs…',
+      generating: 'Generating the {{kind}}…',
+      missing: 'No {{kind}} yet. Click to generate it from the latest checked-in version.',
+      missingReadOnly: 'No {{kind}} yet.',
+      stale: '{{kind}} of version {{version}}; the drawing is at version {{latest}}. Click to generate it for version {{latest}}.',
+      staleReadOnly: '{{kind}} of version {{version}}; the drawing is at version {{latest}}. Click to preview it.',
+      current: '{{kind}} of version {{version}}. Click to preview it.',
+      reportLoading: 'Reading inspection reports…',
+      reportMissing: 'No inspection report yet. Click to generate one with the default template.',
+      reportMissingReadOnly: 'No inspection report yet.',
+      reportStale: 'Report {{number}} is of version {{version}}; the drawing is at version {{latest}}. Click to regenerate it for version {{latest}}.',
+      reportStaleReadOnly: 'Report {{number}} is of version {{version}}; the drawing is at version {{latest}}. Click to preview it.',
+      reportCurrent: 'Report {{number}} of version {{version}}. Click to preview it.',
+    },
     name: 'Name',
     fileStatus: 'File Status',
     checkedOutBy: 'Checked Out By',
@@ -1674,6 +1697,19 @@ export const en: TranslationDict = {
       startSolidWorks: 'Start SolidWorks to export STEP from drawings',
       itemNumberMismatch:
         '{{name}} has item number {{fileNumber}} in its file properties but {{pdmNumber}} in BluePLM. The export used {{fileNumber}}. Run Sync Metadata to correct the file.',
+    },
+    generate: {
+      title: 'Generate',
+      onServer: 'On server',
+      local: 'Local',
+      inspectionReport: 'Inspection report',
+      loadingTemplates: 'Loading templates…',
+      templatesUnavailable: 'Templates could not be read',
+      reportNew: 'Generate a report of the latest version with this template',
+      reportToFile: 'Build a report of the latest version with this template and save it as a file (nothing is recorded)',
+      reportCurrent: 'Up to date (version {{version}}). Click to open it.',
+      reportStale: 'Made from version {{version}}; the drawing is at version {{latest}}. Click to regenerate it for version {{latest}}.',
+      reportVersion: 'v{{version}}',
     },
     quickExport: {
       toFolder: 'Export to Quick Export Folder',

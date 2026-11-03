@@ -8,6 +8,17 @@ import type { InspectionReport } from '@/types/inspectionReports'
 type ReportLike = Pick<InspectionReport, 'id' | 'fileVersionId' | 'reportType' | 'createdAt'>
 
 /**
+ * The reports the file list shows under a drawing: those no other listed report supersedes
+ * (schema 508). A regeneration replaces its report there; a copy, or a report of before 508,
+ * stands on its own. The Reports view still lists every report.
+ */
+export function reportHeads<T extends Pick<InspectionReport, 'id' | 'supersedesReportId'>>(reports: readonly T[]): T[] {
+  const superseded = new Set<string>()
+  for (const r of reports) if (r.supersedesReportId) superseded.add(r.supersedesReportId)
+  return superseded.size === 0 ? [...reports] : reports.filter((r) => !superseded.has(r.id))
+}
+
+/**
  * The drawing's newer version number when `report` is out of date, else null. A report is out of
  * date when the drawing has a newer checked-in version and the report is the newest of its type
  * (an older one is superseded, not stale): regenerating it makes a report of that version. A

@@ -22,6 +22,8 @@ export interface OutputMenuProps {
   position: { x: number; y: number }
   /** A job for this output is queued or running. */
   busy: boolean
+  /** The output is of an older version than the file's latest. */
+  stale: boolean
   onClose: () => void
   /** Ask to delete the output (the row confirms). */
   onDelete: () => void
@@ -55,16 +57,18 @@ function Item({
 
 /**
  * The menu of one version output in the file list: Open, Save copy..., Save next to file
- * (desktop), Copy file name, Regenerate (administrators, desktop; it replaces the recorded one),
- * Delete (administrators, or the user who generated it).
+ * (desktop), Copy file name, Regenerate for the latest version (desktop, explorer edit; only when
+ * the output is out of date), Delete (administrators, or the user who generated it).
  */
-export function OutputMenu({ file, output, position, busy, onClose, onDelete }: OutputMenuProps) {
+export function OutputMenu({ file, output, position, busy, stale, onClose, onDelete }: OutputMenuProps) {
   const getEffectiveRole = usePDMStore((s) => s.getEffectiveRole)
   const hasPermission = usePDMStore((s) => s.hasPermission)
   const userId = usePDMStore((s) => s.user?.id)
   const items = outputMenuItems({
     desktop: hasDesktop(),
     isAdmin: getEffectiveRole() === 'admin',
+    canGenerate: getEffectiveRole() === 'admin' || hasPermission('module:explorer', 'edit'),
+    stale,
     hasLocalFolder: file.diffStatus !== 'moved_away',
     busy,
     isGeneratorWithEdit:
@@ -135,7 +139,7 @@ export function OutputMenu({ file, output, position, busy, onClose, onDelete }: 
             <div className="context-menu-separator" />
             <Item
               icon={<RefreshCw size={14} />}
-              label={t('source.outputs.regenerate')}
+              label={t('source.outputs.regenerateLatest', { version: file.pdmData?.version ?? '' })}
               onClick={() => run(() => regenerateOutput(file, output))}
             />
           </>

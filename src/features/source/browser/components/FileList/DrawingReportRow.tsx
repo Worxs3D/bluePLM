@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { FileSpreadsheet, MoreHorizontal } from 'lucide-react'
+import { FileSpreadsheet, Loader2, MoreHorizontal } from 'lucide-react'
 
 import { Badge } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
@@ -17,7 +17,7 @@ import {
   ChildText,
   ParentMetadataText,
 } from './ChildRowParts'
-import { isParentMetadataColumn, outdatedReportVersion } from './childRowStatus'
+import { isParentMetadataColumn, outdatedReportVersion, reportHeads } from './childRowStatus'
 import { showReportInInspectionTab } from './showReportInInspectionTab'
 import { statusKey, statusTone } from '@/features/integrations/solidworks/inspection/reports/reportModel'
 import {
@@ -50,7 +50,8 @@ interface DrawingReportRowProps {
  * (`selectChildRow`); double-click opens it; right-click selects it and has the report menu shared
  * with the Reports view (Open, Regenerate, Save copy, Save next to drawing, Import results,
  * Delete) plus "Show in Inspection tab". The newest report of a type made of an older version has
- * a stale mark at the left that regenerates it for the latest version (`outdatedReportVersion`).
+ * a stale mark at the left that regenerates it for the latest version (`outdatedReportVersion`; a
+ * spinner while that runs), and the new report then takes this row's place (`reportHeads`).
  */
 export const DrawingReportRow = memo(function DrawingReportRow({
   file,
@@ -66,7 +67,8 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   const versionOf = usePDMStore((s) => s.reportVersionNumbers)
   const canEdit = usePDMStore((s) => s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit'))
   const latestVersion = file.pdmData?.version ?? null
-  const outdatedFor = outdatedReportVersion(report, siblings ?? [report], versionOf, latestVersion)
+  const outdatedFor = outdatedReportVersion(report, reportHeads(siblings ?? [report]), versionOf, latestVersion)
+  const regenerating = usePDMStore((s) => s.regeneratingReportIds.has(report.id))
   const target = file.pdmData?.id
     ? ({ kind: 'report', filePath: file.path, fileId: file.pdmData.id, version: versionNumber, report } as const)
     : null
@@ -123,12 +125,20 @@ export const DrawingReportRow = memo(function DrawingReportRow({
             {column.id === 'name' ? (
               <ChildNameCell
                 rowHeight={rowHeight}
-                icon={<FileSpreadsheet size={14} className="text-emerald-400" />}
+                icon={
+                  regenerating && outdatedFor === null ? (
+                    <Loader2 size={14} className="animate-spin text-plm-fg-muted" />
+                  ) : (
+                    <FileSpreadsheet size={14} className="text-emerald-400" />
+                  )
+                }
                 label={number}
                 title={rowTitle}
                 status={
                   outdatedFor !== null ? (
                     <ChildStaleButton
+                      busy={regenerating}
+                      busyTitle={t('source.inspection.rptRegenerating')}
                       title={t(canEdit ? 'source.inspection.rptOutdated' : 'source.inspection.rptOutdatedReadOnly', {
                         version: versionNumber ?? '',
                         latest: outdatedFor,

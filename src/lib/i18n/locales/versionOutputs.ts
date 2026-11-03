@@ -15,7 +15,10 @@ export const versionOutputStrings: Record<string, string> = {
   rowGenerateTitle: 'No {{kind}} of this version yet. Click to generate it from the checked-in version.',
   rowQueued: '{{kind}} queued…',
   rowGenerating: 'Generating {{kind}}…',
-  rowRegeneratingTitle: 'Generating the {{kind}} again…',
+  rowRegeneratingTitle: 'Generating the {{kind}} for the latest version…',
+  rowOutdated: 'This {{kind}} is of version {{version}}; the file is at version {{latest}}. Click to generate it for version {{latest}}.',
+  rowOutdatedReadOnly: 'This {{kind}} is of version {{version}}; the file is at version {{latest}}.',
+  regenerateLatest: 'Regenerate for version {{version}}',
   rowOpenTitle: 'Double-click to open. Right-click for more.',
   rowApproximateTitle:
     'Generated against approximate reference versions (this version predates exact reference tracking). Double-click to open.',
@@ -77,6 +80,7 @@ export const versionOutputStrings: Record<string, string> = {
   reason_NOT_UPLOADER: 'The uploaded output could not be claimed.',
   reason_NO_EDIT_PERMISSION: 'You need edit access to files to generate outputs.',
   reason_NOT_FOUND: 'The file version was not found.',
+  reason_NO_MODEL: 'The drawing shows no part or assembly to export.',
 
   // Settings > Export
   settingsTitle: 'Outputs at check-in',

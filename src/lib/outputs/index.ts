@@ -11,7 +11,7 @@ export {
   type OutputProgress,
   type OutputProgressPhase,
 } from './ensure'
-export { listVersionOutputs, loadVersionOutputs } from './list'
+export { listVersionOutputs, loadOutputHeads, loadVersionOutputs } from './list'
 export {
   applyOutputNamePattern,
   baseNameOf,
@@ -42,6 +42,7 @@ export {
   outputExtension,
   outputKindLabel,
   outputKindsForPath,
+  primaryOutputKinds,
   supportsOutputKind,
   type AutoOutputSettings,
 } from './kinds'

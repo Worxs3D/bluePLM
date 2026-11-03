@@ -4,13 +4,14 @@
  *
  * Menu Structure:
  * - Primary actions (always visible): Open, Download, Check In/Out
- * - Grouped submenus: File Actions, Edit, Export
+ * - Generate (On server / Local), then Reviews
+ * - Grouped submenus: File Actions, Edit
  * - Delete actions (always visible)
  * - Expandable "More Actions": Collaboration (where used, properties, refresh metadata, reviews, etc.)
  *   Only shown when total items exceed threshold (otherwise items shown inline)
  */
 import React, { useState, useMemo } from 'react'
-import { Clipboard, FileOutput, FolderOpen } from 'lucide-react'
+import { Clipboard, FolderOpen } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -28,8 +29,6 @@ import {
   CheckoutActions,
   CollaborationActions,
   DeleteActions,
-  ExportActions,
-  ExportMetadataTableActions,
   useContextMenuSelectionState,
 } from './actions'
 import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
@@ -38,8 +37,7 @@ import { NativePreviewContextMenuBackdrop } from './NativePreviewContextMenuBack
 import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
 import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
 import { hasDesktop } from '@/lib/platform'
-import { InspectionReportActions } from './actions/InspectionReportActions'
-import { GenerateOutputActions } from './actions/GenerateOutputActions'
+import { GenerateSubmenu } from './actions/GenerateSubmenu'
 import { shouldShowExpandableSection, countCollaborationActions } from './utils'
 
 export interface FileContextMenuProps {
@@ -252,19 +250,6 @@ export function FileContextMenu({
   // Check if we have items for the File Actions submenu (always true - Copy Name works for all files)
   const hasFileSystemActions = true
 
-  // Export: SolidWorks sources and/or PDF & STEP (metadata table)
-  const swExtensions = ['.sldprt', '.sldasm', '.slddrw']
-  const pdfStepExtensions = new Set(['.pdf', '.step', '.stp', '.stpz', '.p21'])
-  const hasSwExportActions = contextFiles.some((f) => {
-    const ext = f.extension?.toLowerCase() || ''
-    return swExtensions.includes(ext) && !f.isDirectory
-  })
-  const hasPdfStepTableExport = contextFiles.some((f) => {
-    const ext = f.extension?.toLowerCase() || ''
-    return !f.isDirectory && pdfStepExtensions.has(ext)
-  })
-  const hasExportActions = (desktop && hasSwExportActions) || hasPdfStepTableExport
-
   return (
     <>
       {/* Overlay to close menu on click */}
@@ -354,6 +339,9 @@ export function FileContextMenu({
           savingConfigsToSW={savingConfigsToSW}
         />
 
+        {/* Generate submenu (On server: recorded outputs and inspection reports; Local: exports) */}
+        <GenerateSubmenu contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
+
         {/* Reviews submenu (new review, add to / remove from a review, view reviews) */}
         <ReviewsSubmenu contextFiles={contextFiles} onClose={onClose} />
 
@@ -398,28 +386,6 @@ export function FileContextMenu({
             <VaultTransferMenuItems contextFiles={contextFiles} onClose={handleCloseMenu} />
           </>
         )}
-
-        {/* Export submenu (SolidWorks STEP, IGES, STL, PDF, DXF) */}
-        <ContextMenuGroup label="Export" icon={FileOutput} hasItems={hasExportActions}>
-          <ExportMetadataTableActions
-            contextFiles={contextFiles}
-            multiSelect={multiSelect}
-            firstFile={firstFile}
-            onClose={onClose}
-          />
-          {desktop && (
-            <ExportActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-            />
-          )}
-        </ContextMenuGroup>
-
-        <GenerateOutputActions contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
-
-        <InspectionReportActions contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
 
         {/* ===== DELETE ACTIONS (always visible) ===== */}
         <DeleteActions

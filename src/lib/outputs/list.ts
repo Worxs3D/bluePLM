@@ -3,9 +3,9 @@
  * chevron's source) in step.
  */
 
-import { listOutputsForVersions } from '@/lib/supabase/versionOutputs'
+import { listOutputHeadsForFiles, listOutputsForVersions } from '@/lib/supabase/versionOutputs'
 import { usePDMStore } from '@/stores/pdmStore'
-import type { VersionOutput } from '@/types/versionOutputs'
+import type { VersionedOutput, VersionOutput } from '@/types/versionOutputs'
 
 /**
  * The outputs of one version: its drawing PDF and its exports, in one shape, sorted (pdf, step,
@@ -30,4 +30,14 @@ export async function loadVersionOutputs(
   for (const id of new Set(fileVersionIds)) complete.set(id, byVersion.get(id) ?? [])
   usePDMStore.getState().setVersionOutputs(complete)
   return complete
+}
+
+/**
+ * The newest output of each kind of these files across their versions (store `fileOutputHeads`,
+ * the file list's output rows and Outputs column). Stores them.
+ */
+export async function loadOutputHeads(fileIds: readonly string[]): Promise<Map<string, VersionedOutput[]>> {
+  const heads = await listOutputHeadsForFiles(fileIds)
+  usePDMStore.getState().setFileOutputHeads(heads)
+  return heads
 }

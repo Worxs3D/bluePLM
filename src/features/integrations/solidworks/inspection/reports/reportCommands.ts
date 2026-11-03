@@ -13,7 +13,7 @@
  */
 import { t } from '@/lib/i18n'
 import { builtInTemplateNames, drawingOmittedKey } from '@/lib/inspection/issueText'
-import type { DeliverOutcome } from '@/lib/inspection/reportFiles'
+import { saveWorkbook, type DeliverOutcome } from '@/lib/inspection/reportFiles'
 import { log } from '@/lib/logger'
 import {
   deleteInspectionReport,
@@ -37,6 +37,7 @@ import {
 } from './reportActions'
 import { mapCharacteristicIds } from '@/lib/inspection/reportTypes'
 import {
+  choiceServes,
   defaultTemplateChoice,
   hasChangesNotCheckedIn,
   regenerateTemplateChoice,
@@ -142,6 +143,13 @@ export interface GenerateOptions {
   version?: VersionInfo
   /** Default: from context (`defaultTypeRequest`). */
   type?: ReportTypeRequest
+  /** The report the new one replaces in the file list (a regeneration that is not a copy). */
+  supersedesReportId?: string | null
+  /**
+   * Generate > Local: build the workbook and save it where the user chooses, without uploading
+   * or recording a report (its number is not reserved).
+   */
+  toFile?: boolean
   /** Progress, for a dialog; without it a progress toast shows the phases. */
   onPhase?: (phase: GeneratePhase) => void
 }
@@ -199,7 +207,7 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       naming.includeLogo ? organizationLogo(organization) : Promise.resolve(null),
     ])
 
-    const outcome = await generateReport({
+    const params = {
       orgId,
       orgName: organization?.name ?? '',
       fileId,
@@ -212,8 +220,16 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       identity,
       logo,
       type,
+      supersedesReportId: options.supersedesReportId ?? null,
       onPhase,
-    })
+    }
+    if (options.toFile) {
+      const local = await generateReport({ ...params, localOnly: true })
+      const delivered = await saveWorkbook(`${local.reportNumber || file.name.replace(/\.[^.]+$/, '')}.xlsx`, local.workbook)
+      if (delivered !== 'canceled') deliveredToast(delivered)
+      return null
+    }
+    const outcome = await generateReport(params)
 
     const current = storedReports(fileId) ?? context.reports
     publishReports(fileId, [outcome.report, ...current.filter((r) => r.id !== outcome.report.id)])
@@ -276,6 +292,51 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
   }
 }
 
+/** The drawing's template choices (organization templates, then the built-ins). */
+export function reportTemplateChoices(context: Pick<ReportContext, 'templates'>): TemplateChoice[] {
+  return templateChoices(context.templates, builtInTemplateNames())
+}
+
+/**
+ * Generate > On server / Local > Inspection report > <template>: a report of the latest version
+ * with that template, of the type Generate would pick (FAI for a revision that has none, else
+ * production) when the template serves it, else production or a full FAI. A template that serves
+ * only receiving or re-inspection needs the options dialog (`needs_options`: the caller opens
+ * it). `toFile` saves the workbook locally instead of recording a report.
+ */
+export async function generateFromTemplate(
+  file: LocalFile,
+  choice: TemplateChoice,
+  options: { context?: ReportContext; toFile?: boolean } = {},
+): Promise<'started' | 'needs_options'> {
+  const state = usePDMStore.getState()
+  const fileId = file.pdmData?.id
+  const orgId = file.pdmData?.org_id ?? state.organization?.id
+  if (!fileId || !orgId) {
+    state.addToast('warning', t('source.inspection.rptNoVersions'))
+    return 'started'
+  }
+  const context = options.context ?? (await loadReportContext(fileId, orgId))
+  const version = context.versions[0]
+  if (!version) {
+    state.addToast('warning', t('source.inspection.rptNoVersions'))
+    return 'started'
+  }
+  const naming = reportNamingFromSettings(state.organization?.settings?.inspection_reports)
+  let type: ReportTypeRequest = defaultTypeRequest(context.reports, context.versions, version, naming)
+  if (!choiceServes(choice, type.reportType)) {
+    if (choiceServes(choice, 'production')) {
+      type = { reportType: 'production', sampling: { plan: 'fixed', n: naming.defaultSampleSize }, lotScope: naming.lotScope }
+    } else if (choiceServes(choice, 'fai')) {
+      type = { reportType: 'fai', faiScope: 'full', faiReason: type.faiReason ?? 'new_part', baseline: null }
+    } else {
+      return 'needs_options'
+    }
+  }
+  await generateForDrawing(file, { context, version, template: choice, type, toFile: options.toFile })
+  return 'started'
+}
+
 async function warnIfNotCheckedIn(file: LocalFile, version: VersionInfo, versionRows: number): Promise<void> {
   const state = usePDMStore.getState()
   const userId = state.user?.id
@@ -293,16 +354,23 @@ async function warnIfNotCheckedIn(file: LocalFile, version: VersionInfo, version
 }
 
 /**
- * Generate a new report like an existing one: the same version (or `version`), the report's
+ * Generate a new report like an existing one: the same version or the latest, the report's
  * template at its current revision when it is still live, else the default. The existing report
- * is kept (it may have been sent); the new one gets the next number.
+ * is kept (it may have been sent); the new one gets the next number. Unless `asCopy`, the new one
+ * supersedes it (schema 508), so the file list shows one line that moves up to the new version;
+ * a copy is a report of its own, listed beside it. While it runs the report is in the store's
+ * `regeneratingReportIds` (the row's spinner).
  */
 export async function regenerateReport(
   file: LocalFile,
   report: InspectionReport,
   target: 'same' | 'latest',
+  options: { asCopy?: boolean } = {},
 ): Promise<InspectionReport | null> {
-  const { addToast } = usePDMStore.getState()
+  const state = usePDMStore.getState()
+  const { addToast } = state
+  if (state.regeneratingReportIds.has(report.id)) return null
+  state.setReportRegenerating(report.id, true)
   try {
     const context = await loadReportContext(report.fileId, report.orgId)
     const version =
@@ -333,11 +401,19 @@ export async function regenerateReport(
       }
       type.chosenIds = mapped.ids
     }
-    return await generateForDrawing(file, { context, version, template: template ?? undefined, type })
+    return await generateForDrawing(file, {
+      context,
+      version,
+      template: template ?? undefined,
+      type,
+      supersedesReportId: options.asCopy ? null : report.id,
+    })
   } catch (err) {
     log.error('[InspectionReports]', 'Regenerate failed', { reportId: report.id, error: errorText(err) })
     addToast('error', t('source.inspection.rptGenerateFailed', { error: errorText(err) }))
     return null
+  } finally {
+    usePDMStore.getState().setReportRegenerating(report.id, false)
   }
 }
 

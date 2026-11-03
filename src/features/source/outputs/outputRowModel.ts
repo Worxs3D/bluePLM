@@ -2,94 +2,124 @@
  * What the file list shows for a file's version outputs (5.5.0), and which actions an output row
  * and the file context menu offer. Pure: the file list, the context menu and the tests call it.
  *
- * Under an expanded file the rows are the outputs of the file's latest checked-in version: a
- * drawing's PDF (and DXF when generated), a part's or assembly's STEP (and IGES/STL when
- * generated). The primary kind (PDF, STEP) shows as a "Generate" ghost row when it is missing and
+ * Under an expanded file there is one row per kind (and configuration): the newest output of that
+ * kind across the file's versions (`fileOutputHeads`). One of an older version than the file's
+ * latest is out of date (`stale`): its mark generates the kind for the latest version, and the
+ * row then moves up to that version instead of a second row appearing. A drawing shows its PDF,
+ * STEP (and DXF when generated), a part or assembly its STEP (and IGES/STL when generated). A
+ * primary kind (`primaryOutputKinds`) shows as a "Generate" ghost row when the file has none and
  * this user can generate it; any kind shows a spinner while a job for it is queued or running.
  */
 
 // Direct module imports (not the `@/lib/outputs` barrel) keep this pure: no store, no Supabase.
 import type { PlannedOutputJob } from '@/lib/outputs/autoQueue'
-import { isDrawingFile, isModelFile, outputKindsForPath, supportsOutputKind } from '@/lib/outputs/kinds'
+import {
+  isDrawingFile,
+  isModelFile,
+  outputKindsForPath,
+  primaryOutputKinds,
+  supportsOutputKind,
+} from '@/lib/outputs/kinds'
 import { orgExportFilenamePattern, versionOutputFileName } from '@/lib/outputs/naming'
 import { outputJobKey, type FileOutputVersion, type OutputJob } from '@/stores/slices/outputsSlice'
 import type { LocalFile } from '@/stores/types'
-import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
+import type { VersionedOutput, VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 /**
- * `ready`: recorded (a regeneration may be running, see `job`). `missing`: none and none on the
- * way. `queued` / `running`: a job will produce it. `failed`: the last job for this version failed
- * or was skipped (`job.detail` says why).
+ * `ready`: recorded (a generation for the latest version may be running, see `job`). `missing`:
+ * none and none on the way. `queued` / `running`: a job will produce it. `failed`: the last job
+ * for this version failed or was skipped (`job.detail` says why).
  */
 export type OutputRowState = 'ready' | 'missing' | 'queued' | 'running' | 'failed'
 
 export interface OutputRowEntry {
   kind: VersionOutputKind
-  output: VersionOutput | null
-  /** The job behind `queued`/`running`/`failed`, or a regeneration of a ready output. */
+  output: VersionedOutput | null
+  /** The job behind `queued`/`running`/`failed`, or one generating a stale output for the latest version. */
   job: OutputJob | null
   state: OutputRowState
+  /** The output is of an older version than the file's latest. */
+  stale: boolean
 }
 
 export interface OutputRowInputs {
-  /** The version whose outputs are shown; undefined until resolved. */
+  /** The file's latest version (number and id); undefined until resolved. */
   latest: FileOutputVersion | undefined
-  /** That version's outputs; undefined until loaded. */
-  outputs: readonly VersionOutput[] | undefined
+  /** The file's newest outputs across its versions; undefined until loaded. */
+  heads: readonly VersionedOutput[] | undefined
   jobs: ReadonlyMap<string, OutputJob>
   /** Desktop and allowed to generate (explorer edit or admin): show "Generate" ghost rows. */
   canGenerate: boolean
 }
 
-/** The kind a file gets a "Generate" ghost row for: PDF for drawings, STEP for parts/assemblies. */
+/** The kind a file gets a "Generate" ghost row for first: PDF for drawings, STEP for parts/assemblies. */
 export function primaryOutputKind(path: string): VersionOutputKind | null {
-  if (isDrawingFile(path)) return 'pdf'
-  if (isModelFile(path)) return 'step'
-  return null
+  return primaryOutputKinds(path)[0] ?? null
 }
 
-function isActive(job: OutputJob | null | undefined): boolean {
+export function isActiveJob(job: OutputJob | null | undefined): boolean {
   return job?.status === 'queued' || job?.status === 'running'
 }
 
 /** A job is about this version when it targets it, or (still queued) has not resolved one yet. */
 function aboutVersion(job: OutputJob, latest: FileOutputVersion | undefined): boolean {
-  if (job.fileVersionId === null) return isActive(job)
+  if (job.fileVersionId === null) return isActiveJob(job)
   return latest !== undefined && job.fileVersionId === latest.fileVersionId
 }
 
-/** The output rows of one file, in kind order (the outputs list is already sorted). */
+/** Whether `output` is of an older version than the file's latest checked-in one. */
+export function isStaleOutput(
+  output: Pick<VersionedOutput, 'version'>,
+  latestVersion: number | null | undefined,
+): boolean {
+  return !!latestVersion && output.version < latestVersion
+}
+
+/** The output rows of one file, in kind order (the heads are already sorted). */
 export function fileOutputEntries(
   file: Pick<LocalFile, 'path' | 'isDirectory' | 'pdmData'>,
   inputs: OutputRowInputs,
 ): OutputRowEntry[] {
   const fileId = file.pdmData?.id
-  if (file.isDirectory || !fileId || !file.pdmData?.version) return []
+  const latestVersion = file.pdmData?.version
+  if (file.isDirectory || !fileId || !latestVersion) return []
   const kinds = outputKindsForPath(file.path)
   if (kinds.length === 0) return []
-  const primary = primaryOutputKind(file.path)
+  const primary = primaryOutputKinds(file.path)
   const entries: OutputRowEntry[] = []
 
   for (const kind of kinds) {
     const job = inputs.jobs.get(outputJobKey(fileId, kind, null))
     const relevantJob = job && aboutVersion(job, inputs.latest) ? job : null
-    const recorded = (inputs.outputs ?? []).filter((o) => o.kind === kind && o.fileId === fileId)
+    const recorded = (inputs.heads ?? []).filter((o) => o.kind === kind && o.fileId === fileId)
 
     if (recorded.length > 0) {
       for (const output of recorded) {
         // The queue only runs the saved configuration, so a job is about the unconfigured output.
-        const regenerating = output.configuration === null && relevantJob && isActive(relevantJob) ? relevantJob : null
-        entries.push({ kind, output, job: regenerating, state: 'ready' })
+        const working = output.configuration === null && relevantJob && isActiveJob(relevantJob) ? relevantJob : null
+        entries.push({ kind, output, job: working, state: 'ready', stale: isStaleOutput(output, latestVersion) })
       }
       continue
     }
-    if (relevantJob && isActive(relevantJob)) {
-      entries.push({ kind, output: null, job: relevantJob, state: relevantJob.status === 'running' ? 'running' : 'queued' })
+    if (relevantJob && isActiveJob(relevantJob)) {
+      entries.push({
+        kind,
+        output: null,
+        job: relevantJob,
+        state: relevantJob.status === 'running' ? 'running' : 'queued',
+        stale: false,
+      })
       continue
     }
-    if (kind !== primary || !inputs.canGenerate || inputs.outputs === undefined) continue
+    if (!primary.includes(kind) || !inputs.canGenerate || inputs.heads === undefined) continue
     const failed = relevantJob && (relevantJob.status === 'failed' || relevantJob.status === 'skipped')
-    entries.push({ kind, output: null, job: failed ? relevantJob : null, state: failed ? 'failed' : 'missing' })
+    entries.push({
+      kind,
+      output: null,
+      job: failed ? relevantJob : null,
+      state: failed ? 'failed' : 'missing',
+      stale: false,
+    })
   }
   return entries
 }
@@ -100,7 +130,10 @@ export interface OutputMenuItems {
   saveCopy: boolean
   saveNextToFile: boolean
   copyName: boolean
-  /** Replacing a recorded output is an administrator's (file_version_output_record). */
+  /**
+   * Generate it for the latest version: only when it is out of date. An up-to-date output is
+   * never generated again (only an administrator could replace it; delete it to start over).
+   */
   regenerate: boolean
   /** An administrator, or the user who generated it with explorer edit (schema 507). */
   delete: boolean
@@ -109,6 +142,10 @@ export interface OutputMenuItems {
 export function outputMenuItems(opts: {
   desktop: boolean
   isAdmin: boolean
+  /** Explorer edit or admin. */
+  canGenerate: boolean
+  /** The output is of an older version than the file's latest. */
+  stale: boolean
   /** The source has a local folder to save next to (not a moved-away stub). */
   hasLocalFolder: boolean
   /** A job for this output is already queued or running. */
@@ -121,21 +158,28 @@ export function outputMenuItems(opts: {
     saveCopy: true,
     saveNextToFile: opts.desktop && opts.hasLocalFolder,
     copyName: true,
-    regenerate: opts.desktop && opts.isAdmin && !opts.busy,
+    regenerate: opts.desktop && opts.canGenerate && opts.stale && !opts.busy,
     delete: (opts.isAdmin || !!opts.isGeneratorWithEdit) && !opts.busy,
   }
 }
 
-/** The kinds "Generate PDF" / "Generate STEP" apply to in this selection (checked-in files only). */
-export function generateMenuKinds(files: readonly LocalFile[]): { pdf: number; step: number } {
+/**
+ * The kinds "Generate PDF" / "Generate STEP" apply to in this selection (checked-in files only): a
+ * drawing has both (its STEP is of the model it shows), a part or assembly STEP.
+ */
+export function generateMenuKinds(files: readonly LocalFile[]): { pdf: number; step: number; drawings: number } {
   let pdf = 0
   let step = 0
+  let drawings = 0
   for (const f of files) {
     if (f.isDirectory || !f.pdmData?.id || !f.pdmData.version) continue
-    if (isDrawingFile(f.path)) pdf++
-    else if (isModelFile(f.path)) step++
+    if (isDrawingFile(f.path)) {
+      pdf++
+      step++
+      drawings++
+    } else if (isModelFile(f.path)) step++
   }
-  return { pdf, step }
+  return { pdf, step, drawings }
 }
 
 /** The jobs "Generate <kind>" queues for a selection: checked-in files that can have that kind. */
@@ -154,6 +198,48 @@ export function generateJobs(
     jobs.push({ fileId: id, version, kind, fileName: f.name, ...(regenerate ? { regenerate: true } : {}) })
   }
   return jobs
+}
+
+/**
+ * The files of `files` that need `kind` generated (the toolbar's Generate on a selection or a
+ * folder): checked in, able to have the kind, and with no output of it for their latest version.
+ * A file whose outputs are not loaded is included (the queue reuses a recorded output, so it costs
+ * a lookup, not an export); one with a job already queued or running is not.
+ */
+export function filesNeedingOutput(
+  files: readonly LocalFile[],
+  kind: VersionOutputKind,
+  heads: ReadonlyMap<string, readonly VersionedOutput[]>,
+  jobs: ReadonlyMap<string, OutputJob>,
+): LocalFile[] {
+  const seen = new Set<string>()
+  return files.filter((f) => {
+    const id = f.pdmData?.id
+    const version = f.pdmData?.version
+    if (f.isDirectory || !id || !version || seen.has(id) || !supportsOutputKind(f.path, kind)) return false
+    if (!primaryOutputKinds(f.path).includes(kind)) return false
+    seen.add(id)
+    if (isActiveJob(jobs.get(outputJobKey(id, kind, null)))) return false
+    const known = heads.get(id)
+    if (!known) return true
+    const head = known.find((o) => o.kind === kind && o.configuration === null)
+    return !head || isStaleOutput(head, version)
+  })
+}
+
+/** The files a folder holds: directly (`recursive` false) or at any depth. Relative paths, '/'. */
+export function filesInFolder(
+  files: readonly LocalFile[],
+  folder: string,
+  recursive: boolean,
+): LocalFile[] {
+  const prefix = folder ? `${folder.replace(/\\/g, '/').replace(/\/$/, '')}/` : ''
+  return files.filter((f) => {
+    if (f.isDirectory) return false
+    const rel = f.relativePath.replace(/\\/g, '/')
+    if (!rel.startsWith(prefix)) return false
+    return recursive || !rel.slice(prefix.length).includes('/')
+  })
 }
 
 /** The name a copy of `output` gets: the organization's export filename pattern with the file's metadata. */
@@ -176,41 +262,49 @@ export function outputCopyName(
   )
 }
 
-/** What the outputs loader has to read for the expanded files. */
+/** What the outputs loader has to read. */
 export interface OutputsToLoad {
-  /** Files whose latest version id is not known (or the file moved on to a newer version). */
+  /** Expanded files whose latest version id is not known (or the file moved on to a newer version). */
   resolve: Array<{ fileId: string; version: number }>
-  /** Versions whose outputs are not loaded, or whose file was just expanded (read again). */
-  load: string[]
+  /**
+   * Files whose newest outputs are not loaded, were read at an older version of the file, or that
+   * were just expanded (read again).
+   */
+  heads: string[]
 }
 
 /**
- * Expanded drawings (`expandedDrawingRefs`) and parts/assemblies (`expandedConfigFiles`) to read
- * outputs for. A file id in `inFlight` is skipped. Pure.
+ * Expanded drawings (`expandedDrawingRefs`) and parts/assemblies (`expandedConfigFiles`), and the
+ * drawings the Outputs column shows (`columnPaths`), to read outputs for. A file id in `inFlight` is skipped.
+ * `headsAt` is the file version each file's heads were read at. Pure.
  */
 export function outputsToLoad(
   files: readonly LocalFile[],
   expanded: ReadonlySet<string>,
   previouslyExpanded: ReadonlySet<string>,
   versions: ReadonlyMap<string, FileOutputVersion>,
-  loaded: ReadonlyMap<string, unknown>,
+  heads: ReadonlyMap<string, unknown>,
+  headsAt: ReadonlyMap<string, number>,
   inFlight: ReadonlySet<string>,
+  columnPaths: ReadonlySet<string> = new Set(),
 ): OutputsToLoad {
   const resolve: OutputsToLoad['resolve'] = []
   const load = new Set<string>()
   for (const file of files) {
-    if (!expanded.has(file.path) || file.isDirectory) continue
+    if (file.isDirectory) continue
+    const isExpanded = expanded.has(file.path)
+    if (!isExpanded && !columnPaths.has(file.path)) continue
     const id = file.pdmData?.id
     const version = file.pdmData?.version
     if (!id || !version || inFlight.has(id) || outputKindsForPath(file.path).length === 0) continue
-    const known = versions.get(id)
-    if (!known || known.version !== version) {
-      resolve.push({ fileId: id, version })
-      continue
+    if (isExpanded) {
+      const known = versions.get(id)
+      if (!known || known.version !== version) resolve.push({ fileId: id, version })
     }
-    if (!loaded.has(known.fileVersionId) || !previouslyExpanded.has(file.path)) load.add(known.fileVersionId)
+    const justExpanded = isExpanded && !previouslyExpanded.has(file.path)
+    if (!heads.has(id) || headsAt.get(id) !== version || justExpanded) load.add(id)
   }
-  return { resolve, load: [...load] }
+  return { resolve, heads: [...load] }
 }
 
 /** Status codes the queue and the library report, each with a `source.outputs.reason_<CODE>` string. */
@@ -231,6 +325,7 @@ export const OUTPUT_REASON_CODES = [
   'NOT_UPLOADER',
   'NO_EDIT_PERMISSION',
   'NOT_FOUND',
+  'NO_MODEL',
 ] as const
 
 export function outputReasonKey(code: string): string {

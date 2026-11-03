@@ -99,6 +99,7 @@ export const createUserSlice: StateCreator<
       versionOutputs: new Map(),
       outputJobs: new Map(),
       fileOutputVersions: new Map(),
+      fileOutputHeads: new Map(),
       loadingDrawingRefs: new Set<string>(),
       expandedDrawingRefFiles: new Set<string>(),
       expandedConfigDrawings: new Set<string>(),

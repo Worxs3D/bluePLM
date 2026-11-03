@@ -76,7 +76,7 @@ describe('outputFileName', () => {
 
 describe('kinds', () => {
   it('gives drawings PDF and DXF, models STEP, IGES and STL', () => {
-    expect(outputKindsForPath('x/A.SLDDRW')).toEqual(['pdf', 'dxf'])
+    expect(outputKindsForPath('x/A.SLDDRW')).toEqual(['pdf', 'step', 'dxf'])
     expect(outputKindsForPath('A.sldprt')).toEqual(['step', 'iges', 'stl'])
     expect(outputKindsForPath('A.sldasm')).toEqual(['step', 'iges', 'stl'])
     expect(outputKindsForPath('A.pdf')).toEqual([])

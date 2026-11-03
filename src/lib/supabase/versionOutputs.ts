@@ -15,6 +15,7 @@ import type {
   ModelOutputKind,
   RecordVersionOutputInput,
   RecordVersionOutputResult,
+  VersionedOutput,
   VersionOutput,
   VersionOutputErrorCode,
 } from '@/types/versionOutputs'
@@ -112,7 +113,7 @@ export function pdfToVersionOutput(row: PdfRow): VersionOutput {
 }
 
 /** Kind order (pdf, step, iges, stl, dxf), then configuration (saved one first), then name. */
-export function sortVersionOutputs(outputs: VersionOutput[]): VersionOutput[] {
+export function sortVersionOutputs<T extends VersionOutput>(outputs: T[]): T[] {
   const rank: Record<string, number> = { pdf: 0, step: 1, iges: 2, stl: 3, dxf: 4 }
   return outputs.sort(
     (a, b) =>
@@ -149,6 +150,52 @@ export async function listOutputsForVersions(
   }
   for (const list of byVersion.values()) sortVersionOutputs(list)
   return byVersion
+}
+
+/**
+ * The newest output of each kind and configuration of these files, across their versions, with
+ * the version number it was generated from (the file list's output rows and Outputs column: an
+ * output of an older version is shown as out of date). Every asked file is present, with an empty
+ * list when it has none. Throws on a query error.
+ */
+export async function listOutputHeadsForFiles(
+  fileIds: readonly string[],
+): Promise<Map<string, VersionedOutput[]>> {
+  const ids = [...new Set(fileIds)].filter(Boolean)
+  const all: VersionOutput[] = []
+  for (let i = 0; i < ids.length; i += IN_BATCH) {
+    const batch = ids.slice(i, i + IN_BATCH)
+    const [outputs, pdfs] = await Promise.all([
+      db().from('file_version_output').select(OUTPUT_COLUMNS).in('file_id', batch),
+      db().from('drawing_pdf_render').select(PDF_COLUMNS).in('file_id', batch),
+    ])
+    if (outputs.error) throw new Error(outputs.error.message)
+    if (pdfs.error) throw new Error(pdfs.error.message)
+    for (const row of (pdfs.data ?? []) as PdfRow[]) all.push(pdfToVersionOutput(row))
+    for (const row of (outputs.data ?? []) as OutputRow[]) all.push(toVersionOutput(row))
+  }
+
+  const versionIds = [...new Set(all.map((o) => o.fileVersionId))]
+  const versionOf = new Map<string, number>()
+  for (let i = 0; i < versionIds.length; i += IN_BATCH) {
+    const batch = versionIds.slice(i, i + IN_BATCH)
+    const { data, error } = await db().from('file_version').select('id, version').in('id', batch)
+    if (error) throw new Error(error.message)
+    for (const row of (data ?? []) as Array<{ id: string; version: number }>) versionOf.set(row.id, row.version)
+  }
+
+  const byFile = new Map<string, VersionedOutput[]>(ids.map((id) => [id, []]))
+  const best = new Map<string, VersionedOutput>()
+  for (const output of all) {
+    const version = versionOf.get(output.fileVersionId)
+    if (version === undefined || !byFile.has(output.fileId)) continue
+    const key = `${output.fileId}:${output.kind}:${output.configuration ?? ''}`
+    const current = best.get(key)
+    if (!current || version > current.version) best.set(key, { ...output, version })
+  }
+  for (const head of best.values()) byFile.get(head.fileId)!.push(head)
+  for (const [id, list] of byFile) byFile.set(id, sortVersionOutputs(list))
+  return byFile
 }
 
 /** The recorded export of one version, kind and configuration, or null. */

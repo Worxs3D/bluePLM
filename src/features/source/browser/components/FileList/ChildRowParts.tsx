@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { History, RefreshCw } from 'lucide-react'
+import { History, Loader2, RefreshCw } from 'lucide-react'
 
 import { resolveFileMetadata } from '@/lib/metadata/overlay'
 import type { LocalFile } from '@/stores/pdmStore'
@@ -91,9 +91,27 @@ export function ChildChip({ children, title }: { children: ReactNode; title?: st
 
 /**
  * The status slot of an out-of-date child row: a stale mark that turns into a regenerate button
- * on hover. Without `onRegenerate` (no permission) it is the mark alone, with its explanation.
+ * on hover, and a spinner while the regeneration runs (`busy`). Without `onRegenerate` (no
+ * permission) it is the mark alone, with its explanation.
  */
-export function ChildStaleButton({ title, onRegenerate }: { title: string; onRegenerate?: () => void }) {
+export function ChildStaleButton({
+  title,
+  onRegenerate,
+  busy = false,
+  busyTitle,
+}: {
+  title: string
+  onRegenerate?: () => void
+  busy?: boolean
+  busyTitle?: string
+}) {
+  if (busy) {
+    return (
+      <span className="flex h-4 w-4 items-center justify-center text-plm-fg-muted" title={busyTitle ?? title}>
+        <Loader2 size={12} className="animate-spin" />
+      </span>
+    )
+  }
   if (!onRegenerate) {
     return (
       <span className="flex h-4 w-4 items-center justify-center text-amber-400" title={title}>

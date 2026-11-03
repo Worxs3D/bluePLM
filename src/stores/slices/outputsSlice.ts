@@ -12,7 +12,7 @@
 import { StateCreator } from 'zustand'
 
 import type { ChildSelection } from '../../features/source/outputs/preview/childPreviewModel'
-import type { VersionOutput, VersionOutputKind } from '../../types/versionOutputs'
+import type { VersionedOutput, VersionOutput, VersionOutputKind } from '../../types/versionOutputs'
 import type { PDMStoreState } from '../types'
 
 export const MAX_VERSIONS_WITH_OUTPUTS = 500
@@ -54,6 +54,12 @@ export interface OutputsSlice {
   outputJobs: Map<string, OutputJob>
   upsertOutputJob: (job: OutputJob) => void
   clearOutputJobs: () => void
+  /**
+   * file id -> the newest output of each kind and configuration across its versions, with the
+   * version it came from (an older one is shown as out of date). Bounded like `fileOutputVersions`.
+   */
+  fileOutputHeads: Map<string, VersionedOutput[]>
+  setFileOutputHeads: (byFile: ReadonlyMap<string, VersionedOutput[]>) => void
   /** file id -> the version (number and id) whose outputs the file list shows. */
   fileOutputVersions: Map<string, FileOutputVersion>
   setFileOutputVersions: (byFile: ReadonlyMap<string, FileOutputVersion>) => void
@@ -90,11 +96,11 @@ export function mergeVersionOutputs(
 }
 
 /** Written file ids move to the end (most recent); the oldest go past `max`. */
-export function mergeFileOutputVersions(
-  current: ReadonlyMap<string, FileOutputVersion>,
-  byFile: ReadonlyMap<string, FileOutputVersion>,
+export function mergeFileOutputVersions<T>(
+  current: ReadonlyMap<string, T>,
+  byFile: ReadonlyMap<string, T>,
   max = MAX_FILE_OUTPUT_VERSIONS,
-): Map<string, FileOutputVersion> {
+): Map<string, T> {
   const next = new Map(current)
   for (const [id, entry] of byFile) {
     next.delete(id)
@@ -136,6 +142,9 @@ export const createOutputsSlice: StateCreator<
   outputJobs: new Map(),
   upsertOutputJob: (job) => set((state) => ({ outputJobs: mergeOutputJob(state.outputJobs, job) })),
   clearOutputJobs: () => set({ outputJobs: new Map() }),
+  fileOutputHeads: new Map(),
+  setFileOutputHeads: (byFile) =>
+    set((state) => ({ fileOutputHeads: mergeFileOutputVersions(state.fileOutputHeads, byFile) })),
   fileOutputVersions: new Map(),
   setFileOutputVersions: (byFile) =>
     set((state) => ({ fileOutputVersions: mergeFileOutputVersions(state.fileOutputVersions, byFile) })),

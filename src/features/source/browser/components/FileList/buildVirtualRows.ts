@@ -3,9 +3,10 @@ import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
 import type { FileOutputVersion, OutputJob } from '@/stores/slices/outputsSlice'
 import type { InspectionReport } from '@/types/inspectionReports'
-import type { VersionOutput } from '@/types/versionOutputs'
+import type { VersionedOutput } from '@/types/versionOutputs'
 
 import { fileOutputEntries } from '@/features/source/outputs/outputRowModel'
+import { reportHeads } from './childRowStatus'
 
 import { getFileStatus } from '../../hooks/useFileStatus'
 import type { ConfigWithDepth } from '../../types'
@@ -47,17 +48,17 @@ export interface BuildVirtualRowsOptions {
   expandedDrawingRefFiles: ReadonlySet<string>
   /** Inspection reports per drawing file id (store `drawingInspectionReports`). */
   drawingInspectionReports?: ReadonlyMap<string, InspectionReport[]>
-  /** Version outputs (store `fileOutputVersions`, `versionOutputs`, `outputJobs`). */
+  /** Version outputs (store `fileOutputVersions`, `fileOutputHeads`, `outputJobs`). */
   outputs?: {
     versions: ReadonlyMap<string, FileOutputVersion>
-    byVersion: ReadonlyMap<string, VersionOutput[]>
+    heads: ReadonlyMap<string, readonly VersionedOutput[]>
     jobs: ReadonlyMap<string, OutputJob>
     /** Desktop and allowed to generate: show "Generate PDF/STEP" ghost rows. */
     canGenerate: boolean
   }
 }
 
-/** The outputs of an expanded file's latest version (and ghost / in-progress rows). */
+/** The newest outputs of an expanded file, one row per kind (and ghost / in-progress rows). */
 export function appendFileOutputRows(
   rows: VirtualRow[],
   file: LocalFile,
@@ -69,27 +70,31 @@ export function appendFileOutputRows(
   const current = latest && latest.version === file.pdmData?.version ? latest : undefined
   const entries = fileOutputEntries(file, {
     latest: current,
-    outputs: current ? outputs.byVersion.get(current.fileVersionId) : undefined,
+    heads: outputs.heads.get(fileId),
     jobs: outputs.jobs,
     canGenerate: outputs.canGenerate,
   })
   for (const entry of entries) {
-    rows.push({ type: 'file-output', file, entry, version: current?.version ?? null })
+    rows.push({ type: 'file-output', file, entry, version: entry.output?.version ?? file.pdmData?.version ?? null })
   }
 }
 
-/** A drawing's reports (newest first, at most `MAX_DRAWING_REPORT_ROWS`), then a "n more" row. */
+/**
+ * A drawing's reports that no other supersedes (`reportHeads`; newest first, at most
+ * `MAX_DRAWING_REPORT_ROWS`), then a "n more" row.
+ */
 export function appendDrawingReportRows(
   rows: VirtualRow[],
   file: LocalFile,
   reports: readonly InspectionReport[] | undefined,
 ): void {
   if (!reports || reports.length === 0) return
-  for (const report of reports.slice(0, MAX_DRAWING_REPORT_ROWS)) {
+  const heads = reportHeads(reports)
+  for (const report of heads.slice(0, MAX_DRAWING_REPORT_ROWS)) {
     rows.push({ type: 'drawing-report', file, report })
   }
-  if (reports.length > MAX_DRAWING_REPORT_ROWS) {
-    rows.push({ type: 'drawing-report-more', file, hiddenCount: reports.length - MAX_DRAWING_REPORT_ROWS })
+  if (heads.length > MAX_DRAWING_REPORT_ROWS) {
+    rows.push({ type: 'drawing-report-more', file, hiddenCount: heads.length - MAX_DRAWING_REPORT_ROWS })
   }
 }
 

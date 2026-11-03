@@ -16,9 +16,12 @@ export function isModelFile(path: string): boolean {
   return MODEL.test(path)
 }
 
-/** The outputs a file of this path can have: drawings PDF and DXF; parts and assemblies STEP, IGES, STL. */
+/**
+ * The outputs a file of this path can have: drawings PDF, STEP (of the model the drawing shows,
+ * named with the drawing's metadata) and DXF; parts and assemblies STEP, IGES, STL.
+ */
 export function outputKindsForPath(path: string): VersionOutputKind[] {
-  if (isDrawingFile(path)) return ['pdf', 'dxf']
+  if (isDrawingFile(path)) return ['pdf', 'step', 'dxf']
   if (isModelFile(path)) return ['step', 'iges', 'stl']
   return []
 }
@@ -27,9 +30,20 @@ export function supportsOutputKind(path: string, kind: VersionOutputKind): boole
   return outputKindsForPath(path).includes(kind)
 }
 
-/** Kinds exported with a configuration (STEP and STL); IGES and DXF export the saved one only. */
-export function kindTakesConfiguration(kind: VersionOutputKind): boolean {
+/**
+ * Kinds exported with a configuration (STEP and STL); IGES and DXF export the saved one only. A
+ * drawing's STEP exports the configuration its views show, so it takes none either.
+ */
+export function kindTakesConfiguration(kind: VersionOutputKind, path?: string): boolean {
+  if (path && isDrawingFile(path)) return false
   return kind === 'step' || kind === 'stl'
+}
+
+/** The kinds a file gets a "Generate" row and a parent-column icon for: drawings PDF and STEP, models STEP. */
+export function primaryOutputKinds(path: string): VersionOutputKind[] {
+  if (isDrawingFile(path)) return ['pdf', 'step']
+  if (isModelFile(path)) return ['step']
+  return []
 }
 
 export function isModelOutputKind(kind: VersionOutputKind): kind is ModelOutputKind {

@@ -13,6 +13,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import {
+  loadOutputHeads,
   loadVersionOutputs,
   openVersionOutput,
   outputKindLabel,
@@ -120,7 +121,8 @@ async function queueWithToasts(files: readonly LocalFile[], kind: VersionOutputK
     toast('info', t('source.outputs.reason_desktop_only'))
     return
   }
-  const jobs = generateJobs(files, kind, regenerate)
+  // Generating never replaces a recorded output: a stale one is generated for the latest version.
+  const jobs = generateJobs(files, kind)
   if (jobs.length === 0) return
   const unavailable = await pdfRenderUnavailableReason().catch(() => null)
   if (unavailable) {
@@ -151,7 +153,10 @@ export function generateOutputs(files: readonly LocalFile[], kind: VersionOutput
   void queueWithToasts(files, kind, false)
 }
 
-/** Generate a recorded output again from its version (an administrator replaces it). */
+/**
+ * Generate an out-of-date output for the file's latest version. The row moves up to that version;
+ * the older version keeps its own output. An up-to-date output is never generated again.
+ */
 export function regenerateOutput(file: LocalFile, output: VersionOutput): void {
   void queueWithToasts([file], output.kind, true)
 }
@@ -246,9 +251,10 @@ export async function deleteOutputWithToast(file: LocalFile, output: VersionOutp
   if (state.childSelection?.target.kind === 'output' && state.childSelection.target.output.id === output.id) {
     state.setChildSelection(null)
   }
-  await loadVersionOutputs([output.fileVersionId]).catch((err) =>
-    log.warn('[Outputs]', 'Could not reload version outputs', { error: errorText(err) }),
-  )
+  await Promise.all([
+    loadVersionOutputs([output.fileVersionId]),
+    loadOutputHeads([output.fileId]),
+  ]).catch((err) => log.warn('[Outputs]', 'Could not reload version outputs', { error: errorText(err) }))
   toast('success', t('source.outputs.deleted', { kind, name: file.name }))
   return true
 }
