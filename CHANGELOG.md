@@ -4,6 +4,46 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.6.0] - 2026-11-03
+
+Schema 506 (migration `0506_inspection_report_types.sql`, applied by the release before anything is
+published). No API change: API 4.2.2. No service change: SolidWorks service 1.28.0. Release 5.5.0
+keeps working on schema 506, except that it cannot import results into a report of a type (the
+database refuses them; use 5.6.0).
+
+### Added
+
+- **Inspection report types**, following industry practice:
+  - **First article (FAIR)**, SAE AS9102: full, for a new part, or partial, after a change (design,
+    process, source, location, tooling, a production lapse over two years, a corrective action).
+    A partial FAI includes the characteristics changed since the last FAI'd version (renumbered
+    balloons are not changes), and the selection can be adjusted. The built-in template has
+    Forms 1, 2 and 3.
+  - **Production (PIR)** and **receiving (RIR)**: a lot, its size and the sampling (every part or a
+    fixed number of parts). A characteristic's supplier or internal inspection rate decides whether
+    it is included, otherwise the organization's setting (classified characteristics, or all).
+    One result column per part up to ten, then one row per part. Receiving adds PO and supplier.
+  - **Re-inspection (RIN)**: the characteristics named by a nonconformance, with its NCR reference.
+- **Type-aware naming.** The `{type}` token gives FAIR / PIR / RIR / RIN, counted per type; the new
+  default pattern is `{partNumber}_Rev{rev}_{type}{n}` (for example `BR-103849-201_RevB_FAIR1`).
+  A pattern an organization already saved is kept.
+- **Templates per type.** A template says which report types it serves, with one default per type.
+- **Generate picks the type from context** (a revision with no report yet starts with a first
+  article; otherwise production) and says it on the button. "Generate with options..." chooses
+  type, version, template, scope, lot, sampling and the characteristics.
+
+### Changed
+
+- **Multi-part results are graded strictly.** A characteristic measured on several parts stays open
+  until every part has a value, and fails on the first value out of tolerance. A returned workbook
+  is checked against the report's own set of characteristics and parts.
+- The Reports view and the file list show the report type; the Reports view filters by type.
+
+### Not included
+
+- ANSI/ASQ Z1.4 (AQL) sampling tables: not shipped until they are transcribed from the published
+  standard and tested. Sampling is every part or a fixed number of parts.
+
 ## [5.5.0] - 2026-11-03
 
 Schema 505 (migration `0505_version_outputs.sql`, applied by the release before anything is
