@@ -51,7 +51,6 @@ interface ScanEntry {
 const FOLDERS = 40
 const FILES_PER_FOLDER = 50
 const FILE_COUNT = FOLDERS * FILES_PER_FOLDER
-const FILESYSTEM_FIXTURE_TIMEOUT_MS = 60_000
 
 let vault: string
 
@@ -101,8 +100,11 @@ async function counting<T>(run: () => Promise<T>) {
   }
 }
 
-// Materializing 2,000 real files can exceed Vitest's default 10-second hook
-// timeout on Windows CI; the performance assertions below still use their own limit.
+// Writing the 2,000-file fixture is setup, not the measured work: on a shared Windows CI runner
+// with real-time antivirus scanning it takes longer than the default 10 s hook timeout. The
+// assertions below count operations, so a slow disk cannot make them pass or fail.
+const FIXTURE_TIMEOUT_MS = 120_000
+
 beforeAll(async () => {
   vault = fs.mkdtempSync(path.join(os.tmpdir(), 'blueplm-fsperf-'))
   for (let folder = 0; folder < FOLDERS; folder++) {
@@ -124,12 +126,12 @@ beforeAll(async () => {
   })
   clearHashCache()
   await invoke('working-dir:set', vault)
-}, FILESYSTEM_FIXTURE_TIMEOUT_MS)
+}, FIXTURE_TIMEOUT_MS)
 
 afterAll(async () => {
   await invoke('working-dir:clear')
   fs.rmSync(vault, { recursive: true, force: true })
-}, FILESYSTEM_FIXTURE_TIMEOUT_MS)
+}, FIXTURE_TIMEOUT_MS)
 
 describe('real-disk vault paths', () => {
   it('scans the vault in one pass: one readdir per folder, one stat per entry, no reads', async () => {

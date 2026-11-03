@@ -48,10 +48,27 @@ export interface ExtractedCharacteristic {
   y: number
 }
 
+/** One note of a sheet: sheet format, sheet annotation or block instance (never inside a view). */
+export interface ExtractedSheetNote {
+  /** Evaluated text, lines joined with '\n'. */
+  text: string
+  /** Note position, sheet metres (same space as characteristic x/y). */
+  x: number
+  y: number
+  /** Character height in metres when known. */
+  height: number | null
+  /** Sheet format, sheet annotation, block instance on sheet/format. */
+  source: 'format' | 'sheet' | 'block'
+}
+
 export interface ExtractedDrawingSheet {
   name: string
   widthM: number
   heightM: number
+  /** Sheet notes (service 1.27.0+, `SW_SERVICE_VERSION_SHEET_NOTES`); older services omit it. */
+  notes?: ExtractedSheetNote[]
+  /** False when the service skipped or failed reading the sheet's notes. */
+  notesRead?: boolean
 }
 
 /** `data` of a successful `extractDrawingCharacteristics`. */
@@ -91,10 +108,20 @@ export interface AppliedInspectionBalloons {
   placed: number
   /** Source keys not found in the drawing. */
   missing: string[]
-  /** BluePLM balloons deleted from the layer before placing the new set. */
+  /**
+   * BluePLM balloons deleted from the layer. Before 1.29.0 every old balloon; from 1.29.0 only
+   * those no request keeps.
+   */
   removedPrevious: number
-  /** Balloons placed at a position the user had moved them to by hand (service 1.25.0). */
+  /**
+   * Balloons inserted at an old balloon's position (service 1.25.0). From 1.29.0 only a balloon
+   * whose annotation moved to another view of the same sheet.
+   */
   keptPositions: number
+  /** Old balloons left untouched because label and view still match (service 1.29.0). */
+  kept?: number
+  /** Nothing deleted, inserted or changed on the layer, so the drawing was not saved (1.29.0). */
+  unchanged?: boolean
   saved: boolean
 }
 

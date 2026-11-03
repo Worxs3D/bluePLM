@@ -16,5 +16,7 @@ export interface ToastMessage {
   type: ToastType
   message: string
   duration?: number
+  /** One button (for example Undo); clicking it runs `onClick` and dismisses the toast. */
+  action?: { label: string; onClick: () => void }
   progress?: ToastProgress
 }

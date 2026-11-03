@@ -290,6 +290,7 @@ export type SortColumn =
  * Column ID to translation key mapping
  */
 export const COLUMN_TRANSLATION_KEYS: Record<string, string> = {
+  outputs: 'fileBrowser.outputs',
   name: 'fileBrowser.name',
   fileStatus: 'fileBrowser.fileStatus',
   checkedOutBy: 'fileBrowser.checkedOutBy',

@@ -44,6 +44,8 @@ import {
 import { Badge } from '@/components/core/ui'
 import { FileIcon } from '@/components/shared'
 import { t } from '@/lib/i18n'
+import { resolveDescription, resolvePartNumber } from '@/lib/metadata/overlay'
+import type { LocalFile } from '@/stores/pdmStore'
 
 import type { VaultAuditActionKind } from './vaultAuditActions'
 import type { VaultAuditFileAvailability } from './vaultAuditFileState'
@@ -71,7 +73,7 @@ const VALUE_GRID =
 const VALUE_GRID_WITH_RESOLUTION =
   'grid grid-cols-[2.5rem_minmax(7rem,11rem)_minmax(0,1fr)_1.5rem_minmax(0,1fr)_auto]'
 
-const ESTIMATED_FILE_ROW_PX = 40
+const ESTIMATED_FILE_ROW_PX = 52
 const ESTIMATED_VALUE_ROW_PX = 44
 const OVERSCAN_ROWS = 12
 
@@ -222,6 +224,37 @@ function ConflictButton({
   )
 }
 
+/**
+ * The file's part number and description, so a heading names the part and not only its path.
+ *
+ * Read through the overlay like the file browser does. A file with no local row (not loaded) falls
+ * back to the database values its own file-scope findings carry.
+ */
+function identityOf(
+  file: LocalFile | null,
+  group: VaultAuditFileGroup,
+): { partNumber: string | null; description: string | null } {
+  const fromFindings = (field: 'part_number' | 'description') =>
+    group.rows.find((row) => row.finding.field === field && row.finding.scope === 'file')?.finding
+      .databaseValue ?? null
+  return {
+    partNumber: (file ? resolvePartNumber(file).value : null) || fromFindings('part_number'),
+    description: (file ? resolveDescription(file).value : null) || fromFindings('description'),
+  }
+}
+
+/** What is wrong with the file, as the fields at issue: "Description, Config tab ×3". */
+function issueSummaryOf(group: VaultAuditFileGroup): string {
+  const counts = new Map<string, number>()
+  for (const row of group.rows) {
+    const label = fieldLabel(row.finding.field)
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  return [...counts]
+    .map(([label, count]) => (count > 1 ? `${label} ×${count}` : label))
+    .join(', ')
+}
+
 function splitPath(relativePath: string): { folder: string; name: string } {
   const split = Math.max(relativePath.lastIndexOf('\\'), relativePath.lastIndexOf('/'))
   return {
@@ -251,6 +284,8 @@ function FileRowView({
   const { resolveFile, reveal } = browser
   const file = resolveFile(group.relativePath)
   const { folder, name } = splitPath(group.relativePath)
+  const { partNumber, description } = identityOf(file, group)
+  const issues = issueSummaryOf(group)
   const availability = group.rows[0]?.availability ?? null
   const heldByOther = availability?.state === 'held-by-other'
   const allSettled = group.settledCount === group.rows.length
@@ -304,14 +339,36 @@ function FileRowView({
         onClick={() => onToggleCollapsed(group.fileId)}
         onDoubleClick={() => reveal(group.relativePath)}
         title={group.relativePath}
-        className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+        className="flex min-w-0 flex-1 flex-col text-left"
       >
-        <span className="truncate text-[13px] font-medium text-ui-fg">{name}</span>
-        {folder && (
-          <span className="min-w-0 truncate text-[12px] text-ui-fg-tertiary">
-            {folder.replace(/[\\/]/g, ' / ')}
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[13px] font-medium text-ui-fg">{name}</span>
+          {folder && (
+            <span className="min-w-0 truncate text-[12px] text-ui-fg-tertiary">
+              {folder.replace(/[\\/]/g, ' / ')}
+            </span>
+          )}
+        </span>
+        <span className="flex min-w-0 items-baseline gap-2 text-[12px]">
+          <span
+            className={`flex-shrink-0 font-mono ${partNumber ? 'text-ui-fg' : 'italic text-ui-fg-tertiary'}`}
+            title={t('vaultAudit.findings.partNumber')}
+          >
+            {partNumber ?? t('vaultAudit.findings.noPartNumber')}
           </span>
-        )}
+          <span
+            className={`min-w-0 truncate ${description ? 'text-ui-fg-secondary' : 'italic text-ui-fg-tertiary'}`}
+            title={description ?? undefined}
+          >
+            {description ?? t('vaultAudit.findings.noDescription')}
+          </span>
+          <span
+            className="ml-auto flex-shrink-0 text-ui-warning"
+            title={t('vaultAudit.findings.issuesHint')}
+          >
+            {issues}
+          </span>
+        </span>
       </button>
 
       {heldByOther && (

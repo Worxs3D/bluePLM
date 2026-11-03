@@ -2,8 +2,12 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
+import { inspectionReportStrings } from './inspectionReports'
+import { inspectionReportTypeStrings } from './inspectionReportTypes'
+import { versionOutputStrings } from './versionOutputs'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
@@ -40,6 +44,7 @@ export const en: TranslationDict = {
   ...reviewsUiStrings.en,
   reviewPackage: reviewPackageStrings.en,
   dbUpgrade: dbUpgradeStrings.en,
+  releases: releasesStrings.en,
   securityMonitoring: securityMonitoringStrings.en,
   shortcuts: shortcutsStrings,
   app: {
@@ -430,6 +435,29 @@ export const en: TranslationDict = {
 
   // File browser
   fileBrowser: {
+    outputs: 'Outputs',
+    generateMenu: {
+      title: 'Generate the PDFs and STEPs that are missing or out of date, on the server',
+      selection: 'Selected files',
+      folder: 'This folder',
+      tree: 'This folder and subfolders',
+      item: '{{kind}}: missing or out of date',
+    },
+    outputsCell: {
+      loading: 'Reading outputs…',
+      generating: 'Generating the {{kind}}…',
+      missing: 'No {{kind}} yet. Click to generate it from the latest checked-in version.',
+      missingReadOnly: 'No {{kind}} yet.',
+      stale: '{{kind}} of version {{version}}; the drawing is at version {{latest}}. Click to generate it for version {{latest}}.',
+      staleReadOnly: '{{kind}} of version {{version}}; the drawing is at version {{latest}}. Click to preview it.',
+      current: '{{kind}} of version {{version}}. Click to preview it.',
+      reportLoading: 'Reading inspection reports…',
+      reportMissing: 'No inspection report yet. Click to generate one with the default template.',
+      reportMissingReadOnly: 'No inspection report yet.',
+      reportStale: 'Report {{number}} is of version {{version}}; the drawing is at version {{latest}}. Click to regenerate it for version {{latest}}.',
+      reportStaleReadOnly: 'Report {{number}} is of version {{version}}; the drawing is at version {{latest}}. Click to preview it.',
+      reportCurrent: 'Report {{number}} of version {{version}}. Click to preview it.',
+    },
     name: 'Name',
     fileStatus: 'File Status',
     checkedOutBy: 'Checked Out By',
@@ -446,6 +474,8 @@ export const en: TranslationDict = {
     noFilesFound: 'No files found',
     dropFilesHere: 'Drop files here to upload',
     clearSearch: 'Clear search',
+    showQuickResults: 'Show results list',
+    hideQuickResults: 'Hide results list',
   },
 
   // File operations
@@ -716,13 +746,30 @@ export const en: TranslationDict = {
       modelOnlyWarning:
         'Write model only leaves drawings that are not checked out by you unchanged.',
     },
+    outputs: {
+      ...versionOutputStrings,
+    },
     inspection: {
+      ...inspectionReportStrings,
+      ...inspectionReportTypeStrings,
       title: 'Inspection Table',
       notSynced: 'Sync this drawing to bluePLM to manage its inspection table.',
       version: 'Version',
       current: 'Current',
       saving: 'Saving…',
       readOnlyCheckout: 'Check out the drawing to edit',
+      readOnlyShort: 'Read-only',
+      readOnlySnapshot: 'A checked-in version: its table cannot change.',
+      snapshotShort: 'Snapshot',
+      versionOption: 'Version {{version}}',
+      moreActions: 'More actions',
+      emptyTitle: 'No characteristics yet',
+      emptyBodyEditable:
+        'Extract reads every dimension, GTOL and surface finish from the drawing into this table. Add manual rows for notes and checks the drawing does not carry.',
+      emptyBodyReadOnly:
+        'Nobody has extracted this drawing yet. Check it out to extract its characteristics.',
+      emptyBodySnapshot: 'This version was checked in without an inspection table.',
+      addManualRow: 'Add manual row',
       addRow: 'Add Row',
       deleteRow: 'Delete row',
       sortBy: 'Click to sort',
@@ -757,47 +804,12 @@ export const en: TranslationDict = {
       extractFailed: 'Failed to read the drawing',
       extractNone: 'No dimensions, GTOLs or surface finish symbols found in this drawing.',
       extractUpToDate: 'The table already matches the drawing.',
-      extractPreviewTitle: 'Extract from drawing',
-      extractPreviewCounts:
-        '{{added}} new, {{updated}} changed, {{adopted}} linked, {{missing}} no longer in the drawing, {{unchanged}} unchanged',
-      extractAdded: 'New ({{count}})',
-      extractUpdated: 'Changed ({{count}})',
-      extractChanged: 'Changes: {{fields}}',
-      extractAdoptedBadge: 'Linked',
-      extractMissing: 'No longer in the drawing ({{count}})',
-      extractMissingHint: 'Ticked rows are removed from the table. Untick a row to keep it.',
-      extractRemoveRow: 'Remove balloon {{balloon}}',
-      extractIncompleteBadge: 'Sheet not fully read',
-      extractIncompleteSheets:
-        'Some of the drawing could not be read ({{sheets}}). Rows on those sheets are not ticked for removal, because their annotations may still be there.',
-      extractUnreadable: 'Could not be read ({{count}})',
-      extractUnreadableHint:
-        'These annotations are still in the drawing but could not be read. Their rows are kept as they are.',
-      extractManualNote:
-        '{{count}} row(s) not linked to the drawing are left as they are.',
-      extractApply: 'Apply',
       extractApplied: 'Table updated: {{added}} added, {{updated}} changed, {{removed}} removed',
-      fieldSourceKey: 'drawing link',
-      fieldSourceView: 'View',
       balloonDrawing: 'Balloon drawing',
       balloonTitle:
-        'Write numbered balloons into the drawing on the BluePLM Inspection layer, replacing earlier BluePLM balloons.',
+        'Update the table from the drawing, then write numbered balloons for every linked row on the BluePLM Inspection layer, and save the drawing. Balloons already placed stay as you left them; only missing ones are added and ones no longer in the table are removed.',
       ballooning: 'Ballooning…',
       balloonNothing: 'No rows are linked to the drawing. Extract from the drawing first.',
-      balloonAllStale:
-        'None of the linked rows are in the drawing any more. Extract from the drawing first.',
-      balloonConfirmTitle: 'Balloon drawing',
-      balloonConfirmBody:
-        'Place {{count}} balloon(s) in the drawing on the BluePLM Inspection layer. Balloons BluePLM placed before are replaced.',
-      balloonConfirmOtherBalloons:
-        'Balloons BluePLM did not place, such as older balloons already on the drawing, are not touched.',
-      balloonConfirmUnkeyed:
-        '{{count}} row(s) without a drawing link or balloon number get no balloon.',
-      balloonConfirmStale:
-        '{{count}} row(s) are no longer in the drawing and get no balloon. Extract from the drawing to update the table.',
-      balloonConfirmSave:
-        'The drawing is saved. Check it in afterwards to share the ballooned drawing.',
-      balloonConfirmApply: 'Balloon drawing',
       balloonApplied:
         'Placed {{placed}} balloon(s) (replaced {{removedPrevious}}) and saved the drawing. Check it in to share it.',
       balloonKeptPositions: '{{count}} balloon(s) kept the position you moved them to.',
@@ -805,6 +817,44 @@ export const en: TranslationDict = {
         'Placed {{placed}} balloon(s), but the drawing could not be saved. Save it in SOLIDWORKS, then check it in.',
       balloonMissing:
         '{{count}} characteristic(s) were not found in the drawing and got no balloon.',
+      // Incremental balloon update (service 1.29.0).
+      balloonUpdated:
+        'Kept {{kept}} balloon(s), placed {{placed}}, removed {{removed}}, and saved the drawing. Check it in to share it.',
+      balloonUnchanged:
+        'The drawing already has every balloon ({{kept}} kept). Nothing was changed or saved.',
+      // Change detection, Auto, filter row and pop-out (5.5.0).
+      extractUpToDateTitle:
+        'Up to date: the table was extracted from the drawing as it is now. Save a change to the drawing to extract again.',
+      balloonUpToDateTitle:
+        "Up to date: the drawing already has BluePLM's balloons for the table as it is now. Save a change to the drawing to balloon again.",
+      autoLabel: 'Auto',
+      autoTitleOn:
+        'Auto is on: while this drawing is checked out to you, BluePLM keeps the table and the balloons in sync with it, when you open it and each time you save it. Click to turn Auto off.',
+      autoTitleOff:
+        'Auto is off. Click to keep the table and the balloons in sync with the drawing automatically.',
+      autoPaused:
+        'Auto extract and balloon stopped after an error. It runs again the next time the drawing changes.',
+      // Auto status pill (5.7.0): with Auto on there is no Extract or Balloon to press.
+      autoStatusInSync: 'In sync',
+      autoStatusChecking: 'Checking…',
+      autoStatusSyncing: 'Syncing…',
+      autoStatusWaiting: 'Waiting for SOLIDWORKS',
+      autoStatusPaused: 'Auto paused',
+      autoStatusTitleInSync: 'The table and the balloons match the drawing as it is now.',
+      autoStatusTitleChecking: 'Comparing the drawing with the last extraction.',
+      autoStatusTitleSyncing: 'Extracting the drawing and placing its balloons.',
+      autoStatusTitleWaiting:
+        'The drawing changed, and Auto will bring it in sync as soon as the SOLIDWORKS service is running.',
+      autoStatusTitlePaused:
+        'Auto stopped after an error, or because the drawing has unsaved changes in SOLIDWORKS. Save it, then retry.',
+      autoRetry: 'Retry',
+      autoStart: 'Extract and balloon',
+      autoStartTitle:
+        'Read the characteristics from the drawing and balloon it. From then on Auto keeps the table and the balloons in sync each time you save the drawing.',
+      filterToggle: 'Filters',
+      filterShowTitle: 'Show the filter row',
+      filterHideTitle: 'Hide the filter row and clear its filters',
+      popoutSelectDrawing: 'Select a drawing in the main window to show its inspection table.',
       balloonFailed: 'Failed to balloon the drawing',
       errorReadOnly:
         'The drawing is read-only on disk. Check it out again to make it writable.',
@@ -813,6 +863,47 @@ export const en: TranslationDict = {
       errorUnsavedChanges:
         'The drawing is open in SOLIDWORKS with unsaved changes. Save or close it there first.',
       errorNotADrawing: 'This file is not a SOLIDWORKS drawing.',
+      // Straight-through extraction (no preview), read-only drawing values, general tolerances.
+      extractKeptIncomplete:
+        '{{count}} row(s) on sheets that could not be fully read were kept.',
+      undo: 'Undo',
+      mergeNotSaved:
+        'The table could not be saved, so it was put back as it was. Check that the drawing is still checked out to you and try again.',
+      extractUndone: 'Restored the table as it was before the extraction.',
+      undoUnavailable: 'The table has changed since the extraction, so it cannot be undone.',
+      lockedFromDrawing:
+        'Read from the drawing. Change it in the drawing, then extract again.',
+      lockedRow:
+        'Linked to the drawing. To remove it, delete the annotation or make it a reference dimension, then extract again.',
+      toleranceSourceColumn: 'Tol. Source',
+      toleranceSourceDrawing: 'Drawing',
+      toleranceSourceGeneral: 'General',
+      generalToleranceBadge: 'GT',
+      generalTolerance: 'General tolerance from the title block: {{rule}}',
+      generalToleranceUnknownRule:
+        'General tolerance from the title block. Extract again to see the rule it came from.',
+      gtRuleDecimal: '{{places}}-place decimals ±{{tolerance}}',
+      gtRuleLinear: 'all values ±{{tolerance}}',
+      gtRuleFractional: 'fractions ±{{tolerance}}',
+      gtRuleAngular: 'angles ±{{tolerance}}',
+      gtRuleIso: 'ISO 2768-{{cls}}, Table {{table}}, {{range}} mm: ±{{tolerance}} mm',
+      gtRangeFirst: '{{over}} up to {{upTo}}',
+      gtRangeOver: 'over {{over}} up to {{upTo}}',
+      gtRangeOpen: 'over {{over}}',
+      // Column manager, selection and bulk edit.
+      columns: 'Columns',
+      columnsTitle: 'Show, hide and order columns',
+      columnsReset: 'Reset to default',
+      columnMoveUp: 'Move up',
+      columnMoveDown: 'Move down',
+      selectRow: 'Select row',
+      selectAll: 'Select all shown rows',
+      selectedCount: '{{count}} selected',
+      bulkField: 'Set',
+      bulkValue: 'to',
+      bulkApply: 'Apply to selected',
+      bulkClear: 'Clear selection',
+      bulkApplied: 'Updated {{count}} row(s).',
       errorModifiedNotSaved:
         'Ballooning failed and the drawing is still open in SOLIDWORKS with partial balloon changes. Close it there without saving.',
     },
@@ -839,6 +930,19 @@ export const en: TranslationDict = {
       affectedConfigurations: 'Configurations affected: {{names}}',
     },
     details: {
+      popOut: 'Open in new window',
+      popoutShowWindow: 'Show its window',
+      popoutPlaceholder: '{{tab}} is open in another window.',
+      popoutBringBack: 'Bring it back here',
+      popoutWaiting: 'Waiting for the main BluePLM window…',
+      popoutSelectFile: 'Select a file in the main window to show it here.',
+      popoutFileNotInVault: 'That file is not in the open vault.',
+      popoutTabPreview: 'Preview',
+      popoutTabProperties: 'Properties',
+      popoutTabWhereUsed: 'Where Used',
+      popoutTabDataCard: 'Data Card',
+      popoutTabVendors: 'Vendors',
+      popoutTabInspection: 'Inspection',
       dragToReorder: 'Drag to reorder or move to right panel',
       selectFileToView: 'Select a file to view details',
       filesSelected: 'files selected',
@@ -1596,6 +1700,19 @@ export const en: TranslationDict = {
       itemNumberMismatch:
         '{{name}} has item number {{fileNumber}} in its file properties but {{pdmNumber}} in BluePLM. The export used {{fileNumber}}. Run Sync Metadata to correct the file.',
     },
+    generate: {
+      title: 'Generate',
+      onServer: 'On server',
+      local: 'Local',
+      inspectionReport: 'Inspection report',
+      loadingTemplates: 'Loading templates…',
+      templatesUnavailable: 'Templates could not be read',
+      reportNew: 'Generate a report of the latest version with this template',
+      reportToFile: 'Build a report of the latest version with this template and save it as a file (nothing is recorded)',
+      reportCurrent: 'Up to date (version {{version}}). Click to open it.',
+      reportStale: 'Made from version {{version}}; the drawing is at version {{latest}}. Click to regenerate it for version {{latest}}.',
+      reportVersion: 'v{{version}}',
+    },
     quickExport: {
       toFolder: 'Export to Quick Export Folder',
       sectionTitle: 'Quick Export',
@@ -1910,8 +2027,6 @@ export const en: TranslationDict = {
       eligible: '{{eligible}} of {{selected}} selected files can be written now.',
       heldByOthers:
         '{{count}} files in this category are checked out by other people and cannot be ticked. Writing to a document somebody is working in would be overwritten by their check-in, so the audit leaves them alone.',
-      notCheckedOut:
-        '{{count}} are not checked out to you. Sync Metadata will not touch a file you do not hold; check them out in the file browser and they become writable.',
       notLoaded:
         '{{count}} have no local copy loaded, so there is nothing on disk to write to. Download them first.',
       selectPrompt: 'Tick the files whose documents should take BluePLM’s values.',
@@ -1922,6 +2037,15 @@ export const en: TranslationDict = {
       selectedPhrase: '{{files}} selected',
       applyPhrase: 'Write {{files}}',
       applyNone: 'Write files',
+      checkoutApplyPhrase: 'Check out and write {{files}}',
+      willCheckOut:
+        '{{count}} are not checked out. The button checks them out to you first, then writes them, and leaves them checked out.',
+      willCheckOutAndIn:
+        '{{count}} are not checked out. The button checks them out to you, writes them, and checks them back in as a new version. Files you already had checked out stay checked out.',
+      checkInAfter: 'Check in the files this checks out when done',
+      checkInAfterHint:
+        'Without a check-in the fix exists only on this computer. Files you had checked out before are never checked in by this.',
+      checkinNote: 'Metadata written from BluePLM (Vault Audit)',
     },
 
     conflict: {
@@ -1946,6 +2070,43 @@ export const en: TranslationDict = {
       bluePlmChoice: 'Use BluePLM: {{files}}',
       applyFilePhrase: 'Copy {{values}} into BluePLM',
       applyBluePlmPhrase: 'Write {{files}}',
+      checkoutApplyBluePlmPhrase: 'Check out and write {{files}}',
+    },
+
+    choicesTable: {
+      copy: 'Copy choices',
+      copyHint:
+        'Copies every conflict, with the choice made on screen, as a table that pastes into a spreadsheet or a message.',
+      copied: 'Copied {{count}} conflicts as a table.',
+      copyFailed: 'Could not copy to the clipboard.',
+      paste: 'Paste choices',
+      pasteHint: 'Set the choices on screen from a table, such as one a colleague copied.',
+      title: 'Paste conflict choices',
+      instruction:
+        'Paste a table made with “Copy choices”, a spreadsheet range or a Markdown table. It needs a File column and a Choice column (BluePLM or File). Configuration and Field pin a line to one value, and BluePLM value and File value make sure the values have not changed since. A line with no field picks “Use BluePLM” for the whole file.',
+      placeholder: 'File\tConfiguration\tField\tBluePLM value\tFile value\tChoice',
+      summary: 'Use BluePLM: {{files}} · Use file: {{values}}',
+      nothing: 'No line in the table sets a choice.',
+      skippedHeading: '{{count}} lines skipped',
+      line: 'Line {{line}}',
+      more: 'and {{count}} more',
+      note: 'This only sets the choices on screen. Nothing is written until you press Write.',
+      cancel: 'Cancel',
+      apply: 'Set choices',
+      appliedToast: 'Choices set from the table. {{summary}}',
+      skipNoSuchFile: 'no conflicting file has this path',
+      skipAmbiguousFile: 'more than one conflicting file matches this path',
+      skipNoSuchValue: 'this file has no such conflict in the scan',
+      skipValueChanged: 'the values have changed since the table was made',
+      skipNeedsField: '“Use file” needs a field',
+      skipMixedChoices: 'the table picks both sides for this file',
+      skipNotAvailable: 'this choice is not available for this file right now',
+      errorNoHeader: 'the first line must be a header naming the columns',
+      errorNoFileColumn: 'the header has no File column',
+      errorNoChoiceColumn: 'the header has no Choice column',
+      errorUnreadableLine: 'could not read this line',
+      errorUnknownField: 'unknown field',
+      errorUnknownChoice: 'the choice must be BluePLM or File',
     },
 
     findings: {
@@ -1961,6 +2122,10 @@ export const en: TranslationDict = {
       columnDatabase: 'BluePLM',
       columnFile2: 'File',
       columnResolution: 'To resolve',
+      partNumber: 'Part number',
+      noPartNumber: 'No part number',
+      noDescription: 'No description',
+      issuesHint: 'The fields that differ in this file',
       directionNote:
         'Unambiguous rows show the write direction with an arrow. “Pick a side” rows have action buttons so you can choose which value wins.',
       selectAll: 'Select all {{count}} {{unit}}',

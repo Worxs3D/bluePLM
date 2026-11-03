@@ -2,6 +2,7 @@ import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
+import { releasesStrings } from './releases'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Traditional Chinese translations (繁體中文)
@@ -36,6 +37,7 @@ export const zhTW: TranslationDict = {
   ...reviewsUiStrings.zhTW,
   reviewPackage: reviewPackageStrings.zhTW,
   dbUpgrade: dbUpgradeStrings.zhTW,
+  releases: releasesStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
   checkoutDisplay: {
     you: '你',

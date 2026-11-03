@@ -17,8 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Tables a snapshot holds, in restore order (parents first). Must match the
- * CASE in `backup_list_org_rows()` (migration 0501); `src/lib/supabase/serverBackupsMigration.test.ts`
- * checks both lists agree.
+ * CASE in the latest `backup_list_org_rows()` (migration 0505);
+ * `src/lib/supabase/versionOutputs505.test.ts` checks both lists agree.
  */
 export const BACKUP_TABLES = [
   'organization',
@@ -43,6 +43,7 @@ export const BACKUP_TABLES = [
   'file_reference',
   'file_version_reference',
   'drawing_pdf_render',
+  'file_version_output',
   'release_file',
   'file_metadata_column',
   'file_comment',
@@ -63,6 +64,8 @@ export const BACKUP_TABLES = [
   'item_designation_assignment',
   'inspection_characteristic',
   'inspection_characteristic_version',
+  'inspection_template',
+  'inspection_report',
   'supplier',
   'part_supplier',
   'activity',
@@ -79,6 +82,11 @@ export interface SourceObject {
 }
 
 export type TablePage = { missing: true } | { missing: false; rows: Record<string, unknown>[] }
+
+/** backup_list_org_rows()'s refusal of a table name its CASE does not list (SQLSTATE 22023). */
+export function isUnknownTableError(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === '22023' && /backup_list_org_rows: unknown table/.test(error.message ?? '')
+}
 
 export interface BackupSource {
   /** A label for reports: the Supabase host, never a key. */
@@ -131,7 +139,13 @@ export class SupabaseBackupSource implements BackupSource {
       p_after: after,
       p_limit: limit,
     })
-    if (error) throw new SourceError(`Could not export ${table}: ${error.message}`)
+    if (error) {
+      // A database one release behind this worker raises 22023 for a table its
+      // backup_list_org_rows() does not know yet (file_version_output on 504): the table is not
+      // installed there, which is what "missing" means.
+      if (isUnknownTableError(error)) return { missing: true }
+      throw new SourceError(`Could not export ${table}: ${error.message}`)
+    }
     const page = data as { missing: boolean; rows: Record<string, unknown>[] } | null
     if (!page) throw new SourceError(`Export of ${table} returned nothing.`)
     return page.missing ? { missing: true } : { missing: false, rows: page.rows }

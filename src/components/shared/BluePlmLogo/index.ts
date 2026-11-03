@@ -1,0 +1,1 @@
+export { BluePlmLogo } from './BluePlmLogo'

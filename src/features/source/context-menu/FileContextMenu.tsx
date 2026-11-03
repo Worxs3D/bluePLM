@@ -29,6 +29,7 @@ import { DeleteItems } from './items/DeleteItems'
 import { MovedFileItems } from './items/MovedFileItems'
 import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
 import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
+import { GenerateSubmenu } from '@/features/source/browser/components/ContextMenu/actions/GenerateSubmenu'
 
 // Dialog components
 import { DeleteConfirmDialog } from './dialogs'
@@ -347,6 +348,9 @@ export function FileContextMenu({
           onClose={onClose}
           onRefresh={onRefresh}
         />
+
+        {/* Generate submenu (On server / Local), then Reviews */}
+        <GenerateSubmenu contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
 
         {/* Reviews submenu (new review, add to / remove from a review, view reviews) */}
         <ReviewsSubmenu contextFiles={contextFiles} onClose={onClose} />

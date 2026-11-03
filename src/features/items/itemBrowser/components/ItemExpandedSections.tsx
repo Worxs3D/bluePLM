@@ -5,6 +5,8 @@ import { FileTypeIcon } from '@/components/shared/FileItem'
 import type { ItemRow } from '@/types/item'
 import type { PDMFile } from '@/types/pdm'
 
+import { ReleasedExportsSection } from './ReleasedExportsSection'
+
 interface ItemExpandedSectionsProps {
   row: ItemRow
   isAssembly: boolean
@@ -93,6 +95,9 @@ export function ItemExpandedSections({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-8 py-3 bg-plm-bg-light/40 text-sm">
+      {/* Released exports first (schema 509): the frozen outputs of the released version */}
+      <ReleasedExportsSection row={row} />
+
       {/* Source */}
       <div className="space-y-1.5">
         <SectionHeader icon={<FileText size={12} />} label={t('itemBrowser.source')} />

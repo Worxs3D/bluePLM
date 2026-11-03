@@ -4,6 +4,272 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.9.0] - 2026-11-03
+
+Schemas 508 and 509. No API or SolidWorks service change (API 4.2.2, SolidWorks service 1.29.0).
+The release upgrades the database to 509 before anything is published. A 5.8.0 app keeps
+working against 509: a drawing it moves to Released without an approved review is recorded as a
+forced release.
+
+### Added
+
+- **Released versions.** A file version is released when its file enters a releasing workflow
+  state (new "Releases the version" flag on a state; states named Released that are not editable
+  have it). It stays released while the file moves on: later versions are work in progress.
+  Version history marks it "Released", and the item browser shows the released revision and its
+  exports first, with the newer WIP version as secondary text.
+- **Release goes through review.** Releasing a drawing needs an approved review of that version.
+  Without one, a warning says the release process is being bypassed; it can be forced with a
+  reason, and the forced release is recorded in the version, the workflow history and the History
+  view.
+- **Released exports are frozen.** The PDF, STEP, IGES, STL, DXF and inspection reports of a
+  released version cannot be replaced, overwritten or deleted, and the released version itself
+  cannot be deleted while its file exists. Missing exports can still be generated for it.
+- **Default workflow.** WIP, In Review (a review stage that sends approved files to Released),
+  Released and Obsolete, with Submit for review, Return to WIP, Release, Release directly, Revise,
+  Obsolete and Reinstate.
+- **Sections under the chevron.** Parts and assemblies: Configurations, Drawings, Used in,
+  Exports. Drawings: their part(s) or assembly(ies), Exports, Inspection reports, Received
+  inspections. Released exports come first, tagged with their revision and version.
+- **Received inspections.** Filled-in workbooks that came back are listed in their own section
+  under the drawing and in a Received view of the Inspection tab, with Accept, Reject and Open.
+- **Regenerate at check-in, per export.** An export's menu has "Regenerate at check-in", on by
+  default: every kind a file already has is regenerated when it is checked in.
+
+- **STEP of a drawing.** Generate STEP on a drawing exports the part or assembly its views show
+  (in the configuration they use), named with the drawing's metadata, and records it against the
+  drawing's version like its PDF.
+- **Generate menu.** Right-click > Generate (above Reviews) has On server (PDF, STEP, and
+  Inspection report with one entry per template; a template that already has a report shows it,
+  and clicking an out-of-date one regenerates it) and Local (the export options that write ordinary
+  files, and an inspection report workbook saved to disk without recording anything). The Export
+  submenu moved into Local.
+- **Outputs column.** The first column shows the PDF, STEP and newest inspection report of each
+  drawing: click to preview; a stale one regenerates, a missing one generates.
+- **Generate in the toolbar.** Generates the PDFs and STEPs that are missing or out of date for
+  the selection, this folder, or this folder and its subfolders.
+
+### Changed
+
+- **One line per output and report.** Under a file's chevron each output kind is the newest across
+  the file's versions; one of an older version is marked stale, and regenerating it moves the row
+  up to the latest version. A regenerated report replaces the one it was made from in the file list
+  (schema 508 `inspection_report.supersedes_report_id`); Regenerate as copy keeps both.
+- **Regenerating a report overwrites it** for the same version (same number), unless the version
+  is released or a filled-in workbook came back for it; then a new report replaces it.
+- **No regenerating what is up to date.** Regenerate is offered only for an output or report of an
+  older version. Stale marks show a spinner while they regenerate.
+
+## [5.8.0] - 2026-11-03
+
+Schema 507. No API or service change (API 4.2.2, SolidWorks service 1.29.0).
+
+### Added
+
+- **Delete a PDF or STEP.** Right-click an output under a file's chevron and choose Delete (in red,
+  after a confirmation). An administrator can delete any output; anyone else the ones they
+  generated. A drawing PDF of a version in an open review is kept, because reviewers read it. The
+  row becomes "Generate PDF" again. Schema 507 adds `drawing_pdf_render_delete()` and
+  `file_version_output_delete()`; the content stays in storage.
+- **Out-of-date reports are marked.** A report made of an older drawing version than the latest
+  (and not superseded by a newer report of the same type) has a stale mark at the left edge of its
+  row; hover it and click to generate a new report of the latest version.
+- **Hand over Vault Audit choices as a table.** On the conflicts screen, Copy choices puts every
+  conflict and the side picked for it on the clipboard as a table that pastes into a spreadsheet
+  or a message, and Paste choices reads such a table back and sets the same choices. A line must
+  name a conflict still in the scan with the values it was chosen against, and one direction per
+  file; every other line is listed as skipped. Pasting only selects: Write still does the writing.
+- **Vault Audit checks out and fixes.** Writing BluePLM's values into documents no longer needs
+  the files checked out first: the button checks out the ticked files nobody holds, writes them and,
+  by default, checks them back in with a version note. Files you already had checked out stay
+  checked out, and files a colleague holds are never touched. Each file heading shows its part
+  number, description and the fields that differ.
+- **Any details tab in its own window.** Right-click Preview, Properties, Where Used, Vendors or
+  Inspection, in the right or the bottom panel, to open it in a window of its own that follows the
+  selection. The panel shows "Bring it back here" while the tab is out.
+
+### Changed
+
+- **Settings opens in its own window.** Move it, resize it, put it on another screen, and keep
+  working in the main window behind it; it reopens where it was last closed (on a screen that is
+  still attached). A confirmation asked by a command started from Settings appears in the
+  settings window. On the web, Settings is a floating panel that can be dragged by its header and
+  resized from any edge, with no backdrop, so the app behind it stays usable.
+- **Output and report rows show the drawing's item number, revision and description**, as the
+  drawing's own row shows them. The report's type detail, title and results move to the tooltip,
+  with the results also as a chip after the number.
+- **Right-clicking an output or report row selects it**, so the row the menu acts on is
+  highlighted. It does not open the Preview panel; an open one follows the selection.
+- **Delete is red** in the report menu, as in the file menu.
+
+## [5.7.0] - 2026-11-03
+
+SolidWorks service 1.29.0. No schema or API change (schema 506, API 4.2.2).
+
+### Added
+
+- **Preview outputs and reports with a single click.** Clicking a PDF, STEP or inspection report
+  under a file's chevron shows it in the Preview tab: the PDF with page navigation, the workbook as
+  it will open (sheets, merged cells, fills, borders, logo and drawing pages), and STEP, IGES or
+  STL in a 3D view with orbit, pan, zoom, view presets and edges. Double-click still opens the file
+  in its own application. The 3D view loads only when first used. BluePLM Web allows WebAssembly
+  compilation (`'wasm-unsafe-eval'`) for it; no JavaScript eval is allowed.
+
+### Changed
+
+- **Re-ballooning keeps your balloons.** A balloon whose number still matches its characteristic in
+  the same view is left exactly as it is (position, leader, size, style); only balloons that no
+  longer match are removed and only missing ones are placed. A run with nothing to change does not
+  save the drawing. Needs service 1.29.0; older services replace every balloon as before.
+- **Auto keeps the drawing in sync on its own.** With Auto on there is no Extract or Balloon button:
+  the Auto pill says In sync, Syncing, Waiting for SOLIDWORKS or Auto paused (with Retry). Auto also
+  brings a drawing in sync when it is opened, not only when it changes while open (service 1.29.0;
+  with an older service Auto waits for a change on disk). A drawing nothing was read from yet shows
+  one "Extract and balloon" button.
+- **Shorter report numbers.** The default pattern is now `{partNumber}_Rev{rev}_{type}`, for example
+  `BR-103849-201_RevB_FAIR`; a second report with the same number becomes `..._FAIR_2`. A pattern an
+  organization already saved is kept.
+
+### Third-party
+
+- three.js (MIT) and occt-import-js with Open CASCADE (LGPL-2.1, loaded unmodified as a separate
+  script and WebAssembly module). Their licence texts ship with the desktop app and the web build.
+
+## [5.6.0] - 2026-11-03
+
+Schema 506 (migration `0506_inspection_report_types.sql`, applied by the release before anything is
+published). No API change: API 4.2.2. No service change: SolidWorks service 1.28.0. Release 5.5.0
+keeps working on schema 506, except that it cannot import results into a report of a type (the
+database refuses them; use 5.6.0).
+
+### Added
+
+- **Inspection report types**, following industry practice:
+  - **First article (FAIR)**, SAE AS9102: full, for a new part, or partial, after a change (design,
+    process, source, location, tooling, a production lapse over two years, a corrective action).
+    A partial FAI includes the characteristics changed since the last FAI'd version (renumbered
+    balloons are not changes), and the selection can be adjusted. The built-in template has
+    Forms 1, 2 and 3.
+  - **Production (PIR)** and **receiving (RIR)**: a lot, its size and the sampling (every part or a
+    fixed number of parts). A characteristic's supplier or internal inspection rate decides whether
+    it is included, otherwise the organization's setting (classified characteristics, or all).
+    One result column per part up to ten, then one row per part. Receiving adds PO and supplier.
+  - **Re-inspection (RIN)**: the characteristics named by a nonconformance, with its NCR reference.
+- **Type-aware naming.** The `{type}` token gives FAIR / PIR / RIR / RIN, counted per type; the new
+  default pattern is `{partNumber}_Rev{rev}_{type}{n}` (for example `BR-103849-201_RevB_FAIR1`).
+  A pattern an organization already saved is kept.
+- **Templates per type.** A template says which report types it serves, with one default per type.
+- **Generate picks the type from context** (a revision with no report yet starts with a first
+  article; otherwise production) and says it on the button. "Generate with options..." chooses
+  type, version, template, scope, lot, sampling and the characteristics.
+
+### Changed
+
+- **Multi-part results are graded strictly.** A characteristic measured on several parts stays open
+  until every part has a value, and fails on the first value out of tolerance. A returned workbook
+  is checked against the report's own set of characteristics and parts.
+- The Reports view and the file list show the report type; the Reports view filters by type.
+
+### Not included
+
+- ANSI/ASQ Z1.4 (AQL) sampling tables: not shipped until they are transcribed from the published
+  standard and tested. Sampling is every part or a fixed number of parts.
+
+## [5.5.0] - 2026-11-03
+
+Schema 505 (migration `0505_version_outputs.sql`, applied by the release before anything is
+published), API 4.2.2 and SolidWorks service 1.28.0. Release 5.4.0 keeps working on schema 505.
+API 4.2.2 also runs against a 504 database (the new table is skipped by backups until 505 is
+applied).
+
+### Added
+
+- **PDF and STEP outputs under the chevron.** Each checked-in version can carry outputs: a PDF for
+  a drawing (the same stored render reviews and reports use) and a STEP (or IGES, STL, DXF) for a
+  part or assembly. They are generated from the version's own staged references, never from a
+  working copy, stored once for everyone who can read the file, and listed under the file's chevron
+  with a "Generate PDF" / "Generate STEP" row when missing. Right-click a file to generate them for
+  a selection. An output opens in its default app, saves as a copy anywhere, or saves next to its
+  file as an ordinary local file named by the organization's export filename pattern. Outputs are
+  generated in the background after check-in (Settings > Export, on by default; skipped for batches
+  over 25 files and when SOLIDWORKS is not available; check-in never waits for them).
+- **Report naming** (Settings > Organization > Inspection templates). Report numbers follow an
+  organization pattern, by default `{partNumber}_Rev{rev}_IRv{n}` (for example
+  `BR-103849-201_RevB_IRv3`), numbered per drawing or per revision, with a live preview. The
+  workbook carries the organization logo.
+- **Regenerate.** Right-click a report, in the file list or the Reports view: Open, Regenerate,
+  Regenerate for a newer version, Save copy, Save next to drawing, Import results, Delete.
+  Regenerating makes a new report with the next number and keeps the old one.
+- **Inspection tab in its own window.** Right-click the Inspection tab and pop it out; it follows
+  the selected drawing.
+- **Auto extraction.** An "Auto" pill (on by default) balloons the drawing again a moment after it
+  changes on disk, once the drawing has been extracted. Extract and Balloon are enabled only when
+  the drawing changed since their last run.
+
+### Changed
+
+- **Professional report workbooks.** A logo and title band, a summary with the overall result,
+  banded rows with pass and fail colours, a sign-off block, landscape printing one page wide with
+  the header repeated and a numbered footer. The ballooned drawing pages are on the same sheet,
+  under the table, at print resolution. The first article template follows AS9102 Form 3 for the
+  fields BluePLM can fill. Labels are no longer cut off.
+- **Reports come from a checked-in version that has rows.** Generating is refused for a version
+  with no inspection rows, and warns when the drawing has changes that are not checked in yet.
+  Part number, description and revision fall back to the file and then to the drawing's model.
+- **Inspection screens redesigned.** The toolbar stays on one line, the filter row is hidden until
+  turned on, locked drawing values show why they are locked, reports read as one aligned line
+  each, and the file list's references, outputs and reports share one layout.
+- **Balloons print.** The service makes the balloon layer visible and printable on every balloon
+  run, so drawing PDFs and reports include the balloons.
+- **API 4.2.1 and 4.2.2: server backups include inspection templates, inspection reports and
+  version outputs.**
+
+## [5.4.0] - 2026-11-02
+
+Schema 504 (migration `0504_inspection_tables.sql`, applied by the release before anything is
+published) and SolidWorks service 1.27.0. No API change: API 4.2.0. Release 5.3.4 keeps working on
+schema 504. Without service 1.27.0, extraction still works but reads no title block notes, so no
+general tolerances or zone fallback.
+
+### Added
+
+- **Inspection reports.** An inspection report is an Excel workbook made from an inspection
+  template for one checked-in drawing version: that version's inspection rows and its stored
+  drawing PDF, so the same inputs always give the same report. The Inspection tab has a Reports
+  view, grouped by drawing version, to generate, open (in Excel on the desktop, a download on the
+  web), mark sent, import the supplier's returned workbook, accept or reject, and delete reports.
+  Reports are also listed under the drawing's chevron in the file list, after its referenced files.
+- **Workbooks ready for a supplier.** A report repeats the template's row for every characteristic
+  and embeds the ballooned drawing pages. Every sheet is protected except the cells the supplier
+  fills in (measured values, verdicts, serial, lot, tools, sign-off). A hidden sheet records the
+  report, the drawing version and a fingerprint of every requirement, so a returned workbook is
+  matched to its report, checked for changed requirements, and graded: a numeric requirement is
+  graded pass or fail from its limits (not GD&T at MMC or LMC, where bonus tolerance applies), and
+  a disagreeing supplier verdict is flagged. A workbook from another drawing or version is refused.
+- **Inspection template manager** (Settings > Organization > Inspection templates). Admins upload
+  Excel templates that use `{{TOKEN}}` placeholders, see what BluePLM found in them (the repeating
+  row, the columns, the fields to fill in) and any errors before saving, set the default, replace
+  a template with a new revision, archive and download them. Two built-in starters (a dimensional
+  inspection report and a first article characteristic accountability form) can be downloaded and
+  edited. A reference panel lists every token. The Google Sheets tokens keep working.
+- **General tolerances from the title block.** Extraction reads the notes of the sheet format, the
+  sheet and blocks placed on them, and applies the title block's general tolerances (decimal-place
+  rules, fractions, angles, ISO 2768-1 classes) to dimensions without a tolerance of their own.
+  Such rows show "GT". A title block with blank values gives no tolerance; nothing is guessed.
+- **Zones from the border.** When SOLIDWORKS reports no zone, the zone is read from the letters and
+  digits along the drawing border.
+- **Column editing.** Show, hide and reorder the Inspection table's columns (kept per user), select
+  several rows and set a column on all of them, and move between cells with the keyboard.
+
+### Changed
+
+- **Extract from drawing and Balloon drawing run straight through, with no dialog.** The result is
+  a toast with Undo. Rows whose annotation is gone are removed, except on sheets the service could
+  not read completely. Balloon drawing extracts first, so the table and the balloons agree.
+- **Values read from the drawing cannot be edited.** On an extracted row, type, values, tolerances,
+  limits, zone and sheet are read-only, and the row cannot be deleted: change the drawing, then
+  extract.
+
 ## [5.3.4] - 2026-11-02
 
 App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.3.

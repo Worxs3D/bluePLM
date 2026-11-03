@@ -26,6 +26,8 @@ import type { OperationLogSlice } from './slices/operationLogSlice'
 import type { VaultAuditSlice } from './slices/vaultAuditSlice'
 import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
+import type { InspectionReportsSlice } from './slices/inspectionReportsSlice'
+import type { OutputsSlice } from './slices/outputsSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -183,11 +185,18 @@ export interface ConnectedVault {
   hasCompletedSetup?: boolean // Whether user has completed the first-time setup wizard
 }
 
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface ToastMessage {
   id: string
   type: ToastType
   message: string
   duration?: number
+  /** One button on a message toast (for example Undo). Clicking it runs `onClick` and dismisses the toast. */
+  action?: ToastAction
   // Progress toast fields
   progress?: {
     current: number
@@ -235,6 +244,18 @@ export interface PendingMetadataEdit {
   // The pending set as it stood after the edit, so a write can be issued from it without another
   // store read racing a later keystroke.
   pending: PendingMetadata
+}
+
+/** What BluePLM last did to one drawing on this machine (see inspection/drawingSync.ts). */
+export interface InspectionDrawingSyncStamp {
+  /** Content hash the table was last extracted from; null when never extracted (or undone). */
+  extractHash: string | null
+  /** Content hash after the last successful balloon run; null when never ballooned. */
+  balloonHash: string | null
+  /** Service version of the last run. */
+  serviceVersion: string | null
+  /** Epoch ms of the last write, for the bound. */
+  at: number
 }
 
 // Local file info from filesystem
@@ -512,7 +533,13 @@ export interface ToastsSlice {
    * @param message - Message to display
    * @param duration - Duration in ms (default 5000, 0 for no auto-dismiss)
    */
-  addToast: (type: ToastType, message: string, duration?: number) => void
+  addToast: (
+    type: ToastType,
+    message: string,
+    duration?: number,
+    /** An optional button on the toast, such as Undo. */
+    action?: ToastAction,
+  ) => void
   addProgressToast: (id: string, message: string, total: number, queued?: boolean) => void
   setProgressToastActive: (id: string) => void
   updateProgressToast: (
@@ -593,8 +620,13 @@ export interface UISlice {
   bottomPanelTabOrder: DetailsPanelTab[]
 
   // Settings navigation
-  /** The settings modal is open. Settings is a modal over the app, never a sidebar view. */
+  /**
+   * Settings is open: its own window on the desktop, a floating panel on the web. Never a
+   * sidebar view.
+   */
   settingsOpen: boolean
+  /** Counts `openSettings` calls, so an open settings window comes to the front when asked again. */
+  settingsOpenRequest: number
   settingsTab: SettingsTab
   /** Live query of the settings sidebar search box; non-empty shows results in the main view. */
   settingsSearchQuery: string
@@ -643,6 +675,17 @@ export interface UISlice {
   // First-run picker shown when several SOLIDWORKS releases are installed
   showSolidworksVersionModal: boolean
 
+  /** Inspection table column layout of this user (order of column keys, hidden keys); null = default. */
+  inspectionColumnPrefs: { order: string[]; hidden: string[] } | null
+  /** Inspection table filter row shown (persisted; hidden by default). */
+  inspectionShowFilters: boolean
+  /** Inspection tab "Auto": extract and balloon when the open drawing changes (persisted; on by default). */
+  inspectionAutoSync: boolean
+  /** Per drawing (file id): what Extract / Balloon last saw, for change detection (persisted, bounded). */
+  inspectionDrawingSync: Record<string, InspectionDrawingSyncStamp>
+  /** Details tabs popped out into their own windows (main window only; not persisted). */
+  poppedOutTabs: DetailsPanelTab[]
+
   // Actions
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
@@ -673,7 +716,7 @@ export interface UISlice {
   addTerminalHistory: (command: string) => void
 
   // Settings navigation
-  /** Open the settings modal, on `tab` when given (else the last tab shown). */
+  /** Open settings (or bring them to the front), on `tab` when given (else the last tab shown). */
   openSettings: (tab?: SettingsTab) => void
   closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
@@ -696,6 +739,15 @@ export interface UISlice {
 
   // SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show: boolean) => void
+
+  // Inspection table columns
+  setInspectionColumnPrefs: (prefs: UISlice['inspectionColumnPrefs']) => void
+  setInspectionShowFilters: (show: boolean) => void
+  setInspectionAutoSync: (auto: boolean) => void
+  setTabPoppedOut: (tab: DetailsPanelTab, open: boolean) => void
+  updateInspectionDrawingSync: (
+    updater: (stamps: UISlice['inspectionDrawingSync']) => UISlice['inspectionDrawingSync'],
+  ) => void
 }
 
 export interface SettingsSlice {
@@ -2038,6 +2090,8 @@ export type PDMStoreState = ToastsSlice &
   ItemBrowserSlice &
   VaultAuditSlice &
   ReviewsSlice &
+  InspectionReportsSlice &
+  OutputsSlice &
   DbUpgradeSlice
 
 // ============================================================================

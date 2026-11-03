@@ -24,6 +24,7 @@ import {
   SizeCell,
   ModifiedTimeCell,
   CustomCell,
+  OutputsCell,
   type CellRendererBaseProps,
 } from './cells'
 
@@ -44,6 +45,7 @@ const cellRenderers: Record<string, React.FC<CellRendererBaseProps>> = {
   extension: ExtensionCell,
   size: SizeCell,
   modifiedTime: ModifiedTimeCell,
+  outputs: OutputsCell,
 }
 
 /**

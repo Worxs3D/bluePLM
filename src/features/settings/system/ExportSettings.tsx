@@ -11,12 +11,14 @@ import {
 } from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { outputFileName, SAMPLE_OUTPUT_NAME_VALUES } from '@/lib/outputs/fileName'
 import { hasDesktop } from '@/lib/platform'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 import { ExportSettings as ExportSettingsType, DEFAULT_EXPORT_SETTINGS } from '@/types/pdm'
 
 import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
+import { AutoOutputSettingsSection } from './AutoOutputSettings'
 import { QuickExportFolderRow } from './QuickExportFolderRow'
 
 // LocalStorage key for user preferences
@@ -213,35 +215,11 @@ export function ExportSettings() {
     return orgSettings ? { ...DEFAULT_EXPORT_SETTINGS, ...orgSettings } : DEFAULT_EXPORT_SETTINGS
   }, [organization?.settings])
 
-  // Generate a live preview of what the filename will look like
-  const livePreview = useMemo(() => {
-    let result = settings.filename_pattern
-
-    // Sample values for preview
-    const sampleValues: Record<string, string> = {
-      '{filename}': 'Part1',
-      '{config}': 'Config-A',
-      '{partNumber}': 'BR-101011',
-      '{number}': 'BR-101011',
-      '{tab}': '394',
-      '{tabNumber}': '394',
-      '{revision}': 'A',
-      '{rev}': 'A',
-      '{description}': 'Thruster',
-      '{desc}': 'Thruster',
-      '{date}': '2026-01-01',
-      '{time}': '14-30-00',
-      '{datetime}': '2026-01-01_14-30-00',
-    }
-
-    // Replace tokens (case-insensitive)
-    for (const [token, value] of Object.entries(sampleValues)) {
-      const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi')
-      result = result.replace(regex, value)
-    }
-
-    return result + '.step'
-  }, [settings.filename_pattern])
+  // A live preview of the file name, named exactly as saved outputs are (src/lib/outputs).
+  const livePreview = useMemo(
+    () => outputFileName(settings.filename_pattern, SAMPLE_OUTPUT_NAME_VALUES, 'step'),
+    [settings.filename_pattern],
+  )
 
   // Save as user preference (localStorage)
   const handleSaveUserPreference = () => {
@@ -384,10 +362,12 @@ export function ExportSettings() {
               placeholder="{filename}_{config}"
               className="font-mono"
             />
-            <div className="mt-2 flex items-center gap-2 text-[13px] text-ui-fg-secondary">
-              <Eye size={14} />
-              <span>Preview</span>
-              <span className="truncate font-mono text-ui-fg">{livePreview}</span>
+            <div className="mt-2 flex items-center gap-3 rounded-lg border border-ui-border bg-ui-field/50 px-3 py-2.5 text-[12px] text-ui-fg-secondary">
+              <Eye size={14} className="shrink-0" />
+              <span className="shrink-0">Preview</span>
+              <span className="truncate font-mono text-[13px] text-ui-fg" title={livePreview}>
+                {livePreview}
+              </span>
             </div>
           </SettingRow>
 
@@ -415,17 +395,17 @@ export function ExportSettings() {
           </SettingRow>
 
           <SettingRow label="Available Tokens (click to insert)" stacked>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4">
+            {/* The same token chips as Settings > Inspection templates > Report naming. */}
+            <div className="flex flex-wrap gap-1">
               {FILENAME_TOKENS.map(({ token, label, description, example }) => (
                 <button
                   type="button"
                   key={token}
                   onClick={() => insertToken(token)}
-                  className="flex flex-col items-start rounded-lg border border-ui-field-border bg-ui-field px-2.5 py-1.5 text-left transition-colors hover:bg-ui-hover"
-                  title={`${description} (e.g., ${example})`}
+                  className="rounded-md border border-ui-field-border bg-ui-field px-1.5 py-0.5 font-mono text-[12px] text-ui-fg-secondary transition-colors hover:border-ui-accent/50 hover:bg-ui-accent/10 hover:text-ui-fg"
+                  title={`${label}: ${description} (e.g., ${example})`}
                 >
-                  <span className="font-mono text-[13px] text-ui-fg">{token}</span>
-                  <span className="w-full truncate text-[12px] text-ui-fg-secondary">{label}</span>
+                  {token}
                 </button>
               ))}
             </div>
@@ -464,6 +444,8 @@ export function ExportSettings() {
           </SettingRow>
         </SettingsGroup>
       </SettingsSection>
+
+      <AutoOutputSettingsSection />
 
       <SettingsSection title="STL Export Options">
         <SettingsGroup>

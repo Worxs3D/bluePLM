@@ -23,6 +23,47 @@ function writeAnalyticsEnabled(enabled: boolean): void {
   }
 }
 
+/** Popped-out tab windows by key (one per key). */
+const tabWindows = new Map<string, BrowserWindow>()
+
+interface TabWindowRequest {
+  key: string
+  view: string
+  title: string
+  customData: Record<string, unknown> | null
+  width: number
+  height: number
+}
+
+const TAB_WINDOW_ID = /^[a-z0-9:_-]{1,64}$/i
+
+/** Validate the renderer's request; null when anything is off. */
+function parseTabWindowRequest(request: unknown): TabWindowRequest | null {
+  if (!request || typeof request !== 'object') return null
+  const r = request as Record<string, unknown>
+  if (typeof r.key !== 'string' || !TAB_WINDOW_ID.test(r.key)) return null
+  if (typeof r.view !== 'string' || !TAB_WINDOW_ID.test(r.view)) return null
+  const title = typeof r.title === 'string' ? r.title.slice(0, 200) : 'BluePLM'
+  let customData: Record<string, unknown> | null = null
+  if (r.customData !== undefined && r.customData !== null) {
+    if (typeof r.customData !== 'object' || Array.isArray(r.customData)) return null
+    if (JSON.stringify(r.customData).length > 4096) return null
+    customData = r.customData as Record<string, unknown>
+  }
+  const size = (value: unknown, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.min(4000, Math.max(300, Math.round(value)))
+      : fallback
+  return {
+    key: r.key,
+    view: r.view,
+    title,
+    customData,
+    width: size(r.width, 1000),
+    height: size(r.height, 700),
+  }
+}
+
 export interface SystemHandlerDependencies {
   log: (message: string, data?: unknown) => void
 }
@@ -44,7 +85,6 @@ export function registerSystemHandlers(
     writeAnalyticsEnabled(enabled)
     return { success: true }
   })
-
 
   // Machine identification
   ipcMain.handle('app:get-machine-id', () => {
@@ -178,10 +218,12 @@ export function registerSystemHandlers(
   })
 
   // Titlebar handlers
-  ipcMain.handle('app:get-titlebar-overlay-rect', () => {
-    if (!mainWindow) return { x: 0, y: 0, width: 138, height: 38 }
+  // Both act on the window that asks (the main window or a popped-out tab window).
+  ipcMain.handle('app:get-titlebar-overlay-rect', (event) => {
+    const sender = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    if (!sender) return { x: 0, y: 0, width: 138, height: 38 }
     // getTitleBarOverlayRect may not exist on all Electron versions
-    const win = mainWindow as BrowserWindow & {
+    const win = sender as BrowserWindow & {
       getTitleBarOverlayRect?: () => { x: number; y: number; width: number; height: number }
     }
     return win.getTitleBarOverlayRect?.() || { x: 0, y: 0, width: 138, height: 38 }
@@ -189,11 +231,12 @@ export function registerSystemHandlers(
 
   ipcMain.handle(
     'app:set-titlebar-overlay',
-    (_event, options: { color: string; symbolColor: string }) => {
-      if (!mainWindow) return { success: false }
+    (event, options: { color: string; symbolColor: string }) => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+      if (!win) return { success: false }
       try {
-        if (mainWindow.setTitleBarOverlay) {
-          mainWindow.setTitleBarOverlay({
+        if (win.setTitleBarOverlay) {
+          win.setTitleBarOverlay({
             color: options.color,
             symbolColor: options.symbolColor,
             height: 36,
@@ -267,6 +310,81 @@ export function registerSystemHandlers(
     return { success: true }
   })
 
+  // A tab popped out into its own window (the renderer's TabWindow, `?mode=tab`). One window per
+  // `key`: asking again focuses it. Popped-out windows close with the main window.
+  ipcMain.handle('app:open-tab-window', (_event, request: unknown) => {
+    const parsed = parseTabWindowRequest(request)
+    if (!parsed) return { success: false, error: 'Invalid tab window request' }
+    const existing = tabWindows.get(parsed.key)
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore()
+      existing.focus()
+      return { success: true }
+    }
+
+    const win = new BrowserWindow({
+      width: parsed.width,
+      height: parsed.height,
+      minWidth: 420,
+      minHeight: 300,
+      title: parsed.title,
+      backgroundColor: '#0a1929',
+      // Like the main window: the renderer draws the header (TabWindow), Electron the controls.
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#181818',
+        symbolColor: '#cccccc',
+        height: 36,
+      },
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        // Its timers (autosave, Auto inspection debounce) must run while it is not focused.
+        backgroundThrottling: false,
+      },
+    })
+    // No File / Edit / View menu: a tab window is one panel, not the application.
+    win.setMenu(null)
+    tabWindows.set(parsed.key, win)
+    // The pop-out closes with the main window; the listener goes when the pop-out closes first,
+    // so reopening it for weeks does not pile listeners onto the main window.
+    const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+    const closeWithOwner = () => {
+      if (!win.isDestroyed()) win.close()
+    }
+    owner?.once('closed', closeWithOwner)
+    win.on('closed', () => {
+      if (tabWindows.get(parsed.key) === win) tabWindows.delete(parsed.key)
+      if (owner && !owner.isDestroyed()) owner.removeListener('closed', closeWithOwner)
+    })
+
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+    installNavigationGuard(win.webContents, { allowDevServer: isDev, log })
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      openExternalSafely(url)
+      return { action: 'deny' }
+    })
+    const query: Record<string, string> = {
+      mode: 'tab',
+      view: parsed.view,
+      title: parsed.title,
+    }
+    if (parsed.customData) {
+      query.customData = Buffer.from(JSON.stringify(parsed.customData), 'utf8').toString('base64')
+    }
+    if (isDev) {
+      void win.loadURL(`http://localhost:5173/?${new URLSearchParams(query).toString()}`)
+    } else {
+      win
+        .loadFile(path.join(__dirname, '../dist/index.html'), { query })
+        .catch((error) => log('[TabWindow] Load failed: ' + String(error)))
+    }
+    log('[TabWindow] Opened', { key: parsed.key, view: parsed.view })
+    return { success: true }
+  })
+
   // Last-resort repair for a corrupt Chromium IndexedDB backing store ("Internal error opening
   // backing store for indexedDB.open"). The renderer asks only after its own deleteDatabase
   // attempt failed. This drops every IndexedDB database of the app's session - the vault file
@@ -285,7 +403,6 @@ export function registerSystemHandlers(
       return { success: false, error: message }
     }
   })
-
 
   // Zoom handlers
   ipcMain.handle('app:get-zoom-factor', () => {
@@ -322,9 +439,6 @@ export function registerSystemHandlers(
     return { success: true }
   })
 
-
-
-
   ipcMain.on('window:close', () => mainWindow?.close())
 }
 
@@ -344,6 +458,7 @@ export function unregisterSystemHandlers(): void {
     'app:reload',
     'app:request-focus',
     'app:open-performance-window',
+    'app:open-tab-window',
     'diagnostics:clear-indexeddb',
     'app:get-zoom-factor',
     'app:set-zoom-factor',

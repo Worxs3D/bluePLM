@@ -14,12 +14,15 @@ import {
   FolderOpen,
   RotateCcw,
   ExternalLink,
+  ShieldAlert,
 } from 'lucide-react'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { getRecentActivity } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
+import { t } from '@/lib/i18n'
+import { activityFileName, forcedReleaseOfActivity } from '@/features/source/releases/releaseModel'
 
 interface ActivityEntry {
   id: string
@@ -197,11 +200,20 @@ export function HistoryView() {
       ) : (
         <div className="space-y-2">
           {filteredActivity.map((entry) => {
-            const actionInfo = ACTION_INFO[entry.action] || {
-              icon: <FileText size={14} />,
-              label: entry.action,
-              color: 'text-plm-fg-muted',
-            }
+            // Schema 509: a release forced past the release gate is shown as such, with its reason.
+            const forcedRelease = forcedReleaseOfActivity(entry.details)
+            const actionInfo = forcedRelease
+              ? {
+                  icon: <ShieldAlert size={14} />,
+                  label: t('releases.historyForced'),
+                  color: 'text-plm-error',
+                }
+              : ACTION_INFO[entry.action] || {
+                  icon: <FileText size={14} />,
+                  label: entry.action,
+                  color: 'text-plm-fg-muted',
+                }
+            const detailsFileName = activityFileName(entry.details)
 
             const filePath = entry.file?.file_path
             const canNavigate = !!filePath
@@ -210,7 +222,7 @@ export function HistoryView() {
               <div
                 key={entry.id}
                 onClick={() => canNavigate && handleNavigateToFile(filePath)}
-                className={`group p-2 bg-plm-bg-light rounded border border-plm-border hover:border-plm-border-light transition-colors ${canNavigate ? 'cursor-pointer hover:bg-plm-bg-hover' : ''}`}
+                className={`group p-2 bg-plm-bg-light rounded border ${forcedRelease ? 'border-plm-error/60' : 'border-plm-border'} hover:border-plm-border-light transition-colors ${canNavigate ? 'cursor-pointer hover:bg-plm-bg-hover' : ''}`}
                 title={canNavigate ? `Click to reveal in Explorer: ${filePath}` : undefined}
               >
                 <div className="flex items-start gap-2">
@@ -222,12 +234,25 @@ export function HistoryView() {
                       </span>
                       {entry.file ? (
                         <span className="text-plm-fg truncate">{entry.file.file_name}</span>
-                      ) : (entry.details as any)?.file_name ? ( // TODO: type this
-                        <span className="text-plm-fg truncate">
-                          {(entry.details as any).file_name} // TODO: type this
-                        </span>
+                      ) : detailsFileName ? (
+                        <span className="text-plm-fg truncate">{detailsFileName}</span>
                       ) : null}
                     </div>
+                    {forcedRelease && (
+                      <div className="text-xs text-plm-error mt-1">
+                        <div>
+                          {t('releases.historyForcedDetail', {
+                            version: forcedRelease.version ?? '?',
+                            revision: forcedRelease.revision ?? '-',
+                          })}
+                        </div>
+                        {forcedRelease.reason && (
+                          <div className="text-plm-fg-muted italic break-words">
+                            {t('releases.historyReason', { reason: forcedRelease.reason })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-xs text-plm-fg-muted mt-1">
                       <span className="flex items-center gap-1">
                         <User size={10} />
