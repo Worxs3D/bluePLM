@@ -64,6 +64,14 @@ const FilePane = lazy(() =>
 const GoogleDrivePanel = lazy(() =>
   import('@/features/integrations/google-drive').then((m) => ({ default: m.GoogleDrivePanel })),
 )
+const InspectionPopoutWindow = lazy(() =>
+  import('@/features/integrations/solidworks/inspection/popout/InspectionPopoutWindow').then(
+    (m) => ({ default: m.InspectionPopoutWindow }),
+  ),
+)
+
+/** `customData.panel` of a popped-out right-panel tab (inspection/popout/inspectionPopout.ts). */
+const INSPECTION_PANEL = 'inspection'
 
 // Loading fallback
 function ViewLoading() {
@@ -80,7 +88,7 @@ interface TabWindowProps {
   customData?: Record<string, unknown>
 }
 
-export function TabWindow({ view, title }: TabWindowProps) {
+export function TabWindow({ view, title, customData }: TabWindowProps) {
   const theme = usePDMStore((s) => s.theme)
   const extensionWorkspace = useExtensionWorkspace(view)
 
@@ -94,7 +102,16 @@ export function TabWindow({ view, title }: TabWindowProps) {
   }, [theme])
 
   // Render the appropriate view based on the view type
+  const panel = typeof customData?.panel === 'string' ? customData.panel : null
   const renderView = useMemo(() => {
+    // A popped-out right-panel tab (Inspection): driven by the main window, not by a view.
+    if (panel === INSPECTION_PANEL) {
+      return (
+        <Suspense fallback={<ViewLoading />}>
+          <InspectionPopoutWindow />
+        </Suspense>
+      )
+    }
     // Native extension workspace (only when its extension is loaded in this window)
     if (extensionWorkspace) {
       return (
@@ -248,7 +265,7 @@ export function TabWindow({ view, title }: TabWindowProps) {
           </div>
         )
     }
-  }, [view, extensionWorkspace])
+  }, [view, extensionWorkspace, panel])
 
   return (
     <div className="h-screen flex flex-col bg-plm-bg overflow-hidden">

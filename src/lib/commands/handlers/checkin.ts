@@ -45,6 +45,7 @@ import {
 } from '@/lib/metadata/writeInFlight'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { queueCheckinOutputs } from '@/lib/outputs/autoQueue'
 import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import {
@@ -1824,6 +1825,7 @@ export const checkinCommand: Command<CheckinParams> = {
     // This runs after all files are checked in, so child references are more likely to exist
     // We don't await this - it runs in background and logs its own results
     let extractionStarted = false
+    let referencesExtracted: Promise<unknown> = Promise.resolve()
     const assemblyFiles: LocalFile[] = []
 
     if (successfulFiles.length > 0 && ctx.activeVaultId && ctx.organization?.id) {
@@ -1874,7 +1876,7 @@ export const checkinCommand: Command<CheckinParams> = {
 
           // NON-BLOCKING: Fire-and-forget extraction - don't await!
           // This keeps the checkin responsive while references are extracted in background
-          Promise.allSettled(
+          referencesExtracted = Promise.allSettled(
             assemblyFiles.map((f) => extractAndStoreReferences(f, orgId, vaultId, vaultRootPath)),
           )
             .then(async (extractResults) => {
@@ -1966,6 +1968,10 @@ export const checkinCommand: Command<CheckinParams> = {
         }
       }
     }
+
+    // Automatic PDF / STEP outputs of what was checked in: queued in the background once the
+    // references are recorded, never awaited (src/lib/outputs/autoQueue.ts).
+    queueCheckinOutputs(successfulFiles, referencesExtracted)
 
     const { duration } = progress.finish()
 

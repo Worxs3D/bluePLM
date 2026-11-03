@@ -1,4 +1,6 @@
 // The app's control primitives. New UI uses these instead of hand-rolled Tailwind controls.
+export { ActionBar } from './ActionBar'
+export type { ToolbarAction } from './ActionBar'
 export { Badge } from './Badge'
 export type { BadgeTone } from './Badge'
 export { Button } from './Button'

@@ -164,6 +164,14 @@ describe('tolerance and spec text', () => {
     expect(formatSpec(row({ nominal_value: '12.50', upper_limit: '12.60', lower_limit: '12.40' }))).toBe('12.50 (12.40 – 12.60)')
     expect(formatSpec(row())).toBe('25.40')
   })
+
+  it('states a GTOL frame once: its tolerance is already in the frame', () => {
+    const gtol = row({ char_type: 'GTOL', sub_type: 'Position', nominal_value: '⌖ Ø0.05 Ⓜ A B C', upper_limit: '0.05' })
+    expect(formatSpec(gtol)).toBe('⌖ Ø0.05 Ⓜ A B C')
+    expect(formatSpec(row({ char_type: 'GTOL', nominal_value: '⏥ 0.02', plus_tolerance: '0.02' }))).toBe('⏥ 0.02')
+    // No frame text: the tolerance is all there is to state.
+    expect(formatSpec(row({ char_type: 'GTOL', nominal_value: null, upper_limit: '0.05' }))).toBe('0.05 MAX')
+  })
 })
 
 describe('tokens', () => {

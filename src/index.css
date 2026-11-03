@@ -2293,3 +2293,9 @@ html[data-host='web'] .sidebar-diff-cloud span:not(.tree-item-icon) {
   color: inherit;
   font-style: normal;
 }
+
+/* Inspection table and filters: a stack that renders GD&T and technical symbols decoded from
+   SOLIDWORKS (⌖ ⏥ ⊥ ∥ Ø Ⓜ). 'Segoe UI Symbol' covers the Miscellaneous Technical block on Windows. */
+.inspection-symbols {
+  font-family: 'Segoe UI', 'Segoe UI Symbol', 'Cambria Math', var(--ui-font, system-ui), sans-serif;
+}

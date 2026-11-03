@@ -5,6 +5,7 @@ import { dbUpgradeStrings } from './dbUpgrade'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
 import { inspectionReportStrings } from './inspectionReports'
+import { versionOutputStrings } from './versionOutputs'
 
 // English translations (default/fallback)
 export const en: TranslationDict = {
@@ -717,6 +718,9 @@ export const en: TranslationDict = {
       modelOnlyWarning:
         'Write model only leaves drawings that are not checked out by you unchanged.',
     },
+    outputs: {
+      ...versionOutputStrings,
+    },
     inspection: {
       ...inspectionReportStrings,
       title: 'Inspection Table',
@@ -725,6 +729,18 @@ export const en: TranslationDict = {
       current: 'Current',
       saving: 'Saving…',
       readOnlyCheckout: 'Check out the drawing to edit',
+      readOnlyShort: 'Read-only',
+      readOnlySnapshot: 'A checked-in version: its table cannot change.',
+      snapshotShort: 'Snapshot',
+      versionOption: 'Version {{version}}',
+      moreActions: 'More actions',
+      emptyTitle: 'No characteristics yet',
+      emptyBodyEditable:
+        'Extract reads every dimension, GTOL and surface finish from the drawing into this table. Add manual rows for notes and checks the drawing does not carry.',
+      emptyBodyReadOnly:
+        'Nobody has extracted this drawing yet. Check it out to extract its characteristics.',
+      emptyBodySnapshot: 'This version was checked in without an inspection table.',
+      addManualRow: 'Add manual row',
       addRow: 'Add Row',
       deleteRow: 'Delete row',
       sortBy: 'Click to sort',
@@ -772,6 +788,27 @@ export const en: TranslationDict = {
         'Placed {{placed}} balloon(s), but the drawing could not be saved. Save it in SOLIDWORKS, then check it in.',
       balloonMissing:
         '{{count}} characteristic(s) were not found in the drawing and got no balloon.',
+      // Change detection, Auto, filter row and pop-out (5.5.0).
+      extractUpToDateTitle:
+        'Up to date: the table was extracted from the drawing as it is now. Save a change to the drawing to extract again.',
+      balloonUpToDateTitle:
+        "Up to date: the drawing already has BluePLM's balloons for the table as it is now. Save a change to the drawing to balloon again.",
+      autoLabel: 'Auto',
+      autoTitleOn:
+        'Auto is on: each time you save this drawing while it is checked out to you, BluePLM extracts it and re-balloons it. Click to turn it off.',
+      autoTitleOff:
+        'Auto is off. Click to extract and balloon the drawing automatically each time you save it.',
+      autoPaused:
+        'Auto extract and balloon stopped after an error. It runs again the next time the drawing changes.',
+      filterToggle: 'Filters',
+      filterShowTitle: 'Show the filter row',
+      filterHideTitle: 'Hide the filter row and clear its filters',
+      popOut: 'Pop out to new window',
+      popoutPlaceholder: 'The Inspection tab is open in another window.',
+      popoutBringBack: 'Bring it back here',
+      popoutWindowTitle: 'Inspection',
+      popoutWaiting: 'Waiting for the main BluePLM window…',
+      popoutSelectDrawing: 'Select a drawing in the main window to show its inspection table.',
       balloonFailed: 'Failed to balloon the drawing',
       errorReadOnly:
         'The drawing is read-only on disk. Check it out again to make it writable.',

@@ -167,7 +167,3 @@ export function resolveColumns(prefs: InspectionColumnPrefs | null | undefined):
   hidden.delete('balloon_number')
   return { ordered, visible: ordered.filter((c) => !hidden.has(c.key)) }
 }
-
-// Font stack that can render GD&T / technical symbols (⌓, ⌭, ⊥, ⌖, Ø, …) decoded from
-// SOLIDWORKS. 'Segoe UI Symbol' covers the Unicode Miscellaneous Technical block on Windows.
-export const SYMBOL_FONT = "'Segoe UI', 'Segoe UI Symbol', 'Cambria Math', system-ui, sans-serif"

@@ -17,6 +17,7 @@ import {
   type ReturnedResults,
 } from '@/lib/inspection/excel'
 import type { DrawingOmittedReason } from '@/lib/inspection/issueText'
+import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { hasDesktop } from '@/lib/platform'
 import { ensureDrawingPdf } from '@/lib/reviewPackage'
@@ -34,16 +35,22 @@ import type { InspectionReport, InspectionReportStatus } from '@/types/inspectio
 
 import { openWorkbook, saveWorkbook, type DeliverOutcome } from '@/lib/inspection/reportFiles'
 import {
-  nextReportNumber,
+  nextReportName,
+  nextReportSequence,
+  pathNextTo,
   reportFileName,
+  reportNumberValues,
   storedResultsJson,
   summarizeStored,
   importVerdict,
   toStoredResults,
+  type ReportIdentity,
+  type ReportNaming,
   type StoredResults,
   type TemplateChoice,
   type VersionInfo,
 } from './reportModel'
+import type { ReportLogo } from './reportSources'
 
 export type GeneratePhase = 'rows' | 'template' | 'drawing' | 'workbook' | 'upload' | 'record'
 
@@ -54,10 +61,30 @@ export interface GenerateReportParams {
   /** Drawing file name (`BRK-100.SLDDRW`). */
   drawingName: string
   version: VersionInfo
+  /** The drawing's checked-in versions (for a sequence that restarts per revision). */
+  versions: readonly VersionInfo[]
   template: TemplateChoice
   /** The drawing's existing reports, for the next report number. */
   existingReports: readonly InspectionReport[]
+  /** The organization's report naming (`reportNamingFromSettings`). */
+  naming: ReportNaming
+  /** Part number, description and revision (`reportIdentity`: version, file, referenced model). */
+  identity: ReportIdentity
+  /** The organization logo, or null for none. */
+  logo: ReportLogo | null
   onPhase?: (phase: GeneratePhase) => void
+}
+
+/**
+ * Thrown before anything is generated when the version has no inspection rows: a report of it
+ * would be an empty table. The user extracts the characteristics and checks the drawing in.
+ */
+export class ReportHasNoRowsError extends Error {
+  readonly code = 'REPORT_NO_ROWS'
+  constructor(readonly version: number) {
+    super(`Version ${version} has no inspection characteristics`)
+    this.name = 'ReportHasNoRowsError'
+  }
 }
 
 export interface GenerateReportOutcome {
@@ -142,10 +169,11 @@ export function isReportNumberTaken(err: unknown): boolean {
 }
 
 export async function generateReport(params: GenerateReportParams): Promise<GenerateReportOutcome> {
-  const { orgId, fileId, version, onPhase } = params
+  const { orgId, fileId, version, onPhase, identity, naming } = params
 
   onPhase?.('rows')
   const rows = await rowsAtVersion(fileId, version.id)
+  if (rows.rows.length === 0) throw new ReportHasNoRowsError(version.version)
 
   onPhase?.('template')
   const template = await templateBytes(orgId, params.template)
@@ -153,15 +181,27 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
   onPhase?.('drawing')
   const drawing = await drawingPages(orgId, version.id)
 
+  const generatedAt = new Date()
+  const values = reportNumberValues(identity, params.drawingName, version.version, generatedAt)
+  const revisionOf = new Map(params.versions.map((v) => [v.id, v.revision]))
+  revisionOf.set(version.id, version.revision)
+
   // The report number is printed in the workbook, so each attempt fills the workbook with the
   // number it then tries to record. Another user can take that number first (unique per drawing):
   // re-read the drawing's reports, take the next number, and fill the workbook again.
   const reportId = crypto.randomUUID()
-  let existingNumbers = params.existingReports.map((r) => r.reportNumber)
+  let existing: ReadonlyArray<Pick<InspectionReport, 'reportNumber' | 'fileVersionId'> & { sequence?: number | null }> =
+    params.existingReports
   let report: InspectionReport | null = null
   for (let attempt = 1; report === null; attempt++) {
     onPhase?.('workbook')
-    const reportNumber = nextReportNumber(version.partNumber, version.revision, params.drawingName, existingNumbers)
+    const start = nextReportSequence(existing, naming.sequenceScope, identity.revision ?? version.revision, revisionOf)
+    const { reportNumber, sequence } = nextReportName(
+      naming.numberPattern,
+      values,
+      start,
+      existing.map((r) => r.reportNumber),
+    )
     const workbook = await generateInspectionReport({
       template: template.bytes,
       templateHash: template.hash,
@@ -170,15 +210,22 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
       fileVersionId: version.id,
       rows: rows.rows,
       scalars: {
-        PART_NUMBER: version.partNumber ?? '',
-        REVISION: version.revision ?? '',
-        DESCRIPTION: version.description ?? '',
+        PART_NUMBER: identity.partNumber ?? '',
+        REVISION: identity.revision ?? '',
+        DESCRIPTION: identity.description ?? '',
         DRAWING_NAME: params.drawingName,
         DRAWING_VERSION: String(version.version),
         REPORT_NUMBER: reportNumber,
         ORG_NAME: params.orgName,
       },
       drawingPages: drawing.pages,
+      logo: naming.includeLogo ? params.logo : null,
+      drawingCaption: (index, total, name) =>
+        name
+          ? t('source.inspection.rptDrawingCaption', { index: index + 1, total, name })
+          : t('source.inspection.rptDrawingCaptionNoName', { index: index + 1, total }),
+      noRowsText: t('source.inspection.rptNoRowsText'),
+      generatedAt,
     })
 
     onPhase?.('upload')
@@ -195,7 +242,8 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
         templateName: template.name,
         templateHash: template.hash,
         reportNumber,
-        title: [version.partNumber, version.description].filter(Boolean).join(' ') || params.drawingName,
+        sequence,
+        title: [identity.partNumber, identity.description].filter(Boolean).join(' ') || params.drawingName,
         status: 'issued',
         storageHash: uploaded.hash,
         fileSize: uploaded.size,
@@ -205,7 +253,10 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
     } catch (err) {
       if (!isReportNumberTaken(err) || attempt >= MAX_NUMBER_ATTEMPTS) throw err
       log.info('[InspectionReports]', 'Report number taken; retrying with the next one', { reportNumber, attempt })
-      existingNumbers = [...(await listInspectionReports(fileId)).map((r) => r.reportNumber), reportNumber]
+      existing = [
+        ...(await listInspectionReports(fileId)),
+        { reportNumber, fileVersionId: version.id, sequence },
+      ]
     }
   }
   log.info('[InspectionReports]', 'Report generated', {
@@ -234,6 +285,31 @@ export async function openReport(report: InspectionReport): Promise<DeliverOutco
 export async function downloadReport(report: InspectionReport): Promise<DeliverOutcome> {
   const bytes = await downloadInspectionContent(report.orgId, report.storageHash)
   return saveWorkbook(reportFileName(report), bytes)
+}
+
+export type SaveNextOutcome = { kind: 'saved'; path: string } | { kind: 'exists'; path: string }
+
+/**
+ * Save the workbook as an ordinary local file in the drawing's folder, named by the report number
+ * (desktop). An existing file of that name is never overwritten: it may hold entered results.
+ * Checking the copy in is the user's choice.
+ */
+export async function saveReportNextToDrawing(report: InspectionReport, drawingPath: string): Promise<SaveNextOutcome> {
+  const api = hasDesktop() ? window.electronAPI : undefined
+  if (!api) throw new Error('Saving next to the drawing needs the desktop app')
+  const path = pathNextTo(drawingPath, reportFileName(report))
+  if (await api.fileExists(path)) return { kind: 'exists', path }
+  const bytes = await downloadInspectionContent(report.orgId, report.storageHash)
+  const result = await api.writeFile(path, bytesToBase64(bytes))
+  if (!result.success) throw new Error(result.error ?? 'Could not write the workbook')
+  return { kind: 'saved', path }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  return btoa(binary)
 }
 
 /** Save the workbook the supplier returned. */

@@ -1,18 +1,21 @@
 import { useCallback, useRef, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, ChevronsUpDown, Lock, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronsUpDown, Trash2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import type { InspectionRowInput, InspectionRowValues } from '@/lib/supabase'
 import type { GeneralToleranceBasis } from '@/lib/inspection/generalTolerance'
 
 import { columnLabel, isDrawingOwnedCell, type ColumnDef } from './inspectionColumns'
-import type { SortDir } from './inspectionTableUtils'
+import { generalToleranceMarkerColumn, type SortDir } from './inspectionTableUtils'
 import { InspectionCell } from './InspectionCell'
 import { ColumnFilter } from './ColumnFilter'
 import { generalToleranceTitle } from './generalToleranceText'
 
-/** Columns that carry the GT marker on a row whose tolerance came from the title block. */
-const GT_MARKED = new Set<keyof InspectionRowValues>(['plus_tolerance', 'minus_tolerance'])
+/** Header and body cells: one 32 px row height everywhere, hairline row rules. */
+const HEAD_CELL =
+  'h-8 border-b border-plm-border text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-ui-fg-secondary'
+const FILTER_CELL = 'border-b border-plm-border py-1 align-middle font-normal'
+const BODY_CELL = 'h-8 border-b border-plm-border/40 align-middle'
 
 interface InspectionTableProps {
   columns: ColumnDef[]
@@ -21,9 +24,15 @@ interface InspectionTableProps {
   sortKey: keyof InspectionRowValues
   sortDir: SortDir
   onSort: (key: keyof InspectionRowValues) => void
+  /** The filter row under the headers (toggled from the toolbar). */
+  showFilters: boolean
   filters: Partial<Record<keyof InspectionRowValues, string>>
   onFilterChange: (key: keyof InspectionRowValues, value: string) => void
-  onCellChange: (rowId: string, key: keyof InspectionRowValues, value: string | number | boolean | null) => void
+  onCellChange: (
+    rowId: string,
+    key: keyof InspectionRowValues,
+    value: string | number | boolean | null,
+  ) => void
   onDeleteRow: (rowId: string) => void
   methodOptions: string[]
   onManageMethods: () => void
@@ -57,6 +66,7 @@ export function InspectionTable({
   sortKey,
   sortDir,
   onSort,
+  showFilters,
   filters,
   onFilterChange,
   onCellChange,
@@ -70,13 +80,14 @@ export function InspectionTable({
 }: InspectionTableProps) {
   const tableRef = useRef<HTMLTableElement | null>(null)
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
-  const extraCols = editable ? 2 : 0
+  const visibleKeys = new Set(columns.map((c) => c.key))
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTableElement>) => {
       const table = tableRef.current
       const target = event.target as HTMLElement
-      if (!table || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return
+      if (!table || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement))
+        return
       const cell = target.closest('td')
       const r = Number(cell?.dataset.r)
       const c = Number(cell?.dataset.c)
@@ -88,7 +99,11 @@ export function InspectionTable({
       if (event.key === 'Enter') dr = event.shiftKey ? -1 : 1
       else if (isInput && event.key === 'ArrowDown') dr = 1
       else if (isInput && event.key === 'ArrowUp') dr = -1
-      else if (isInput && target.type === 'text' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      else if (
+        isInput &&
+        target.type === 'text' &&
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+      ) {
         const atStart = target.selectionStart === 0 && target.selectionEnd === 0
         const atEnd = target.selectionStart === target.value.length
         if (event.key === 'ArrowLeft' && atStart) dc = -1
@@ -112,33 +127,40 @@ export function InspectionTable({
   )
 
   return (
-    <table ref={tableRef} onKeyDown={handleKeyDown} className="text-xs border-collapse w-max min-w-full">
-      <thead className="sticky top-0 bg-plm-bg z-10">
-        <tr className="border-b border-plm-border">
-          {editable && (
-            <th className="px-2 py-1.5 w-6">
+    <table
+      ref={tableRef}
+      onKeyDown={handleKeyDown}
+      className="w-max min-w-full border-separate border-spacing-0 text-[12px]"
+    >
+      <thead className="sticky top-0 z-10 bg-plm-bg">
+        <tr>
+          {/* The same gutter columns in every view, so editable and read-only tables line up. */}
+          <th className={`${HEAD_CELL} w-8 px-2`}>
+            {editable && (
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={() => onSelectAll(!allSelected)}
                 title={t('source.inspection.selectAll')}
+                aria-label={t('source.inspection.selectAll')}
+                className="align-middle"
               />
-            </th>
-          )}
+            )}
+          </th>
           {columns.map((col) => (
-            <th key={col.key} className={`px-2 py-1.5 text-left font-medium text-plm-fg/70 ${col.width}`}>
+            <th key={col.key} className={`${HEAD_CELL} px-1 ${col.width}`}>
               <button
                 type="button"
                 onClick={() => onSort(col.key)}
-                className="flex items-center gap-1 hover:text-plm-fg w-full text-left"
+                className="flex h-6 w-full items-center gap-1 rounded px-[7px] text-left hover:text-ui-fg"
                 title={t('source.inspection.sortBy')}
               >
                 <span className="truncate">{columnLabel(col)}</span>
                 {sortKey === col.key ? (
                   sortDir === 'asc' ? (
-                    <ArrowUp size={11} className="shrink-0" />
+                    <ArrowUp size={11} className="shrink-0 text-ui-fg" />
                   ) : (
-                    <ArrowDown size={11} className="shrink-0" />
+                    <ArrowDown size={11} className="shrink-0 text-ui-fg" />
                   )
                 ) : (
                   <ChevronsUpDown size={11} className="shrink-0 opacity-30" />
@@ -146,22 +168,31 @@ export function InspectionTable({
               </button>
             </th>
           ))}
-          {editable && <th className="px-2 py-1.5 w-12" />}
+          <th className={`${HEAD_CELL} w-8`} />
         </tr>
-        <tr className="border-b border-plm-border">
-          {editable && <th className="px-1 py-1" />}
-          {columns.map((col) => (
-            <th key={col.key} className="px-1 py-1 align-top">
-              <ColumnFilter col={col} value={filters[col.key] ?? ''} onChange={(value) => onFilterChange(col.key, value)} />
-            </th>
-          ))}
-          {editable && <th className="px-1 py-1" />}
-        </tr>
+        {showFilters && (
+          <tr>
+            <th className={FILTER_CELL} />
+            {columns.map((col) => (
+              <th key={col.key} className={`${FILTER_CELL} px-1`}>
+                <ColumnFilter
+                  col={col}
+                  value={filters[col.key] ?? ''}
+                  onChange={(value) => onFilterChange(col.key, value)}
+                />
+              </th>
+            ))}
+            <th className={FILTER_CELL} />
+          </tr>
+        )}
       </thead>
       <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={columns.length + extraCols} className="px-2 py-6 text-center text-plm-fg/50">
+            <td
+              colSpan={columns.length + 2}
+              className="px-2 py-8 text-center text-[12px] text-ui-fg-secondary"
+            >
               {t('source.inspection.noMatches')}
             </td>
           </tr>
@@ -169,61 +200,58 @@ export function InspectionTable({
           rows.map((row, r) => {
             const linked = !!row.source_key?.trim()
             const selected = selectedIds.has(row.id)
+            const general = row.tolerance_source === 'general'
+            const basis = general
+              ? generalToleranceTitle(row.source_key ? generalBasis.get(row.source_key) : undefined)
+              : null
+            // The GT marker once per row (generalToleranceMarkerColumn).
+            const gtKey = generalToleranceMarkerColumn(row, visibleKeys)
             return (
               <tr
                 key={row.id}
-                className={`border-b border-plm-border/50 ${selected ? 'bg-plm-accent/10' : 'hover:bg-plm-bg/40'}`}
+                className={`group ${selected ? 'bg-ui-accent/10' : 'hover:bg-ui-hover/60'}`}
               >
-                {editable && (
-                  <td className="px-2 py-0.5">
+                <td className={`${BODY_CELL} px-2`}>
+                  {editable && (
                     <input
                       type="checkbox"
                       checked={selected}
                       onChange={() => undefined}
                       onClick={(e) => onToggleSelect(row.id, e.shiftKey)}
                       title={t('source.inspection.selectRow')}
+                      aria-label={t('source.inspection.selectRow')}
+                      className="align-middle"
+                    />
+                  )}
+                </td>
+                {columns.map((col, c) => (
+                  <td key={col.key} className={`${BODY_CELL} px-1`} data-r={r} data-c={c}>
+                    <InspectionCell
+                      col={col}
+                      value={row[col.key]}
+                      editable={editable && col.key !== 'balloon_number' && !col.readOnly}
+                      locked={isDrawingOwnedCell(row, col.key)}
+                      generalToleranceTitle={gtKey === col.key ? basis : null}
+                      hint={col.key === 'tolerance_source' && general ? basis : null}
+                      onChange={(value) => onCellChange(row.id, col.key, value)}
+                      methodOptions={methodOptions}
+                      onManageMethods={onManageMethods}
                     />
                   </td>
-                )}
-                {columns.map((col, c) => {
-                  const locked = isDrawingOwnedCell(row, col.key)
-                  const gt =
-                    row.tolerance_source === 'general' && GT_MARKED.has(col.key)
-                      ? generalToleranceTitle(row.source_key ? generalBasis.get(row.source_key) : undefined)
-                      : null
-                  return (
-                    <td key={col.key} className="px-1 py-0.5" data-r={r} data-c={c}>
-                      <InspectionCell
-                        col={col}
-                        value={row[col.key]}
-                        editable={editable && col.key !== 'balloon_number' && !col.readOnly}
-                        locked={locked}
-                        generalToleranceTitle={gt}
-                        onChange={(value) => onCellChange(row.id, col.key, value)}
-                        methodOptions={methodOptions}
-                        onManageMethods={onManageMethods}
-                      />
-                    </td>
-                  )
-                })}
-                {editable && (
-                  <td className="px-1 py-0.5">
-                    {linked ? (
-                      <span className="flex p-1 text-plm-fg/40" title={t('source.inspection.lockedRow')}>
-                        <Lock size={12} />
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteRow(row.id)}
-                        className="p-1 rounded hover:bg-plm-error/20 text-plm-error"
-                        title={t('source.inspection.deleteRow')}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </td>
-                )}
+                ))}
+                <td className={`${BODY_CELL} pr-1`}>
+                  {editable && !linked && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteRow(row.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-ui-fg-tertiary opacity-0 transition-opacity hover:bg-ui-danger/15 hover:text-ui-danger focus:opacity-100 group-hover:opacity-100"
+                      title={t('source.inspection.deleteRow')}
+                      aria-label={t('source.inspection.deleteRow')}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </td>
               </tr>
             )
           })

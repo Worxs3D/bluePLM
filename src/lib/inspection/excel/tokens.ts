@@ -15,7 +15,10 @@
  *   In it: `{{COL:<field>}}`, `{{RESULT}}` / `{{RESULT:n}}` (measured values), `{{VERDICT}}`, and
  *   `{{INPUT:<name>}}` (per-row free text such as the measuring tool). Results, verdict and inputs
  *   are left blank and unlocked.
- * - `{{DRAWING}}` anchors the first drawing page image.
+ * - `{{DRAWING}}` anchors the drawing pages (stacked downward from it). Without one, the pages go
+ *   under the table on the row template's sheet.
+ * - `{{LOGO}}` anchors the organization logo, fitted to the cell's merged range (aspect kept).
+ *   Every `{{LOGO}}` cell gets the logo; with no logo the cell is cleared.
  */
 
 /** A row field a `{{COL:<field>}}` token can name. */
@@ -116,6 +119,7 @@ export type ParsedToken =
   | { kind: 'verdict'; raw: string }
   | { kind: 'input'; name: string; raw: string }
   | { kind: 'drawing'; raw: string }
+  | { kind: 'logo'; raw: string }
   | { kind: 'tableAnchor'; raw: string }
   | { kind: 'legacy'; name: string; raw: string }
   | { kind: 'unknown'; name: string; raw: string }
@@ -167,6 +171,9 @@ export function parseTokens(text: string): ParsedToken[] {
       }
       case 'DRAWING':
         out.push({ kind: 'drawing', raw })
+        break
+      case 'LOGO':
+        out.push({ kind: 'logo', raw })
         break
       case 'INSPECTION_TABLE':
         out.push({ kind: 'tableAnchor', raw })

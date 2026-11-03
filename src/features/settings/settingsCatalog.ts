@@ -175,7 +175,7 @@ export const settingsSections = (): SettingsSection[] => [
         icon: FileSpreadsheet,
         description: 'Excel templates for the inspection reports of drawings.',
         layout: 'wide',
-        keywords: ['inspection', 'report', 'excel', 'xlsx', 'template', 'fai', 'first article'],
+        keywords: ['inspection', 'report', 'excel', 'xlsx', 'template', 'fai', 'first article', 'report naming'],
       },
       {
         id: 'backup',
@@ -557,6 +557,7 @@ export const settingsCatalog: SettingsCatalog = {
       keywords: ['configuration', 'config name'],
     },
     { label: 'Default Export Format', keywords: ['format', 'step', 'iges'] },
+    { label: 'Outputs at check-in', keywords: ['auto pdf', 'auto step', 'generate pdf', 'generate step', 'outputs'] },
     { label: 'STL Export Options', keywords: ['stl', '3d print', 'mesh'] },
     { label: 'Resolution Quality', keywords: ['resolution', 'quality'] },
     { label: 'Deviation (mm)', keywords: ['tolerance'] },
@@ -619,6 +620,10 @@ export const settingsCatalog: SettingsCatalog = {
   'item-designations': [{ label: 'Add designation', keywords: ['new designation', 'item type'] }],
   'inspection-templates': [
     { label: 'Upload template', keywords: ['xlsx', 'excel', 'add template'] },
+    {
+      label: 'Report naming',
+      keywords: ['report number', 'naming', 'pattern', 'irv', 'sequence', 'logo', 'file name', 'revision'],
+    },
     { label: 'Built-in starters', keywords: ['starter', 'example', 'first article'] },
     { label: 'Template tokens', keywords: ['tokens', 'placeholders', 'fields'] },
   ],

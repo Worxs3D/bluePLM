@@ -9,9 +9,12 @@ import {
   CircleDot,
   FileSpreadsheet,
   Table2,
+  Filter,
+  History,
+  Zap,
 } from 'lucide-react'
 
-import { SegmentedControl } from '@/components/core/ui'
+import { ActionBar, Button, SegmentedControl, type ToolbarAction } from '@/components/core/ui'
 
 import { t } from '@/lib/i18n'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
@@ -26,6 +29,8 @@ import {
   type InspectionRowValues,
 } from '@/lib/supabase'
 import { log } from '@/lib/logger'
+import { hasLocalContent } from '@/lib/fileOperations/assemblyResolver'
+import { checkSwServiceFeature, SW_SERVICE_VERSION_NATIVE_INSPECTION } from '@/lib/swServiceVersion'
 
 import { useSolidWorksService } from '../SolidWorksPanel'
 import {
@@ -46,6 +51,8 @@ import {
 import { MethodManagerModal } from './MethodManagerModal'
 import { useDrawingCharacteristics } from './useDrawingCharacteristics'
 import { useInspectionMethods } from './useInspectionMethods'
+import { useAutoInspection, useDrawingSync } from './useDrawingSync'
+import { isOffered, syncReasonKey } from './drawingSync'
 import { InspectionTable } from './InspectionTable'
 import { ColumnManager } from './ColumnManager'
 import { BulkEditBar } from './BulkEditBar'
@@ -77,6 +84,10 @@ export function InspectionTab({ file }: InspectionTabProps) {
   const organization = usePDMStore((s) => s.organization)
   const addToast = usePDMStore((s) => s.addToast)
   const columnPrefs = usePDMStore((s) => s.inspectionColumnPrefs)
+  const showFilters = usePDMStore((s) => s.inspectionShowFilters)
+  const setShowFilters = usePDMStore((s) => s.setInspectionShowFilters)
+  const autoSync = usePDMStore((s) => s.inspectionAutoSync)
+  const setAutoSync = usePDMStore((s) => s.setInspectionAutoSync)
 
   const fileId = file.pdmData?.id
   const orgId = file.pdmData?.org_id ?? organization?.id
@@ -304,6 +315,13 @@ export function InspectionTab({ file }: InspectionTabProps) {
     }
   }, [fileId, selectedVersion, persist])
 
+  const drawingSync = useDrawingSync({
+    file,
+    fileId,
+    enabled: editable && isDrawing,
+    serviceVersion: swStatus.version,
+  })
+
   const drawing = useDrawingCharacteristics({
     file,
     fileId,
@@ -314,6 +332,27 @@ export function InspectionTab({ file }: InspectionTabProps) {
     getRows,
     flushPendingSave,
     commitMergedRows,
+    sync: drawingSync.recorder,
+  })
+
+  // Auto runs only where a click would: the service is up and new enough, the file is here.
+  const autoReady =
+    swStatus.running &&
+    checkSwServiceFeature(swStatus.version ?? null, SW_SERVICE_VERSION_NATIVE_INSPECTION).status !==
+      'incompatible' &&
+    hasLocalContent(file)
+  const hasLinkedRows = useMemo(() => rows.some((r) => !!r.source_key?.trim()), [rows])
+  useAutoInspection({
+    file,
+    fileId,
+    autoEnabled: autoSync,
+    editable: editable && isDrawing && !isLoading,
+    hasLinkedRows,
+    ready: autoReady,
+    serviceVersion: swStatus.version,
+    isInFlight: drawing.isInFlight,
+    recorder: drawingSync.recorder,
+    runBalloon: drawing.handleBalloon,
   })
 
   // Flush pending save on unmount
@@ -380,15 +419,24 @@ export function InspectionTab({ file }: InspectionTabProps) {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }, [])
 
+  // Hiding the filter row clears it: a hidden filter would hide rows (and keep bulk edits off
+  // them) with nothing on screen saying so.
+  const toggleFilters = useCallback(() => {
+    if (showFilters) setFilters({})
+    setShowFilters(!showFilters)
+  }, [showFilters, setShowFilters])
+
   // Display view = base rows filtered on the shown columns, then sorted by the active column.
   const displayRows = useMemo(() => {
     const sortCol = columns.find((c) => c.key === sortKey)
     const sortType = sortCol?.type ?? 'text'
-    const filtered = rows.filter((row) =>
-      columns.every((col) => matchesFilter(row, col.key, filters[col.key] ?? '', col.type)),
-    )
+    const filtered = showFilters
+      ? rows.filter((row) =>
+          columns.every((col) => matchesFilter(row, col.key, filters[col.key] ?? '', col.type)),
+        )
+      : rows
     return [...filtered].sort((a, b) => compareRows(a, b, sortKey, sortDir, sortType))
-  }, [rows, columns, filters, sortKey, sortDir])
+  }, [rows, columns, filters, showFilters, sortKey, sortDir])
 
   // Selected rows still shown; bulk edits never reach a row the filters hide.
   const shownSelection = useMemo(
@@ -433,43 +481,79 @@ export function InspectionTab({ file }: InspectionTabProps) {
     )
   }
 
-  const extractButton = (
-    <button
-      type="button"
-      onClick={() => void drawing.handleExtract()}
-      disabled={drawing.busy}
-      className="btn btn-secondary btn-sm gap-1"
-      title={t('source.inspection.extractTitle')}
-    >
-      {drawing.isExtracting ? (
-        <Loader2 size={12} className="animate-spin" />
-      ) : (
-        <ScanSearch size={12} />
-      )}
-      {drawing.isExtracting
+  const extractOffered = isOffered(drawingSync.status.extract)
+  const balloonOffered = isOffered(drawingSync.status.balloon)
+
+  // Actions in priority order: what fits stays in the bar, the rest goes in the More menu.
+  const actions: ToolbarAction[] = []
+  if (editable && isDrawing) {
+    actions.push({
+      id: 'extract',
+      label: drawing.isExtracting
         ? t('source.inspection.extracting')
-        : t('source.inspection.extractFromDrawing')}
-    </button>
-  )
+        : t('source.inspection.extractFromDrawing'),
+      icon: <ScanSearch size={13} />,
+      onClick: () => void drawing.handleExtract(),
+      disabled: drawing.busy || !extractOffered,
+      loading: drawing.isExtracting,
+      title: t(syncReasonKey('extract', drawingSync.status.extract)),
+      // The drawing changed since the table was read from it: extracting is the next step.
+      primary: extractOffered && !drawing.busy && rows.length > 0,
+    })
+    if (rows.length > 0) {
+      actions.push({
+        id: 'balloon',
+        label: drawing.isBallooning
+          ? t('source.inspection.ballooning')
+          : t('source.inspection.balloonDrawing'),
+        icon: <CircleDot size={13} />,
+        onClick: () => void drawing.handleBalloon(),
+        disabled: drawing.busy || !balloonOffered,
+        loading: drawing.isBallooning,
+        title: t(syncReasonKey('balloon', drawingSync.status.balloon)),
+      })
+    }
+    actions.push({
+      id: 'auto',
+      label: t('source.inspection.autoLabel'),
+      icon: <Zap size={13} />,
+      onClick: () => setAutoSync(!autoSync),
+      pressed: autoSync,
+      title: t(autoSync ? 'source.inspection.autoTitleOn' : 'source.inspection.autoTitleOff'),
+    })
+  }
+  if (editable) {
+    actions.push({
+      id: 'add',
+      label: t('source.inspection.addRow'),
+      icon: <Plus size={13} />,
+      onClick: handleAddRow,
+    })
+  }
+  if (rows.length > 0) {
+    actions.push({
+      id: 'filters',
+      label: t('source.inspection.filterToggle'),
+      icon: <Filter size={13} />,
+      onClick: toggleFilters,
+      pressed: showFilters,
+      title: t(
+        showFilters ? 'source.inspection.filterHideTitle' : 'source.inspection.filterShowTitle',
+      ),
+    })
+  }
+  if (editable) {
+    actions.push({
+      id: 'methods',
+      label: t('source.inspection.methods'),
+      icon: <Settings2 size={13} />,
+      onClick: () => setMethodModalOpen(true),
+      title: t('source.inspection.manageMethods'),
+    })
+  }
 
-  const addRowButton = (
-    <button type="button" onClick={handleAddRow} className="btn btn-secondary btn-sm gap-1">
-      <Plus size={12} />
-      {t('source.inspection.addRow')}
-    </button>
-  )
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-plm-border shrink-0">
-        <div className="flex items-center gap-2 text-sm font-medium text-plm-fg">
-          <ClipboardList size={15} />
-          {t('source.inspection.title')}
-        </div>
-
-        {isDrawing && (
-          <SegmentedControl<InspectionView>
+  const viewSwitch = isDrawing ? (
+    <SegmentedControl<InspectionView>
             size="sm"
             value={view}
             onChange={setView}
@@ -487,62 +571,63 @@ export function InspectionTab({ file }: InspectionTabProps) {
               },
             ]}
           />
-        )}
+  ) : null
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar: one line at any width. View and version on the left, actions on the right. */}
+      {view === 'table' && (
+      <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 border-b border-plm-border px-3">
+        {viewSwitch}
 
         {view === 'table' && (
           <>
-            <div className="flex items-center gap-1.5 text-xs text-plm-fg/70">
-              <span>{t('source.inspection.version')}</span>
+            <label
+              className="flex shrink-0 items-center gap-1.5 text-[12px] text-ui-fg-secondary"
+              title={t('source.inspection.version')}
+            >
+              <History size={13} aria-hidden />
+              <span className="sr-only">{t('source.inspection.version')}</span>
               <select
                 value={selectedVersion}
                 onChange={(e) => setSelectedVersion(e.target.value)}
-                className="bg-plm-bg border border-plm-border rounded px-1.5 py-0.5 text-xs"
+                className="h-7 rounded-md border border-ui-field-border bg-ui-field py-0 pl-1.5 pr-1 text-[12px] leading-[26px] text-ui-fg"
               >
                 <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
                 {versions.map((v) => (
                   <option key={v.id} value={v.id}>
-                    v{v.version}
+                    {t('source.inspection.versionOption', { version: v.version })}
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className="flex-1" />
+            </label>
 
             {isSaving && (
-              <span className="flex items-center gap-1 text-xs text-plm-fg/60">
+              <span className="flex shrink-0 items-center gap-1 text-[12px] text-ui-fg-secondary">
                 <Loader2 size={12} className="animate-spin" />
                 {t('source.inspection.saving')}
               </span>
             )}
 
-            {viewingCurrent && !isCheckedOutByMe && (
-              <span className="flex items-center gap-1 text-xs text-plm-fg/60">
-                <Lock size={12} />
-                {t('source.inspection.readOnlyCheckout')}
+            {!editable && (
+              <span
+                className="flex min-w-0 items-center gap-1 rounded-md bg-ui-field px-1.5 py-0.5 text-[12px] text-ui-fg-secondary"
+                title={
+                  viewingCurrent
+                    ? t('source.inspection.readOnlyCheckout')
+                    : t('source.inspection.readOnlySnapshot')
+                }
+              >
+                <Lock size={11} className="shrink-0" />
+                <span className="truncate">
+                  {viewingCurrent
+                    ? t('source.inspection.readOnlyShort')
+                    : t('source.inspection.snapshotShort')}
+                </span>
               </span>
             )}
 
-            {editable && isDrawing && extractButton}
-
-            {editable && isDrawing && rows.length > 0 && (
-              <button
-                type="button"
-                onClick={() => void drawing.handleBalloon()}
-                disabled={drawing.busy}
-                className="btn btn-secondary btn-sm gap-1"
-                title={t('source.inspection.balloonTitle')}
-              >
-                {drawing.isBallooning ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <CircleDot size={12} />
-                )}
-                {drawing.isBallooning
-                  ? t('source.inspection.ballooning')
-                  : t('source.inspection.balloonDrawing')}
-              </button>
-            )}
+            <ActionBar actions={actions} moreLabel={t('source.inspection.moreActions')} />
 
             {canGenerateTemplate && (
               <GoogleSheetTemplateMenu
@@ -555,27 +640,14 @@ export function InspectionTab({ file }: InspectionTabProps) {
             )}
 
             <ColumnManager />
-
-            {editable && (
-              <button
-                type="button"
-                onClick={() => setMethodModalOpen(true)}
-                className="btn btn-secondary btn-sm gap-1"
-                title={t('source.inspection.manageMethods')}
-              >
-                <Settings2 size={12} />
-                {t('source.inspection.methods')}
-              </button>
-            )}
-
-            {editable && addRowButton}
           </>
         )}
       </div>
+      )}
 
       {view === 'reports' ? (
         <div className="flex-1 overflow-hidden">
-          <InspectionReportsView file={file} focusReportId={focusReportId} />
+          <InspectionReportsView file={file} focusReportId={focusReportId} leading={viewSwitch} />
         </div>
       ) : (
         <>
@@ -596,12 +668,38 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 <Loader2 size={18} className="animate-spin" />
               </div>
             ) : rows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-plm-fg/60 text-center px-6">
-                <div className="text-sm">{t('source.inspection.empty')}</div>
+              <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-ui-field text-ui-fg-secondary">
+                  <ClipboardList size={18} />
+                </div>
+                <div className="text-[13px] font-medium text-ui-fg">
+                  {t('source.inspection.emptyTitle')}
+                </div>
+                <div className="max-w-sm text-[12px] leading-5 text-ui-fg-secondary">
+                  {editable && isDrawing
+                    ? t('source.inspection.emptyBodyEditable')
+                    : viewingCurrent
+                      ? t('source.inspection.emptyBodyReadOnly')
+                      : t('source.inspection.emptyBodySnapshot')}
+                </div>
                 {editable && (
-                  <div className="flex items-center gap-2 mt-3">
-                    {isDrawing && extractButton}
-                    {addRowButton}
+                  <div className="mt-2 flex items-center gap-2">
+                    {isDrawing && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={<ScanSearch size={13} />}
+                        loading={drawing.isExtracting}
+                        disabled={drawing.busy || !extractOffered}
+                        title={t(syncReasonKey('extract', drawingSync.status.extract))}
+                        onClick={() => void drawing.handleExtract()}
+                      >
+                        {t('source.inspection.extractFromDrawing')}
+                      </Button>
+                    )}
+                    <Button size="sm" icon={<Plus size={13} />} onClick={handleAddRow}>
+                      {t('source.inspection.addManualRow')}
+                    </Button>
                   </div>
                 )}
               </div>
@@ -613,6 +711,7 @@ export function InspectionTab({ file }: InspectionTabProps) {
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
+                showFilters={showFilters}
                 filters={filters}
                 onFilterChange={handleFilterChange}
                 onCellChange={handleCellChange}

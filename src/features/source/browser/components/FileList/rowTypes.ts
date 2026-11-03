@@ -2,6 +2,8 @@ import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
 import type { InspectionReport } from '@/types/inspectionReports'
 
+import type { OutputRowEntry } from '@/features/source/outputs/outputRowModel'
+
 import type { ConfigWithDepth } from '../../types'
 
 export interface FileVirtualRow {
@@ -57,6 +59,15 @@ export interface DrawingReportMoreVirtualRow {
   type: 'drawing-report-more'
   file: LocalFile
   hiddenCount: number
+}
+
+/** A version output (or a "Generate" ghost) under an expanded file. */
+export interface FileOutputVirtualRow {
+  type: 'file-output'
+  file: LocalFile
+  entry: OutputRowEntry
+  /** The version number the outputs belong to, when resolved. */
+  version: number | null
 }
 
 export interface ConfigDrawingVirtualRow {
@@ -116,6 +127,7 @@ export type VirtualRow =
   | DrawingRefVirtualRow
   | DrawingReportVirtualRow
   | DrawingReportMoreVirtualRow
+  | FileOutputVirtualRow
   | ConfigDrawingVirtualRow
   | ConfigGroupVirtualRow
   | ConfigEmptyVirtualRow

@@ -21,6 +21,15 @@ export interface DesktopLifecycleAPI {
   reloadApp: () => Promise<{ success: boolean; error?: string }>
   requestFocus: () => Promise<{ success: boolean; error?: string }>
   openPerformanceWindow: () => Promise<{ success: boolean; error?: string }>
+  /** Pop a tab out into its own window (TabWindow); one window per `key`, asking again focuses it. */
+  openTabWindow: (request: {
+    key: string
+    view: string
+    title: string
+    customData?: Record<string, unknown>
+    width?: number
+    height?: number
+  }) => Promise<{ success: boolean; error?: string }>
 
   // Window controls
   close: () => void

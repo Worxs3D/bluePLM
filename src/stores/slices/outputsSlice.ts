@@ -1,0 +1,133 @@
+/**
+ * Outputs Slice
+ *
+ * The version outputs (drawing PDFs and STEP/IGES/STL/DXF exports, schema 505) the app has read,
+ * keyed by file_version id, and the background generation jobs (the check-in queue and any
+ * Generate the user starts through `src/lib/outputs`). The file list chevron shows both. Session
+ * state only. Bounded: the least recently written versions are dropped past
+ * `MAX_VERSIONS_WITH_OUTPUTS`, and finished jobs past `MAX_OUTPUT_JOBS`, so a session that runs
+ * for weeks keeps a fixed footprint.
+ */
+
+import { StateCreator } from 'zustand'
+
+import type { VersionOutput, VersionOutputKind } from '../../types/versionOutputs'
+import type { PDMStoreState } from '../types'
+
+export const MAX_VERSIONS_WITH_OUTPUTS = 500
+export const MAX_OUTPUT_JOBS = 200
+/** Files whose latest version id the file list has resolved (for the outputs under its chevron). */
+export const MAX_FILE_OUTPUT_VERSIONS = 500
+
+/** The checked-in version of a file whose outputs the file list shows. */
+export interface FileOutputVersion {
+  version: number
+  fileVersionId: string
+}
+
+export type OutputJobStatus = 'queued' | 'running' | 'done' | 'skipped' | 'failed'
+
+export interface OutputJob {
+  /** `${fileId}:${kind}:${configuration ?? ''}` */
+  key: string
+  fileId: string
+  /** Set once the version is known (the queue resolves it when the job starts). */
+  fileVersionId: string | null
+  kind: VersionOutputKind
+  configuration: string | null
+  fileName: string
+  status: OutputJobStatus
+  /** Why it was skipped or failed (an error code or message), for the tooltip and the log. */
+  detail: string | null
+  /** Started from a check-in (true) or by the user. */
+  auto: boolean
+  updatedAt: number
+}
+
+export interface OutputsSlice {
+  /** Outputs per file_version id, sorted. An empty list means "loaded, none". */
+  versionOutputs: Map<string, VersionOutput[]>
+  setVersionOutputs: (byVersion: ReadonlyMap<string, VersionOutput[]>) => void
+  clearVersionOutputs: () => void
+  /** Generation jobs by key; finished ones stay (bounded) so a row can show the last result. */
+  outputJobs: Map<string, OutputJob>
+  upsertOutputJob: (job: OutputJob) => void
+  clearOutputJobs: () => void
+  /** file id -> the version (number and id) whose outputs the file list shows. */
+  fileOutputVersions: Map<string, FileOutputVersion>
+  setFileOutputVersions: (byFile: ReadonlyMap<string, FileOutputVersion>) => void
+}
+
+export function outputJobKey(fileId: string, kind: VersionOutputKind, configuration: string | null): string {
+  return `${fileId}:${kind}:${configuration ?? ''}`
+}
+
+/** Written ids move to the end (most recent); the oldest go past `max`. */
+export function mergeVersionOutputs(
+  current: ReadonlyMap<string, VersionOutput[]>,
+  byVersion: ReadonlyMap<string, VersionOutput[]>,
+  max = MAX_VERSIONS_WITH_OUTPUTS,
+): Map<string, VersionOutput[]> {
+  const next = new Map(current)
+  for (const [id, outputs] of byVersion) {
+    next.delete(id)
+    next.set(id, outputs)
+  }
+  for (const key of next.keys()) {
+    if (next.size <= max) break
+    next.delete(key)
+  }
+  return next
+}
+
+/** Written file ids move to the end (most recent); the oldest go past `max`. */
+export function mergeFileOutputVersions(
+  current: ReadonlyMap<string, FileOutputVersion>,
+  byFile: ReadonlyMap<string, FileOutputVersion>,
+  max = MAX_FILE_OUTPUT_VERSIONS,
+): Map<string, FileOutputVersion> {
+  const next = new Map(current)
+  for (const [id, entry] of byFile) {
+    next.delete(id)
+    next.set(id, entry)
+  }
+  for (const key of next.keys()) {
+    if (next.size <= max) break
+    next.delete(key)
+  }
+  return next
+}
+
+/** The job written last; finished jobs beyond `max` are dropped oldest first (active ones stay). */
+export function mergeOutputJob(
+  current: ReadonlyMap<string, OutputJob>,
+  job: OutputJob,
+  max = MAX_OUTPUT_JOBS,
+): Map<string, OutputJob> {
+  const next = new Map(current)
+  next.delete(job.key)
+  next.set(job.key, job)
+  for (const [key, j] of next) {
+    if (next.size <= max) break
+    if (j.status !== 'queued' && j.status !== 'running') next.delete(key)
+  }
+  return next
+}
+
+export const createOutputsSlice: StateCreator<
+  PDMStoreState,
+  [['zustand/persist', unknown]],
+  [],
+  OutputsSlice
+> = (set) => ({
+  versionOutputs: new Map(),
+  setVersionOutputs: (byVersion) =>
+    set((state) => ({ versionOutputs: mergeVersionOutputs(state.versionOutputs, byVersion) })),
+  clearVersionOutputs: () => set({ versionOutputs: new Map() }),
+  outputJobs: new Map(),
+  upsertOutputJob: (job) => set((state) => ({ outputJobs: mergeOutputJob(state.outputJobs, job) })),
+  clearOutputJobs: () => set({ outputJobs: new Map() }),
+  fileOutputVersions: new Map(),
+  setFileOutputVersions: (byFile) =>
+    set((state) => ({ fileOutputVersions: mergeFileOutputVersions(state.fileOutputVersions, byFile) })),
+})

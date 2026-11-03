@@ -89,6 +89,7 @@ export function tokenReference(): TokenReferenceGroup[] {
         { token: '{{PROP:<name>}}', descriptionKey: 'source.inspection.tplTokProp' },
         { token: '{{ENTRY:<name>}}', descriptionKey: 'source.inspection.tplTokEntry' },
         { token: '{{DRAWING}}', descriptionKey: 'source.inspection.tplTokDrawing' },
+        { token: '{{LOGO}}', descriptionKey: 'source.inspection.tplTokLogo' },
       ],
     },
     {

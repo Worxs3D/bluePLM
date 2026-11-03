@@ -23,7 +23,7 @@
  * the perf app first; it is built automatically when dist/perf.html is missing), --list.
  */
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -78,6 +78,21 @@ async function appWindow(app: ElectronApplication): Promise<Page> {
  * a repaint first and retrying covers it.
  */
 async function shoot(app: ElectronApplication, page: Page, path: string, selector?: string): Promise<void> {
+  if (!selector) {
+    // The whole window through Electron's own capture: Playwright's page screenshot of a hidden
+    // window now and then came back as a magnified crop of the page.
+    const png = await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (!win) return null
+      win.webContents.invalidate()
+      const image = await win.webContents.capturePage()
+      return image.isEmpty() ? null : image.toPNG().toString('base64')
+    })
+    if (png) {
+      writeFileSync(path, Buffer.from(png, 'base64'))
+      return
+    }
+  }
   for (let attempt = 1; ; attempt++) {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.invalidate())
     try {

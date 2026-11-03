@@ -76,6 +76,11 @@ export interface TemplateLayout {
   resultCount: number
   hasVerdict: boolean
   drawingAnchor: { sheet: string; cell: string } | null
+  /**
+   * `{{LOGO}}` cells, each gets the organization logo. Optional because layouts stored before
+   * 5.5.0 do not have it; `analyzeTemplate` always sets it.
+   */
+  logoAnchors?: { sheet: string; cell: string }[]
   errors: LayoutIssue[]
   warnings: LayoutIssue[]
 }
@@ -166,6 +171,7 @@ export function analyzeWorkbook(workbook: Workbook): Analysis {
   const entries: TemplateLayout['entries'] = []
   const properties = new Set<string>()
   let drawingAnchor: TemplateLayout['drawingAnchor'] = null
+  const logoAnchors: { sheet: string; cell: string }[] = []
   const resultIndexes = new Set<number>()
   let hasVerdict = false
 
@@ -194,6 +200,9 @@ export function analyzeWorkbook(workbook: Workbook): Analysis {
           case 'drawing':
             if (drawingAnchor) issues.push({ code: 'DUPLICATE_DRAWING_ANCHOR', ...at })
             else drawingAnchor = at
+            break
+          case 'logo':
+            if (!logoAnchors.some((l) => l.sheet === at.sheet && l.cell === at.cell)) logoAnchors.push(at)
             break
           case 'tableAnchor':
             break
@@ -280,6 +289,7 @@ export function analyzeWorkbook(workbook: Workbook): Analysis {
     resultCount: resultIndexes.size === 0 ? 0 : Math.max(...resultIndexes),
     hasVerdict,
     drawingAnchor,
+    logoAnchors,
     errors: issues.filter((i) => ERROR_CODES.has(i.code)),
     warnings: issues.filter((i) => !ERROR_CODES.has(i.code)),
   }
@@ -338,6 +348,7 @@ export async function analyzeTemplate(bytes: Uint8Array | ArrayBuffer): Promise<
       resultCount: 0,
       hasVerdict: false,
       drawingAnchor: null,
+      logoAnchors: [],
       errors: [{ code: 'UNREADABLE_WORKBOOK' }],
       warnings: [],
     }

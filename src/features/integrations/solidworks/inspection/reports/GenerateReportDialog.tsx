@@ -36,8 +36,10 @@ export function GenerateReportDialog({ templates, versions, busyPhase, onGenerat
     return preferred ? templateChoiceId(preferred) : ''
   })
   const [versionId, setVersionId] = useState(() => versions[0]?.id ?? '')
-  const choice = choices.find((c) => templateChoiceId(c) === templateId) ?? null
-  const version = versions.find((v) => v.id === versionId) ?? null
+  // Opened before the lists loaded: the defaults apply once they arrive.
+  const preferred = defaultTemplateChoice(choices)
+  const choice = choices.find((c) => templateChoiceId(c) === templateId) ?? preferred
+  const version = versions.find((v) => v.id === versionId) ?? versions[0] ?? null
   const busy = busyPhase !== null
   const orgChoices = choices.filter((c) => c.kind === 'org')
   const builtIns = choices.filter((c) => c.kind === 'builtin')
@@ -49,7 +51,7 @@ export function GenerateReportDialog({ templates, versions, busyPhase, onGenerat
 
         <label className="flex flex-col gap-1">
           <span className="text-xs text-plm-fg-muted">{t('source.inspection.rptTemplate')}</span>
-          <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={busy} className="w-full">
+          <Select value={choice ? templateChoiceId(choice) : ''} onChange={(e) => setTemplateId(e.target.value)} disabled={busy} className="w-full">
             {orgChoices.length > 0 && (
               <optgroup label={t('source.inspection.rptOrgTemplates')}>
                 {orgChoices.map((c) =>
@@ -78,7 +80,7 @@ export function GenerateReportDialog({ templates, versions, busyPhase, onGenerat
         <label className="flex flex-col gap-1">
           <span className="text-xs text-plm-fg-muted">{t('source.inspection.rptVersion')}</span>
           <Select
-            value={versionId}
+            value={version?.id ?? ''}
             onChange={(e) => setVersionId(e.target.value)}
             disabled={busy || versions.length === 0}
             className="w-full"

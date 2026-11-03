@@ -12,6 +12,7 @@ import {
   templateIssueKey,
 } from '@/lib/inspection/issueText'
 import { INSPECTION_REPORT_STATUSES } from '@/types/inspectionReports'
+import { REPORT_NUMBER_TOKENS } from '@/features/integrations/solidworks/inspection/reports/reportModel'
 
 import { en } from './locales/en'
 import { flattenTranslations } from './utils'
@@ -48,5 +49,10 @@ describe('inspection report strings (source.inspection, English only)', () => {
   it('describes every header token and names every built-in template', () => {
     expectKeys(SCALAR_NAMES.map((n) => `source.inspection.tplTok_${n}`))
     expectKeys([...Object.values(BUILT_IN_NAME_KEYS), ...Object.values(BUILT_IN_DESCRIPTION_KEYS)])
+  })
+
+  it('describes every report number token and sequence scope', () => {
+    expectKeys(REPORT_NUMBER_TOKENS.map((tok) => `source.inspection.rnTok_${tok}`))
+    expectKeys(['drawing', 'revision'].map((s) => `source.inspection.rnScope_${s}`))
   })
 })

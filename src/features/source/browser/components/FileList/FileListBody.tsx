@@ -27,6 +27,9 @@ import { ConfigGroupRow } from './ConfigGroupRow'
 import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
+import { FileOutputRow } from './FileOutputRow'
+import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
+import { hasDesktop } from '@/lib/platform'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
 import { FileRow } from './FileRow'
 import type {
@@ -189,6 +192,22 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
     useDrawingReportsLoader(displayFiles, expandedDrawingRefs)
+    useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles)
+    const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
+    const versionOutputs = usePDMStore((s) => s.versionOutputs)
+    const outputJobs = usePDMStore((s) => s.outputJobs)
+    const canGenerateOutputs = usePDMStore(
+      (s) => hasDesktop() && (s.getEffectiveRole() === 'admin' || s.hasPermission('module:explorer', 'edit')),
+    )
+    const outputs = useMemo(
+      () => ({
+        versions: fileOutputVersions,
+        byVersion: versionOutputs,
+        jobs: outputJobs,
+        canGenerate: canGenerateOutputs,
+      }),
+      [fileOutputVersions, versionOutputs, outputJobs, canGenerateOutputs],
+    )
 
     // Get tab settings from organization serialization settings
     const serializationSettings = usePDMStore((s) => s.organization?.serialization_settings)
@@ -239,6 +258,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           drawingRefData,
           expandedDrawingRefFiles,
           drawingInspectionReports,
+          outputs,
         }),
       [
         displayFiles,
@@ -263,6 +283,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         drawingRefData,
         expandedDrawingRefFiles,
         drawingInspectionReports,
+        outputs,
       ],
     )
 
@@ -291,6 +312,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'drawing-ref':
           case 'drawing-report':
           case 'drawing-report-more':
+          case 'file-output':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -772,6 +794,17 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                   file={row.file}
                   report={row.report}
                   versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'file-output':
+              return (
+                <FileOutputRow
+                  key={`file-output::${row.file.path}::${row.entry.kind}::${row.entry.output?.id ?? 'pending'}`}
+                  file={row.file}
+                  entry={row.entry}
+                  version={row.version}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
                 />

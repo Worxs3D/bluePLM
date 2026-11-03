@@ -4,12 +4,26 @@ import type { InspectionReportRow, ReturnedResults } from '@/lib/inspection/exce
 import type { InspectionReport, InspectionTemplate } from '@/types/inspectionReports'
 
 import {
+  nextReportStep,
   canDeleteReport,
+  DEFAULT_REPORT_NUMBER_PATTERN,
   defaultTemplateChoice,
+  formatReportNumber,
   groupReportsByVersion,
+  hasChangesNotCheckedIn,
   importVerdict,
-  nextReportNumber,
+  newerVersionThan,
+  nextReportName,
+  nextReportSequence,
   parseStoredResults,
+  pathNextTo,
+  patternHasSequence,
+  regenerateTemplateChoice,
+  reportNamingFromSettings,
+  reportNumberValues,
+  reportSequence,
+  resolveReportIdentity,
+  unknownPatternTokens,
   reportActions,
   reportFileName,
   safeFileName,
@@ -32,6 +46,7 @@ function report(over: Partial<InspectionReport>): InspectionReport {
     templateName: null,
     templateHash: null,
     reportNumber: null,
+    sequence: null,
     title: null,
     status: 'issued',
     storageHash: 'a'.repeat(64),
@@ -109,23 +124,168 @@ function row(id: string, balloon: string, over: Partial<InspectionReportRow> = {
   }
 }
 
-describe('nextReportNumber', () => {
-  it('starts at IR1 with part and revision', () => {
-    expect(nextReportNumber('BRK-100', 'B', 'BRK-100.SLDDRW', [])).toBe('BRK-100-B-IR1')
+const VALUES = { partNumber: 'BR-103849-201', rev: 'A', version: '3', drawing: 'BR-103849-201', date: '2026-11-03' }
+
+describe('report naming settings', () => {
+  it('defaults when unset or malformed', () => {
+    expect(reportNamingFromSettings(undefined)).toEqual({
+      numberPattern: DEFAULT_REPORT_NUMBER_PATTERN,
+      sequenceScope: 'drawing',
+      includeLogo: true,
+    })
+    expect(reportNamingFromSettings({ number_pattern: '   ', sequence_scope: 'x', include_logo: 'no' })).toEqual({
+      numberPattern: DEFAULT_REPORT_NUMBER_PATTERN,
+      sequenceScope: 'drawing',
+      includeLogo: true,
+    })
+    expect(reportNamingFromSettings([1, 2])).toMatchObject({ numberPattern: DEFAULT_REPORT_NUMBER_PATTERN })
   })
 
-  it('continues after the highest number of any revision', () => {
-    expect(nextReportNumber('BRK-100', 'C', 'x', ['BRK-100-A-IR1', 'BRK-100-B-IR4', null, 'custom'])).toBe(
-      'BRK-100-C-IR5',
+  it('keeps a stored pattern, scope and logo choice', () => {
+    expect(
+      reportNamingFromSettings({ number_pattern: ' IR-{n} ', sequence_scope: 'revision', include_logo: false }),
+    ).toEqual({ numberPattern: 'IR-{n}', sequenceScope: 'revision', includeLogo: false })
+  })
+
+  it('caps the pattern length', () => {
+    expect(reportNamingFromSettings({ number_pattern: 'x'.repeat(500) }).numberPattern).toHaveLength(200)
+  })
+
+  it('flags patterns without {n} and unknown tokens', () => {
+    expect(patternHasSequence(DEFAULT_REPORT_NUMBER_PATTERN)).toBe(true)
+    expect(patternHasSequence('{partNumber}_{rev}')).toBe(false)
+    expect(unknownPatternTokens('{partNumber}_{foo}_{N}_{foo}_{ bar }')).toEqual(['foo', 'bar'])
+  })
+})
+
+describe('formatReportNumber', () => {
+  it('fills the default pattern the organization style asks for', () => {
+    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...VALUES, n: '3' })).toBe('BR-103849-201_RevA_IRv3')
+  })
+
+  it('fills every token, case-insensitively', () => {
+    expect(formatReportNumber('{PartNumber}-{REV}-v{version}-{drawing}-{date}-{n}', { ...VALUES, n: '7' })).toBe(
+      'BR-103849-201-A-v3-BR-103849-201-2026-11-03-7',
     )
   })
 
-  it('falls back to the drawing name and omits a missing revision', () => {
-    expect(nextReportNumber(null, '', 'Bracket plate.SLDDRW', [])).toBe('Bracket_plate-IR1')
+  it('replaces characters a file name cannot hold and collapses empty values', () => {
+    expect(formatReportNumber('{partNumber}_{rev}_IR{n}', { ...VALUES, partNumber: 'A/B:C d', rev: '', n: '1' })).toBe(
+      'A_B_C_d_IR1',
+    )
   })
 
-  it('replaces characters a file name cannot hold', () => {
-    expect(nextReportNumber('A/B:C', 'r 1', 'x', [])).toBe('A_B_C-r_1-IR1')
+  it('keeps unknown tokens as text and never returns empty', () => {
+    expect(formatReportNumber('{foo}-{n}', { ...VALUES, n: '2' })).toBe('foo-2')
+    expect(formatReportNumber('{rev}', { ...VALUES, rev: '', n: '4' })).toBe('4')
+  })
+})
+
+describe('report sequence', () => {
+  it('uses the stored sequence, else the legacy IR<n> / IRv<n> suffix', () => {
+    expect(reportSequence({ reportNumber: 'whatever', sequence: 9 })).toBe(9)
+    expect(reportSequence({ reportNumber: 'BRK-100-B-IR4', sequence: null })).toBe(4)
+    expect(reportSequence({ reportNumber: 'BR-1_RevA_IRv12' })).toBe(12)
+    expect(reportSequence({ reportNumber: 'custom', sequence: null })).toBeNull()
+    expect(reportSequence({ reportNumber: null })).toBeNull()
+  })
+
+  const revisions = new Map<string, string | null>([
+    ['v1', 'A'],
+    ['v2', 'A'],
+    ['v3', 'B'],
+  ])
+  const reports = [
+    { reportNumber: 'X-A-IR1', fileVersionId: 'v1', sequence: null },
+    { reportNumber: 'X_RevA_IRv2', fileVersionId: 'v2', sequence: 2 },
+    { reportNumber: 'X_RevB_IRv1', fileVersionId: 'v3', sequence: 1 },
+    { reportNumber: 'X_IRv8', fileVersionId: 'gone', sequence: 8 },
+  ]
+
+  it('counts every report of the drawing in drawing scope', () => {
+    expect(nextReportSequence(reports, 'drawing', 'B', revisions)).toBe(9)
+    expect(nextReportSequence([], 'drawing', 'A', revisions)).toBe(1)
+  })
+
+  it('restarts per revision in revision scope, leaving out reports of unknown versions', () => {
+    expect(nextReportSequence(reports, 'revision', 'A', revisions)).toBe(3)
+    expect(nextReportSequence(reports, 'revision', 'b', revisions)).toBe(2)
+    expect(nextReportSequence(reports, 'revision', 'C', revisions)).toBe(1)
+  })
+})
+
+describe('nextReportName', () => {
+  it('takes the next number when the computed one is taken', () => {
+    expect(nextReportName(DEFAULT_REPORT_NUMBER_PATTERN, VALUES, 3, ['BR-103849-201_RevA_IRv3', 'br-103849-201_reva_irv4'])).toEqual({
+      reportNumber: 'BR-103849-201_RevA_IRv5',
+      sequence: 5,
+    })
+  })
+
+  it('appends _<n> to a pattern without {n} once its plain number is taken', () => {
+    expect(nextReportName('{partNumber}_Rev{rev}', VALUES, 1, [])).toEqual({ reportNumber: 'BR-103849-201_RevA', sequence: 1 })
+    expect(nextReportName('{partNumber}_Rev{rev}', VALUES, 2, ['BR-103849-201_RevA'])).toEqual({
+      reportNumber: 'BR-103849-201_RevA_2',
+      sequence: 2,
+    })
+  })
+})
+
+describe('report identity', () => {
+  it('takes each field from the first source that has it', () => {
+    expect(
+      resolveReportIdentity(
+        { partNumber: '  ', description: null, revision: 'B' },
+        { partNumber: 'BR-1', description: '', revision: 'C' },
+        { partNumber: 'MODEL', description: 'Bracket', revision: 'D' },
+      ),
+    ).toEqual({ partNumber: 'BR-1', description: 'Bracket', revision: 'B' })
+  })
+
+  it('leaves a field blank when no source has it', () => {
+    expect(resolveReportIdentity(null, undefined, {})).toEqual({ partNumber: null, description: null, revision: null })
+  })
+
+  it('numbers by the drawing name when there is no part number', () => {
+    const values = reportNumberValues({ partNumber: null, description: null, revision: null }, 'Bracket plate.SLDDRW', 2, new Date(2026, 10, 3))
+    expect(values).toEqual({ partNumber: 'Bracket plate', rev: '', version: '2', drawing: 'Bracket plate', date: '2026-11-03' })
+    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...values, n: '1' })).toBe('Bracket_plate_Rev_IRv1')
+  })
+})
+
+describe('regenerate', () => {
+  const versions = [version('v1', 1, 'A'), version('v3', 3, 'B'), version('v2', 2, 'A')]
+
+  it('offers the latest version only when it is newer than the report', () => {
+    expect(newerVersionThan(report({ fileVersionId: 'v1' }), versions)?.id).toBe('v3')
+    expect(newerVersionThan(report({ fileVersionId: 'v3' }), versions)).toBeNull()
+    expect(newerVersionThan(report({ fileVersionId: 'v1' }), [])).toBeNull()
+  })
+
+  it('keeps the report template when live, else a built-in of that name, else the default', () => {
+    const org = template({ id: 't1', name: 'Ours' })
+    const def = template({ id: 't2', name: 'Default', isDefault: true })
+    const choices = templateChoices([org, def], [{ key: 'dim', name: 'Dimensional' }])
+    expect(templateChoiceId(regenerateTemplateChoice({ templateId: 't1', templateName: 'Ours' }, choices)!)).toBe('org:t1')
+    expect(templateChoiceId(regenerateTemplateChoice({ templateId: 'gone', templateName: 'Old' }, choices)!)).toBe('org:t2')
+    expect(templateChoiceId(regenerateTemplateChoice({ templateId: null, templateName: 'Dimensional' }, choices)!)).toBe(
+      'builtin:dim',
+    )
+  })
+
+  it('saves next to the drawing in its folder', () => {
+    expect(pathNextTo('C:\\Vault\\Parts\\BRK.SLDDRW', 'BRK_RevA_IRv1.xlsx')).toBe('C:\\Vault\\Parts\\BRK_RevA_IRv1.xlsx')
+    expect(pathNextTo('/vault/parts/BRK.SLDDRW', 'r.xlsx')).toBe('/vault/parts/r.xlsx')
+  })
+})
+
+describe('changes not checked in', () => {
+  it('warns only for the user who has the drawing checked out', () => {
+    expect(hasChangesNotCheckedIn({ checkedOutByMe: false, modified: true, liveRows: 5, versionRows: 0 })).toBe(false)
+    expect(hasChangesNotCheckedIn({ checkedOutByMe: true, modified: true, liveRows: null, versionRows: 3 })).toBe(true)
+    expect(hasChangesNotCheckedIn({ checkedOutByMe: true, modified: false, liveRows: 4, versionRows: 3 })).toBe(true)
+    expect(hasChangesNotCheckedIn({ checkedOutByMe: true, modified: false, liveRows: 3, versionRows: 3 })).toBe(false)
+    expect(hasChangesNotCheckedIn({ checkedOutByMe: true, modified: false, liveRows: null, versionRows: 3 })).toBe(false)
   })
 })
 
@@ -307,5 +467,15 @@ describe('importVerdict', () => {
 
   it('blocks a workbook that is not a readable report', () => {
     expect(importVerdict(own, parsed({ warnings: [{ code: 'NOT_A_REPORT' }] })).reason).toBe('not_a_report')
+  })
+})
+
+describe('nextReportStep', () => {
+  it('offers the step each status waits for, and none once decided', () => {
+    expect(nextReportStep('issued')).toBe('markSent')
+    expect(nextReportStep('sent')).toBe('importResults')
+    expect(nextReportStep('returned')).toBe('accept')
+    expect(nextReportStep('accepted')).toBeNull()
+    expect(nextReportStep('rejected')).toBeNull()
   })
 })

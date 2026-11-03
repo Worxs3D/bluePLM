@@ -56,9 +56,19 @@ export function formatTolerance(row: InspectionReportRow): string {
   return ''
 }
 
-/** Nominal plus tolerance (`25.40 ±0.10`, limits as `12.40 – 12.60`). */
+/** A geometric tolerance row: its value is a feature control frame, which already states the tolerance. */
+export function isGeometricTolerance(row: InspectionReportRow): boolean {
+  return text(row.char_type).toUpperCase() === 'GTOL'
+}
+
+/**
+ * Nominal plus tolerance (`25.40 ±0.10`, limits as `12.40 – 12.60`). A GTOL's frame
+ * (`⌖ Ø0.05 Ⓜ A B C`) is the whole requirement; its tolerance columns repeat the frame's value
+ * (extraction sets the upper limit from it), so they are not appended a second time.
+ */
 export function formatSpec(row: InspectionReportRow): string {
   const nominal = text(row.nominal_value)
+  if (isGeometricTolerance(row) && nominal !== '') return nominal
   const plus = text(row.plus_tolerance)
   const minus = text(row.minus_tolerance)
   const tol = formatTolerance(row)

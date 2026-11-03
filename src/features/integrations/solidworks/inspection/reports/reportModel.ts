@@ -25,27 +25,246 @@ function numberSegment(value: string | null | undefined): string {
     .replace(/^_+|_+$/g, '')
 }
 
-const IR_SUFFIX = /-IR(\d+)$/i
+/** Default report number pattern: `BR-103849-201_RevA_IRv3`. */
+export const DEFAULT_REPORT_NUMBER_PATTERN = '{partNumber}_Rev{rev}_IRv{n}'
+
+/** Tokens a report number pattern may use, in the order the settings list them. */
+export const REPORT_NUMBER_TOKENS = ['partNumber', 'rev', 'version', 'drawing', 'date', 'n'] as const
+export type ReportNumberToken = (typeof REPORT_NUMBER_TOKENS)[number]
+
+/** Where `{n}` counts: over every report of the drawing, or restarting for each revision. */
+export type ReportSequenceScope = 'drawing' | 'revision'
+
+/** The organization's report naming (`organization.settings.inspection_reports`), defaults applied. */
+export interface ReportNaming {
+  numberPattern: string
+  sequenceScope: ReportSequenceScope
+  includeLogo: boolean
+}
+
+export const DEFAULT_REPORT_NAMING: ReportNaming = {
+  numberPattern: DEFAULT_REPORT_NUMBER_PATTERN,
+  sequenceScope: 'drawing',
+  includeLogo: true,
+}
+
+/** Longest pattern kept; anything longer is cut (a report number is also a file name). */
+export const MAX_PATTERN_LENGTH = 200
+/** Longest report number produced. */
+export const MAX_REPORT_NUMBER_LENGTH = 120
+
+/** Read the stored setting; anything missing or malformed takes the default. */
+export function reportNamingFromSettings(raw: unknown): ReportNaming {
+  const value = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
+  const pattern = typeof value.number_pattern === 'string' ? value.number_pattern.trim().slice(0, MAX_PATTERN_LENGTH) : ''
+  return {
+    numberPattern: pattern || DEFAULT_REPORT_NUMBER_PATTERN,
+    sequenceScope: value.sequence_scope === 'revision' ? 'revision' : 'drawing',
+    includeLogo: value.include_logo !== false,
+  }
+}
+
+/** Whether the pattern numbers its reports (`{n}`); without it a suffix keeps numbers unique. */
+export function patternHasSequence(pattern: string): boolean {
+  return /\{n\}/i.test(pattern)
+}
+
+/** Tokens in the pattern that are not known (shown as a warning in the settings). */
+export function unknownPatternTokens(pattern: string): string[] {
+  const known = new Set<string>(REPORT_NUMBER_TOKENS.map((tok) => tok.toLowerCase()))
+  const out: string[] = []
+  for (const match of pattern.matchAll(/\{([^{}]*)\}/g)) {
+    const name = match[1].trim()
+    if (!known.has(name.toLowerCase()) && !out.includes(name)) out.push(name)
+  }
+  return out
+}
+
+export type ReportNumberValues = Record<ReportNumberToken, string>
+
+/** `YYYY-MM-DD` in local time, for `{date}`. */
+export function reportDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
 
 /**
- * The next report number of a drawing: `<part>-<rev>-IR<n>`, where n is one more than the highest
- * `IR<n>` any report of the drawing already carries (so numbers never repeat, whatever the
- * revision). Falls back to the drawing name when the version has no part number.
+ * Fill a report number pattern. Token values lose characters a file name cannot hold; unknown
+ * tokens stay as typed (minus braces). The result is safe as a file name, with runs of `_` from
+ * empty values collapsed, and never empty.
  */
-export function nextReportNumber(
-  partNumber: string | null | undefined,
+export function formatReportNumber(pattern: string, values: ReportNumberValues): string {
+  const byName = new Map<string, string>(
+    REPORT_NUMBER_TOKENS.map((tok) => [tok.toLowerCase(), numberSegment(values[tok])]),
+  )
+  const filled = (pattern || DEFAULT_REPORT_NUMBER_PATTERN).replace(/\{([^{}]*)\}/g, (_all, name: string) => {
+    const known = byName.get(name.trim().toLowerCase())
+    return known ?? name
+  })
+  const cleaned = Array.from(filled)
+    .filter((ch) => ch.charCodeAt(0) >= 32)
+    .join('')
+    .replace(/[\\/:*?"<>|\s]+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, MAX_REPORT_NUMBER_LENGTH)
+  return cleaned || values.n || '1'
+}
+
+/** A trailing `IR<n>` / `IRv<n>` of a report number from before `sequence` was stored. */
+const LEGACY_SEQUENCE = /IRv?(\d+)$/i
+
+/** A report's place in its drawing's sequence: the stored `sequence`, else parsed from the number. */
+export function reportSequence(report: { reportNumber: string | null; sequence?: number | null }): number | null {
+  if (typeof report.sequence === 'number' && Number.isFinite(report.sequence)) return report.sequence
+  const match = report.reportNumber ? LEGACY_SEQUENCE.exec(report.reportNumber.trim()) : null
+  return match ? Number(match[1]) : null
+}
+
+function sameRevision(a: string | null | undefined, b: string | null | undefined): boolean {
+  return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+}
+
+/**
+ * `{n}` of the next report: one more than the highest sequence in scope. Scope `drawing` counts
+ * every report of the drawing; `revision` only reports of versions with the same revision (a
+ * report whose version is unknown is left out, so its number is never assumed).
+ */
+export function nextReportSequence(
+  reports: ReadonlyArray<{ reportNumber: string | null; sequence?: number | null; fileVersionId: string }>,
+  scope: ReportSequenceScope,
   revision: string | null | undefined,
-  drawingName: string,
-  existingNumbers: ReadonlyArray<string | null>,
-): string {
-  const part = numberSegment(partNumber) || numberSegment(drawingName.replace(/\.[^.]+$/, '')) || 'DRAWING'
-  const rev = numberSegment(revision)
+  revisionOfVersion: ReadonlyMap<string, string | null>,
+): number {
   let highest = 0
-  for (const number of existingNumbers) {
-    const match = number ? IR_SUFFIX.exec(number) : null
-    if (match) highest = Math.max(highest, Number(match[1]))
+  for (const report of reports) {
+    if (scope === 'revision') {
+      if (!revisionOfVersion.has(report.fileVersionId)) continue
+      if (!sameRevision(revisionOfVersion.get(report.fileVersionId), revision)) continue
+    }
+    const n = reportSequence(report)
+    if (n !== null) highest = Math.max(highest, n)
   }
-  return `${part}${rev ? `-${rev}` : ''}-IR${highest + 1}`
+  return highest + 1
+}
+
+/**
+ * The next report number and its sequence. Report numbers are unique per drawing (and are file
+ * names), so a number another report already has moves on to the next `n`; a pattern without
+ * `{n}` gets `_<n>` appended once its plain number is taken. Bounded by the number of reports.
+ */
+export function nextReportName(
+  pattern: string,
+  values: Omit<ReportNumberValues, 'n'>,
+  startSequence: number,
+  existingNumbers: ReadonlyArray<string | null>,
+): { reportNumber: string; sequence: number } {
+  const taken = new Set(existingNumbers.filter((n): n is string => !!n).map((n) => n.toLowerCase()))
+  const hasN = patternHasSequence(pattern)
+  const limit = startSequence + taken.size + 1
+  for (let n = startSequence; n <= limit; n++) {
+    const base = formatReportNumber(pattern, { ...values, n: String(n) })
+    const candidate = hasN || (n === startSequence && !taken.has(base.toLowerCase())) ? base : `${base}_${n}`
+    if (!taken.has(candidate.toLowerCase())) return { reportNumber: candidate, sequence: n }
+  }
+  // Unreachable: more candidates were tried than numbers exist.
+  const n = limit + 1
+  return { reportNumber: `${formatReportNumber(pattern, { ...values, n: String(n) })}_${n}`, sequence: n }
+}
+
+// ---------------------------------------------------------------------------
+// Part number, description and revision of a report
+// ---------------------------------------------------------------------------
+
+export interface ReportIdentity {
+  partNumber: string | null
+  description: string | null
+  revision: string | null
+}
+
+function filled(value: string | null | undefined): string | null {
+  const v = (value ?? '').trim()
+  return v ? v : null
+}
+
+/**
+ * Each field from the first source that has it: the drawing version, then the file's current row,
+ * then the model the drawing references at that version. Blank stays blank (never guessed).
+ */
+export function resolveReportIdentity(
+  ...sources: ReadonlyArray<Partial<ReportIdentity> | null | undefined>
+): ReportIdentity {
+  const pick = (key: keyof ReportIdentity): string | null => {
+    for (const source of sources) {
+      const v = filled(source?.[key])
+      if (v) return v
+    }
+    return null
+  }
+  return { partNumber: pick('partNumber'), description: pick('description'), revision: pick('revision') }
+}
+
+/** Whether a later source is needed for any field. */
+export function identityIncomplete(identity: ReportIdentity): boolean {
+  return !identity.partNumber || !identity.description || !identity.revision
+}
+
+/** Values of the report number tokens. Part number falls back to the drawing's base name. */
+export function reportNumberValues(
+  identity: ReportIdentity,
+  drawingName: string,
+  version: number,
+  date: Date,
+): Omit<ReportNumberValues, 'n'> {
+  const drawing = drawingName.replace(/\.[^.]+$/, '')
+  return {
+    partNumber: identity.partNumber || drawing || 'DRAWING',
+    rev: identity.revision ?? '',
+    version: String(version),
+    drawing,
+    date: reportDate(date),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Regenerate
+// ---------------------------------------------------------------------------
+
+/** The newest checked-in version, when it is newer than the report's own. */
+export function newerVersionThan(
+  report: Pick<InspectionReport, 'fileVersionId'>,
+  versions: readonly VersionInfo[],
+): VersionInfo | null {
+  const own = versions.find((v) => v.id === report.fileVersionId)
+  const latest = versions.reduce<VersionInfo | null>((best, v) => (!best || v.version > best.version ? v : best), null)
+  if (!latest || latest.id === report.fileVersionId) return null
+  if (own && latest.version <= own.version) return null
+  return latest
+}
+
+/**
+ * The template a regenerate uses: the report's organization template at its current revision when
+ * it is still live, else a built-in of the same name, else the default.
+ */
+export function regenerateTemplateChoice(
+  report: Pick<InspectionReport, 'templateId' | 'templateName'>,
+  choices: readonly TemplateChoice[],
+): TemplateChoice | null {
+  if (report.templateId) {
+    const same = choices.find((c) => c.kind === 'org' && c.template.id === report.templateId)
+    if (same) return same
+  } else if (report.templateName) {
+    const same = choices.find((c) => c.kind === 'builtin' && c.name === report.templateName)
+    if (same) return same
+  }
+  return defaultTemplateChoice(choices)
+}
+
+/** Path of the report workbook next to a drawing: the drawing's folder, the report number as name. */
+export function pathNextTo(drawingPath: string, fileName: string): string {
+  const cut = Math.max(drawingPath.lastIndexOf('\\'), drawingPath.lastIndexOf('/'))
+  if (cut < 0) return fileName
+  return `${drawingPath.slice(0, cut + 1)}${fileName}`
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +363,16 @@ export function reportActions(status: InspectionReportStatus): ReportActions {
     accept: status === 'returned' || status === 'rejected',
     reject: status === 'returned' || status === 'accepted',
   }
+}
+
+/** The one action a report's row offers beside Open: the step its status is waiting for. */
+export type ReportNextStep = 'markSent' | 'importResults' | 'accept'
+
+export function nextReportStep(status: InspectionReportStatus): ReportNextStep | null {
+  if (status === 'issued') return 'markSent'
+  if (status === 'sent') return 'importResults'
+  if (status === 'returned') return 'accept'
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -366,4 +595,28 @@ export function importVerdict(
     return { blocked: true, reason: 'other_version', reportIdMismatch: parsed.reportId !== report.id }
   }
   return { blocked: false, reason: null, reportIdMismatch: parsed.reportId !== report.id }
+}
+
+// ---------------------------------------------------------------------------
+// Generate checks
+// ---------------------------------------------------------------------------
+
+export interface WorkingCopyState {
+  /** The drawing is checked out by the signed-in user. */
+  checkedOutByMe: boolean
+  /** The local drawing differs from the checked-in version. */
+  modified: boolean
+  /** Rows in the live inspection table, or null when unknown. */
+  liveRows: number | null
+  /** Rows the version the report is built from has. */
+  versionRows: number
+}
+
+/**
+ * Whether the user has drawing or inspection-table changes that the checked-in version does not
+ * hold: the report is built from the version, so they are not in it.
+ */
+export function hasChangesNotCheckedIn(state: WorkingCopyState): boolean {
+  if (!state.checkedOutByMe) return false
+  return state.modified || (state.liveRows !== null && state.liveRows !== state.versionRows)
 }

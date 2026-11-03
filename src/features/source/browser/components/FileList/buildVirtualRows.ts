@@ -1,7 +1,11 @@
 import { resolvePartNumber, resolvedText } from '@/lib/metadata/overlay'
 import type { LocalFile } from '@/stores/pdmStore'
 import type { ConfigBomItem, DrawingRefItem } from '@/stores/types'
+import type { FileOutputVersion, OutputJob } from '@/stores/slices/outputsSlice'
 import type { InspectionReport } from '@/types/inspectionReports'
+import type { VersionOutput } from '@/types/versionOutputs'
+
+import { fileOutputEntries } from '@/features/source/outputs/outputRowModel'
 
 import { getFileStatus } from '../../hooks/useFileStatus'
 import type { ConfigWithDepth } from '../../types'
@@ -43,6 +47,35 @@ export interface BuildVirtualRowsOptions {
   expandedDrawingRefFiles: ReadonlySet<string>
   /** Inspection reports per drawing file id (store `drawingInspectionReports`). */
   drawingInspectionReports?: ReadonlyMap<string, InspectionReport[]>
+  /** Version outputs (store `fileOutputVersions`, `versionOutputs`, `outputJobs`). */
+  outputs?: {
+    versions: ReadonlyMap<string, FileOutputVersion>
+    byVersion: ReadonlyMap<string, VersionOutput[]>
+    jobs: ReadonlyMap<string, OutputJob>
+    /** Desktop and allowed to generate: show "Generate PDF/STEP" ghost rows. */
+    canGenerate: boolean
+  }
+}
+
+/** The outputs of an expanded file's latest version (and ghost / in-progress rows). */
+export function appendFileOutputRows(
+  rows: VirtualRow[],
+  file: LocalFile,
+  outputs: BuildVirtualRowsOptions['outputs'],
+): void {
+  const fileId = file.pdmData?.id
+  if (!outputs || !fileId) return
+  const latest = outputs.versions.get(fileId)
+  const current = latest && latest.version === file.pdmData?.version ? latest : undefined
+  const entries = fileOutputEntries(file, {
+    latest: current,
+    outputs: current ? outputs.byVersion.get(current.fileVersionId) : undefined,
+    jobs: outputs.jobs,
+    canGenerate: outputs.canGenerate,
+  })
+  for (const entry of entries) {
+    rows.push({ type: 'file-output', file, entry, version: current?.version ?? null })
+  }
 }
 
 /** A drawing's reports (newest first, at most `MAX_DRAWING_REPORT_ROWS`), then a "n more" row. */
@@ -160,6 +193,7 @@ export function buildVirtualRows({
   drawingRefData,
   expandedDrawingRefFiles,
   drawingInspectionReports,
+  outputs,
 }: BuildVirtualRowsOptions): { rows: VirtualRow[]; selectableRows: SelectableRow[] } {
   const rows: VirtualRow[] = []
   const selectableRows: SelectableRow[] = []
@@ -243,6 +277,7 @@ export function buildVirtualRows({
         }
       })
 
+      appendFileOutputRows(rows, file, outputs)
       const drawingId = file.pdmData?.id
       if (drawingId) appendDrawingReportRows(rows, file, drawingInspectionReports?.get(drawingId))
     }
@@ -373,6 +408,10 @@ export function buildVirtualRows({
         }
       }
     })
+
+    // A part's or assembly's outputs come after its configurations, as a drawing's come after its
+    // referenced files.
+    appendFileOutputRows(rows, file, outputs)
   })
 
   return { rows, selectableRows }

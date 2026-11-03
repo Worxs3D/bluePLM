@@ -15,7 +15,11 @@ import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPan
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
-import { FileBox, Layers, File, Loader2, FilePen, ArrowLeft } from 'lucide-react'
+import { FileBox, Layers, File, Loader2, FilePen, ArrowLeft, ExternalLink } from 'lucide-react'
+import { t } from '@/lib/i18n'
+import { hasDesktop } from '@/lib/platform'
+import { requestInspectionPopoutClose } from '@/features/integrations/solidworks/inspection/popout/useInspectionPopoutHost'
+import { RightPanelTabMenu } from './RightPanelTabMenu'
 
 // Component to load OS icon for files
 function RightPanelIcon({ file, size = 24 }: { file: LocalFile; size?: number }) {
@@ -82,6 +86,11 @@ export function RightPanel() {
     })),
   )
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
+  const inspectionPoppedOut = usePDMStore((s) => s.inspectionPopoutOpen)
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number } | null>(null)
+  const closeTabMenu = useCallback(() => setTabMenu(null), [])
+  // Only the desktop can open another window (the main process creates it).
+  const canPopOut = hasDesktop() && !!window.electronAPI?.openTabWindow
   const extensionPanelWorkspace = usePDMStore((s) =>
     s.extensionRightPanel && s.extensionRightPanel === s.activeView
       ? (s.extensionWorkspaces.find((w) => w.id === s.extensionRightPanel && w.RightPanel) ?? null)
@@ -214,21 +223,34 @@ export function RightPanel() {
       >
         <div className="flex">
           {rightPanelTabs.map((tab, index) => (
-            <DraggableTab
+            <div
               key={tab}
-              id={tab}
-              label={tab.charAt(0).toUpperCase() + tab.slice(1)}
-              active={rightPanelTab === tab}
-              location="right"
-              index={index}
-              onClick={() => setRightPanelTab(tab)}
-              onDoubleClick={() => moveTabToBottom(tab)}
-              onDragStart={() => {}}
-              onDragEnd={() => {}}
-              onReorder={handleTabReorder}
-              tooltip="Drag to reorder or move to bottom panel"
-            />
+              className="flex"
+              onContextMenu={
+                tab === 'inspection' && canPopOut
+                  ? (e) => {
+                      e.preventDefault()
+                      setTabMenu({ x: e.clientX, y: e.clientY })
+                    }
+                  : undefined
+              }
+            >
+              <DraggableTab
+                id={tab}
+                label={tab.charAt(0).toUpperCase() + tab.slice(1)}
+                active={rightPanelTab === tab}
+                location="right"
+                index={index}
+                onClick={() => setRightPanelTab(tab)}
+                onDoubleClick={() => moveTabToBottom(tab)}
+                onDragStart={() => {}}
+                onDragEnd={() => {}}
+                onReorder={handleTabReorder}
+                tooltip="Drag to reorder or move to bottom panel"
+              />
+            </div>
           ))}
+          {tabMenu && <RightPanelTabMenu position={tabMenu} onClose={closeTabMenu} />}
         </div>
         <button
           onClick={() => rightPanelTab && moveTabToBottom(rightPanelTab)}
@@ -339,7 +361,22 @@ export function RightPanel() {
               {rightPanelTab === 'vendors' && <VendorsTab file={file} />}
 
               {rightPanelTab === 'inspection' &&
-                ext === '.slddrw' && <InspectionTab file={file} />}
+                ext === '.slddrw' &&
+                (inspectionPoppedOut ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-8 text-sm text-plm-fg-muted text-center">
+                    <ExternalLink size={22} className="opacity-60" />
+                    {t('source.inspection.popoutPlaceholder')}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={requestInspectionPopoutClose}
+                    >
+                      {t('source.inspection.popoutBringBack')}
+                    </button>
+                  </div>
+                ) : (
+                  <InspectionTab file={file} />
+                ))}
             </>
           )
         )}

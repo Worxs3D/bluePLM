@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, ArchiveRestore, Download, FileUp, Loader2, Pencil, RefreshCw, Star, Upload } from 'lucide-react'
+import { Archive, ArchiveRestore, Download, FileSpreadsheet, FileUp, Loader2, Pencil, RefreshCw, ScanSearch, Star, Upload } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/core/Dialog'
-import { Badge, Button, Switch, type BadgeTone } from '@/components/core/ui'
+import { ActionBar, Badge, Button, Switch, type BadgeTone, type ToolbarAction } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { analyzeTemplate, builtInTemplates } from '@/lib/inspection/excel'
 import { BUILT_IN_DESCRIPTION_KEYS, BUILT_IN_NAME_KEYS } from '@/lib/inspection/issueText'
@@ -22,9 +22,10 @@ import type { InspectionTemplate } from '@/types/inspectionReports'
 import type { Json } from '@/types/supabase'
 
 import { SettingsGroup, SettingsPage, SettingsSection } from '../../components/ui'
+import { ReportNamingSettings } from './ReportNamingSettings'
 import { TemplateEditor, type EditorMode, type EditorValues } from './TemplateEditor'
 import { TemplateTokenReference } from './TemplateTokenReference'
-import { analysisStatus, nameFromFileName, parseLayout, type AnalysisStatus } from './templateModel'
+import { analysisStatus, layoutSummary, nameFromFileName, parseLayout, type AnalysisStatus } from './templateModel'
 
 const STATUS_TONE: Record<AnalysisStatus, BadgeTone> = {
   ready: 'success',
@@ -168,6 +169,20 @@ export function InspectionTemplatesSettings() {
       await saveWorkbook(template.originalFilename || `${template.name}.xlsx`, bytes)
     })
 
+  /** Read the stored workbook again and save what the analysis finds (a template from before analysis, or after an engine update). */
+  const analyse = (template: InspectionTemplate) =>
+    void act(template.id, async () => {
+      if (!orgId) return
+      const bytes = await downloadInspectionContent(orgId, template.storageHash)
+      const layout = await analyzeTemplate(bytes)
+      await updateInspectionTemplate(template.id, { layout: layoutJson(layout) })
+      addToast(
+        layout.errors.length > 0 ? 'warning' : 'success',
+        t('source.inspection.tplAnalysed', { name: template.name }),
+      )
+      await load()
+    })
+
   const downloadStarter = (key: string) =>
     void act(`builtin:${key}`, async () => {
       const builtIn = (await builtInTemplates()).find((b) => b.key === key)
@@ -247,110 +262,136 @@ export function InspectionTemplatesSettings() {
               const layout = parseLayout(template.layout)
               const status = analysisStatus(layout)
               const busy = busyId === template.id
+              const summary = layout ? layoutSummary(layout) : null
+              // Same slots on every row: the template's next step (Analyse, else Make default),
+              // then Download; the rest is in the menu.
+              const analyseAction: ToolbarAction = {
+                id: 'analyse',
+                label: t(status === 'unknown' ? 'source.inspection.tplAnalyse' : 'source.inspection.tplAnalyseAgain'),
+                icon: <ScanSearch size={13} />,
+                onClick: () => analyse(template),
+                disabled: busy,
+                loading: busy && status === 'unknown',
+                title: t('source.inspection.tplAnalyseTitle'),
+              }
+              const defaultAction: ToolbarAction = {
+                id: 'default',
+                label: t('source.inspection.tplSetDefault'),
+                icon: <Star size={13} />,
+                onClick: () =>
+                  void act(template.id, async () => {
+                    await setDefaultInspectionTemplate(template.id)
+                    await load()
+                  }),
+                disabled: busy,
+              }
+              const downloadAction: ToolbarAction = {
+                id: 'download',
+                label: t('source.inspection.tplDownloadShort'),
+                icon: <Download size={13} />,
+                onClick: () => download(template),
+                disabled: busy,
+                title: t('source.inspection.tplDownload'),
+              }
+              const live = isAdmin && !template.archivedAt
+              const next = !live ? null : status === 'unknown' ? analyseAction : !template.isDefault ? defaultAction : null
+              const actions: ToolbarAction[] = [...(next ? [next] : []), downloadAction]
+              if (live) {
+                if (next !== analyseAction) actions.push(analyseAction)
+                if (next !== defaultAction && !template.isDefault) actions.push(defaultAction)
+                actions.push(
+                  {
+                    id: 'rename',
+                    label: t('source.inspection.tplRename'),
+                    icon: <Pencil size={13} />,
+                    onClick: () =>
+                      setEditor({
+                        kind: 'edit',
+                        templateId: template.id,
+                        name: template.name,
+                        description: template.description,
+                      }),
+                    disabled: busy || !!editor,
+                  },
+                  {
+                    id: 'replace',
+                    label: t('source.inspection.tplReplace'),
+                    icon: <FileUp size={13} />,
+                    onClick: () => startReplace(template),
+                    disabled: busy || !!editor,
+                  },
+                  {
+                    id: 'archive',
+                    label: t('source.inspection.tplArchive'),
+                    icon: <Archive size={13} />,
+                    onClick: () => setArchiving(template),
+                    disabled: busy,
+                  },
+                )
+              }
+              if (isAdmin && template.archivedAt) {
+                actions.push({
+                  id: 'restore',
+                  label: t('source.inspection.tplRestore'),
+                  icon: <ArchiveRestore size={13} />,
+                  onClick: () =>
+                    void act(template.id, async () => {
+                      await updateInspectionTemplate(template.id, { archivedAt: null })
+                      await load()
+                    }),
+                  disabled: busy,
+                })
+              }
               return (
-                <div key={template.id} className="flex items-center gap-3 py-2.5">
+                <div key={template.id} className="flex items-center gap-3 py-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ui-success/10 text-ui-success">
+                    <FileSpreadsheet size={18} />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-[14px] text-ui-fg">{template.name}</span>
-                      <span className="text-[12px] text-ui-fg-secondary">
-                        {t('source.inspection.tplRevision', { revision: template.revision })}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[14px] font-medium text-ui-fg" title={template.name}>
+                        {template.name}
                       </span>
-                      {template.isDefault && <Badge tone="accent">{t('source.inspection.tplDefault')}</Badge>}
+                      {template.isDefault && (
+                        <Badge tone="accent" icon={<Star size={11} />}>
+                          {t('source.inspection.tplDefault')}
+                        </Badge>
+                      )}
                       {template.archivedAt && <Badge>{t('source.inspection.tplArchived')}</Badge>}
-                      <Badge tone={STATUS_TONE[status]}>
+                      <Badge
+                        tone={STATUS_TONE[status]}
+                        title={status === 'unknown' ? t('source.inspection.tplAnalyseTitle') : undefined}
+                      >
                         {status === 'warnings'
                           ? t('source.inspection.tplStatus_warnings', { count: layout?.warnings.length ?? 0 })
                           : t(`source.inspection.tplStatus_${status}`)}
                       </Badge>
                     </div>
-                    {(template.description || template.originalFilename) && (
-                      <div className="truncate text-[12px] text-ui-fg-secondary">
-                        {[template.description, template.originalFilename].filter(Boolean).join(' · ')}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-shrink-0 items-center gap-0.5">
-                    {busy && <Loader2 size={14} className="mr-1 animate-spin text-ui-fg-secondary" />}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<Download size={14} />}
-                      onClick={() => download(template)}
-                      disabled={busy}
-                      title={t('source.inspection.tplDownload')}
-                      aria-label={t('source.inspection.tplDownload')}
-                    />
-                    {isAdmin && !template.archivedAt && (
-                      <>
-                        {!template.isDefault && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={<Star size={14} />}
-                            onClick={() =>
-                              void act(template.id, async () => {
-                                await setDefaultInspectionTemplate(template.id)
-                                await load()
-                              })
-                            }
-                            disabled={busy}
-                            title={t('source.inspection.tplSetDefault')}
-                            aria-label={t('source.inspection.tplSetDefault')}
-                          />
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<Pencil size={14} />}
-                          onClick={() =>
-                            setEditor({
-                              kind: 'edit',
-                              templateId: template.id,
-                              name: template.name,
-                              description: template.description,
+                    <div
+                      className="truncate text-[12px] text-ui-fg-secondary"
+                      title={[template.description, template.originalFilename].filter(Boolean).join('\n') || undefined}
+                    >
+                      {[
+                        t('source.inspection.tplRevision', { revision: template.revision }),
+                        summary
+                          ? t('source.inspection.tplSummaryLine', {
+                              fields: summary.fields.length,
+                              results: summary.resultCount,
                             })
-                          }
-                          disabled={busy || !!editor}
-                          title={t('source.inspection.tplRename')}
-                          aria-label={t('source.inspection.tplRename')}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<FileUp size={14} />}
-                          onClick={() => startReplace(template)}
-                          disabled={busy || !!editor}
-                          title={t('source.inspection.tplReplace')}
-                          aria-label={t('source.inspection.tplReplace')}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<Archive size={14} />}
-                          onClick={() => setArchiving(template)}
-                          disabled={busy}
-                          title={t('source.inspection.tplArchive')}
-                          aria-label={t('source.inspection.tplArchive')}
-                        />
-                      </>
-                    )}
-                    {isAdmin && template.archivedAt && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={<ArchiveRestore size={14} />}
-                        onClick={() =>
-                          void act(template.id, async () => {
-                            await updateInspectionTemplate(template.id, { archivedAt: null })
-                            await load()
-                          })
-                        }
-                        disabled={busy}
-                        title={t('source.inspection.tplRestore')}
-                        aria-label={t('source.inspection.tplRestore')}
-                      />
-                    )}
+                          : null,
+                        template.description,
+                        template.originalFilename,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
                   </div>
+                  <ActionBar
+                    actions={actions}
+                    maxVisible={next ? 2 : 1}
+                    moreLabel={t('source.inspection.moreActions')}
+                    className="max-w-[60%]"
+                  />
                 </div>
               )
             })
@@ -362,12 +403,17 @@ export function InspectionTemplatesSettings() {
         </SettingsGroup>
       </SettingsSection>
 
+      <ReportNamingSettings />
+
       <SettingsSection title={t('source.inspection.tplStartersTitle')} description={t('source.inspection.tplStartersIntro')}>
         <SettingsGroup>
           {Object.keys(BUILT_IN_NAME_KEYS).map((key) => (
-            <div key={key} className="flex items-center gap-3 py-2.5">
+            <div key={key} className="flex items-center gap-3 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ui-field text-ui-fg-secondary">
+                <FileSpreadsheet size={18} />
+              </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] text-ui-fg">{t(BUILT_IN_NAME_KEYS[key])}</div>
+                <div className="text-[14px] font-medium text-ui-fg">{t(BUILT_IN_NAME_KEYS[key])}</div>
                 <div className="text-[12px] text-ui-fg-secondary">{t(BUILT_IN_DESCRIPTION_KEYS[key])}</div>
               </div>
               <Button

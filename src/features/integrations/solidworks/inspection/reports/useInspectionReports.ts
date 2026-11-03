@@ -1,36 +1,17 @@
 /**
  * Data of the Reports view: the drawing's reports, its versions and the organization's templates.
- * Every change to the report list is written to the store's `drawingInspectionReports` as well, so
- * the file list's drawing expansion shows the same reports.
+ * The report list lives in the store's `drawingInspectionReports`: the view writes to it after a
+ * generate, import or status change, and follows it when a command elsewhere (the file context
+ * menu, a report row in the file list) changes it, so every surface shows the same reports.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { log } from '@/lib/logger'
-import { getFileVersions, listInspectionReports, listInspectionTemplates } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { InspectionReport, InspectionTemplate } from '@/types/inspectionReports'
 
+import { loadReportContext, publishReports, type ReportContext } from './reportCommands'
 import type { VersionInfo } from './reportModel'
-
-interface FileVersionRow {
-  id: string
-  version: number
-  revision: string | null
-  part_number: string | null
-  description: string | null
-  created_at: string | null
-}
-
-export function toVersionInfo(row: FileVersionRow): VersionInfo {
-  return {
-    id: row.id,
-    version: row.version,
-    revision: row.revision ?? null,
-    partNumber: row.part_number ?? null,
-    description: row.description ?? null,
-    createdAt: row.created_at ?? null,
-  }
-}
 
 export interface InspectionReportsData {
   reports: InspectionReport[]
@@ -39,6 +20,8 @@ export interface InspectionReportsData {
   loading: boolean
   error: string | null
   reload: () => Promise<void>
+  /** The loaded reports, versions and templates, for the shared commands. */
+  context: ReportContext
   /** Replace one report in the list (after an update) and publish the list. */
   replaceReport: (report: InspectionReport) => void
   /** Add a new report and publish the list. */
@@ -46,49 +29,33 @@ export interface InspectionReportsData {
   removeReport: (id: string) => void
 }
 
+const NO_REPORTS: InspectionReport[] = []
+
 export function useInspectionReports(fileId: string | undefined, orgId: string | undefined): InspectionReportsData {
-  const setDrawingInspectionReports = usePDMStore((s) => s.setDrawingInspectionReports)
   const setReportVersionNumbers = usePDMStore((s) => s.setReportVersionNumbers)
-  const [reports, setReports] = useState<InspectionReport[]>([])
+  const stored = usePDMStore((s) => (fileId ? s.drawingInspectionReports.get(fileId) : undefined))
   const [versions, setVersions] = useState<VersionInfo[]>([])
   const [templates, setTemplates] = useState<InspectionTemplate[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
-  const reportsRef = useRef<InspectionReport[]>([])
 
-  const publish = useCallback(
-    (list: InspectionReport[]) => {
-      if (!fileId) return
-      setDrawingInspectionReports([fileId], new Map([[fileId, list]]))
-    },
-    [fileId, setDrawingInspectionReports],
-  )
+  const reports = loaded ? (stored ?? NO_REPORTS) : NO_REPORTS
 
   const reload = useCallback(async () => {
-    if (!fileId) return
+    if (!fileId || !orgId) return
     const mine = ++generation.current
     setLoading(true)
     setError(null)
     try {
-      const [list, versionResult, templateList] = await Promise.all([
-        listInspectionReports(fileId),
-        getFileVersions(fileId),
-        orgId ? listInspectionTemplates(orgId).catch((err: unknown) => {
-          // Before schema 504, or no access: generation still offers the built-ins.
-          log.warn('[InspectionReports]', 'Templates unavailable', { error: String(err) })
-          return [] as InspectionTemplate[]
-        }) : Promise.resolve([] as InspectionTemplate[]),
-      ])
+      const context = await loadReportContext(fileId, orgId)
       if (mine !== generation.current) return
-      if (versionResult.error) throw new Error(versionResult.error.message)
-      reportsRef.current = list
-      setReports(list)
-      const versionList = ((versionResult.versions ?? []) as FileVersionRow[]).map(toVersionInfo)
-      setVersions(versionList)
-      setReportVersionNumbers(new Map(versionList.map((v) => [v.id, v.version])))
-      setTemplates(templateList)
-      publish(list)
+      setVersions(context.versions)
+      setReportVersionNumbers(new Map(context.versions.map((v) => [v.id, v.version])))
+      setTemplates(context.templates)
+      publishReports(fileId, context.reports)
+      setLoaded(true)
     } catch (err) {
       if (mine !== generation.current) return
       const message = err instanceof Error ? err.message : String(err)
@@ -97,30 +64,60 @@ export function useInspectionReports(fileId: string | undefined, orgId: string |
     } finally {
       if (mine === generation.current) setLoading(false)
     }
-  }, [fileId, orgId, publish, setReportVersionNumbers])
+  }, [fileId, orgId, setReportVersionNumbers])
 
   useEffect(() => {
-    reportsRef.current = []
-    setReports([])
+    setLoaded(false)
     void reload()
   }, [reload])
 
+  // A report generated elsewhere for a version this list does not have yet means a version was
+  // checked in since the load: read again, once per such version. Also reload when the store
+  // dropped this drawing's entry (its list is bounded).
+  const reloadedFor = useRef(new Set<string>())
+  useEffect(() => {
+    reloadedFor.current = new Set()
+  }, [fileId])
+  useEffect(() => {
+    if (!loaded || loading) return
+    const known = new Set(versions.map((v) => v.id))
+    const unknown = (stored ?? []).map((r) => r.fileVersionId).filter((id) => !known.has(id) && !reloadedFor.current.has(id))
+    const evicted = stored === undefined && !reloadedFor.current.has('')
+    if (unknown.length === 0 && !evicted) return
+    for (const id of unknown) reloadedFor.current.add(id)
+    if (evicted) reloadedFor.current.add('')
+    void reload()
+  }, [stored, loaded, loading, versions, reload])
+
   const update = useCallback(
     (fn: (prev: InspectionReport[]) => InspectionReport[]) => {
-      const next = fn(reportsRef.current)
-      reportsRef.current = next
-      setReports(next)
-      publish(next)
+      if (!fileId) return
+      const current = usePDMStore.getState().drawingInspectionReports.get(fileId) ?? []
+      publishReports(fileId, fn(current))
     },
-    [publish],
+    [fileId],
   )
 
   const replaceReport = useCallback(
     (report: InspectionReport) => update((prev) => prev.map((r) => (r.id === report.id ? report : r))),
     [update],
   )
-  const addReport = useCallback((report: InspectionReport) => update((prev) => [report, ...prev]), [update])
+  const addReport = useCallback(
+    (report: InspectionReport) => update((prev) => [report, ...prev.filter((r) => r.id !== report.id)]),
+    [update],
+  )
   const removeReport = useCallback((id: string) => update((prev) => prev.filter((r) => r.id !== id)), [update])
 
-  return { reports, versions, templates, loading, error, reload, replaceReport, addReport, removeReport }
+  return {
+    reports,
+    versions,
+    templates,
+    loading,
+    error,
+    reload,
+    context: { reports, versions, templates },
+    replaceReport,
+    addReport,
+    removeReport,
+  }
 }

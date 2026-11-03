@@ -11,8 +11,10 @@ export {
   InspectionTemplateError,
   type DrawingPageImage,
   type InspectionReportInput,
+  type ReportLogo,
 } from './generate'
-export { rasterizePdf } from './rasterizePdf'
+export { imageSize } from './place'
+export { rasterizePdf, rasterScale } from './rasterizePdf'
 export {
   readReturnedResults,
   type ReturnedIssue,

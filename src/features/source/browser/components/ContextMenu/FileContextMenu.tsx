@@ -38,6 +38,8 @@ import { NativePreviewContextMenuBackdrop } from './NativePreviewContextMenuBack
 import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
 import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
 import { hasDesktop } from '@/lib/platform'
+import { InspectionReportActions } from './actions/InspectionReportActions'
+import { GenerateOutputActions } from './actions/GenerateOutputActions'
 import { shouldShowExpandableSection, countCollaborationActions } from './utils'
 
 export interface FileContextMenuProps {
@@ -414,6 +416,10 @@ export function FileContextMenu({
             />
           )}
         </ContextMenuGroup>
+
+        <GenerateOutputActions contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
+
+        <InspectionReportActions contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
 
         {/* ===== DELETE ACTIONS (always visible) ===== */}
         <DeleteActions

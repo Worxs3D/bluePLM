@@ -62,6 +62,10 @@ export const createUISlice: StateCreator<
 
   // Initial state - Inspection table columns (persisted)
   inspectionColumnPrefs: null,
+  inspectionShowFilters: false,
+  inspectionAutoSync: true,
+  inspectionDrawingSync: {},
+  inspectionPopoutOpen: false,
 
   // Actions - Clipboard
   setClipboard: (clipboard: Clipboard | null) => set({ clipboard }),
@@ -285,6 +289,11 @@ export const createUISlice: StateCreator<
   setShowSolidworksVersionModal: (show) => set({ showSolidworksVersionModal: show }),
 
   setInspectionColumnPrefs: (inspectionColumnPrefs) => set({ inspectionColumnPrefs }),
+  setInspectionShowFilters: (inspectionShowFilters) => set({ inspectionShowFilters }),
+  setInspectionAutoSync: (inspectionAutoSync) => set({ inspectionAutoSync }),
+  setInspectionPopoutOpen: (inspectionPopoutOpen) => set({ inspectionPopoutOpen }),
+  updateInspectionDrawingSync: (updater) =>
+    set((s) => ({ inspectionDrawingSync: updater(s.inspectionDrawingSync) })),
 
   // Actions - Review preview
 })

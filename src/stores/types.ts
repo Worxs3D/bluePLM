@@ -27,6 +27,7 @@ import type { VaultAuditSlice } from './slices/vaultAuditSlice'
 import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
 import type { InspectionReportsSlice } from './slices/inspectionReportsSlice'
+import type { OutputsSlice } from './slices/outputsSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -243,6 +244,18 @@ export interface PendingMetadataEdit {
   // The pending set as it stood after the edit, so a write can be issued from it without another
   // store read racing a later keystroke.
   pending: PendingMetadata
+}
+
+/** What BluePLM last did to one drawing on this machine (see inspection/drawingSync.ts). */
+export interface InspectionDrawingSyncStamp {
+  /** Content hash the table was last extracted from; null when never extracted (or undone). */
+  extractHash: string | null
+  /** Content hash after the last successful balloon run; null when never ballooned. */
+  balloonHash: string | null
+  /** Service version of the last run. */
+  serviceVersion: string | null
+  /** Epoch ms of the last write, for the bound. */
+  at: number
 }
 
 // Local file info from filesystem
@@ -659,6 +672,14 @@ export interface UISlice {
 
   /** Inspection table column layout of this user (order of column keys, hidden keys); null = default. */
   inspectionColumnPrefs: { order: string[]; hidden: string[] } | null
+  /** Inspection table filter row shown (persisted; hidden by default). */
+  inspectionShowFilters: boolean
+  /** Inspection tab "Auto": extract and balloon when the open drawing changes (persisted; on by default). */
+  inspectionAutoSync: boolean
+  /** Per drawing (file id): what Extract / Balloon last saw, for change detection (persisted, bounded). */
+  inspectionDrawingSync: Record<string, InspectionDrawingSyncStamp>
+  /** The Inspection tab is popped out into its own window (main window only; not persisted). */
+  inspectionPopoutOpen: boolean
 
   // Actions
   toggleSidebar: () => void
@@ -716,6 +737,12 @@ export interface UISlice {
 
   // Inspection table columns
   setInspectionColumnPrefs: (prefs: UISlice['inspectionColumnPrefs']) => void
+  setInspectionShowFilters: (show: boolean) => void
+  setInspectionAutoSync: (auto: boolean) => void
+  setInspectionPopoutOpen: (open: boolean) => void
+  updateInspectionDrawingSync: (
+    updater: (stamps: UISlice['inspectionDrawingSync']) => UISlice['inspectionDrawingSync'],
+  ) => void
 }
 
 export interface SettingsSlice {
@@ -2059,6 +2086,7 @@ export type PDMStoreState = ToastsSlice &
   VaultAuditSlice &
   ReviewsSlice &
   InspectionReportsSlice &
+  OutputsSlice &
   DbUpgradeSlice
 
 // ============================================================================

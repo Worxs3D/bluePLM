@@ -12,6 +12,8 @@ import {
 import type { DrawingRefItem } from '@/stores/types'
 import { t } from '@/lib/i18n'
 
+import { ChildChip, ChildNameCell, ChildText } from './ChildRowParts'
+
 export interface DrawingRefRowProps {
   /** The drawing reference item to display */
   item: DrawingRefItem
@@ -196,81 +198,44 @@ export const DrawingRefRow = memo(function DrawingRefRow({
       {visibleColumns.map((column) => (
         <td key={column.id} style={{ width: column.width }}>
           {column.id === 'name' ? (
-            <div
-              className="flex items-center gap-1.5"
-              style={{
-                minHeight: rowHeight - 8,
-                paddingLeft: `${indentPx}px`,
-              }}
-            >
-              <span className="text-plm-fg-dim text-[10px]">├</span>
-              {/* Expand/collapse chevron when configs available */}
-              {hasConfigs ? (
-                <button
-                  className="flex-shrink-0 p-0 text-plm-fg-muted hover:text-plm-fg-dim"
-                  onClick={onToggleExpand}
-                  title={isExpanded ? 'Collapse configurations' : 'Expand configurations'}
-                >
-                  {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                </button>
-              ) : null}
-              <DrawingRefFileIcon fileType={item.file_type} size={12} />
-              <span className="truncate text-xs text-plm-fg-dim">{item.file_name}</span>
-              {/* Configuration count badge -- shown when multiple configs are referenced */}
-              {hasConfigs && item.configurations!.length > 1 && (
-                <span
-                  className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-plm-bg-light text-plm-fg-muted"
-                  title={`Configurations: ${item.configurations!.join(', ')}`}
-                >
-                  {item.configurations!.length} configs
-                </span>
-              )}
-              {/* Single configuration badge */}
-              {hasConfigs && item.configurations!.length === 1 && (
-                <span
-                  className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-plm-bg-light text-plm-fg-muted"
-                  title={`Configuration: ${item.configurations![0]}`}
-                >
-                  {item.configurations![0]}
-                </span>
-              )}
-              {/* Legacy single config badge (when no configs array, but config field is set) */}
-              {!hasConfigs && item.configuration && (
-                <span
-                  className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-plm-bg-light text-plm-fg-muted"
-                  title={`Configuration: ${item.configuration}`}
-                >
-                  {item.configuration}
-                </span>
-              )}
-            </div>
-          ) : column.id === 'itemNumber' ? (
-            item.part_number ? (
-              <span className="text-[10px] text-plm-fg-dim font-mono">{item.part_number}</span>
-            ) : (
-              <span className="text-plm-fg-dim/50 text-[10px]">—</span>
-            )
-          ) : column.id === 'description' ? (
-            item.description ? (
-              <span className="text-[10px] text-plm-fg-dim truncate">{item.description}</span>
-            ) : (
-              <span className="text-plm-fg-dim/50 text-[10px]">—</span>
-            )
-          ) : column.id === 'revision' ? (
-            item.revision ? (
-              <span className="text-[10px] text-plm-fg-dim">{item.revision}</span>
-            ) : (
-              <span className="text-plm-fg-dim/50 text-[10px]">—</span>
-            )
-          ) : column.id === 'state' ? (
-            item.state ? (
-              <span className="text-[10px] text-plm-fg-dim">{item.state}</span>
-            ) : (
-              <span className="text-plm-fg-dim/50 text-[10px]">—</span>
-            )
-          ) : (
-            <span className="text-plm-fg-dim/50 text-[10px]">—</span>
-          )}
+            <ChildNameCell
+              rowHeight={rowHeight}
+              indentPx={indentPx}
+              icon={<DrawingRefFileIcon fileType={item.file_type} size={14} />}
+              label={item.file_name}
+              title={item.file_name}
+              before={
+                hasConfigs ? (
+                  <button
+                    className="flex-shrink-0 p-0 text-plm-fg-muted hover:text-plm-fg-dim"
+                    onClick={onToggleExpand}
+                    title={isExpanded ? 'Collapse configurations' : 'Expand configurations'}
+                  >
+                    {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  </button>
+                ) : null
+              }
+              after={
+                hasConfigs && item.configurations!.length > 1 ? (
+                  <ChildChip title={`Configurations: ${item.configurations!.join(', ')}`}>
+                    {item.configurations!.length} configs
+                  </ChildChip>
+                ) : hasConfigs && item.configurations!.length === 1 && item.configurations![0] !== 'Default' ? (
+                  <ChildChip title={`Configuration: ${item.configurations![0]}`}>{item.configurations![0]}</ChildChip>
+                ) : !hasConfigs && item.configuration && item.configuration !== 'Default' ? (
+                  <ChildChip title={`Configuration: ${item.configuration}`}>{item.configuration}</ChildChip>
+                ) : null
+              }
+            />
+          ) : column.id === 'itemNumber' && item.part_number ? (
+            <ChildText>{item.part_number}</ChildText>
+          ) : column.id === 'description' && item.description ? (
+            <ChildText>{item.description}</ChildText>
+          ) : column.id === 'revision' && item.revision ? (
+            <ChildText>{item.revision}</ChildText>
+          ) : column.id === 'state' && item.state ? (
+            <ChildText>{item.state}</ChildText>
+          ) : null}
         </td>
       ))}
     </tr>
