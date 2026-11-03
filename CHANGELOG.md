@@ -26,6 +26,11 @@ Schema 507. No API or service change.
 
 ### Changed
 
+- **Settings opens in its own window.** Move it, resize it, put it on another screen, and keep
+  working in the main window behind it; it reopens where it was last closed (on a screen that is
+  still attached). A confirmation asked by a command started from Settings appears in the
+  settings window. On the web, Settings is a floating panel that can be dragged by its header and
+  resized from any edge, with no backdrop, so the app behind it stays usable.
 - **Output and report rows show the drawing's item number, revision and description**, as the
   drawing's own row shows them. The report's type detail, title and results move to the tooltip,
   with the results also as a chip after the number.

@@ -25,6 +25,7 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 
 import { Badge, Button } from '@/components/core/ui'
+import { windowOf } from '@/hooks/useHostWindow'
 import { usePDMStore } from '@/stores/pdmStore'
 
 import { SettingsGroup } from '../../../components/ui'
@@ -201,7 +202,9 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
           >
             {showPendingMembers ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             Pending members
-            <span className="text-[13px] font-normal tabular-nums text-ui-fg-secondary">{pendingMembers.length}</span>
+            <span className="text-[13px] font-normal tabular-nums text-ui-fg-secondary">
+              {pendingMembers.length}
+            </span>
           </button>
 
           {showPendingMembers && (
@@ -211,153 +214,150 @@ export function UsersTab({ searchQuery = '', onShowCreateUserDialog }: UsersTabP
                 organization code.
               </p>
               <SettingsGroup>
-              {pendingMembers.map((pm) => (
-                <div
-                  key={pm.id}
-                  className="group flex items-center gap-3 py-3"
-                >
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-ui-field">
-                    <Clock size={14} className="text-ui-fg-secondary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[14px] text-ui-fg">
-                      <span className="truncate">{pm.full_name || pm.email}</span>
-                      <Badge>Pending</Badge>
+                {pendingMembers.map((pm) => (
+                  <div key={pm.id} className="group flex items-center gap-3 py-3">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-ui-field">
+                      <Clock size={14} className="text-ui-fg-secondary" />
                     </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ui-fg-secondary">
-                      <span className="truncate">{pm.email}</span>
-                      {pm.workflow_role_ids && pm.workflow_role_ids.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          {pm.workflow_role_ids.slice(0, 2).map((roleId) => {
-                            const role = workflowRoles.find((r) => r.id === roleId)
-                            if (!role) return null
-                            return (
-                              <Badge key={roleId} title={role.name}>
-                                {role.name}
-                              </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-[14px] text-ui-fg">
+                        <span className="truncate">{pm.full_name || pm.email}</span>
+                        <Badge>Pending</Badge>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ui-fg-secondary">
+                        <span className="truncate">{pm.email}</span>
+                        {pm.workflow_role_ids && pm.workflow_role_ids.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            {pm.workflow_role_ids.slice(0, 2).map((roleId) => {
+                              const role = workflowRoles.find((r) => r.id === roleId)
+                              if (!role) return null
+                              return (
+                                <Badge key={roleId} title={role.name}>
+                                  {role.name}
+                                </Badge>
+                              )
+                            })}
+                            {pm.workflow_role_ids.length > 2 && (
+                              <span className="text-[13px] text-ui-fg-secondary">
+                                +{pm.workflow_role_ids.length - 2}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        {pm.team_ids && pm.team_ids.length > 0 && (
+                          <Badge>
+                            {pm.team_ids.length} team{pm.team_ids.length !== 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                      {apiServerUrl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="!px-1.5"
+                          onClick={() => handleResendInvite(pm)}
+                          loading={resendingInviteId === pm.id}
+                          icon={<Mail size={14} />}
+                          title="Resend invite email"
+                          aria-label="Resend invite email"
+                        />
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="!px-1.5"
+                        onClick={() => openEditPendingMember(pm)}
+                        icon={<Pencil size={14} />}
+                        title="Edit pending member"
+                        aria-label="Edit pending member"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="!px-1.5 hover:!text-ui-danger"
+                        onClick={() => deletePendingMember(pm.id)}
+                        icon={<X size={14} />}
+                        title="Remove pending member"
+                        aria-label="Remove pending member"
+                      />
+
+                      {/* More actions dropdown */}
+                      <div className="relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="!px-1.5"
+                          onClick={() =>
+                            setPendingMemberDropdownOpen(
+                              pendingMemberDropdownOpen === pm.id ? null : pm.id,
                             )
-                          })}
-                          {pm.workflow_role_ids.length > 2 && (
-                            <span className="text-[13px] text-ui-fg-secondary">
-                              +{pm.workflow_role_ids.length - 2}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                      {pm.team_ids && pm.team_ids.length > 0 && (
-                        <Badge>
-                          {pm.team_ids.length} team{pm.team_ids.length !== 1 ? 's' : ''}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    {apiServerUrl && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="!px-1.5"
-                        onClick={() => handleResendInvite(pm)}
-                        loading={resendingInviteId === pm.id}
-                        icon={<Mail size={14} />}
-                        title="Resend invite email"
-                        aria-label="Resend invite email"
-                      />
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="!px-1.5"
-                      onClick={() => openEditPendingMember(pm)}
-                      icon={<Pencil size={14} />}
-                      title="Edit pending member"
-                      aria-label="Edit pending member"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="!px-1.5 hover:!text-ui-danger"
-                      onClick={() => deletePendingMember(pm.id)}
-                      icon={<X size={14} />}
-                      title="Remove pending member"
-                      aria-label="Remove pending member"
-                    />
+                          }
+                          icon={<MoreVertical size={14} />}
+                          title="More actions"
+                          aria-label="More actions"
+                        />
 
-                    {/* More actions dropdown */}
-                    <div className="relative">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="!px-1.5"
-                        onClick={() =>
-                          setPendingMemberDropdownOpen(
-                            pendingMemberDropdownOpen === pm.id ? null : pm.id,
-                          )
-                        }
-                        icon={<MoreVertical size={14} />}
-                        title="More actions"
-                        aria-label="More actions"
-                      />
+                        {pendingMemberDropdownOpen === pm.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-[100]"
+                              onClick={() => setPendingMemberDropdownOpen(null)}
+                            />
+                            <div
+                              className="fixed z-[101] min-w-[180px] rounded-lg border border-ui-divider bg-ui-field py-1 shadow-xl"
+                              ref={(el) => {
+                                if (el) {
+                                  const btn = el.previousElementSibling
+                                    ?.previousElementSibling as HTMLElement
+                                  if (btn) {
+                                    const rect = btn.getBoundingClientRect()
+                                    const menuHeight = el.offsetHeight
+                                    const spaceBelow = windowOf(el).innerHeight - rect.bottom
 
-                      {pendingMemberDropdownOpen === pm.id && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-[100]"
-                            onClick={() => setPendingMemberDropdownOpen(null)}
-                          />
-                          <div
-                            className="fixed z-[101] min-w-[180px] rounded-lg border border-ui-divider bg-ui-field py-1 shadow-xl"
-                            ref={(el) => {
-                              if (el) {
-                                const btn = el.previousElementSibling
-                                  ?.previousElementSibling as HTMLElement
-                                if (btn) {
-                                  const rect = btn.getBoundingClientRect()
-                                  const menuHeight = el.offsetHeight
-                                  const spaceBelow = window.innerHeight - rect.bottom
-
-                                  if (spaceBelow < menuHeight) {
-                                    el.style.bottom = `${window.innerHeight - rect.top + 4}px`
-                                    el.style.top = 'auto'
-                                  } else {
-                                    el.style.top = `${rect.bottom + 4}px`
-                                    el.style.bottom = 'auto'
+                                    if (spaceBelow < menuHeight) {
+                                      el.style.bottom = `${windowOf(el).innerHeight - rect.top + 4}px`
+                                      el.style.top = 'auto'
+                                    } else {
+                                      el.style.top = `${rect.bottom + 4}px`
+                                      el.style.bottom = 'auto'
+                                    }
+                                    el.style.right = `${windowOf(el).innerWidth - rect.right}px`
                                   }
-                                  el.style.right = `${window.innerWidth - rect.right}px`
                                 }
-                              }
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setViewingPendingMemberPermissions(pm)
-                                setPendingMemberDropdownOpen(null)
                               }}
-                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[14px] text-ui-fg transition-colors hover:bg-ui-hover"
                             >
-                              <Eye size={14} />
-                              View Net Permissions
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const fakeUser = pendingMemberToOrgUser(pm, teams, workflowRoles)
-                                startUserImpersonation(fakeUser.id, fakeUser)
-                                setPendingMemberDropdownOpen(null)
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[14px] text-ui-fg transition-colors hover:bg-ui-hover"
-                            >
-                              <UserCog size={14} />
-                              Simulate Permissions
-                            </button>
-                          </div>
-                        </>
-                      )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setViewingPendingMemberPermissions(pm)
+                                  setPendingMemberDropdownOpen(null)
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[14px] text-ui-fg transition-colors hover:bg-ui-hover"
+                              >
+                                <Eye size={14} />
+                                View Net Permissions
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const fakeUser = pendingMemberToOrgUser(pm, teams, workflowRoles)
+                                  startUserImpersonation(fakeUser.id, fakeUser)
+                                  setPendingMemberDropdownOpen(null)
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[14px] text-ui-fg transition-colors hover:bg-ui-hover"
+                              >
+                                <UserCog size={14} />
+                                Simulate Permissions
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
               </SettingsGroup>
             </>
           )}

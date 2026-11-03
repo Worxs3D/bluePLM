@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+
+import { useHostWindow } from '@/hooks/useHostWindow'
 import { Plus, RotateCcw } from 'lucide-react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -56,15 +58,16 @@ export function ColorPicker({
   inline = false,
   className = '',
 }: ColorPickerProps) {
-  const { colorSwatches, orgColorSwatches, addColorSwatch, removeColorSwatch, getEffectiveRole } = usePDMStore(
-    useShallow((s) => ({
-      colorSwatches: s.colorSwatches,
-      orgColorSwatches: s.orgColorSwatches,
-      addColorSwatch: s.addColorSwatch,
-      removeColorSwatch: s.removeColorSwatch,
-      getEffectiveRole: s.getEffectiveRole,
-    })),
-  )
+  const { colorSwatches, orgColorSwatches, addColorSwatch, removeColorSwatch, getEffectiveRole } =
+    usePDMStore(
+      useShallow((s) => ({
+        colorSwatches: s.colorSwatches,
+        orgColorSwatches: s.orgColorSwatches,
+        addColorSwatch: s.addColorSwatch,
+        removeColorSwatch: s.removeColorSwatch,
+        getEffectiveRole: s.getEffectiveRole,
+      })),
+    )
 
   const [customColor, setCustomColor] = useState(color || '#3b82f6')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -289,6 +292,7 @@ export function ColorPickerDropdown({
 }: ColorPickerDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const host = useHostWindow()
 
   // Close on click outside
   useEffect(() => {
@@ -302,14 +306,14 @@ export function ColorPickerDropdown({
 
     // Delay to prevent immediate close
     const timeout = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
+      host.document.addEventListener('click', handleClickOutside)
     }, 0)
 
     return () => {
       clearTimeout(timeout)
-      document.removeEventListener('click', handleClickOutside)
+      host.document.removeEventListener('click', handleClickOutside)
     }
-  }, [isOpen])
+  }, [isOpen, host])
 
   const sizeClasses = {
     sm: 'w-5 h-5',

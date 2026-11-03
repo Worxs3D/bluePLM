@@ -28,6 +28,7 @@ export const createUISlice: StateCreator<
 
   // Initial state - Settings navigation
   settingsOpen: false,
+  settingsOpenRequest: 0,
   settingsTab: 'profile' as SettingsTab,
   settingsSearchQuery: '',
   settingsSearchActiveIndex: 0,
@@ -93,7 +94,7 @@ export const createUISlice: StateCreator<
   setActivityBarMode: (mode) => set({ activityBarMode: mode }),
 
   setActiveView: (activeView: SidebarView) => {
-    // Settings is a modal over the current view, so the 'settings' module opens it instead.
+    // Settings opens over the current view, so the 'settings' module opens it instead.
     if (activeView === 'settings') {
       get().openSettings()
       return
@@ -259,6 +260,7 @@ export const createUISlice: StateCreator<
   openSettings: (tab?: SettingsTab) =>
     set((state) => ({
       settingsOpen: true,
+      settingsOpenRequest: state.settingsOpenRequest + 1,
       settingsTab: tab ?? state.settingsTab,
       settingsSearchQuery: '',
       settingsSearchActiveIndex: 0,

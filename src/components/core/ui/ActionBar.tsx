@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, Loader2, MoreHorizontal } from 'lucide-react'
 
+import { useHostWindow } from '@/hooks/useHostWindow'
+
 export interface ToolbarAction {
   id: string
   label: string
@@ -58,6 +60,7 @@ export function ActionBar({
   moreLabel: string
   className?: string
 }) {
+  const host = useHostWindow()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const measureRef = useRef<HTMLDivElement | null>(null)
   const [shown, setShown] = useState(actions.length)
@@ -91,18 +94,20 @@ export function ActionBar({
 
   useEffect(() => {
     if (!menuOpen) return
+    // By type, not `instanceof`: in the settings window the events are that window's classes.
     const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== 'Escape') return
-      if (event instanceof MouseEvent && wrapRef.current?.contains(event.target as Node)) return
+      if (event.type === 'keydown' && (event as KeyboardEvent).key !== 'Escape') return
+      if (event.type === 'mousedown' && wrapRef.current?.contains(event.target as Node)) return
       setMenuOpen(false)
     }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', close)
+    const doc = host.document
+    doc.addEventListener('mousedown', close)
+    doc.addEventListener('keydown', close)
     return () => {
-      document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', close)
+      doc.removeEventListener('mousedown', close)
+      doc.removeEventListener('keydown', close)
     }
-  }, [menuOpen])
+  }, [menuOpen, host])
 
   const visible = actions.slice(0, shown)
   const overflow = actions.slice(shown)

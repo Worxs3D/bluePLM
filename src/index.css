@@ -1100,6 +1100,19 @@ input::placeholder {
   color: var(--plm-fg-muted);
 }
 
+/* The settings window is an empty page (no doctype), so it renders in quirks mode, where tables
+   do not inherit font or colour. `:where` keeps this below any class set on a table. */
+:where([data-settings-window]) table {
+  color: inherit;
+  font-size: inherit;
+  font-style: inherit;
+  font-variant: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  white-space: inherit;
+}
+
 /* Titlebar drag regions */
 .titlebar-drag-region {
   -webkit-app-region: drag;
