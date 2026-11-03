@@ -286,7 +286,9 @@ export function ExportSettings() {
       log.error('[ExportSettings]', 'Failed to save org export settings', { error: error })
       addToast(
         'error',
-        `Failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `${t('settingsPages.export.saveFailed')}: ${
+          error instanceof Error ? error.message : t('settingsPages.export.unknownError')
+        }`,
       )
     } finally {
       setSaving(false)
@@ -324,8 +326,8 @@ export function ExportSettings() {
         title={t('settingsPages.export.title')}
         description={
           hasUserOverride
-            ? 'Configure how exported files are named. Using your personal preference.'
-            : 'Configure how exported files are named. Using the organization default.'
+            ? t('settingsPages.export.usingPersonal')
+            : t('settingsPages.export.usingOrganization')
         }
         actions={
           <>
@@ -366,11 +368,9 @@ export function ExportSettings() {
           <SettingRow
             label={t('settingsPages.export.filenamePattern')}
             htmlFor="export-filename-pattern"
-            description={
-              <>
-                Use tokens like {'{partNumber}'}, {'{config}'}, {'{rev}'} to build dynamic filenames
-              </>
-            }
+            description={t('settingsPages.export.tokenHelp', {
+              examples: '{partNumber}, {config}, {rev}',
+            })}
             stacked
           >
             <TextInput
