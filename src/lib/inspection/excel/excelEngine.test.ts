@@ -166,16 +166,24 @@ async function rowBreaks(bytes: Uint8Array, sheetIndex = 1): Promise<number[]> {
 const LOGO = { bytes: PNG, extension: 'png' as const }
 
 describe('builtInTemplates', () => {
-  it('ships the two starters and both analyze with no errors', async () => {
+  it('ships the starters and the report-type templates, and every one analyzes with no errors', async () => {
     const templates = await builtInTemplates()
-    expect(templates.map((t) => t.key)).toEqual(['dimensional-inspection', 'first-article-accountability'])
+    expect(templates.map((t) => t.key)).toEqual([
+      'dimensional-inspection',
+      'first-article-accountability',
+      'first-article-as9102',
+      'production-lot',
+      'receiving-inspection',
+      'reinspection',
+    ])
     for (const t of templates) {
       const layout = await analyzeTemplate(t.bytes)
       expect(layout.errors, t.key).toEqual([])
       expect(layout.warnings, t.key).toEqual([])
       expect(layout.resultCount).toBeGreaterThan(0)
       expect(layout.hasVerdict).toBe(true)
-      expect(layout.logoAnchors, t.key).toHaveLength(1)
+      // One logo per sheet (the AS9102 workbook has three form sheets).
+      expect(layout.logoAnchors?.length ?? 0, t.key).toBeGreaterThanOrEqual(1)
       expect(layout.drawingAnchor, t.key).toBeNull()
       expect(layout.entries.map((e) => e.name), t.key).toEqual(
         expect.arrayContaining(['inspected_by', 'inspection_date', 'approved_by', 'approval_date']),
@@ -189,7 +197,7 @@ describe('builtInTemplates', () => {
 
   it('label cells are wide enough for their text', async () => {
     for (const t of await builtInTemplates()) {
-      const ws = (await readWorkbook(t.bytes)).worksheets[0]
+     for (const ws of (await readWorkbook(t.bytes)).worksheets) {
       const merges = (ws.model.merges ?? []).map(decodeRange)
       // Every column's width survives the write (exceljs drops a width of exactly 9).
       for (let c = 1; c <= ws.columnCount; c++) expect(ws.getColumn(c).width, `${t.key} column ${c}`).toBeGreaterThan(5)
@@ -203,16 +211,17 @@ describe('builtInTemplates', () => {
           // Excel width units are digit widths at 11 pt; bold text runs about 10 % wider.
           const factor = ((cell.font?.size ?? 11) / 11) * (cell.font?.bold ? 1.1 : 1)
           const longest = cell.alignment?.wrapText ? Math.max(...text.split(/\s+/).map((w) => w.length)) : text.length
-          expect(longest * factor, `${t.key} ${cell.address} "${text}"`).toBeLessThanOrEqual(width)
+          expect(longest * factor, `${t.key} ${ws.name} ${cell.address} "${text}"`).toBeLessThanOrEqual(width)
         })
       })
+     }
     }
   })
 
   it('sets up printing, frozen panes, footer and conditional formats', async () => {
     for (const t of await builtInTemplates()) {
-      const ws = (await readWorkbook(t.bytes)).worksheets[0]
       const layout = await analyzeTemplate(t.bytes)
+      const ws = (await readWorkbook(t.bytes)).getWorksheet(layout.rowTemplate!.sheet)!
       const header = layout.rowTemplate!.row - 1
       expect(ws.pageSetup).toMatchObject({
         orientation: 'landscape',
@@ -250,11 +259,13 @@ describe('builtInTemplates', () => {
         ],
       })
       const wb = await readWorkbook(bytes)
+      const templateSheets = (await readWorkbook(t.bytes)).worksheets.map((w) => w.name)
       expect(
         wb.worksheets.map((w) => w.name),
         t.key,
-      ).toEqual([layout.rowTemplate!.sheet, META_SHEET])
-      const ws = wb.worksheets[0]
+      ).toEqual([...templateSheets, META_SHEET])
+      expect(templateSheets.at(-1), t.key).toBe(layout.rowTemplate!.sheet)
+      const ws = wb.getWorksheet(layout.rowTemplate!.sheet)!
       const placed = images(ws)
       expect(placed, t.key).toHaveLength(3)
       expect(placed[0].range.tl.nativeRow).toBe(0)
@@ -276,7 +287,7 @@ describe('builtInTemplates', () => {
       expect(Math.min(...pageRows)).toBeGreaterThan(last + 6)
       expect(cellText(ws.getCell(pageRows[0] - 1, 1))).toBe('Drawing sheet 1 of 2: BR-1.SLDDRW')
       expect(cellText(ws.getCell(pageRows[1] - 1, 1))).toBe('Drawing sheet 2 of 2: BR-1.SLDDRW')
-      expect(await rowBreaks(bytes)).toEqual(pageRows.map((r) => r - 2))
+      expect(await rowBreaks(bytes, templateSheets.length)).toEqual(pageRows.map((r) => r - 2))
       const back = await readReturnedResults(bytes, { reportId: 'rep', rows })
       expect(back.rows).toHaveLength(4)
       expect(back.warnings).toEqual([])

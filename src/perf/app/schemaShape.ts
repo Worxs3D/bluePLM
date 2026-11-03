@@ -26,6 +26,9 @@ const PENDING_TABLES: Record<string, { columns: string[]; requiredOnInsert: stri
       'report_number', 'sequence', 'title', 'status', 'storage_hash', 'file_size',
       'characteristic_count', 'drawing_pdf_hash', 'returned_hash', 'returned_at', 'returned_by',
       'results', 'results_summary', 'notes', 'created_by', 'created_at', 'updated_by', 'updated_at',
+      // Schema 506.
+      'report_type', 'fai_scope', 'fai_reason', 'fai_baseline_version_id', 'lot_number', 'lot_size',
+      'sampling', 'po_number', 'supplier_name', 'ncr_reference', 'characteristic_ids', 'sample_columns',
     ],
     requiredOnInsert: ['org_id', 'file_id', 'file_version_id', 'storage_hash', 'file_size'],
   },
@@ -34,6 +37,8 @@ const PENDING_TABLES: Record<string, { columns: string[]; requiredOnInsert: stri
       'id', 'org_id', 'name', 'description', 'storage_hash', 'file_size', 'original_filename',
       'revision', 'is_default', 'layout', 'archived_at', 'created_by', 'created_at', 'updated_by',
       'updated_at',
+      // Schema 506.
+      'report_types', 'default_for',
     ],
     requiredOnInsert: ['org_id', 'name', 'storage_hash', 'file_size'],
   },

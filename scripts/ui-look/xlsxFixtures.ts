@@ -6,7 +6,10 @@
  * ballooned drawing sheets, plus one report with no characteristics. Each workbook is then rendered
  * page by page with scripts/ui-look/xlsx.ts.
  *
- *   npx tsx scripts/ui-look/xlsxFixtures.ts --out ui-look-out/xlsx [--dpi 110] [--no-render]
+ *   npx tsx scripts/ui-look/xlsxFixtures.ts --out ui-look-out/xlsx [--dpi 110] [--no-render] [--types]
+ *
+ * `--types` generates the report-type workbooks instead (xlsxTypeFixtures.ts: AS9102 full and
+ * partial FAI, production by columns and one row per part, receiving, re-inspection).
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -21,6 +24,7 @@ import {
 import { lookCharacteristics } from '../../src/perf/app/lookInspectionFixtures'
 
 import { renderWorkbook } from './xlsx'
+import { typeWorkbooks } from './xlsxTypeFixtures'
 
 const SHEET_W = 1700
 const SHEET_H = 1100
@@ -138,10 +142,12 @@ async function main(): Promise<void> {
   let out = 'ui-look-out/xlsx'
   let dpi: number | undefined
   let render = true
+  let types = false
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--out') out = argv[++i]
     else if (argv[i] === '--dpi') dpi = Number(argv[++i])
     else if (argv[i] === '--no-render') render = false
+    else if (argv[i] === '--types') types = true
     else throw new Error(`unknown argument ${argv[i]}`)
   }
   out = resolve(out)
@@ -164,8 +170,8 @@ async function main(): Promise<void> {
   }
   const generatedAt = new Date('2026-11-03T10:00:00Z')
 
-  const workbooks: string[] = []
-  for (const template of await builtInTemplates()) {
+  const workbooks: string[] = types ? await typeWorkbooks(out, rows, pages, logo, scalars, generatedAt) : []
+  for (const template of types ? [] : await builtInTemplates()) {
     const common = {
       template: template.bytes,
       fileId: 'look-file',

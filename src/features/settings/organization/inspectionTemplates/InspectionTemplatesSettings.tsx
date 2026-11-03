@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, ArchiveRestore, Download, FileSpreadsheet, FileUp, Loader2, Pencil, RefreshCw, ScanSearch, Star, Upload } from 'lucide-react'
+import { Archive, ArchiveRestore, Download, FileSpreadsheet, FileUp, Loader2, Pencil, RefreshCw, ScanSearch, Star, StarOff, Upload } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/core/Dialog'
 import { ActionBar, Badge, Button, Switch, type BadgeTone, type ToolbarAction } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { analyzeTemplate, builtInTemplates } from '@/lib/inspection/excel'
-import { BUILT_IN_DESCRIPTION_KEYS, BUILT_IN_NAME_KEYS } from '@/lib/inspection/issueText'
+import { BUILT_IN_DESCRIPTION_KEYS, BUILT_IN_NAME_KEYS, builtInTemplateNames } from '@/lib/inspection/issueText'
 import { pickWorkbookFile, readFileBytes, saveWorkbook } from '@/lib/inspection/reportFiles'
 import { log } from '@/lib/logger'
 import {
@@ -18,13 +18,15 @@ import {
   uploadInspectionContent,
 } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
-import type { InspectionTemplate } from '@/types/inspectionReports'
+import { INSPECTION_REPORT_TYPES, type InspectionReportType, type InspectionTemplate } from '@/types/inspectionReports'
+import { reportTypeChipKey } from '@/features/integrations/solidworks/inspection/reports/reportTypeModel'
 import type { Json } from '@/types/supabase'
 
 import { SettingsGroup, SettingsPage, SettingsSection } from '../../components/ui'
 import { ReportNamingSettings } from './ReportNamingSettings'
 import { TemplateEditor, type EditorMode, type EditorValues } from './TemplateEditor'
 import { TemplateTokenReference } from './TemplateTokenReference'
+import { TemplateTypeChips } from './TemplateTypeChips'
 import { analysisStatus, layoutSummary, nameFromFileName, parseLayout, type AnalysisStatus } from './templateModel'
 
 const STATUS_TONE: Record<AnalysisStatus, BadgeTone> = {
@@ -32,6 +34,18 @@ const STATUS_TONE: Record<AnalysisStatus, BadgeTone> = {
   warnings: 'warning',
   errors: 'error',
   unknown: 'neutral',
+}
+
+/** The template's types after toggling one; its type defaults keep only types it still serves. */
+function toggledTypes(
+  template: InspectionTemplate,
+  type: InspectionReportType,
+): { reportTypes: InspectionReportType[]; defaultFor: InspectionReportType[] } {
+  const reportTypes = template.reportTypes.includes(type)
+    ? template.reportTypes.filter((x) => x !== type)
+    : INSPECTION_REPORT_TYPES.filter((x) => x === type || template.reportTypes.includes(x))
+  const defaultFor = reportTypes.length === 0 ? template.defaultFor : template.defaultFor.filter((x) => reportTypes.includes(x))
+  return { reportTypes, defaultFor }
 }
 
 function errorText(err: unknown): string {
@@ -329,6 +343,28 @@ export function InspectionTemplatesSettings() {
                   },
                 )
               }
+              if (live) {
+                // Default per type: one template per type for the organization (the database moves it).
+                const served = template.reportTypes.length === 0 ? INSPECTION_REPORT_TYPES : template.reportTypes
+                for (const type of served) {
+                  const isTypeDefault = template.defaultFor.includes(type)
+                  const chip = t(reportTypeChipKey(type))
+                  actions.push({
+                    id: `default-${type}`,
+                    label: t(isTypeDefault ? 'source.inspection.tplClearDefaultFor' : 'source.inspection.tplMakeDefaultFor', { type: chip }),
+                    icon: isTypeDefault ? <StarOff size={13} /> : <Star size={13} />,
+                    onClick: () =>
+                      void act(template.id, async () => {
+                        const defaultFor = isTypeDefault
+                          ? template.defaultFor.filter((x) => x !== type)
+                          : INSPECTION_REPORT_TYPES.filter((x) => x === type || template.defaultFor.includes(x))
+                        await updateInspectionTemplate(template.id, { defaultFor })
+                        await load()
+                      }),
+                    disabled: busy,
+                  })
+                }
+              }
               if (isAdmin && template.archivedAt) {
                 actions.push({
                   id: 'restore',
@@ -385,6 +421,22 @@ export function InspectionTemplatesSettings() {
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
+                    <div className="mt-1">
+                      <TemplateTypeChips
+                        reportTypes={template.reportTypes}
+                        defaultFor={template.defaultFor}
+                        disabled={busy}
+                        onToggle={
+                          live
+                            ? (type) =>
+                                void act(template.id, async () => {
+                                  await updateInspectionTemplate(template.id, toggledTypes(template, type))
+                                  await load()
+                                })
+                            : null
+                        }
+                      />
+                    </div>
                   </div>
                   <ActionBar
                     actions={actions}
@@ -407,14 +459,19 @@ export function InspectionTemplatesSettings() {
 
       <SettingsSection title={t('source.inspection.tplStartersTitle')} description={t('source.inspection.tplStartersIntro')}>
         <SettingsGroup>
-          {Object.keys(BUILT_IN_NAME_KEYS).map((key) => (
+          {builtInTemplateNames().map(({ key, name, reportTypes, defaultFor }) => (
             <div key={key} className="flex items-center gap-3 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ui-field text-ui-fg-secondary">
                 <FileSpreadsheet size={18} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-medium text-ui-fg">{t(BUILT_IN_NAME_KEYS[key])}</div>
-                <div className="text-[12px] text-ui-fg-secondary">{t(BUILT_IN_DESCRIPTION_KEYS[key])}</div>
+                <div className="text-[14px] font-medium text-ui-fg">{name}</div>
+                <div className="text-[12px] text-ui-fg-secondary">
+                  {BUILT_IN_DESCRIPTION_KEYS[key] ? t(BUILT_IN_DESCRIPTION_KEYS[key]) : ''}
+                </div>
+                <div className="mt-1">
+                  <TemplateTypeChips reportTypes={reportTypes} defaultFor={defaultFor} onToggle={null} />
+                </div>
               </div>
               <Button
                 variant="secondary"

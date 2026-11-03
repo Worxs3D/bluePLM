@@ -14,6 +14,12 @@ import { statusKey, statusTone } from '@/features/integrations/solidworks/inspec
 import { openReportWithToast } from '@/features/integrations/solidworks/inspection/reports/reportCommands'
 import { ReportMenu } from '@/features/integrations/solidworks/inspection/reports/ReportMenu'
 import { useReportDialogs } from '@/features/integrations/solidworks/inspection/reports/useReportDialogs'
+import { reportTypeTone } from '@/features/integrations/solidworks/inspection/reports/reportTypeModel'
+import {
+  reportTypeChip,
+  reportTypeDetail,
+  reportTypeName,
+} from '@/features/integrations/solidworks/inspection/reports/reportTypeText'
 
 interface DrawingReportRowProps {
   file: LocalFile
@@ -25,8 +31,8 @@ interface DrawingReportRowProps {
 
 
 /**
- * An inspection report under an expanded drawing, after its referenced files: number, version,
- * title and status. Click opens the workbook; the context menu is the report menu shared with the
+ * An inspection report under an expanded drawing, after its referenced files: type chip and
+ * number, version, type, title and status. Click opens the workbook; the context menu is the report menu shared with the
  * Reports view (Open, Regenerate, Save copy, Save next to drawing, Import results, Delete) plus
  * "Show in Inspection tab".
  */
@@ -41,10 +47,26 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   const dialogs = useReportDialogs()
   const number = report.reportNumber || t('source.inspection.rptUntitled')
   const showsState = visibleColumns.some((c) => c.id === 'state')
+  // The type chip goes in the Type column, so the name keeps its width for the report number.
+  const showsType = visibleColumns.some((c) => c.id === 'extension')
+  const typeChip = (
+    <Badge tone={reportTypeTone(report.reportType)} title={reportTypeName(report)} className="!px-1 text-[11px]">
+      {reportTypeChip(report)}
+    </Badge>
+  )
   const summary = report.resultsSummary
   const results = summary
     ? t('source.inspection.rptSummary', { pass: summary.pass, fail: summary.fail, blank: summary.blank })
     : null
+  // The chip names the type; the description says what distinguishes this report (lot, NCR, scope).
+  const typeName = reportTypeName(report)
+  const description = [
+    ...new Set(
+      [reportTypeDetail(report, () => null) || typeName, report.title || report.templateName, results].filter(
+        (x): x is string => !!x,
+      ),
+    ),
+  ]
 
   return (
     <>
@@ -70,19 +92,24 @@ export const DrawingReportRow = memo(function DrawingReportRow({
                 icon={<FileSpreadsheet size={14} className="text-emerald-400" />}
                 label={number}
                 title={number}
-                // The State column carries the status; without it, the name does.
-                after={showsState ? null : <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>}
+                // Type and status go after the name only when their columns are hidden.
+                after={
+                  showsType && showsState ? null : (
+                    <>
+                      {!showsType && typeChip}
+                      {!showsState && <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>}
+                    </>
+                  )
+                }
               />
             ) : column.id === 'state' ? (
               <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>
             ) : column.id === 'version' && versionNumber !== null ? (
               <ChildText>{String(versionNumber)}</ChildText>
             ) : column.id === 'description' ? (
-              <ChildText title={[report.templateName, results].filter(Boolean).join('\n')}>
-                {[report.title || report.templateName, results].filter(Boolean).join(' · ')}
-              </ChildText>
+              <ChildText title={[typeName, ...description].join('\n')}>{description.join(' · ')}</ChildText>
             ) : column.id === 'extension' ? (
-              <ChildText>xlsx</ChildText>
+              typeChip
             ) : column.id === 'size' ? (
               <ChildText>{formatFileSize(report.fileSize)}</ChildText>
             ) : column.id === 'modifiedTime' ? (

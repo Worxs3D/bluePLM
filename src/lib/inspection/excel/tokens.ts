@@ -52,6 +52,8 @@ export const ROW_FIELDS = [
   'tolerance',
   /** Nominal plus tolerance (`25.40 ±0.10`). */
   'spec',
+  /** Which sample of the lot a row is for (`3 / 5`), in a report with one row per sample. */
+  'sample',
 ] as const
 
 export type RowField = (typeof ROW_FIELDS)[number]
@@ -89,6 +91,25 @@ export const SCALAR_NAMES = [
   'DATE',
   'ORG_NAME',
   'GENERAL_TOLERANCES',
+  // Report types (schema 506): blank when the report's type does not have them.
+  /** `First article inspection`, `Production inspection`, ... */
+  'REPORT_TYPE',
+  /** `Full FAI` / `Partial FAI`. */
+  'FAI_TYPE',
+  'FAI_REASON',
+  /** The version a partial FAI builds on (`Version 2, revision A`). */
+  'FAI_BASELINE',
+  'LOT_NUMBER',
+  'LOT_SIZE',
+  /** `100% of the lot` / `5 parts per lot`. */
+  'SAMPLING_PLAN',
+  /** Parts measured per characteristic (the largest, when they differ). */
+  'SAMPLE_SIZE',
+  /** Which characteristics the report includes. */
+  'CHARACTERISTIC_SCOPE',
+  'PO_NUMBER',
+  'SUPPLIER',
+  'NCR_REFERENCE',
 ] as const
 
 export type ScalarName = (typeof SCALAR_NAMES)[number]
@@ -222,4 +243,5 @@ export const DEFAULT_FIELD_CAPTIONS: Readonly<Record<RowField, string>> = {
   tolerance_source: 'Tolerance source',
   tolerance: 'Tolerance',
   spec: 'Requirement',
+  sample: 'Sample',
 }

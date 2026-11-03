@@ -8,7 +8,11 @@ import type { InspectionRowInput } from '@/lib/supabase'
 import type { RowField } from './tokens'
 
 /** A row as the report engine takes it. `tolerance_source` (schema 504) is optional, so rows from before it work too. */
-export type InspectionReportRow = Omit<InspectionRowInput, 'tolerance_source'> & { tolerance_source?: string | null }
+export type InspectionReportRow = Omit<InspectionRowInput, 'tolerance_source'> & {
+  tolerance_source?: string | null
+  /** In a report with one row per sample: which sample of how many (`3 / 5`). */
+  sample?: string | null
+}
 
 function text(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return ''
@@ -93,6 +97,8 @@ export function fieldValue(row: InspectionReportRow, field: RowField): string | 
       return signed(text(row.minus_tolerance), '-')
     case 'tolerance_source':
       return text(row.tolerance_source)
+    case 'sample':
+      return text(row.sample)
     case 'sort_order':
     case 'sample_size':
     case 'supplier_inspection_rate':

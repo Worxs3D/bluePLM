@@ -3,9 +3,17 @@
  * exceljs and pdfjs-dist load lazily on first use. Plan: `.cursor/plans/inspection-tables-system.plan.md`.
  */
 export { analyzeTemplate, type LayoutIssue, type LayoutIssueCode, type TemplateLayout, type TemplateRowCell } from './analyze'
-export { builtInTemplates, type BuiltInTemplate } from './builtIn'
+export {
+  buildBuiltInTemplate,
+  builtInTemplateInfo,
+  builtInTemplates,
+  type BuiltInOptions,
+  type BuiltInTemplate,
+  type BuiltInTemplateInfo,
+} from './builtIn'
+export { MAX_SAMPLE_COLUMNS } from './builtInTypes'
 export { formatSpec, formatTolerance, type InspectionReportRow } from './format'
-export { sha256Hex, specFingerprint } from './fingerprint'
+export { sha256Hex, specFingerprint, SPEC_FIELDS } from './fingerprint'
 export {
   generateInspectionReport,
   InspectionTemplateError,

@@ -1,7 +1,8 @@
 /**
  * Settings > Inspection templates > Report naming: the organization's report number pattern
  * (`organization.settings.inspection_reports`), where `{n}` counts, and whether reports carry the
- * organization logo. Administrators change it; everyone else sees it read-only. The preview fills
+ * organization logo, and the defaults of production and receiving reports (which characteristics,
+ * how many parts). Administrators change it; everyone else sees it read-only. The preview fills
  * the pattern with sample values as it is typed.
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -10,6 +11,7 @@ import { ArrowRight, ImageOff, RotateCcw } from 'lucide-react'
 import { Button, Callout, SegmentedControl, Switch, TextInput } from '@/components/core/ui'
 import {
   DEFAULT_REPORT_NUMBER_PATTERN,
+  MAX_DEFAULT_SAMPLE_SIZE,
   MAX_PATTERN_LENGTH,
   REPORT_NUMBER_TOKENS,
   formatReportNumber,
@@ -32,7 +34,7 @@ import { SettingRow, SettingsGroup, SettingsSection } from '../../components/ui'
  * then what the next report is called once the drawing moves to revision C (version 6), which is
  * where the two counting scopes differ.
  */
-const SAMPLE = { partNumber: 'BR-103849-201', drawing: 'BR-103849-201' } as const
+const SAMPLE = { partNumber: 'BR-103849-201', drawing: 'BR-103849-201', type: 'PIR' } as const
 const SAMPLE_NOW = { rev: 'B', version: '5', n: 3 } as const
 const SAMPLE_NEXT_REV = { rev: 'C', version: '6' } as const
 
@@ -126,6 +128,19 @@ export function ReportNamingSettings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const [sampleDraft, setSampleDraft] = useState<string | null>(null)
+  const sampleText = sampleDraft ?? String(naming.defaultSampleSize)
+  const sampleValue = /^\d+$/.test(sampleText.trim()) ? Number(sampleText.trim()) : null
+  const sampleValid = sampleValue !== null && sampleValue >= 1 && sampleValue <= MAX_DEFAULT_SAMPLE_SIZE
+  const saveSample = () => {
+    if (sampleDraft === null) return
+    if (!sampleValid || sampleValue === naming.defaultSampleSize) {
+      setSampleDraft(null)
+      return
+    }
+    void save({ default_sample_size: sampleValue }).then(() => setSampleDraft(null))
   }
 
   const insertToken = (token: string) => setDraft(`${pattern}{${token}}`.slice(0, MAX_PATTERN_LENGTH))
@@ -257,6 +272,41 @@ export function ReportNamingSettings() {
               aria-label={t('source.inspection.rnLogo')}
             />
           </div>
+        </SettingRow>
+      </SettingsGroup>
+      <h4 className="mt-5 text-[12px] font-semibold uppercase tracking-wide text-ui-fg-secondary">
+        {t('source.inspection.rnLotTitle')}
+      </h4>
+      <SettingsGroup>
+        <SettingRow label={t('source.inspection.rnLotScope')} description={t('source.inspection.rnLotScopeHint')}>
+          <SegmentedControl
+            value={naming.lotScope}
+            options={(['classified', 'all'] as const).map((value) => ({
+              value,
+              label: t(`source.inspection.rnLotScope_${value}`),
+              disabled,
+            }))}
+            onChange={(value) => void save({ lot_characteristics: value })}
+            size="sm"
+            aria-label={t('source.inspection.rnLotScope')}
+          />
+        </SettingRow>
+        <SettingRow label={t('source.inspection.rnSampleSize')} description={t('source.inspection.rnSampleSizeHint')}>
+          <TextInput
+            value={sampleText}
+            onChange={(e) => setSampleDraft(e.target.value)}
+            onBlur={saveSample}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveSample()
+              if (e.key === 'Escape') setSampleDraft(null)
+            }}
+            disabled={disabled}
+            inputMode="numeric"
+            size="sm"
+            aria-label={t('source.inspection.rnSampleSize')}
+            aria-invalid={!sampleValid}
+            className={`w-20 text-right tabular-nums ${sampleValid ? '' : 'border-ui-danger'}`}
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>

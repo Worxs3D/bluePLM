@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InspectionReportRow, ReturnedResults } from '@/lib/inspection/excel'
-import type { InspectionReport, InspectionTemplate } from '@/types/inspectionReports'
+import { NO_REPORT_TYPE_FIELDS, type InspectionReport, type InspectionTemplate } from '@/types/inspectionReports'
 
 import {
   nextReportStep,
@@ -18,6 +18,7 @@ import {
   parseStoredResults,
   pathNextTo,
   patternHasSequence,
+  patternHasType,
   regenerateTemplateChoice,
   reportNamingFromSettings,
   reportNumberValues,
@@ -63,6 +64,7 @@ function report(over: Partial<InspectionReport>): InspectionReport {
     createdAt: '2026-11-01T10:00:00Z',
     updatedBy: null,
     updatedAt: '2026-11-01T10:00:00Z',
+    ...NO_REPORT_TYPE_FIELDS,
     ...over,
   }
 }
@@ -82,6 +84,8 @@ function template(over: Partial<InspectionTemplate>): InspectionTemplate {
     originalFilename: null,
     revision: 1,
     isDefault: false,
+    reportTypes: [],
+    defaultFor: [],
     layout: {},
     archivedAt: null,
     createdBy: null,
@@ -124,7 +128,7 @@ function row(id: string, balloon: string, over: Partial<InspectionReportRow> = {
   }
 }
 
-const VALUES = { partNumber: 'BR-103849-201', rev: 'A', version: '3', drawing: 'BR-103849-201', date: '2026-11-03' }
+const VALUES = { partNumber: 'BR-103849-201', rev: 'A', version: '3', drawing: 'BR-103849-201', type: 'PIR', date: '2026-11-03' }
 
 describe('report naming settings', () => {
   it('defaults when unset or malformed', () => {
@@ -132,19 +136,37 @@ describe('report naming settings', () => {
       numberPattern: DEFAULT_REPORT_NUMBER_PATTERN,
       sequenceScope: 'drawing',
       includeLogo: true,
+      lotScope: 'classified',
+      defaultSampleSize: 5,
     })
-    expect(reportNamingFromSettings({ number_pattern: '   ', sequence_scope: 'x', include_logo: 'no' })).toEqual({
+    expect(
+      reportNamingFromSettings({
+        number_pattern: '   ',
+        sequence_scope: 'x',
+        include_logo: 'no',
+        lot_characteristics: 'some',
+        default_sample_size: 0,
+      }),
+    ).toEqual({
       numberPattern: DEFAULT_REPORT_NUMBER_PATTERN,
       sequenceScope: 'drawing',
       includeLogo: true,
+      lotScope: 'classified',
+      defaultSampleSize: 5,
     })
+    expect(reportNamingFromSettings({ default_sample_size: 2.5 }).defaultSampleSize).toBe(5)
+    expect(reportNamingFromSettings({ default_sample_size: 9999 }).defaultSampleSize).toBe(5)
     expect(reportNamingFromSettings([1, 2])).toMatchObject({ numberPattern: DEFAULT_REPORT_NUMBER_PATTERN })
   })
 
   it('keeps a stored pattern, scope and logo choice', () => {
     expect(
       reportNamingFromSettings({ number_pattern: ' IR-{n} ', sequence_scope: 'revision', include_logo: false }),
-    ).toEqual({ numberPattern: 'IR-{n}', sequenceScope: 'revision', includeLogo: false })
+    ).toMatchObject({ numberPattern: 'IR-{n}', sequenceScope: 'revision', includeLogo: false })
+    expect(reportNamingFromSettings({ lot_characteristics: 'all', default_sample_size: 8 })).toMatchObject({
+      lotScope: 'all',
+      defaultSampleSize: 8,
+    })
   })
 
   it('caps the pattern length', () => {
@@ -160,12 +182,14 @@ describe('report naming settings', () => {
 
 describe('formatReportNumber', () => {
   it('fills the default pattern the organization style asks for', () => {
-    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...VALUES, n: '3' })).toBe('BR-103849-201_RevA_IRv3')
+    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...VALUES, n: '3' })).toBe('BR-103849-201_RevA_PIR3')
+    // 5.5.0's default, which organizations that saved it keep.
+    expect(formatReportNumber('{partNumber}_Rev{rev}_IRv{n}', { ...VALUES, n: '3' })).toBe('BR-103849-201_RevA_IRv3')
   })
 
   it('fills every token, case-insensitively', () => {
-    expect(formatReportNumber('{PartNumber}-{REV}-v{version}-{drawing}-{date}-{n}', { ...VALUES, n: '7' })).toBe(
-      'BR-103849-201-A-v3-BR-103849-201-2026-11-03-7',
+    expect(formatReportNumber('{PartNumber}-{REV}-v{version}-{drawing}-{TYPE}-{date}-{n}', { ...VALUES, n: '7' })).toBe(
+      'BR-103849-201-A-v3-BR-103849-201-PIR-2026-11-03-7',
     )
   })
 
@@ -207,6 +231,23 @@ describe('report sequence', () => {
     expect(nextReportSequence([], 'drawing', 'A', revisions)).toBe(1)
   })
 
+  it('counts per type when asked (a pattern with {type}); a report from before types is its own type', () => {
+    const typed = [
+      { reportNumber: 'X_RevA_FAIR1', fileVersionId: 'v1', sequence: 1, reportType: 'fai' as const },
+      { reportNumber: 'X_RevA_PIR1', fileVersionId: 'v2', sequence: 1, reportType: 'production' as const },
+      { reportNumber: 'X_RevA_PIR2', fileVersionId: 'v2', sequence: 2, reportType: 'production' as const },
+      { reportNumber: 'X_RevA_IRv5', fileVersionId: 'v2', sequence: 5, reportType: null },
+    ]
+    expect(nextReportSequence(typed, 'drawing', 'A', revisions, 'production')).toBe(3)
+    expect(nextReportSequence(typed, 'drawing', 'A', revisions, 'fai')).toBe(2)
+    expect(nextReportSequence(typed, 'drawing', 'A', revisions, 'receiving')).toBe(1)
+    expect(nextReportSequence(typed, 'drawing', 'A', revisions, null)).toBe(6)
+    // Without {type} every report counts, as before.
+    expect(nextReportSequence(typed, 'drawing', 'A', revisions)).toBe(6)
+    expect(patternHasType(DEFAULT_REPORT_NUMBER_PATTERN)).toBe(true)
+    expect(patternHasType('{partNumber}_Rev{rev}_IRv{n}')).toBe(false)
+  })
+
   it('restarts per revision in revision scope, leaving out reports of unknown versions', () => {
     expect(nextReportSequence(reports, 'revision', 'A', revisions)).toBe(3)
     expect(nextReportSequence(reports, 'revision', 'b', revisions)).toBe(2)
@@ -216,8 +257,8 @@ describe('report sequence', () => {
 
 describe('nextReportName', () => {
   it('takes the next number when the computed one is taken', () => {
-    expect(nextReportName(DEFAULT_REPORT_NUMBER_PATTERN, VALUES, 3, ['BR-103849-201_RevA_IRv3', 'br-103849-201_reva_irv4'])).toEqual({
-      reportNumber: 'BR-103849-201_RevA_IRv5',
+    expect(nextReportName(DEFAULT_REPORT_NUMBER_PATTERN, VALUES, 3, ['BR-103849-201_RevA_PIR3', 'br-103849-201_reva_pir4'])).toEqual({
+      reportNumber: 'BR-103849-201_RevA_PIR5',
       sequence: 5,
     })
   })
@@ -248,8 +289,10 @@ describe('report identity', () => {
 
   it('numbers by the drawing name when there is no part number', () => {
     const values = reportNumberValues({ partNumber: null, description: null, revision: null }, 'Bracket plate.SLDDRW', 2, new Date(2026, 10, 3))
-    expect(values).toEqual({ partNumber: 'Bracket plate', rev: '', version: '2', drawing: 'Bracket plate', date: '2026-11-03' })
-    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...values, n: '1' })).toBe('Bracket_plate_Rev_IRv1')
+    expect(values).toEqual({ partNumber: 'Bracket plate', rev: '', version: '2', drawing: 'Bracket plate', type: 'IR', date: '2026-11-03' })
+    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...values, n: '1' })).toBe('Bracket_plate_Rev_IR1')
+    const fai = reportNumberValues({ partNumber: 'P', description: null, revision: 'B' }, 'P.SLDDRW', 2, new Date(2026, 10, 3), 'fai')
+    expect(formatReportNumber(DEFAULT_REPORT_NUMBER_PATTERN, { ...fai, n: '1' })).toBe('P_RevB_FAIR1')
   })
 })
 
@@ -360,6 +403,31 @@ describe('template choices', () => {
     )
     expect(defaultTemplateChoice([])).toBeNull()
   })
+
+  it('preselects per type: the org default for the type, its general default, the type built-in', () => {
+    const typed = [
+      { key: 'dimensional-inspection', name: 'Dimensional' },
+      { key: 'first-article-as9102', name: 'FAI', reportTypes: ['fai' as const], defaultFor: ['fai' as const] },
+      { key: 'production-lot', name: 'PIR', reportTypes: ['production' as const], defaultFor: ['production' as const] },
+    ]
+    // No org templates: the type's built-in.
+    expect(templateChoiceId(defaultTemplateChoice(templateChoices([], typed), 'fai')!)).toBe('builtin:first-article-as9102')
+    // A 5.5.0 organization default (any type) keeps being used.
+    const general = template({ id: 'g', isDefault: true })
+    expect(templateChoiceId(defaultTemplateChoice(templateChoices([general], typed), 'production')!)).toBe('org:g')
+    // ... unless it serves other types only.
+    const faiOnly = template({ id: 'g', isDefault: true, reportTypes: ['fai'] })
+    expect(templateChoiceId(defaultTemplateChoice(templateChoices([faiOnly], typed), 'production')!)).toBe('builtin:production-lot')
+    // An org default for the type wins over everything.
+    const pir = template({ id: 'p', reportTypes: ['production'], defaultFor: ['production'] })
+    expect(templateChoiceId(defaultTemplateChoice(templateChoices([general, pir], typed), 'production')!)).toBe('org:p')
+    // Regenerate falls back to the report's type.
+    expect(
+      templateChoiceId(
+        regenerateTemplateChoice({ templateId: 'gone', templateName: null, reportType: 'fai' }, templateChoices([pir], typed))!,
+      ),
+    ).toBe('builtin:first-article-as9102')
+  })
 })
 
 describe('stored results', () => {
@@ -467,6 +535,19 @@ describe('importVerdict', () => {
 
   it('blocks a workbook that is not a readable report', () => {
     expect(importVerdict(own, parsed({ warnings: [{ code: 'NOT_A_REPORT' }] })).reason).toBe('not_a_report')
+  })
+
+  it('blocks another report of the version that holds other characteristics', () => {
+    const rows = (ids: string[]) => ids.map((rowId) => ({ rowId }))
+    expect(importVerdict(own, { ...parsed({ reportId: 'r2' }), rows: rows(['a', 'b']) }, ['a', 'b'])).toMatchObject({
+      blocked: false,
+      reportIdMismatch: true,
+    })
+    expect(importVerdict(own, { ...parsed({ reportId: 'r2' }), rows: rows(['a', 'c']) }, ['a', 'b']).reason).toBe(
+      'other_selection',
+    )
+    // Its own workbook is checked row by row instead (missing and unknown rows).
+    expect(importVerdict(own, { ...parsed({}), rows: rows(['a']) }, ['a', 'b']).blocked).toBe(false)
   })
 })
 

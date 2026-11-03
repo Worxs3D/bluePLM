@@ -16,6 +16,11 @@ export interface ReturnedResultsExpectation {
   reportId?: string
   /** The characteristics the report was generated from (that version's snapshot rows). */
   rows?: readonly InspectionReportRow[]
+  /**
+   * Values a row must hold before it can pass, by row id (a characteristic measured on several
+   * parts in one row). Rows not listed need one value.
+   */
+  expectedValues?: ReadonlyMap<string, number>
 }
 
 export type TamperReason =
@@ -204,7 +209,9 @@ export async function readReturnedResults(
       result.warnings.push({ code: 'UNRECOGNIZED_VERDICT', rowId: rowId ?? undefined, balloon: balloon ?? undefined, detail: enteredVerdictText })
     }
     const basis = exp ?? (specSelfConsistent ? specRow : null)
-    const computedVerdict = basis ? computeVerdict(basis, measured) : null
+    const required = (rowId ? expected.expectedValues?.get(rowId) : undefined) ?? 1
+    const computedVerdict = basis ? computeVerdict(basis, measured, required) : null
+    const incomplete = measured.filter((m) => m !== '').length < required
     const verdictConflict = enteredVerdict !== null && computedVerdict !== null && enteredVerdict !== computedVerdict
     if (verdictConflict) result.warnings.push({ code: 'VERDICT_CONFLICT', rowId: rowId ?? undefined, balloon: balloon ?? undefined })
     if (reasons.length > 0) result.warnings.push({ code: 'TAMPERED_ROW', rowId: rowId ?? undefined, balloon: balloon ?? undefined, detail: reasons.join(',') })
@@ -218,7 +225,8 @@ export async function readReturnedResults(
       enteredVerdictText,
       enteredVerdict,
       computedVerdict,
-      verdict: computedVerdict ?? enteredVerdict,
+      // An entered PASS does not close a row that still lacks values for some of its parts.
+      verdict: computedVerdict ?? (incomplete && enteredVerdict === 'pass' ? null : enteredVerdict),
       verdictConflict,
       tampered: reasons.length > 0,
       tamperReasons: reasons,

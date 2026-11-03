@@ -3,7 +3,8 @@
  * for the reasons a report went out without its drawing. The engine returns codes only.
  */
 import { t } from '@/lib/i18n'
-import type { LayoutIssue, LayoutIssueCode, ReturnedIssue, ReturnedIssueCode } from '@/lib/inspection/excel'
+import { builtInTemplateInfo, type LayoutIssue, type LayoutIssueCode, type ReturnedIssue, type ReturnedIssueCode } from '@/lib/inspection/excel'
+import type { InspectionReportType } from '@/types/inspectionReports'
 
 /** Why a report went out without the drawing pages. */
 export type DrawingOmittedReason =
@@ -95,14 +96,35 @@ export function storedWarningText(code: string): string {
 export const BUILT_IN_NAME_KEYS: Readonly<Record<string, string>> = {
   'dimensional-inspection': 'source.inspection.tplBuiltinDimensional',
   'first-article-accountability': 'source.inspection.tplBuiltinFirstArticle',
+  'first-article-as9102': 'source.inspection.tplBuiltinAs9102',
+  'production-lot': 'source.inspection.tplBuiltinProduction',
+  'receiving-inspection': 'source.inspection.tplBuiltinReceiving',
+  reinspection: 'source.inspection.tplBuiltinReinspection',
 }
 
 export const BUILT_IN_DESCRIPTION_KEYS: Readonly<Record<string, string>> = {
   'dimensional-inspection': 'source.inspection.tplBuiltinDimensionalDesc',
   'first-article-accountability': 'source.inspection.tplBuiltinFirstArticleDesc',
+  'first-article-as9102': 'source.inspection.tplBuiltinAs9102Desc',
+  'production-lot': 'source.inspection.tplBuiltinProductionDesc',
+  'receiving-inspection': 'source.inspection.tplBuiltinReceivingDesc',
+  reinspection: 'source.inspection.tplBuiltinReinspectionDesc',
 }
 
-/** Built-ins offered next to the organization's templates, names translated by key. */
-export function builtInTemplateNames(): Array<{ key: string; name: string }> {
-  return Object.entries(BUILT_IN_NAME_KEYS).map(([key, nameKey]) => ({ key, name: t(nameKey) }))
+/**
+ * Built-ins offered next to the organization's templates, names translated by key, with the report
+ * types each serves and is the built-in default for (`builtInTemplateInfo()`).
+ */
+export function builtInTemplateNames(): Array<{
+  key: string
+  name: string
+  reportTypes: InspectionReportType[]
+  defaultFor: InspectionReportType[]
+}> {
+  return builtInTemplateInfo().map((info) => ({
+    key: info.key,
+    name: BUILT_IN_NAME_KEYS[info.key] ? t(BUILT_IN_NAME_KEYS[info.key]) : info.name,
+    reportTypes: info.reportTypes,
+    defaultFor: info.defaultFor,
+  }))
 }

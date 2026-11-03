@@ -740,24 +740,31 @@ export function seedLookInspection(db: FakeSupabase, ids: LookSeedIds, now = Dat
   const templates = lookTemplateRows(ids, iso)
   for (const t of templates) db.seed('inspection_template' as never, t as never)
 
-  // Reports across versions 2 and 3, one per status, newest last here (listed newest first).
+  // Reports across versions 2 and 3, one per status and one per type (plus a report from before
+  // types), newest last here (listed newest first). Version 2's first article was rejected, then
+  // redone and accepted; version 3 (same revision) went on to production, receiving and a
+  // re-inspection after a nonconformance.
   const reports: Array<{
     n: number
     seq: number
     v: number
     status: string
     daysAgo: number
-    tpl: 0 | 1
+    tpl: 0 | 1 | null
+    type: Record<string, unknown> | null
+    count?: number
     results?: { pass: number; fail: number; blank: number }
     notes?: string
   }> = [
+    { n: 6, seq: 4, v: 2, status: 'accepted', daysAgo: 30, tpl: 0, type: null, results: { pass: 21, fail: 0, blank: 0 } },
     {
       n: 1,
       seq: 1,
       v: 2,
       status: 'rejected',
       daysAgo: 14,
-      tpl: 0,
+      tpl: 1,
+      type: { report_type: 'fai', fai_scope: 'full', fai_reason: 'new_part' },
       results: { pass: 18, fail: 2, blank: 1 },
       notes: 'Bolt pattern out of tolerance on 2 of 5 parts',
     },
@@ -767,25 +774,62 @@ export function seedLookInspection(db: FakeSupabase, ids: LookSeedIds, now = Dat
       v: 2,
       status: 'accepted',
       daysAgo: 11,
-      tpl: 1,
+      tpl: null,
+      type: { report_type: 'fai', fai_scope: 'full', fai_reason: 'corrective_action' },
       results: { pass: 21, fail: 0, blank: 0 },
     },
     {
       n: 3,
-      seq: 3,
+      seq: 1,
       v: 3,
       status: 'returned',
       daysAgo: 4,
-      tpl: 0,
-      results: { pass: 22, fail: 1, blank: 2 },
+      tpl: null,
+      type: { report_type: 'production', lot_number: 'L-2611', lot_size: 120, sampling: { plan: 'fixed', n: 5 }, sample_columns: 10 },
+      count: 16,
+      results: { pass: 14, fail: 1, blank: 1 },
     },
-    { n: 4, seq: 4, v: 3, status: 'sent', daysAgo: 2, tpl: 1 },
-    { n: 5, seq: 5, v: 3, status: 'issued', daysAgo: 0, tpl: 0 },
+    {
+      n: 4,
+      seq: 1,
+      v: 3,
+      status: 'sent',
+      daysAgo: 2,
+      tpl: null,
+      type: {
+        report_type: 'receiving',
+        lot_number: 'L-2611',
+        lot_size: 120,
+        sampling: { plan: 'fixed', n: 3 },
+        po_number: 'PO-48813',
+        supplier_name: 'Precision Machining Co.',
+        sample_columns: 10,
+      },
+      count: 16,
+    },
+    {
+      n: 5,
+      seq: 1,
+      v: 3,
+      status: 'issued',
+      daysAgo: 0,
+      tpl: null,
+      type: { report_type: 'reinspection', ncr_reference: 'NCR-0042' },
+      count: 3,
+    },
   ]
+  const builtInNames: Record<string, string> = {
+    fai: 'First article inspection (AS9102 Forms 1-3)',
+    production: 'Production inspection',
+    receiving: 'Receiving inspection',
+    reinspection: 'Re-inspection',
+  }
+  const TYPE_CODE: Record<string, string> = { fai: 'FAIR', production: 'PIR', receiving: 'RIR', reinspection: 'RIN' }
   for (const r of reports) {
-    const tpl = templates[r.tpl]
-    const total = r.v === 2 ? 21 : 25
+    const tpl = r.tpl === null ? null : templates[r.tpl]
+    const total = r.count ?? (r.v === 2 ? 21 : 25)
     const returned = r.results !== undefined
+    const typeName = typeof r.type?.report_type === 'string' ? r.type.report_type : null
     db.seed(
       'inspection_report' as never,
       {
@@ -793,10 +837,12 @@ export function seedLookInspection(db: FakeSupabase, ids: LookSeedIds, now = Dat
         org_id: ids.orgId,
         file_id: drawingId,
         file_version_id: lookVersionId(LOOK_DRAWING, r.v),
-        template_id: tpl.id,
-        template_name: tpl.name,
-        template_hash: tpl.storage_hash,
-        report_number: `BR-103849-201_Rev${r.v === 1 ? 'A' : 'B'}_IRv${r.seq}`,
+        template_id: tpl?.id ?? null,
+        template_name: tpl?.name ?? (typeName ? builtInNames[typeName] : null),
+        template_hash: tpl?.storage_hash ?? hash(`builtin-${typeName}`),
+        report_number: typeName
+          ? `BR-103849-201_Rev${r.v === 1 ? 'A' : 'B'}_${TYPE_CODE[typeName]}${r.seq}`
+          : `BR-103849-201_Rev${r.v === 1 ? 'A' : 'B'}_IRv${r.seq}`,
         sequence: r.seq,
         title: null,
         status: r.status,
@@ -814,6 +860,19 @@ export function seedLookInspection(db: FakeSupabase, ids: LookSeedIds, now = Dat
         created_at: iso(r.daysAgo, 9 + r.n),
         updated_by: ids.userId,
         updated_at: iso(Math.max(0, r.daysAgo - 1), 16),
+        report_type: null,
+        fai_scope: null,
+        fai_reason: null,
+        fai_baseline_version_id: null,
+        lot_number: null,
+        lot_size: null,
+        sampling: null,
+        po_number: null,
+        supplier_name: null,
+        ncr_reference: null,
+        characteristic_ids: null,
+        sample_columns: null,
+        ...r.type,
       } as never,
     )
   }
@@ -863,6 +922,8 @@ function lookTemplateRows(ids: LookSeedIds, iso: (daysAgo: number, hour?: number
       original_filename: 'Dimensional inspection report.xlsx',
       revision: 3,
       is_default: true,
+      report_types: [],
+      default_for: [],
       layout: null,
       archived_at: null,
       created_by: ids.userId,
@@ -880,6 +941,8 @@ function lookTemplateRows(ids: LookSeedIds, iso: (daysAgo: number, hour?: number
       original_filename: 'FAI Form 3.xlsx',
       revision: 1,
       is_default: false,
+      report_types: ['fai'],
+      default_for: ['fai'],
       layout: null,
       archived_at: null,
       created_by: ids.userId,
@@ -897,6 +960,8 @@ function lookTemplateRows(ids: LookSeedIds, iso: (daysAgo: number, hour?: number
       original_filename: 'cmm_layout_v2.xlsx',
       revision: 2,
       is_default: false,
+      report_types: ['production', 'receiving'],
+      default_for: [],
       layout: null,
       archived_at: null,
       created_by: ids.otherUserId,

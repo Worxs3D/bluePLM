@@ -1,8 +1,10 @@
 /**
  * Report commands shared by every surface that offers them: the drawing's file context menu
  * ("Generate inspection report"), the Inspection tab's Reports view, and the report rows under a
- * drawing in the file list. Generate runs without a dialog (default template, latest checked-in
- * version); "Generate with options..." opens the Reports view's dialog instead.
+ * drawing in the file list. Generate runs without a dialog (latest checked-in version, the type
+ * the context calls for: a first article inspection when the part's revision has had none, else a
+ * production report; the type's default template); "Generate with options..." opens the Reports
+ * view's dialog instead, which also offers receiving and re-inspection reports.
  *
  * Each command reads what it needs fresh from the server, reports through toasts, and writes the
  * drawing's report list to the store (`drawingInspectionReports`), which the Reports view and the
@@ -20,16 +22,20 @@ import {
   listInspectionTemplates,
 } from '@/lib/supabase'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
-import type { InspectionReport, InspectionTemplate } from '@/types/inspectionReports'
+import type { InspectionReport, InspectionReportType, InspectionTemplate } from '@/types/inspectionReports'
 
 import {
   downloadReport,
   generateReport,
   openReport,
   ReportHasNoRowsError,
+  ReportSamplingError,
+  ReportSelectionEmptyError,
+  rowsAtVersion,
   saveReportNextToDrawing,
   type GeneratePhase,
 } from './reportActions'
+import { mapCharacteristicIds } from '@/lib/inspection/reportTypes'
 import {
   defaultTemplateChoice,
   hasChangesNotCheckedIn,
@@ -40,6 +46,7 @@ import {
   type VersionInfo,
 } from './reportModel'
 import { liveInspectionRowCount, organizationLogo, reportIdentity } from './reportSources'
+import { defaultTypeRequest, reportTypeKey, type ReportTypeRequest } from './reportTypeModel'
 
 export interface ReportContext {
   reports: InspectionReport[]
@@ -133,6 +140,8 @@ export interface GenerateOptions {
   template?: TemplateChoice
   /** Default: the latest checked-in version. */
   version?: VersionInfo
+  /** Default: from context (`defaultTypeRequest`). */
+  type?: ReportTypeRequest
   /** Progress, for a dialog; without it a progress toast shows the phases. */
   onPhase?: (phase: GeneratePhase) => void
 }
@@ -178,12 +187,13 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       addToast('warning', t('source.inspection.rptNoVersions'))
       return null
     }
-    const template =
-      options.template ?? defaultTemplateChoice(templateChoices(context.templates, builtInTemplateNames()))
-    if (!template) throw new Error('No template')
-
     const organization = usePDMStore.getState().organization
     const naming = reportNamingFromSettings(organization?.settings?.inspection_reports)
+    const type = options.type ?? defaultTypeRequest(context.reports, context.versions, version, naming)
+    const template =
+      options.template ??
+      defaultTemplateChoice(templateChoices(context.templates, builtInTemplateNames()), type.reportType)
+    if (!template) throw new Error('No template')
     const [identity, logo] = await Promise.all([
       reportIdentity(version, file.pdmData),
       naming.includeLogo ? organizationLogo(organization) : Promise.resolve(null),
@@ -201,6 +211,7 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       naming,
       identity,
       logo,
+      type,
       onPhase,
     })
 
@@ -208,10 +219,21 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
     publishReports(fileId, [outcome.report, ...current.filter((r) => r.id !== outcome.report.id)])
     usePDMStore.getState().setReportVersionNumbers(new Map([[version.id, version.version]]))
 
-    addToast('success', t('source.inspection.rptGenerated', { number: outcome.report.reportNumber ?? '' }), 8000, {
-      label: t('source.inspection.rptOpen'),
-      onClick: () => void openReportWithToast(outcome.report),
-    })
+    addToast(
+      'success',
+      t('source.inspection.rptGeneratedTyped', {
+        number: outcome.report.reportNumber ?? '',
+        type: t(reportTypeKey(outcome.report.reportType)),
+      }),
+      8000,
+      {
+        label: t('source.inspection.rptOpen'),
+        onClick: () => void openReportWithToast(outcome.report),
+      },
+    )
+    if (outcome.selectionNote === 'no_classified') {
+      addToast('info', t('source.inspection.rptNoClassified', { count: outcome.report.characteristicCount }), 10000)
+    }
     if (!outcome.rowsExact) {
       addToast(
         'warning',
@@ -221,10 +243,19 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
         10000,
       )
     }
+    if (!outcome.baselineExact) addToast('warning', t('source.inspection.rptBaselineNotExact'), 12000)
     if (outcome.drawingOmitted) addToast('info', t(drawingOmittedKey(outcome.drawingOmitted)), 10000)
     await warnIfNotCheckedIn(file, version, outcome.report.characteristicCount)
     return outcome.report
   } catch (err) {
+    if (err instanceof ReportSelectionEmptyError) {
+      addToast('warning', t(`source.inspection.rptSelectionEmpty_${err.note ?? 'none_chosen'}`), 12000)
+      return null
+    }
+    if (err instanceof ReportSamplingError) {
+      addToast('warning', t(`source.inspection.rptSamplingError_${err.reason}`), 12000)
+      return null
+    }
     if (err instanceof ReportHasNoRowsError) {
       const live = await liveInspectionRowCount(fileId)
       addToast(
@@ -283,11 +314,57 @@ export async function regenerateReport(
       return null
     }
     const template = regenerateTemplateChoice(report, templateChoices(context.templates, builtInTemplateNames()))
-    return await generateForDrawing(file, { context, version, template: template ?? undefined })
+    const type = regenerateTypeRequest(report, context, target)
+    // A re-inspection on another version: check-in gave every row a new id, so its characteristics
+    // are found again by annotation or balloon; any that are gone are named, and nothing is generated.
+    if (type?.chosenIds && version.id !== report.fileVersionId) {
+      const [from, to] = await Promise.all([
+        rowsAtVersion(report.fileId, report.fileVersionId),
+        rowsAtVersion(report.fileId, version.id),
+      ])
+      const mapped = mapCharacteristicIds(from.rows, type.chosenIds, to.rows)
+      if (mapped.unmapped.length > 0) {
+        addToast(
+          'warning',
+          t('source.inspection.rptRegenerateUnmapped', { version: version.version, balloons: mapped.unmapped.join(', ') }),
+          12000,
+        )
+        return null
+      }
+      type.chosenIds = mapped.ids
+    }
+    return await generateForDrawing(file, { context, version, template: template ?? undefined, type })
   } catch (err) {
     log.error('[InspectionReports]', 'Regenerate failed', { reportId: report.id, error: errorText(err) })
     addToast('error', t('source.inspection.rptGenerateFailed', { error: errorText(err) }))
     return null
+  }
+}
+
+/**
+ * The type of a regenerated report: the report's own. Regenerating the same version keeps its
+ * characteristics; on the latest version a partial FAI is recomputed against its baseline and a lot
+ * report re-selects, while a re-inspection keeps its choice (carried to the new version's rows by
+ * `regenerateReport`). A report from before types gets the default type.
+ */
+function regenerateTypeRequest(report: InspectionReport, context: ReportContext, target: 'same' | 'latest'): ReportTypeRequest | undefined {
+  if (!report.reportType) return undefined
+  const baseline = report.faiBaselineVersionId
+    ? (context.versions.find((v) => v.id === report.faiBaselineVersionId) ?? null)
+    : null
+  const keepChoice = target === 'same' || report.reportType === 'reinspection'
+  return {
+    reportType: report.reportType,
+    faiScope: report.faiScope,
+    faiReason: report.faiReason,
+    baseline,
+    lotNumber: report.lotNumber,
+    lotSize: report.lotSize,
+    sampling: report.sampling,
+    poNumber: report.poNumber,
+    supplierName: report.supplierName,
+    ncrReference: report.ncrReference,
+    chosenIds: keepChoice ? report.characteristicIds : null,
   }
 }
 
@@ -332,20 +409,24 @@ export async function deleteReportWithToast(report: InspectionReport): Promise<b
 // ---------------------------------------------------------------------------
 
 /** The one drawing whose Reports view should open the options dialog (latest request wins). */
-let pendingOptionsFor: string | null = null
+let pendingOptions: { fileId: string; type: InspectionReportType | null } | null = null
 const optionsListeners = new Set<() => void>()
 
-/** Ask the drawing's Reports view to open "Generate with options..." (it is shown by the caller). */
-export function requestGenerateOptions(fileId: string): void {
-  pendingOptionsFor = fileId
+/**
+ * Ask the drawing's Reports view to open "Generate with options..." (it is shown by the caller),
+ * optionally on a report type instead of the one Generate would make.
+ */
+export function requestGenerateOptions(fileId: string, type: InspectionReportType | null = null): void {
+  pendingOptions = { fileId, type }
   for (const listener of optionsListeners) listener()
 }
 
-/** Take the request when it is for this drawing. */
-export function takeGenerateOptionsRequest(fileId: string | undefined): boolean {
-  if (!fileId || pendingOptionsFor !== fileId) return false
-  pendingOptionsFor = null
-  return true
+/** Take the request when it is for this drawing: false, or the type it asks for (null: the default). */
+export function takeGenerateOptionsRequest(fileId: string | undefined): false | { type: InspectionReportType | null } {
+  if (!fileId || pendingOptions?.fileId !== fileId) return false
+  const { type } = pendingOptions
+  pendingOptions = null
+  return { type }
 }
 
 /** Listen for requests; returns the unsubscribe (call it on unmount, so the set stays bounded). */

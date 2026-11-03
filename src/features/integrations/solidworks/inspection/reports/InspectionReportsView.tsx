@@ -7,7 +7,12 @@ import { Button, Callout } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
-import type { InspectionReport, InspectionReportStatus } from '@/types/inspectionReports'
+import {
+  INSPECTION_REPORT_TYPES,
+  type InspectionReport,
+  type InspectionReportStatus,
+  type InspectionReportType,
+} from '@/types/inspectionReports'
 
 import { GenerateReportDialog } from './GenerateReportDialog'
 import { downloadReturned, setReportStatus, type GeneratePhase } from './reportActions'
@@ -18,7 +23,8 @@ import {
   openReportWithToast,
   takeGenerateOptionsRequest,
 } from './reportCommands'
-import { groupReportsByVersion, type TemplateChoice, type VersionInfo } from './reportModel'
+import { groupReportsByVersion, reportNamingFromSettings, type TemplateChoice, type VersionInfo } from './reportModel'
+import { defaultTypeRequest, reportTypeChipKey, reportTypeKey, type ReportTypeRequest } from './reportTypeModel'
 import { ReportMenu } from './ReportMenu'
 import { ReportRow } from './ReportRow'
 import { useInspectionReports } from './useInspectionReports'
@@ -36,14 +42,19 @@ function reportCount(count: number): string {
   return count === 1 ? t('source.inspection.rptCountOne') : t('source.inspection.rptCountMany', { count })
 }
 
+/** Which reports the view lists: every type, one type, or the reports from before types. */
+type TypeFilter = 'all' | InspectionReportType | 'none'
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
 /**
  * The Reports view of a drawing's Inspection tab: its inspection reports grouped by drawing
- * version. Generate makes a report at once (default template, latest checked-in version);
- * "Generate with options..." picks both. Each report has the shared report menu (right-click or
+ * version, each with its type chip, filtered by type when the drawing has several. Generate makes
+ * a report at once (the type the context calls for, its default template, the latest checked-in
+ * version) and says which type on the button; "Generate with options..." picks type, version,
+ * template, lot, sampling and characteristics. Each report has the shared report menu (right-click or
  * the more button) and quick Open, Download, Mark sent, Import, Accept / Reject and Delete.
  */
 export function InspectionReportsView({ file, focusReportId, leading }: InspectionReportsViewProps) {
@@ -61,6 +72,7 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
   const data = useInspectionReports(fileId, orgId)
 
   const [optionsOpen, setOptionsOpen] = useState(false)
+  const [optionsType, setOptionsType] = useState<InspectionReportType | null>(null)
   const [phase, setPhase] = useState<GeneratePhase | null>(null)
   const [generating, setGenerating] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -68,8 +80,29 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
   const [menu, setMenu] = useState<{ report: InspectionReport; x: number; y: number } | null>(null)
   const dialogs = useReportDialogs((updated) => setExpanded((prev) => new Set(prev).add(updated.id)))
 
-  const groups = useMemo(() => groupReportsByVersion(data.reports, data.versions), [data.reports, data.versions])
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const typesPresent = useMemo(() => {
+    const present = new Set(data.reports.map((r) => r.reportType ?? 'none'))
+    return [...INSPECTION_REPORT_TYPES, 'none' as const].filter((type) => present.has(type))
+  }, [data.reports])
+  // A filter for a type no report has any more (deleted) falls back to all.
+  const activeFilter: TypeFilter = typeFilter !== 'all' && !typesPresent.includes(typeFilter) ? 'all' : typeFilter
+  const shownReports = useMemo(
+    () => (activeFilter === 'all' ? data.reports : data.reports.filter((r) => (r.reportType ?? 'none') === activeFilter)),
+    [data.reports, activeFilter],
+  )
+  const groups = useMemo(() => groupReportsByVersion(shownReports, data.versions), [shownReports, data.versions])
   const versionNumber = useMemo(() => new Map(data.versions.map((v) => [v.id, v.version])), [data.versions])
+  const versionNumberOf = useCallback((id: string) => versionNumber.get(id) ?? null, [versionNumber])
+  const naming = useMemo(
+    () => reportNamingFromSettings(organization?.settings?.inspection_reports),
+    [organization?.settings?.inspection_reports],
+  )
+  // What Generate makes without asking, named on the button.
+  const quickType = useMemo(
+    () => (data.versions[0] ? defaultTypeRequest(data.reports, data.versions, data.versions[0], naming) : null),
+    [data.reports, data.versions, naming],
+  )
   const latestVersion = data.versions[0]?.version ?? file.pdmData?.version ?? null
 
   useEffect(() => {
@@ -82,7 +115,11 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
   // "Generate with options..." from the drawing's context menu opens the dialog here.
   useEffect(() => {
     const check = () => {
-      if (canEdit && takeGenerateOptionsRequest(fileId)) setOptionsOpen(true)
+      if (!canEdit) return
+      const request = takeGenerateOptionsRequest(fileId)
+      if (!request) return
+      setOptionsType(request.type)
+      setOptionsOpen(true)
     }
     check()
     return onGenerateOptionsRequest(check)
@@ -156,11 +193,11 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
   }, [file, data.context, data.loading, data.versions.length])
 
   const handleGenerateWithOptions = useCallback(
-    async (template: TemplateChoice, version: VersionInfo) => {
+    async (template: TemplateChoice, version: VersionInfo, type: ReportTypeRequest) => {
       setPhase('rows')
       setGenerating(true)
       try {
-        const report = await generateForDrawing(file, { context: data.context, template, version, onPhase: setPhase })
+        const report = await generateForDrawing(file, { context: data.context, template, version, type, onPhase: setPhase })
         if (report) setOptionsOpen(false)
       } finally {
         setPhase(null)
@@ -199,10 +236,49 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
       onClick={() => void handleQuickGenerate()}
       loading={generating && !optionsOpen}
       disabled={!orgId || generating}
-      title={t('source.inspection.rptGenerateHint')}
+      title={
+        quickType && data.versions[0]
+          ? t('source.inspection.rptGenerateTypedHint', {
+              type: t(reportTypeKey(quickType.reportType)).toLowerCase(),
+              version: data.versions[0].version,
+            })
+          : t('source.inspection.rptGenerateHint')
+      }
     >
-      {t('source.inspection.rptGenerate')}
+      {quickType
+        ? t('source.inspection.rptGenerateTyped', { type: t(reportTypeChipKey(quickType.reportType)) })
+        : t('source.inspection.rptGenerate')}
     </Button>
+  )
+  const filterBar = typesPresent.length > 1 && (
+    <div
+      className="flex h-9 shrink-0 items-center gap-1 border-b border-plm-border px-3"
+      role="radiogroup"
+      aria-label={t('source.inspection.rptFilterTypeLabel')}
+    >
+      {(['all', ...typesPresent] as TypeFilter[]).map((value) => {
+        const count = value === 'all' ? data.reports.length : data.reports.filter((r) => (r.reportType ?? 'none') === value).length
+        const selected = activeFilter === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => setTypeFilter(value)}
+            title={value === 'all' ? undefined : t(reportTypeKey(value === 'none' ? null : value))}
+            className={`flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${
+              selected ? 'bg-ui-accent/15 font-medium text-ui-fg' : 'text-ui-fg-secondary hover:bg-ui-hover hover:text-ui-fg'
+            }`}
+          >
+            {value === 'all'
+              ? t('source.inspection.rptFilterTypeAll')
+              : t(reportTypeChipKey(value === 'none' ? null : value))}
+            <span className="tabular-nums text-ui-fg-tertiary">{count}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 
   return (
@@ -227,7 +303,10 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
             variant="ghost"
             size="sm"
             icon={<SlidersHorizontal size={13} />}
-            onClick={() => setOptionsOpen(true)}
+            onClick={() => {
+              setOptionsType(null)
+              setOptionsOpen(true)
+            }}
             disabled={!orgId || data.loading || generating}
             title={t('source.inspection.rptGenerateWithOptions')}
           >
@@ -237,6 +316,7 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
         {!empty && generateButton}
       </div>
 
+      {filterBar}
       <div className="flex-1 overflow-auto">
         {data.error && (
           <div className="p-3">
@@ -291,6 +371,7 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
                     onImport={() => dialogs.startImport(report)}
                     onSetStatus={(status) => void handleStatus(report, status)}
                     onMenu={(x, y) => setMenu({ report, x, y })}
+                    versionNumberOf={versionNumberOf}
                   />
                 </div>
               ))}
@@ -301,10 +382,14 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
 
       {optionsOpen && (
         <GenerateReportDialog
+          fileId={fileId ?? ''}
+          reports={data.reports}
           templates={data.templates}
           versions={data.versions}
+          naming={naming}
+          initialType={optionsType}
           busyPhase={phase}
-          onGenerate={(template, version) => void handleGenerateWithOptions(template, version)}
+          onGenerate={(template, version, type) => void handleGenerateWithOptions(template, version, type)}
           onClose={() => setOptionsOpen(false)}
         />
       )}

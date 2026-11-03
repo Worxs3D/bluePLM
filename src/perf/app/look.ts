@@ -137,6 +137,28 @@ export function installLook(store: Store, backend: PerfBackend): void {
       await analyzeLookTemplates(backend)
       showInspectionTab(store, LOOK_DRAWING, true)
     },
+    // "Generate with options..." on the ballooned drawing: the default (production, its revision
+    // has had its FAI), then each other type.
+    ...Object.fromEntries(
+      ([
+        ['inspection-generate-options', null],
+        ['inspection-generate-options-fai', 'fai'],
+        ['inspection-generate-options-receiving', 'receiving'],
+        ['inspection-generate-options-reinspection', 'reinspection'],
+      ] as const).map(([name, type]) => [
+        name,
+        async () => {
+          await analyzeLookTemplates(backend)
+          showInspectionTab(store, LOOK_DRAWING, true)
+          const { requestGenerateOptions } = await import(
+            '@/features/integrations/solidworks/inspection/reports/reportCommands'
+          )
+          // After the Reports view has mounted and listens.
+          await new Promise((resolve) => setTimeout(resolve, 600))
+          requestGenerateOptions(LOOK_FILE_IDS[LOOK_DRAWING], type)
+        },
+      ]),
+    ),
     // Reports of a drawing with none (empty state).
     'inspection-reports-empty': async () => {
       await analyzeLookTemplates(backend)

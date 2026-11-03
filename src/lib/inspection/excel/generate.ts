@@ -27,6 +27,12 @@ export interface InspectionReportInput {
   rows: readonly InspectionReportRow[]
   /** Scalar token values. `PART_NAME` defaults to DESCRIPTION, then DRAWING_NAME; `DATE` to today. */
   scalars?: Partial<Record<ScalarName, string>>
+  /**
+   * Values already known for `{{ENTRY:<name>}}` cells (a lot number, a purchase order). The cell
+   * is written with the value and stays unlocked, so the recipient can correct it; the value read
+   * back is whatever the cell then holds.
+   */
+  entryValues?: Readonly<Record<string, string>>
   /** Custom property values for `{{PROP:<name>}}` (names match case-insensitively). */
   properties?: Readonly<Record<string, string>>
   /** Drawing page images (`rasterizePdf`). None: no drawing is embedded. */
@@ -290,13 +296,16 @@ export async function generateInspectionReport(input: InspectionReportInput): Pr
 
   // 1. Header tokens everywhere except the row template's own cells.
   const rowCellCols = new Set(rt.cells.map((c) => c.col))
-  const entryCells = new Set(layout.entries.map((e) => `${e.sheet}!${e.cell}`))
+  const entryNames = new Map(layout.entries.map((e) => [`${e.sheet}!${e.cell}`, e.name]))
+  const entryValue = (name: string | undefined): string => (name ? (input.entryValues?.[name] ?? '').trim() : '')
   for (const [sheetName, sheet] of scanned as Map<string, ScannedSheet>) {
     for (const c of sheet.cells) {
       if (sheetName === rt.sheet && c.row === rt.row && rowCellCols.has(c.col)) continue
       const cell = sheet.ws.getCell(c.row, c.col)
-      if (entryCells.has(`${sheetName}!${c.cell}`)) {
-        cell.value = null
+      const entryKey = `${sheetName}!${c.cell}`
+      if (entryNames.has(entryKey)) {
+        const known = entryValue(entryNames.get(entryKey))
+        cell.value = known === '' ? null : known
         unlock(cell, true)
         continue
       }

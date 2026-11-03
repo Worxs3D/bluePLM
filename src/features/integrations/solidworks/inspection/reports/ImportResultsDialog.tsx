@@ -5,8 +5,8 @@ import { Button, Callout } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 
 import { returnedIssueText } from '@/lib/inspection/issueText'
-import type { ReadReturnedOutcome } from './reportActions'
-import { importVerdict, summarizeStored } from './reportModel'
+import { returnedVerdict, type ReadReturnedOutcome } from './reportActions'
+import { summarizeStored } from './reportModel'
 import type { InspectionReport } from '@/types/inspectionReports'
 
 interface ImportResultsDialogProps {
@@ -25,12 +25,12 @@ const MAX_LISTED = 12
  * tampered requirements, verdict conflicts, missing rows). A workbook that is not a BluePLM report
  * cannot be recorded, nor one generated for another drawing or drawing version (its measurements
  * would be graded against other requirements). Another report of the same version may be
- * recorded, with a warning.
+ * recorded, with a warning, when it holds the same characteristics as this report.
  */
 export function ImportResultsDialog({ report, read, busy, onConfirm, onClose }: ImportResultsDialogProps) {
   const summary = summarizeStored(read.stored)
   const warnings = read.parsed.warnings
-  const verdict = importVerdict(report, read.parsed)
+  const verdict = returnedVerdict(report, read)
   const blocking = verdict.blocked
   const wrongReport = !blocking && verdict.reportIdMismatch
   const tampered = read.stored.rows.filter((r) => r.tampered).length
@@ -54,6 +54,9 @@ export function ImportResultsDialog({ report, read, busy, onConfirm, onClose }: 
         )}
         {verdict.reason === 'other_version' && (
           <Callout tone="error">{t('source.inspection.rptImportOtherVersion')}</Callout>
+        )}
+        {verdict.reason === 'other_selection' && (
+          <Callout tone="error">{t('source.inspection.rptImportOtherSelection')}</Callout>
         )}
         {wrongReport && <Callout tone="warning">{t('source.inspection.rptImportWrongReport')}</Callout>}
         {tampered > 0 && (

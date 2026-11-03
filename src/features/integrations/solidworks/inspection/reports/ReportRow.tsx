@@ -15,6 +15,8 @@ import type { InspectionReport, InspectionReportStatus } from '@/types/inspectio
 
 import { nextReportStep, statusKey, statusTone } from './reportModel'
 import { ReportResultsDetail } from './ReportResultsDetail'
+import { reportTypeTone } from './reportTypeModel'
+import { reportTypeChip, reportTypeDetail, reportTypeName } from './reportTypeText'
 
 export interface ReportRowProps {
   report: InspectionReport
@@ -28,6 +30,21 @@ export interface ReportRowProps {
   onSetStatus: (status: InspectionReportStatus) => void
   /** Open the report menu at a screen position (right-click or the more button). */
   onMenu: (x: number, y: number) => void
+  /** Version number of a version id (an FAI's baseline), or null. */
+  versionNumberOf: (fileVersionId: string) => number | null
+}
+
+/** The report type as a small fixed-width chip, so numbers line up under each other. */
+export function ReportTypeChip({ report }: { report: InspectionReport }) {
+  return (
+    <Badge
+      tone={reportTypeTone(report.reportType)}
+      className="w-11 justify-center !px-1 text-[11px] tracking-wide"
+      title={reportTypeName(report)}
+    >
+      {reportTypeChip(report)}
+    </Badge>
+  )
 }
 
 function initials(name: string): string {
@@ -150,6 +167,7 @@ export function ReportRow(props: ReportRowProps) {
           <FileSpreadsheet size={18} className="shrink-0 text-ui-success" aria-hidden />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
+              <ReportTypeChip report={report} />
               <span
                 className="min-w-0 truncate text-[13px] font-medium text-ui-fg"
                 title={report.reportNumber || t('source.inspection.rptUntitled')}
@@ -160,9 +178,10 @@ export function ReportRow(props: ReportRowProps) {
             </div>
             <div
               className="truncate text-[12px] text-ui-fg-secondary"
-              title={[report.templateName, report.notes].filter(Boolean).join('\n') || undefined}
+              title={[reportTypeName(report), report.templateName, report.notes].filter(Boolean).join('\n') || undefined}
             >
               {[
+                reportTypeDetail(report, props.versionNumberOf),
                 report.title,
                 report.templateName,
                 t('source.inspection.rptCharacteristicsShort', {

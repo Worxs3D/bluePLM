@@ -5,6 +5,7 @@ import { dbUpgradeStrings } from './dbUpgrade'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
 import { inspectionReportStrings } from './inspectionReports'
+import { inspectionReportTypeStrings } from './inspectionReportTypes'
 import { versionOutputStrings } from './versionOutputs'
 
 // English translations (default/fallback)
@@ -723,6 +724,7 @@ export const en: TranslationDict = {
     },
     inspection: {
       ...inspectionReportStrings,
+      ...inspectionReportTypeStrings,
       title: 'Inspection Table',
       notSynced: 'Sync this drawing to bluePLM to manage its inspection table.',
       version: 'Version',

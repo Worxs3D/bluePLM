@@ -24,11 +24,14 @@ import type {
   InspectionReport,
   InspectionReportCreate,
   InspectionReportStatus,
+  InspectionReportTypeFields,
   InspectionReportUpdate,
   InspectionResultsSummary,
   InspectionRowsAtVersion,
   InspectionSnapshotRow,
+  SamplingPlan,
 } from '@/types/inspectionReports'
+import { isInspectionReportType } from '@/types/inspectionReports'
 
 /** inspection_report as the database returns it. */
 interface InspectionReportRow {
@@ -57,10 +60,88 @@ interface InspectionReportRow {
   created_at: string
   updated_by: string | null
   updated_at: string
+  // Schema 506.
+  report_type: string | null
+  fai_scope: string | null
+  fai_reason: string | null
+  fai_baseline_version_id: string | null
+  lot_number: string | null
+  lot_size: number | null
+  sampling: Json | null
+  po_number: string | null
+  supplier_name: string | null
+  ncr_reference: string | null
+  characteristic_ids: string[] | null
+  sample_columns: number | null
 }
 
 const REPORT_COLUMNS =
-  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at'
+  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at, report_type, fai_scope, fai_reason, fai_baseline_version_id, lot_number, lot_size, sampling, po_number, supplier_name, ncr_reference, characteristic_ids, sample_columns'
+
+const FAI_REASON_SET: ReadonlySet<string> = new Set([
+  'new_part',
+  'design_change',
+  'process_change',
+  'source_change',
+  'tooling_change',
+  'location_change',
+  'production_lapse',
+  'natural_event',
+  'corrective_action',
+  'other',
+])
+
+/** The stored sampling plan, or null when absent or not a known shape. */
+export function parseSamplingPlan(value: unknown): SamplingPlan | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const v = value as Record<string, unknown>
+  if (v.plan === '100') return { plan: '100' }
+  if (v.plan === 'fixed' && typeof v.n === 'number' && Number.isInteger(v.n) && v.n >= 1) return { plan: 'fixed', n: v.n }
+  return null
+}
+
+/** The type columns of a row (schema 506); unknown values read as none. */
+export function toReportTypeFields(row: Partial<InspectionReportRow>): InspectionReportTypeFields {
+  const scope = row.fai_scope === 'full' || row.fai_scope === 'partial' ? row.fai_scope : null
+  const reason = row.fai_reason && FAI_REASON_SET.has(row.fai_reason) ? row.fai_reason : null
+  return {
+    reportType: isInspectionReportType(row.report_type) ? row.report_type : null,
+    faiScope: scope,
+    faiReason: reason as InspectionReportTypeFields['faiReason'],
+    faiBaselineVersionId: row.fai_baseline_version_id ?? null,
+    lotNumber: row.lot_number ?? null,
+    lotSize: typeof row.lot_size === 'number' ? row.lot_size : null,
+    sampling: parseSamplingPlan(row.sampling),
+    poNumber: row.po_number ?? null,
+    supplierName: row.supplier_name ?? null,
+    ncrReference: row.ncr_reference ?? null,
+    characteristicIds: Array.isArray(row.characteristic_ids) ? row.characteristic_ids.map(String) : null,
+    sampleColumns: typeof row.sample_columns === 'number' ? row.sample_columns : null,
+  }
+}
+
+/** Type columns as the insert takes them; blank text is no value. */
+function typeInsertColumns(type: Partial<InspectionReportTypeFields> | undefined): Record<string, unknown> {
+  if (!type) return {}
+  const text = (v: string | null | undefined) => {
+    const t = (v ?? '').trim()
+    return t === '' ? null : t
+  }
+  return {
+    report_type: type.reportType ?? null,
+    fai_scope: type.faiScope ?? null,
+    fai_reason: type.faiReason ?? null,
+    fai_baseline_version_id: type.faiBaselineVersionId ?? null,
+    lot_number: text(type.lotNumber),
+    lot_size: type.lotSize ?? null,
+    sampling: type.sampling ?? null,
+    po_number: text(type.poNumber),
+    supplier_name: text(type.supplierName),
+    ncr_reference: text(type.ncrReference),
+    characteristic_ids: type.characteristicIds ?? null,
+    sample_columns: type.sampleColumns ?? null,
+  }
+}
 
 /** inspection_characteristic_version columns, tolerance_source included (schema 504). */
 const SNAPSHOT_COLUMNS =
@@ -128,6 +209,7 @@ export function toInspectionReport(row: InspectionReportRow): InspectionReport {
     createdAt: row.created_at,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
+    ...toReportTypeFields(row),
   }
 }
 
@@ -241,6 +323,7 @@ export async function createInspectionReport(
       results: input.results ?? null,
       results_summary: input.resultsSummary ?? null,
       notes: input.notes ?? null,
+      ...typeInsertColumns(input.type),
     })
     .select(REPORT_COLUMNS)
     .single()

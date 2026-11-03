@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { InspectionReport, InspectionReportCreate } from '@/types/inspectionReports'
+import type { InspectionReport, InspectionReportCreate, InspectionTemplate } from '@/types/inspectionReports'
 
 const mocks = vi.hoisted(() => ({
   rows: [] as Array<{ id: string }>,
@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   captions: [] as Array<((i: number, n: number, name: string) => string) | undefined>,
   takenOnce: false,
   listed: [] as InspectionReport[],
+  samples: [] as Array<number | null>,
+  resultCount: 3,
+  generatedRows: [] as Array<Array<{ id: string }>>,
+  entries: [] as Array<Record<string, string> | undefined>,
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -40,7 +44,13 @@ vi.mock('@/lib/platform', async (importOriginal) => ({
   hasDesktop: () => false,
 }))
 vi.mock('@/lib/inspection/excel', () => ({
-  builtInTemplates: vi.fn(async () => [{ key: 'dim', name: 'Dimensional', bytes: new Uint8Array([9]) }]),
+  MAX_SAMPLE_COLUMNS: 10,
+  analyzeTemplate: vi.fn(async () => ({ resultCount: mocks.resultCount })),
+  buildBuiltInTemplate: vi.fn(async (_key: string, options: { samples?: number }) => {
+    mocks.samples.push(options.samples ?? null)
+    return new Uint8Array([9])
+  }),
+  specFingerprint: (r: { nominal_value?: string | null }) => String(r.nominal_value ?? ''),
   sha256Hex: vi.fn(async () => 'd'.repeat(64)),
   rasterizePdf: vi.fn(async () => []),
   readReturnedResults: vi.fn(),
@@ -48,10 +58,14 @@ vi.mock('@/lib/inspection/excel', () => ({
   generateInspectionReport: vi.fn(
     async (input: {
       scalars?: Record<string, string>
+      rows: Array<{ id: string }>
+      entryValues?: Record<string, string>
       logo?: unknown
       drawingCaption?: (i: number, n: number, name: string) => string
     }) => {
     mocks.captions.push(input.drawingCaption)
+    mocks.generatedRows.push(input.rows)
+    mocks.entries.push(input.entryValues)
     mocks.scalars.push(input.scalars)
     mocks.logos.push(input.logo)
     return new Uint8Array([2])
@@ -59,7 +73,14 @@ vi.mock('@/lib/inspection/excel', () => ({
   ),
 }))
 
-import { generateReport, isReportNumberTaken, ReportHasNoRowsError, type GenerateReportParams } from './reportActions'
+import {
+  generateReport,
+  isReportNumberTaken,
+  ReportHasNoRowsError,
+  ReportSamplingError,
+  ReportSelectionEmptyError,
+  type GenerateReportParams,
+} from './reportActions'
 import { DEFAULT_REPORT_NAMING } from './reportModel'
 
 function params(over: Partial<GenerateReportParams> = {}): GenerateReportParams {
@@ -71,7 +92,8 @@ function params(over: Partial<GenerateReportParams> = {}): GenerateReportParams 
     drawingName: 'BRK.SLDDRW',
     version,
     versions: [version, { ...version, id: 'v1', version: 1 }],
-    template: { kind: 'builtin', key: 'dim', name: 'Dimensional' },
+    template: { kind: 'builtin', key: 'dim', name: 'Dimensional', reportTypes: [], defaultFor: [] },
+    type: { reportType: 'production', sampling: { plan: 'fixed', n: 3 }, lotScope: 'all' },
     existingReports: [],
     naming: DEFAULT_REPORT_NAMING,
     identity: { partNumber: 'BR-103849-201', description: 'Bracket', revision: 'A' },
@@ -92,6 +114,9 @@ beforeEach(() => {
   mocks.captions = []
   mocks.takenOnce = false
   mocks.listed = []
+  mocks.samples = []
+  mocks.generatedRows = []
+  mocks.entries = []
 })
 
 describe('isReportNumberTaken', () => {
@@ -112,7 +137,8 @@ describe('generateReport', () => {
   })
 
   it('names the report by the org pattern and records its sequence', async () => {
-    const outcome = await generateReport(params({ existingReports: [existing('BRK-A-IR4', 'v1', null)] }))
+    const naming = { ...DEFAULT_REPORT_NAMING, numberPattern: '{partNumber}_Rev{rev}_IRv{n}' }
+    const outcome = await generateReport(params({ naming, existingReports: [existing('BRK-A-IR4', 'v1', null)] }))
     expect(outcome.report.reportNumber).toBe('BR-103849-201_RevA_IRv5')
     expect(mocks.created[0]).toMatchObject({ reportNumber: 'BR-103849-201_RevA_IRv5', sequence: 5, title: 'BR-103849-201 Bracket' })
     expect(mocks.scalars[0]).toMatchObject({ PART_NUMBER: 'BR-103849-201', REVISION: 'A', REPORT_NUMBER: 'BR-103849-201_RevA_IRv5' })
@@ -123,7 +149,7 @@ describe('generateReport', () => {
   it('restarts the sequence per revision when the org counts per revision', async () => {
     await generateReport(
       params({
-        naming: { ...DEFAULT_REPORT_NAMING, sequenceScope: 'revision' },
+        naming: { ...DEFAULT_REPORT_NAMING, numberPattern: '{partNumber}_Rev{rev}_IRv{n}', sequenceScope: 'revision' },
         version: { id: 'v3', version: 3, revision: 'B', partNumber: null, description: null, createdAt: null },
         identity: { partNumber: 'P', description: null, revision: 'B' },
         existingReports: [existing('P_RevA_IRv1', 'v1', 1), existing('P_RevA_IRv2', 'v2', 2)],
@@ -139,9 +165,90 @@ describe('generateReport', () => {
 
   it('takes the next number when another user recorded this one first', async () => {
     mocks.takenOnce = true
-    mocks.listed = [existing('BR-103849-201_RevA_IRv1', 'v2', 1)]
+    mocks.listed = [{ ...existing('BR-103849-201_RevA_PIR1', 'v2', 1), reportType: 'production' }]
     const outcome = await generateReport(params())
-    expect(mocks.created.map((c) => c.reportNumber)).toEqual(['BR-103849-201_RevA_IRv1', 'BR-103849-201_RevA_IRv2'])
+    expect(mocks.created.map((c) => c.reportNumber)).toEqual(['BR-103849-201_RevA_PIR1', 'BR-103849-201_RevA_PIR2'])
     expect(outcome.report.sequence).toBe(2)
+  })
+
+  it('counts {n} per type with the default pattern and records the type columns', async () => {
+    mocks.rows = [{ id: 'c1' }, { id: 'c2' }]
+    await generateReport(
+      params({
+        existingReports: [
+          { ...existing('BR-103849-201_RevA_FAIR1', 'v1', 1), reportType: 'fai' },
+          { ...existing('BR-103849-201_RevA_PIR4', 'v1', 4), reportType: 'production' },
+        ],
+        type: { reportType: 'production', lotNumber: ' L-9 ', lotSize: 40, sampling: { plan: 'fixed', n: 3 }, lotScope: 'all' },
+      }),
+    )
+    expect(mocks.created[0]).toMatchObject({
+      reportNumber: 'BR-103849-201_RevA_PIR5',
+      characteristicCount: 2,
+      type: {
+        sampleColumns: 10,
+        reportType: 'production',
+        lotNumber: 'L-9',
+        lotSize: 40,
+        sampling: { plan: 'fixed', n: 3 },
+        characteristicIds: ['c1', 'c2'],
+        faiScope: null,
+        ncrReference: null,
+      },
+    })
+    // The lot built-in gets one result column per part; the lot number is written into its entry.
+    expect(mocks.samples).toEqual([3])
+    expect(mocks.entries[0]).toEqual({ lot_number: 'L-9' })
+    expect(mocks.scalars[0]).toMatchObject({ LOT_SIZE: '40', SAMPLE_SIZE: '3' })
+  })
+
+  it('lays a large sample out as one row per part', async () => {
+    mocks.rows = [{ id: 'c1' }]
+    await generateReport(params({ type: { reportType: 'production', lotSize: 40, sampling: { plan: 'fixed', n: 12 }, lotScope: 'all' } }))
+    expect(mocks.generatedRows[0].map((r) => r.id)).toEqual(Array.from({ length: 12 }, (_, i) => `c1#${i + 1}`))
+    expect(mocks.created[0]).toMatchObject({ characteristicCount: 1, type: { characteristicIds: ['c1'] } })
+  })
+
+  it('refuses an empty selection and an impossible plan before generating anything', async () => {
+    await expect(generateReport(params({ type: { reportType: 'reinspection', ncrReference: 'NCR-1', chosenIds: [] } }))).rejects.toBeInstanceOf(
+      ReportSelectionEmptyError,
+    )
+    await expect(
+      generateReport(params({ type: { reportType: 'production', lotSize: 2, sampling: { plan: 'fixed', n: 5 }, lotScope: 'all' } })),
+    ).rejects.toBeInstanceOf(ReportSamplingError)
+    expect(mocks.created).toHaveLength(0)
+  })
+
+  it('lays parts out up to an organization template\'s own result columns, and records that', async () => {
+    mocks.rows = [{ id: 'c1' }]
+    const org = {
+      kind: 'org' as const,
+      template: { id: 't', name: 'Org PIR', storageHash: 'e'.repeat(64) } as unknown as InspectionTemplate,
+    }
+    await generateReport(
+      params({ template: org, type: { reportType: 'production', lotSize: 40, sampling: { plan: 'fixed', n: 5 }, lotScope: 'all' } }),
+    )
+    // 5 parts, 3 result columns: one row per part.
+    expect(mocks.generatedRows[0].map((r) => r.id)).toEqual(['c1#1', 'c1#2', 'c1#3', 'c1#4', 'c1#5'])
+    expect(mocks.created[0]).toMatchObject({ templateId: 't', type: { sampleColumns: 3 } })
+    expect(mocks.samples).toEqual([])
+  })
+
+  it('refuses a partial FAI without a baseline', async () => {
+    await expect(
+      generateReport(params({ type: { reportType: 'fai', faiScope: 'partial', faiReason: 'design_change', baseline: null } })),
+    ).rejects.toMatchObject({ note: 'no_baseline' })
+    expect(mocks.created).toHaveLength(0)
+  })
+
+  it('takes every row for a full FAI and records no set', async () => {
+    mocks.rows = [{ id: 'c1' }, { id: 'c2' }]
+    await generateReport(params({ type: { reportType: 'fai', faiScope: 'full', faiReason: 'new_part' } }))
+    expect(mocks.created[0]).toMatchObject({
+      reportNumber: 'BR-103849-201_RevA_FAIR1',
+      type: { reportType: 'fai', faiScope: 'full', faiReason: 'new_part', characteristicIds: null, lotSize: null },
+    })
+    expect(mocks.scalars[0]).toMatchObject({ FAI_TYPE: 'Full FAI', FAI_REASON: 'New part', LOT_SIZE: '' })
+    expect(mocks.samples).toEqual([null])
   })
 })

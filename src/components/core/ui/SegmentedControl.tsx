@@ -41,7 +41,7 @@ export function SegmentedControl<T extends string>({
             disabled={option.disabled}
             title={option.title}
             onClick={() => onChange(option.value)}
-            className={`inline-flex items-center gap-1.5 rounded-md border text-ui-fg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border text-ui-fg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
               size === 'sm' ? 'h-6 px-2.5 text-[13px]' : 'h-7 px-3.5 text-[14px]'
             } ${
               selected

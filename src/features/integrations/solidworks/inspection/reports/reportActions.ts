@@ -7,8 +7,10 @@
  * local copy of the drawing.
  */
 import {
-  builtInTemplates,
+  analyzeTemplate,
+  buildBuiltInTemplate,
   generateInspectionReport,
+  MAX_SAMPLE_COLUMNS,
   rasterizePdf,
   readReturnedResults,
   sha256Hex,
@@ -17,6 +19,13 @@ import {
   type ReturnedResults,
 } from '@/lib/inspection/excel'
 import type { DrawingOmittedReason } from '@/lib/inspection/issueText'
+import {
+  changedCharacteristics,
+  collapseSampleRows,
+  selectCharacteristics,
+  type SamplePlanError,
+  type SelectionNote,
+} from '@/lib/inspection/reportTypes'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { hasDesktop } from '@/lib/platform'
@@ -31,12 +40,13 @@ import {
   uploadInspectionContent,
 } from '@/lib/supabase'
 import { getDrawingPdf } from '@/lib/supabase/reviews'
-import type { InspectionReport, InspectionReportStatus } from '@/types/inspectionReports'
+import type { InspectionReport, InspectionReportStatus, SamplingPlan } from '@/types/inspectionReports'
 
 import { openWorkbook, saveWorkbook, type DeliverOutcome } from '@/lib/inspection/reportFiles'
 import {
   nextReportName,
   nextReportSequence,
+  patternHasType,
   pathNextTo,
   reportFileName,
   reportNumberValues,
@@ -46,11 +56,25 @@ import {
   toStoredResults,
   type ReportIdentity,
   type ReportNaming,
+  type ImportVerdict,
   type StoredResults,
   type TemplateChoice,
   type VersionInfo,
 } from './reportModel'
 import type { ReportLogo } from './reportSources'
+import {
+  faiReasonKey,
+  includedRows,
+  isLotType,
+  reportTypeKey,
+  requestSampling,
+  typeEntryValues,
+  typeFieldsForRecord,
+  typeScalars,
+  workbookRows,
+  type ReportTypeRequest,
+  type TypeLabels,
+} from './reportTypeModel'
 
 export type GeneratePhase = 'rows' | 'template' | 'drawing' | 'workbook' | 'upload' | 'record'
 
@@ -72,7 +96,43 @@ export interface GenerateReportParams {
   identity: ReportIdentity
   /** The organization logo, or null for none. */
   logo: ReportLogo | null
+  /** What the report is (type, FAI scope, lot, sampling, chosen characteristics). */
+  type: ReportTypeRequest
   onPhase?: (phase: GeneratePhase) => void
+}
+
+/** Thrown before anything is generated when the type's selection leaves no characteristic. */
+export class ReportSelectionEmptyError extends Error {
+  readonly code = 'REPORT_SELECTION_EMPTY'
+  constructor(readonly note: SelectionNote | null) {
+    super(`The report includes no characteristic (${note ?? 'empty'})`)
+    this.name = 'ReportSelectionEmptyError'
+  }
+}
+
+/** Thrown before anything is generated when the sampling plan cannot be laid out. */
+export class ReportSamplingError extends Error {
+  readonly code = 'REPORT_SAMPLING'
+  constructor(readonly reason: SamplePlanError) {
+    super(`The sampling plan cannot be used: ${reason}`)
+    this.name = 'ReportSamplingError'
+  }
+}
+
+/** Workbook labels of the report types, in the app language. */
+export function typeLabels(): TypeLabels {
+  return {
+    type: (type) => t(reportTypeKey(type)),
+    faiScope: (scope) => t(`source.inspection.rptFaiScope_${scope}`),
+    faiReason: (reason) => t(faiReasonKey(reason)),
+    baseline: (v) =>
+      v.revision
+        ? t('source.inspection.rptVersionOptionRev', { version: v.version, revision: v.revision })
+        : t('source.inspection.rptVersionOption', { version: v.version }),
+    sampling: (plan: SamplingPlan) =>
+      plan.plan === '100' ? t('source.inspection.rptSampling_100') : t('source.inspection.rptSampling_fixed', { n: plan.n }),
+    scope: ({ count, total, scope }) => t(`source.inspection.rptScopeText_${scope}`, { count, total }),
+  }
 }
 
 /**
@@ -94,6 +154,10 @@ export interface GenerateReportOutcome {
   /** The version the rows came from, when not the report's own. */
   rowsSourceVersion: number | null
   drawingOmitted: DrawingOmittedReason | null
+  /** Why the selection is not what the type would normally take (nothing classified). */
+  selectionNote: SelectionNote | null
+  /** Partial FAI: false when the baseline version had no own snapshot (an older one was compared). */
+  baselineExact: boolean
 }
 
 /** The inspection rows of a version, as the Excel engine takes them. */
@@ -105,17 +169,16 @@ export async function rowsAtVersion(
   return { rows: at.rows.map((r) => toRowInput(r)), exact: at.exact, sourceVersion: at.sourceVersion }
 }
 
-async function templateBytes(
-  orgId: string,
-  choice: TemplateChoice,
-): Promise<{ bytes: Uint8Array; hash: string; name: string; id: string | null }> {
-  if (choice.kind === 'org') {
-    const bytes = await downloadInspectionContent(orgId, choice.template.storageHash)
-    return { bytes, hash: choice.template.storageHash, name: choice.template.name, id: choice.template.id }
-  }
-  const builtIn = (await builtInTemplates()).find((b) => b.key === choice.key)
-  if (!builtIn) throw new Error(`Unknown built-in template: ${choice.key}`)
-  return { bytes: builtIn.bytes, hash: await sha256Hex(builtIn.bytes), name: choice.name, id: null }
+interface LoadedTemplate {
+  bytes: Uint8Array
+  hash: string
+  name: string
+  id: string | null
+}
+
+/** Result columns usable as one column per part: the template's own, at least 1, at most 10. */
+export function sampleColumnsOf(resultCount: number): number {
+  return Math.min(Math.max(1, resultCount), MAX_SAMPLE_COLUMNS)
 }
 
 /**
@@ -170,19 +233,71 @@ export function isReportNumberTaken(err: unknown): boolean {
 
 export async function generateReport(params: GenerateReportParams): Promise<GenerateReportOutcome> {
   const { orgId, fileId, version, onPhase, identity, naming } = params
+  const request: ReportTypeRequest = isLotType(params.type.reportType)
+    ? {
+        ...params.type,
+        sampling: requestSampling(params.type, naming.defaultSampleSize),
+        lotScope: params.type.lotScope ?? naming.lotScope,
+      }
+    : params.type
 
   onPhase?.('rows')
   const rows = await rowsAtVersion(fileId, version.id)
   if (rows.rows.length === 0) throw new ReportHasNoRowsError(version.version)
 
+  // Partial FAI: the characteristics changed since the baseline version's snapshot. Without a
+  // baseline it would compare against nothing and cover everything under a partial label.
+  let changedIds: string[] | undefined
+  let baselineExact = true
+  if (request.reportType === 'fai' && request.faiScope === 'partial') {
+    if (!request.baseline) throw new ReportSelectionEmptyError('no_baseline')
+    const baseline = await rowsAtVersion(fileId, request.baseline.id)
+    baselineExact = baseline.exact
+    if (!request.chosenIds) changedIds = changedCharacteristics(baseline.rows, rows.rows)
+  }
+  const selection = selectCharacteristics({
+    type: request.reportType,
+    faiScope: request.faiScope,
+    rows: rows.rows,
+    changedIds,
+    scope: request.lotScope,
+    chosenIds: request.chosenIds,
+  })
+  if (selection.rows.length === 0) throw new ReportSelectionEmptyError(selection.note)
+
+  // A lot report lays parts out as result columns up to what the template has (an organization
+  // template may have fewer than the built-ins' 10); the count is recorded for the import.
   onPhase?.('template')
-  const template = await templateBytes(orgId, params.template)
+  const lot = isLotType(request.reportType)
+  let template: LoadedTemplate | null = null
+  let sampleColumns = MAX_SAMPLE_COLUMNS
+  if (params.template.kind === 'org') {
+    const org = params.template.template
+    const bytes = await downloadInspectionContent(orgId, org.storageHash)
+    template = { bytes, hash: org.storageHash, name: org.name, id: org.id }
+    if (lot) sampleColumns = sampleColumnsOf((await analyzeTemplate(bytes)).resultCount)
+  }
+  const fields = { ...typeFieldsForRecord(request, selection), sampleColumns: lot ? sampleColumns : null }
+  const laidOut = workbookRows(
+    { reportType: request.reportType, sampling: fields.sampling ?? null, lotSize: fields.lotSize ?? null },
+    selection.rows,
+    sampleColumns,
+  )
+  if ('error' in laidOut) throw new ReportSamplingError(laidOut.error)
+  if (!template) {
+    // A lot built-in has one result column per part (one row per part above the column limit).
+    const choice = params.template as Extract<TemplateChoice, { kind: 'builtin' }>
+    const bytes = await buildBuiltInTemplate(choice.key, laidOut.samples !== null ? { samples: laidOut.samples } : {})
+    template = { bytes, hash: await sha256Hex(bytes), name: choice.name, id: null }
+  }
 
   onPhase?.('drawing')
   const drawing = await drawingPages(orgId, version.id)
 
   const generatedAt = new Date()
-  const values = reportNumberValues(identity, params.drawingName, version.version, generatedAt)
+  const values = reportNumberValues(identity, params.drawingName, version.version, generatedAt, request.reportType)
+  const labels = typeLabels()
+  const perType = patternHasType(naming.numberPattern) ? request.reportType : undefined
   const revisionOf = new Map(params.versions.map((v) => [v.id, v.revision]))
   revisionOf.set(version.id, version.revision)
 
@@ -190,12 +305,22 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
   // number it then tries to record. Another user can take that number first (unique per drawing):
   // re-read the drawing's reports, take the next number, and fill the workbook again.
   const reportId = crypto.randomUUID()
-  let existing: ReadonlyArray<Pick<InspectionReport, 'reportNumber' | 'fileVersionId'> & { sequence?: number | null }> =
-    params.existingReports
+  let existing: ReadonlyArray<
+    Pick<InspectionReport, 'reportNumber' | 'fileVersionId'> & {
+      sequence?: number | null
+      reportType?: InspectionReport['reportType']
+    }
+  > = params.existingReports
   let report: InspectionReport | null = null
   for (let attempt = 1; report === null; attempt++) {
     onPhase?.('workbook')
-    const start = nextReportSequence(existing, naming.sequenceScope, identity.revision ?? version.revision, revisionOf)
+    const start = nextReportSequence(
+      existing,
+      naming.sequenceScope,
+      identity.revision ?? version.revision,
+      revisionOf,
+      perType,
+    )
     const { reportNumber, sequence } = nextReportName(
       naming.numberPattern,
       values,
@@ -208,8 +333,10 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
       reportId,
       fileId,
       fileVersionId: version.id,
-      rows: rows.rows,
+      rows: laidOut.rows,
+      entryValues: typeEntryValues(request, labels),
       scalars: {
+        ...typeScalars(request, { selection, totalRows: rows.rows.length, samples: laidOut.samples, labels }),
         PART_NUMBER: identity.partNumber ?? '',
         REVISION: identity.revision ?? '',
         DESCRIPTION: identity.description ?? '',
@@ -247,15 +374,16 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
         status: 'issued',
         storageHash: uploaded.hash,
         fileSize: uploaded.size,
-        characteristicCount: rows.rows.length,
+        characteristicCount: selection.rows.length,
         drawingPdfHash: drawing.pdfHash,
+        type: fields,
       })
     } catch (err) {
       if (!isReportNumberTaken(err) || attempt >= MAX_NUMBER_ATTEMPTS) throw err
       log.info('[InspectionReports]', 'Report number taken; retrying with the next one', { reportNumber, attempt })
       existing = [
         ...(await listInspectionReports(fileId)),
-        { reportNumber, fileVersionId: version.id, sequence },
+        { reportNumber, fileVersionId: version.id, sequence, reportType: request.reportType },
       ]
     }
   }
@@ -263,7 +391,9 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
     reportId,
     fileId,
     fileVersionId: version.id,
-    rows: rows.rows.length,
+    rows: selection.rows.length,
+    workbookRows: laidOut.rows.length,
+    reportType: request.reportType,
     exact: rows.exact,
     drawingPages: drawing.pages.length,
   })
@@ -272,6 +402,8 @@ export async function generateReport(params: GenerateReportParams): Promise<Gene
     rowsExact: rows.exact,
     rowsSourceVersion: rows.exact ? null : rows.sourceVersion,
     drawingOmitted: drawing.omitted,
+    selectionNote: selection.note,
+    baselineExact,
   }
 }
 
@@ -325,18 +457,47 @@ export interface ReadReturnedOutcome {
   stored: StoredResults
   /** False when the report's version had no own snapshot (rows from an older version). */
   rowsExact: boolean
+  /** Row ids the report's workbook holds, as laid out (one per part above the column limit). */
+  workbookRowIds: string[]
+  /** Row ids the returned workbook holds, before folding parts back per characteristic. */
+  rawRowIds: string[]
 }
 
-/** Read a returned workbook against the report's version. Nothing is written. */
+/** Whether a returned workbook may be recorded on the report, comparing rows as laid out. */
+export function returnedVerdict(report: InspectionReport, read: ReadReturnedOutcome): ImportVerdict {
+  return importVerdict(report, { ...read.parsed, rows: read.rawRowIds.map((rowId) => ({ rowId })) }, read.workbookRowIds)
+}
+
+/**
+ * Read a returned workbook against the report: the characteristics it includes (its recorded set)
+ * laid out as its workbook was (one row per sampled part above the column limit), then folded back
+ * to one result per characteristic. Nothing is written.
+ */
 export async function readReturned(report: InspectionReport, bytes: Uint8Array): Promise<ReadReturnedOutcome> {
   const rows = await rowsAtVersion(report.fileId, report.fileVersionId)
-  const parsed = await readReturnedResults(bytes, { reportId: report.id, rows: rows.rows })
-  return { bytes, parsed, stored: toStoredResults(parsed, rows.rows), rowsExact: rows.exact }
+  const included = includedRows(report, rows.rows)
+  const laidOut = workbookRows(report, included, report.sampleColumns ?? MAX_SAMPLE_COLUMNS)
+  const layout = 'error' in laidOut ? null : laidOut
+  const expected = layout?.rows ?? included
+  const raw = await readReturnedResults(bytes, {
+    reportId: report.id,
+    rows: expected,
+    expectedValues: layout?.expectedValues,
+  })
+  const parsed = collapseSampleRows(raw, layout?.counts)
+  return {
+    bytes,
+    parsed,
+    stored: toStoredResults(parsed, included, report.reportType !== null),
+    rowsExact: rows.exact,
+    workbookRowIds: expected.map((r) => r.id),
+    rawRowIds: raw.rows.map((r) => r.rowId).filter((id): id is string => !!id),
+  }
 }
 
 /** Store the returned workbook and its results on the report (status `returned`). */
 export async function applyReturned(report: InspectionReport, read: ReadReturnedOutcome): Promise<InspectionReport> {
-  const verdict = importVerdict(report, read.parsed)
+  const verdict = returnedVerdict(report, read)
   if (verdict.blocked) throw new Error('The workbook does not belong to this drawing version')
   const uploaded = await uploadInspectionContent(report.orgId, read.bytes)
   return updateInspectionReport(report.id, {
