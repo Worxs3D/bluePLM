@@ -4,6 +4,58 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+### Changed
+
+- **API 4.2.1: server backups include inspection templates and inspection reports** (schema 504).
+
+## [5.4.0] - 2026-11-02
+
+Schema 504 (migration `0504_inspection_tables.sql`, applied by the release before anything is
+published) and SolidWorks service 1.27.0. No API change: API 4.2.0. Release 5.3.4 keeps working on
+schema 504. Without service 1.27.0, extraction still works but reads no title block notes, so no
+general tolerances or zone fallback.
+
+### Added
+
+- **Inspection reports.** An inspection report is an Excel workbook made from an inspection
+  template for one checked-in drawing version: that version's inspection rows and its stored
+  drawing PDF, so the same inputs always give the same report. The Inspection tab has a Reports
+  view, grouped by drawing version, to generate, open (in Excel on the desktop, a download on the
+  web), mark sent, import the supplier's returned workbook, accept or reject, and delete reports.
+  Reports are also listed under the drawing's chevron in the file list, after its referenced files.
+- **Workbooks ready for a supplier.** A report repeats the template's row for every characteristic
+  and embeds the ballooned drawing pages. Every sheet is protected except the cells the supplier
+  fills in (measured values, verdicts, serial, lot, tools, sign-off). A hidden sheet records the
+  report, the drawing version and a fingerprint of every requirement, so a returned workbook is
+  matched to its report, checked for changed requirements, and graded: a numeric requirement is
+  graded pass or fail from its limits (not GD&T at MMC or LMC, where bonus tolerance applies), and
+  a disagreeing supplier verdict is flagged. A workbook from another drawing or version is refused.
+- **Inspection template manager** (Settings > Organization > Inspection templates). Admins upload
+  Excel templates that use `{{TOKEN}}` placeholders, see what BluePLM found in them (the repeating
+  row, the columns, the fields to fill in) and any errors before saving, set the default, replace
+  a template with a new revision, archive and download them. Two built-in starters (a dimensional
+  inspection report and a first article characteristic accountability form) can be downloaded and
+  edited. A reference panel lists every token. The Google Sheets tokens keep working.
+- **General tolerances from the title block.** Extraction reads the notes of the sheet format, the
+  sheet and blocks placed on them, and applies the title block's general tolerances (decimal-place
+  rules, fractions, angles, ISO 2768-1 classes) to dimensions without a tolerance of their own.
+  Such rows show "GT". A title block with blank values gives no tolerance; nothing is guessed.
+- **Zones from the border.** When SOLIDWORKS reports no zone, the zone is read from the letters and
+  digits along the drawing border.
+- **Column editing.** Show, hide and reorder the Inspection table's columns (kept per user), select
+  several rows and set a column on all of them, and move between cells with the keyboard.
+
+### Changed
+
+- **Extract from drawing and Balloon drawing run straight through, with no dialog.** The result is
+  a toast with Undo. Rows whose annotation is gone are removed, except on sheets the service could
+  not read completely. Balloon drawing extracts first, so the table and the balloons agree.
+- **Values read from the drawing cannot be edited.** On an extracted row, type, values, tolerances,
+  limits, zone and sheet are read-only, and the row cannot be deleted: change the drawing, then
+  extract.
+
 ## [5.3.4] - 2026-11-02
 
 App only: no schema, API or SolidWorks service change, so it runs on schema 503 and API 4.2.0 like 5.3.3.

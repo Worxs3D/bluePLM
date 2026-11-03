@@ -26,6 +26,8 @@ import { ConfigEmptyRow } from './ConfigEmptyRow'
 import { ConfigGroupRow } from './ConfigGroupRow'
 import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
+import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
+import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
 import { FileRow } from './FileRow'
 import type {
   ConfigBomVirtualRow,
@@ -184,6 +186,9 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     } = useFilePaneContext()
     const { savingConfigsToSW } = useFilePaneHandlers()
     const checkoutHydration = usePDMStore((s) => s.checkoutHydration)
+    const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
+    const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
+    useDrawingReportsLoader(displayFiles, expandedDrawingRefs)
 
     // Get tab settings from organization serialization settings
     const serializationSettings = usePDMStore((s) => s.organization?.serialization_settings)
@@ -233,6 +238,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           expandedDrawingRefs,
           drawingRefData,
           expandedDrawingRefFiles,
+          drawingInspectionReports,
         }),
       [
         displayFiles,
@@ -256,6 +262,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         expandedDrawingRefs,
         drawingRefData,
         expandedDrawingRefFiles,
+        drawingInspectionReports,
       ],
     )
 
@@ -282,6 +289,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'config-bom':
             return configBomRowHeight
           case 'drawing-ref':
+          case 'drawing-report':
+          case 'drawing-report-more':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -755,6 +764,27 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                 <React.Fragment key={`drawing-ref::${row.file.path}::${row.item.id}`}>
                   {renderDrawingRefRow(row)}
                 </React.Fragment>
+              )
+            case 'drawing-report':
+              return (
+                <DrawingReportRow
+                  key={`drawing-report::${row.file.path}::${row.report.id}`}
+                  file={row.file}
+                  report={row.report}
+                  versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
+              )
+            case 'drawing-report-more':
+              return (
+                <DrawingReportMoreRow
+                  key={`drawing-report-more::${row.file.path}`}
+                  file={row.file}
+                  hiddenCount={row.hiddenCount}
+                  rowHeight={configBomRowHeight}
+                  visibleColumns={visibleColumns}
+                />
               )
             case 'config-drawing':
               return (

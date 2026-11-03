@@ -17,8 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Tables a snapshot holds, in restore order (parents first). Must match the
- * CASE in `backup_list_org_rows()` (migration 0501); `src/lib/supabase/serverBackupsMigration.test.ts`
- * checks both lists agree.
+ * CASE in the latest `backup_list_org_rows()` (migration 0504);
+ * `src/lib/supabase/inspectionTables504.test.ts` checks both lists agree.
  */
 export const BACKUP_TABLES = [
   'organization',
@@ -63,6 +63,8 @@ export const BACKUP_TABLES = [
   'item_designation_assignment',
   'inspection_characteristic',
   'inspection_characteristic_version',
+  'inspection_template',
+  'inspection_report',
   'supplier',
   'part_supplier',
   'activity',

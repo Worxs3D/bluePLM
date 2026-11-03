@@ -60,6 +60,9 @@ export const createUISlice: StateCreator<
   // Initial state - SOLIDWORKS version picker
   showSolidworksVersionModal: false,
 
+  // Initial state - Inspection table columns (persisted)
+  inspectionColumnPrefs: null,
+
   // Actions - Clipboard
   setClipboard: (clipboard: Clipboard | null) => set({ clipboard }),
   clearClipboard: () => set({ clipboard: null }),
@@ -280,6 +283,8 @@ export const createUISlice: StateCreator<
 
   // Actions - SOLIDWORKS version picker
   setShowSolidworksVersionModal: (show) => set({ showSolidworksVersionModal: show }),
+
+  setInspectionColumnPrefs: (inspectionColumnPrefs) => set({ inspectionColumnPrefs }),
 
   // Actions - Review preview
 })

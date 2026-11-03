@@ -89,6 +89,8 @@ export const createUserSlice: StateCreator<
       loadingConfigBoms: new Set<string>(),
       expandedDrawingRefs: new Set<string>(),
       drawingRefData: new Map(),
+      drawingInspectionReports: new Map(),
+      reportVersionNumbers: new Map(),
       loadingDrawingRefs: new Set<string>(),
       expandedDrawingRefFiles: new Set<string>(),
       expandedConfigDrawings: new Set<string>(),

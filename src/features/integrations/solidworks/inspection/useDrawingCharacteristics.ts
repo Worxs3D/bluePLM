@@ -12,17 +12,17 @@ import {
 import {
   applyCharacteristicMerge,
   planCharacteristicMerge,
-  type CharacteristicMergePlan,
 } from '@/lib/inspection/characteristicMerge'
+import type { GeneralToleranceBasis } from '@/lib/inspection/generalTolerance'
 import type { ExtractedDrawingCharacteristics } from '@/lib/inspection/types'
 
 import {
   buildExtractPreview,
+  buildSheetContext,
   defaultRemoveIds,
+  generalBasisByKey,
   inspectionErrorKey,
   planBalloonRequests,
-  type BalloonRequestPlan,
-  type ExtractPreview,
 } from './drawingCharacteristicsFlow'
 
 interface UseDrawingCharacteristicsOptions {
@@ -50,23 +50,27 @@ interface FlowScope {
   filePath: string
 }
 
-export interface PendingExtract {
-  scope: FlowScope
-  plan: CharacteristicMergePlan
-  preview: ExtractPreview
-  removeIds: Set<string>
+/** Outcome of reading the drawing and merging it into the table. */
+interface MergeOutcome {
+  data: ExtractedDrawingCharacteristics
+  /** The table before the merge, for Undo. */
+  previous: InspectionRowInput[]
+  /** The table after it (equal to `previous` when nothing changed). */
+  next: InspectionRowInput[]
+  changed: boolean
+  counts: { added: number; updated: number; removed: number; kept: number }
 }
 
-interface PendingBalloons {
-  scope: FlowScope
-  plan: BalloonRequestPlan
-}
+const UNDO_TOAST_MS = 10000
 
 /**
- * The "Extract from drawing" and "Balloon drawing" flows of the Inspection tab. Extraction reads
- * the drawing through the plain SOLIDWORKS API, plans the merge and holds
- * it for the preview dialog. Ballooning re-extracts so each row's persist reference is current,
- * holds the request for the confirm dialog, then writes and saves the drawing.
+ * The "Extract from drawing" and "Balloon drawing" flows of the Inspection tab. Both run straight
+ * through, with no preview or confirm (plan `inspection-tables-system.plan.md`):
+ * - Extract reads the drawing, merges it into the table (rows gone from the drawing are removed
+ *   by `defaultRemoveIds`, rows on sheets not fully read are kept), saves, and toasts a summary
+ *   with Undo.
+ * - Balloon does the same merge, then balloons every row linked to the drawing and saves the
+ *   drawing.
  */
 export function useDrawingCharacteristics({
   file,
@@ -82,8 +86,11 @@ export function useDrawingCharacteristics({
   const addToast = usePDMStore((s) => s.addToast)
   const [isExtracting, setIsExtracting] = useState(false)
   const [isBallooning, setIsBallooning] = useState(false)
-  const [pendingExtract, setPendingExtract] = useState<PendingExtract | null>(null)
-  const [pendingBalloonState, setPendingBalloons] = useState<PendingBalloons | null>(null)
+  // The general tolerance rule behind each row filled from it, from the latest extraction (for
+  // the GT marker's tooltip). Not stored: the row keeps only `tolerance_source`.
+  const [generalBasis, setGeneralBasis] = useState<Map<string, GeneralToleranceBasis>>(
+    () => new Map(),
+  )
 
   const busy = isExtracting || isBallooning
 
@@ -99,11 +106,9 @@ export function useDrawingCharacteristics({
     [],
   )
 
-  // A preview or confirm prepared for another file or version is dropped.
   useEffect(() => {
-    setPendingExtract(null)
-    setPendingBalloons(null)
-  }, [fileId, version])
+    setGeneralBasis(new Map())
+  }, [fileId])
 
   /** Shared preconditions; toasts the reason and returns false when the flow cannot run. */
   const checkReady = useCallback((): boolean => {
@@ -153,150 +158,137 @@ export function useDrawingCharacteristics({
     [isCurrent, addToast],
   )
 
+  /**
+   * Flush, read the drawing, merge it into the table and save the result. Null when the flow
+   * stopped (a toast already says why, or the scope moved on).
+   */
+  const extractAndMerge = useCallback(
+    async (scope: FlowScope): Promise<MergeOutcome | null> => {
+      if (!(await flushPendingSave()) || !isCurrent(scope)) return null
+      const data = await extract(scope)
+      if (!data) return null
+      // An empty read removes nothing: it is far more likely a reading problem than a drawing
+      // whose every annotation was deleted.
+      if (data.characteristics.length === 0) {
+        const rows = getRows()
+        const counts = { added: 0, updated: 0, removed: 0, kept: 0 }
+        return { data, previous: rows, next: rows, changed: false, counts }
+      }
+      const highest = await getHighestUsedBalloonNumber(scope.fileId)
+      if (!isCurrent(scope) || !liveRef.current.enabled) return null
+      if (!highest.success) {
+        addToast('error', highest.error || t('source.inspection.extractFailed'))
+        return null
+      }
+      const sheetContext = buildSheetContext(data)
+      setGeneralBasis(generalBasisByKey(data, sheetContext))
+      const previous = getRows()
+      const plan = planCharacteristicMerge({
+        rows: previous,
+        extracted: data.characteristics,
+        sheets: data.sheets,
+        highestUsedNumber: highest.highest ?? 0,
+        skipped: data.skipped,
+        sheetContext,
+        units: data.units,
+        newId: () => crypto.randomUUID(),
+      })
+      const incompleteSheets = data.incompleteSheets ?? []
+      const preview = buildExtractPreview(plan, incompleteSheets)
+      const removeIds = defaultRemoveIds(plan, incompleteSheets)
+      const counts = {
+        added: preview.counts.added,
+        updated: preview.counts.updated + preview.counts.adopted,
+        removed: removeIds.size,
+        kept: plan.missing.length - removeIds.size,
+      }
+      if (preview.isNoOp) return { data, previous, next: previous, changed: false, counts }
+      const next = applyCharacteristicMerge(previous, plan, removeIds)
+      if (!(await commitMergedRows(next))) return null
+      log.info('[InspectionTab]', 'Drawing merged into the table', {
+        ...counts,
+        unreadable: preview.counts.unreadable,
+        incompleteSheets,
+      })
+      return { data, previous, next, changed: true, counts }
+    },
+    [flushPendingSave, isCurrent, extract, addToast, getRows, commitMergedRows],
+  )
+
+  /** Undo of an extraction: restores the previous rows unless the table changed since. */
+  const undoMerge = useCallback(
+    (scope: FlowScope, outcome: MergeOutcome) => {
+      if (!isCurrent(scope) || !liveRef.current.enabled) return
+      if (getRows() !== outcome.next) {
+        addToast('info', t('source.inspection.undoUnavailable'))
+        return
+      }
+      void commitMergedRows(outcome.previous).then((ok) => {
+        if (ok) addToast('info', t('source.inspection.extractUndone'))
+      })
+    },
+    [isCurrent, getRows, commitMergedRows, addToast],
+  )
+
   const handleExtract = useCallback(async () => {
     if (busy || !checkReady() || !fileId) return
     const scope: FlowScope = { fileId, version, filePath: file.path }
     setIsExtracting(true)
     try {
-      if (!(await flushPendingSave()) || !isCurrent(scope)) return
-      const data = await extract(scope)
-      if (!data) return
-      if (data.characteristics.length === 0) {
+      const outcome = await extractAndMerge(scope)
+      if (!outcome) return
+      if (outcome.data.characteristics.length === 0) {
         addToast('info', t('source.inspection.extractNone'))
         return
       }
-      const highest = await getHighestUsedBalloonNumber(scope.fileId)
-      if (!isCurrent(scope)) return
-      if (!highest.success) {
-        addToast('error', highest.error || t('source.inspection.extractFailed'))
-        return
-      }
-      const plan = planCharacteristicMerge({
-        rows: getRows(),
-        extracted: data.characteristics,
-        sheets: data.sheets,
-        highestUsedNumber: highest.highest ?? 0,
-        skipped: data.skipped,
-        newId: () => crypto.randomUUID(),
-      })
-      const incompleteSheets = data.incompleteSheets ?? []
-      const preview = buildExtractPreview(plan, incompleteSheets)
-      if (preview.isNoOp) {
+      if (!outcome.changed) {
         addToast('info', t('source.inspection.extractUpToDate'))
         return
       }
-      setPendingExtract({
-        scope,
-        plan,
-        preview,
-        removeIds: defaultRemoveIds(plan, incompleteSheets),
-      })
+      const { added, updated, removed, kept } = outcome.counts
+      const keptNote = kept > 0 ? ` ${t('source.inspection.extractKeptIncomplete', { count: kept })}` : ''
+      addToast(
+        'success',
+        `${t('source.inspection.extractApplied', { added, updated, removed })}${keptNote}`,
+        UNDO_TOAST_MS,
+        { label: t('source.inspection.undo'), onClick: () => undoMerge(scope, outcome) },
+      )
     } catch (error) {
       log.error('[InspectionTab]', 'Extract from drawing failed', { error: String(error) })
       addToast('error', t('source.inspection.extractFailed'))
     } finally {
       setIsExtracting(false)
     }
-  }, [
-    busy,
-    checkReady,
-    fileId,
-    version,
-    file.path,
-    flushPendingSave,
-    isCurrent,
-    extract,
-    getRows,
-    addToast,
-  ])
-
-  const toggleRemove = useCallback((rowId: string) => {
-    setPendingExtract((prev) => {
-      if (!prev) return prev
-      const removeIds = new Set(prev.removeIds)
-      if (removeIds.has(rowId)) removeIds.delete(rowId)
-      else removeIds.add(rowId)
-      return { ...prev, removeIds }
-    })
-  }, [])
-
-  const cancelExtract = useCallback(() => setPendingExtract(null), [])
-
-  const confirmExtract = useCallback(async () => {
-    const pending = pendingExtract
-    if (!pending) return
-    setPendingExtract(null)
-    if (!isCurrent(pending.scope) || !liveRef.current.enabled) return
-    setIsExtracting(true)
-    try {
-      const next = applyCharacteristicMerge(getRows(), pending.plan, pending.removeIds)
-      const removed = pending.plan.missing.filter((r) => pending.removeIds.has(r.id)).length
-      if (!(await commitMergedRows(next))) return
-      addToast(
-        'success',
-        t('source.inspection.extractApplied', {
-          added: pending.preview.counts.added,
-          updated: pending.preview.counts.updated + pending.preview.counts.adopted,
-          removed,
-        }),
-      )
-    } finally {
-      setIsExtracting(false)
-    }
-  }, [pendingExtract, isCurrent, getRows, commitMergedRows, addToast])
+  }, [busy, checkReady, fileId, version, file.path, extractAndMerge, undoMerge, addToast])
 
   const handleBalloon = useCallback(async () => {
     if (busy || !checkReady() || !fileId) return
     const scope: FlowScope = { fileId, version, filePath: file.path }
     setIsBallooning(true)
     try {
-      if (!(await flushPendingSave()) || !isCurrent(scope)) return
-      const keyed = getRows().filter((r) => r.source_key && r.balloon_number)
-      if (keyed.length === 0) {
+      // Rows do not store the persist reference, so the drawing is read again; the same read
+      // brings the table up to date first, so every balloon matches the drawing as it is.
+      const outcome = await extractAndMerge(scope)
+      if (!outcome) return
+      if (outcome.changed) {
+        const { added, updated, removed } = outcome.counts
+        addToast(
+          'info',
+          t('source.inspection.extractApplied', { added, updated, removed }),
+          UNDO_TOAST_MS,
+          { label: t('source.inspection.undo'), onClick: () => undoMerge(scope, outcome) },
+        )
+      }
+      const plan = planBalloonRequests(outcome.next, outcome.data.characteristics)
+      if (plan.balloons.length === 0) {
         addToast('info', t('source.inspection.balloonNothing'))
         return
       }
-      // Rows do not store the persist reference: read it from a fresh extraction.
-      const data = await extract(scope)
-      if (!data) return
-      const plan = planBalloonRequests(getRows(), data.characteristics)
-      if (plan.balloons.length === 0) {
-        addToast('warning', t('source.inspection.balloonAllStale'))
-        return
-      }
-      setPendingBalloons({ scope, plan })
-    } catch (error) {
-      log.error('[InspectionTab]', 'Balloon preparation failed', { error: String(error) })
-      addToast('error', t('source.inspection.balloonFailed'))
-    } finally {
-      setIsBallooning(false)
-    }
-  }, [
-    busy,
-    checkReady,
-    fileId,
-    version,
-    file.path,
-    flushPendingSave,
-    isCurrent,
-    getRows,
-    extract,
-    addToast,
-  ])
-
-  const cancelBalloon = useCallback(() => setPendingBalloons(null), [])
-
-  const confirmBalloon = useCallback(async () => {
-    const pending = pendingBalloonState
-    if (!pending) return
-    setPendingBalloons(null)
-    if (!isCurrent(pending.scope) || !liveRef.current.enabled) return
-    setIsBallooning(true)
-    try {
       const result = await window.electronAPI?.solidworks?.applyInspectionBalloons(
-        pending.scope.filePath,
-        pending.plan.balloons,
+        scope.filePath,
+        plan.balloons,
       )
+      if (!isCurrent(scope)) return
       if (!result?.success || !result.data) {
         const key = inspectionErrorKey(result?.errorCode)
         if (key) {
@@ -307,10 +299,7 @@ export function useDrawingCharacteristics({
             error: result.error,
             data: result.data,
           })
-          addToast(
-            'error',
-            t('source.inspection.balloonNotSaved', { placed: result.data.placed }),
-          )
+          addToast('error', t('source.inspection.balloonNotSaved', { placed: result.data.placed }))
         } else {
           addToast('error', result?.error || t('source.inspection.balloonFailed'))
         }
@@ -323,6 +312,7 @@ export function useDrawingCharacteristics({
         removedPrevious,
         keptPositions,
         saved,
+        unkeyed: plan.unkeyed,
       })
       if (!saved) {
         addToast('warning', t('source.inspection.balloonNotSaved', { placed }))
@@ -345,20 +335,14 @@ export function useDrawingCharacteristics({
     } finally {
       setIsBallooning(false)
     }
-  }, [pendingBalloonState, isCurrent, addToast])
+  }, [busy, checkReady, fileId, version, file.path, extractAndMerge, undoMerge, isCurrent, addToast])
 
   return {
     isExtracting,
     isBallooning,
     busy,
-    pendingExtract,
-    pendingBalloons: pendingBalloonState?.plan ?? null,
+    generalBasis,
     handleExtract,
-    toggleRemove,
-    cancelExtract,
-    confirmExtract,
     handleBalloon,
-    cancelBalloon,
-    confirmBalloon,
   }
 }

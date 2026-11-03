@@ -30,6 +30,7 @@ export function emptyRowValues(sortOrder: number): InspectionRowValues {
     source_key: null,
     source_sheet: null,
     source_view: null,
+    tolerance_source: null,
   }
 }
 
@@ -39,6 +40,12 @@ export function toRowInput(row: object): InspectionRowInput {
   const base = emptyRowValues(0)
   const result: InspectionRowInput = { ...base, id: String(record.id ?? crypto.randomUUID()) }
   for (const key of Object.keys(base) as (keyof InspectionRowValues)[]) {
+    // Before schema 504 the column is absent; an unknown value is no source.
+    if (key === 'tolerance_source') {
+      const source = record[key]
+      result.tolerance_source = source === 'drawing' || source === 'general' ? source : null
+      continue
+    }
     if (record[key] !== undefined && record[key] !== null) {
       // @ts-expect-error - assigning dynamically validated field
       result[key] = record[key]

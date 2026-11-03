@@ -1,4 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import {
+  Plus,
+  Loader2,
+  ClipboardList,
+  Lock,
+  Settings2,
+  ScanSearch,
+  CircleDot,
+  FileSpreadsheet,
+  Table2,
+} from 'lucide-react'
+
+import { SegmentedControl } from '@/components/core/ui'
 
 import { t } from '@/lib/i18n'
 import { usePDMStore, LocalFile } from '@/stores/pdmStore'
@@ -6,51 +19,38 @@ import {
   getInspectionRows,
   getInspectionRowsForVersion,
   saveInspectionRows,
-  getInspectionMethods,
-  addInspectionMethod,
-  updateInspectionMethod,
-  deleteInspectionMethod,
   emptyRowValues,
   toRowInput,
   getFileVersions,
   type InspectionRowInput,
   type InspectionRowValues,
-  type InspectionMethodOption,
 } from '@/lib/supabase'
 import { log } from '@/lib/logger'
-import { resolveFileMetadata, resolvedText } from '@/lib/metadata/overlay'
-import {
-  getInspectionTemplates,
-  generateInspectionSheet,
-  isGoogleDriveConnected,
-  type InspectionTemplateFile,
-} from '@/features/integrations/google-drive/lib/sheetTemplates'
-import {
-  Plus,
-  Trash2,
-  Loader2,
-  ClipboardList,
-  Lock,
-  FileSpreadsheet,
-  ChevronDown,
-  ArrowUp,
-  ArrowDown,
-  ChevronsUpDown,
-  Settings2,
-  ScanSearch,
-  CircleDot,
-} from 'lucide-react'
 
 import { useSolidWorksService } from '../SolidWorksPanel'
-import { uploadInspectionPreview } from './uploadPreview'
-import { COLUMNS, DEFAULT_INSPECTION_METHODS } from './inspectionColumns'
-import { compareRows, matchesFilter, sortByBalloonAsc, type SortDir } from './inspectionTableUtils'
-import { InspectionCell } from './InspectionCell'
-import { ColumnFilter } from './ColumnFilter'
+import {
+  BULK_EDIT_FIELDS,
+  DEFAULT_INSPECTION_METHODS,
+  isDrawingOwnedCell,
+  resolveColumns,
+  type BulkEditField,
+} from './inspectionColumns'
+import {
+  applyBulkEdit,
+  compareRows,
+  matchesFilter,
+  sortByBalloonAsc,
+  toggleRowSelection,
+  type SortDir,
+} from './inspectionTableUtils'
 import { MethodManagerModal } from './MethodManagerModal'
 import { useDrawingCharacteristics } from './useDrawingCharacteristics'
-import { ExtractPreviewDialog } from './ExtractPreviewDialog'
-import { BalloonConfirmDialog } from './BalloonConfirmDialog'
+import { useInspectionMethods } from './useInspectionMethods'
+import { InspectionTable } from './InspectionTable'
+import { ColumnManager } from './ColumnManager'
+import { BulkEditBar } from './BulkEditBar'
+import { GoogleSheetTemplateMenu } from './GoogleSheetTemplateMenu'
+import { InspectionReportsView } from './reports/InspectionReportsView'
 
 interface InspectionTabProps {
   file: LocalFile
@@ -60,15 +60,23 @@ const AUTOSAVE_DELAY_MS = 1000
 
 const CURRENT_VERSION = 'current'
 
+type InspectionView = 'table' | 'reports'
+
 interface VersionOption {
   id: string
   version: number
 }
 
+/**
+ * The Inspection tab of a drawing: the live table (editable while the drawing is checked out by
+ * the user) or a version snapshot, with extraction and ballooning through the SOLIDWORKS service.
+ * Rows extracted from the drawing keep their geometry read-only; manual rows are fully editable.
+ */
 export function InspectionTab({ file }: InspectionTabProps) {
   const user = usePDMStore((s) => s.user)
   const organization = usePDMStore((s) => s.organization)
   const addToast = usePDMStore((s) => s.addToast)
+  const columnPrefs = usePDMStore((s) => s.inspectionColumnPrefs)
 
   const fileId = file.pdmData?.id
   const orgId = file.pdmData?.org_id ?? organization?.id
@@ -82,15 +90,16 @@ export function InspectionTab({ file }: InspectionTabProps) {
   const [sortKey, setSortKey] = useState<keyof InspectionRowValues>('balloon_number')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [filters, setFilters] = useState<Partial<Record<keyof InspectionRowValues, string>>>({})
-  const [orgMethods, setOrgMethods] = useState<InspectionMethodOption[]>([])
   const [methodModalOpen, setMethodModalOpen] = useState(false)
-  // Google Sheet template generation (FAIR / incoming material review)
-  const [templates, setTemplates] = useState<InspectionTemplateFile[]>([])
-  const [templatesLoading, setTemplatesLoading] = useState(false)
-  const [templateMenuOpen, setTemplateMenuOpen] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const templateMenuRef = useRef<HTMLDivElement | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [view, setView] = useState<InspectionView>('table')
+  const [focusReportId, setFocusReportId] = useState<string | null>(null)
+  const reportsFocus = usePDMStore((s) => s.inspectionReportsFocus)
+  const clearReportsFocus = usePDMStore((s) => s.clearInspectionReportsFocus)
+  const selectionAnchorRef = useRef<string | null>(null)
   const { status: swStatus } = useSolidWorksService()
+  const methods = useInspectionMethods(orgId, user?.id)
+  const { visible: columns } = useMemo(() => resolveColumns(columnPrefs), [columnPrefs])
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dirtyRef = useRef(false)
@@ -137,24 +146,23 @@ export function InspectionTab({ file }: InspectionTabProps) {
   // Reset to current view whenever the selected file changes
   useEffect(() => {
     setSelectedVersion(CURRENT_VERSION)
+    setView('table')
+    setFocusReportId(null)
   }, [fileId])
 
-  // Load the org's custom inspection methods (merged with defaults in the Method dropdown)
+  // "Show in Inspection tab" on a report row of the file list opens the Reports view
   useEffect(() => {
-    if (!orgId) return
-    let cancelled = false
-    getInspectionMethods(orgId)
-      .then((result) => {
-        if (cancelled) return
-        if (result.success && result.methods) setOrgMethods(result.methods)
-      })
-      .catch((error) =>
-        log.warn('[InspectionTab]', 'Methods load exception', { error: String(error) }),
-      )
-    return () => {
-      cancelled = true
-    }
-  }, [orgId])
+    if (!reportsFocus || !fileId || reportsFocus.fileId !== fileId) return
+    setView('reports')
+    setFocusReportId(reportsFocus.reportId)
+    clearReportsFocus()
+  }, [reportsFocus, fileId, clearReportsFocus])
+
+  // A selection belongs to the table it was made in
+  useEffect(() => {
+    setSelectedIds(new Set())
+    selectionAnchorRef.current = null
+  }, [fileId, selectedVersion])
 
   // Load rows for the active view (current live rows, or a version snapshot)
   useEffect(() => {
@@ -264,15 +272,26 @@ export function InspectionTab({ file }: InspectionTabProps) {
   }, [persist])
 
   // Extraction replaced the table: show the merged rows and save them.
+  // A failed save puts the previous rows back and says so: the table never shows unsaved merged
+  // rows as if they were stored.
   const commitMergedRows = useCallback(
     async (next: InspectionRowInput[]): Promise<boolean> => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = null
+      const previous = rowsRef.current
       rowsRef.current = next
       setRows(next)
-      return persist(next)
+      const saved = await persist(next)
+      if (!saved) {
+        if (rowsRef.current === next) {
+          rowsRef.current = previous
+          setRows(previous)
+        }
+        addToast('error', t('source.inspection.mergeNotSaved'))
+      }
+      return saved
     },
-    [persist],
+    [persist, addToast],
   )
 
   // Leaving a file or version writes its pending edit first, while `persist` still belongs to it.
@@ -317,21 +336,30 @@ export function InspectionTab({ file }: InspectionTabProps) {
 
   const handleCellChange = useCallback(
     (rowId: string, key: keyof InspectionRowValues, value: string | number | boolean | null) => {
-      updateRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, [key]: value } : r)))
+      updateRows((prev) =>
+        prev.map((r) =>
+          // The drawing owns an extracted row's geometry; the cell is read-only, and so is this.
+          r.id === rowId && !isDrawingOwnedCell(r, key) ? { ...r, [key]: value } : r,
+        ),
+      )
     },
     [updateRows],
   )
 
   const handleAddRow = useCallback(() => {
-    updateRows((prev) => [
-      ...prev,
-      { ...emptyRowValues(prev.length), id: crypto.randomUUID() },
-    ])
+    updateRows((prev) => [...prev, { ...emptyRowValues(prev.length), id: crypto.randomUUID() }])
   }, [updateRows])
 
+  // Only manual rows can be deleted; an extracted row goes when its annotation does.
   const handleDeleteRow = useCallback(
     (rowId: string) => {
-      updateRows((prev) => prev.filter((r) => r.id !== rowId))
+      updateRows((prev) => prev.filter((r) => r.id !== rowId || !!r.source_key?.trim()))
+      setSelectedIds((prev) => {
+        if (!prev.has(rowId)) return prev
+        const next = new Set(prev)
+        next.delete(rowId)
+        return next
+      })
     },
     [updateRows],
   )
@@ -352,194 +380,48 @@ export function InspectionTab({ file }: InspectionTabProps) {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  // Built-in + org-defined methods, de-duplicated (case-insensitive) and sorted for the dropdown.
-  const methodOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const name of [...DEFAULT_INSPECTION_METHODS, ...orgMethods.map((m) => m.name)]) {
-      const key = name.trim().toLowerCase()
-      if (key && !seen.has(key)) seen.set(key, name.trim())
-    }
-    return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-  }, [orgMethods])
-
-  // Save a new org-level method; returns whether it succeeded (used by the manager modal).
-  const handleAddMethod = useCallback(
-    async (name: string): Promise<boolean> => {
-      const trimmed = name.trim()
-      if (!trimmed || !orgId || !user?.id) return false
-      const result = await addInspectionMethod(orgId, user.id, trimmed)
-      if (!result.success || !result.method) {
-        addToast('error', result.error || t('common.error'))
-        return false
-      }
-      const added = result.method
-      setOrgMethods((prev) =>
-        prev.some((m) => m.id === added.id) ? prev : [...prev, added],
-      )
-      return true
-    },
-    [orgId, user?.id, addToast],
-  )
-
-  const handleRenameMethod = useCallback(
-    async (id: string, name: string): Promise<boolean> => {
-      const trimmed = name.trim()
-      if (!trimmed || !orgId) return false
-      const result = await updateInspectionMethod(orgId, id, trimmed)
-      if (!result.success) {
-        addToast('error', result.error || t('common.error'))
-        return false
-      }
-      setOrgMethods((prev) => prev.map((m) => (m.id === id ? { ...m, name: trimmed } : m)))
-      return true
-    },
-    [orgId, addToast],
-  )
-
-  const handleRemoveMethod = useCallback(
-    async (id: string): Promise<boolean> => {
-      if (!orgId) return false
-      const result = await deleteInspectionMethod(orgId, id)
-      if (!result.success) {
-        addToast('error', result.error || t('common.error'))
-        return false
-      }
-      setOrgMethods((prev) => prev.filter((m) => m.id !== id))
-      return true
-    },
-    [orgId, addToast],
-  )
-
-  // Display view = base rows filtered per-column, then sorted by the active column.
+  // Display view = base rows filtered on the shown columns, then sorted by the active column.
   const displayRows = useMemo(() => {
-    const sortCol = COLUMNS.find((c) => c.key === sortKey)
+    const sortCol = columns.find((c) => c.key === sortKey)
     const sortType = sortCol?.type ?? 'text'
     const filtered = rows.filter((row) =>
-      COLUMNS.every((col) => matchesFilter(row, col.key, filters[col.key] ?? '', col.type)),
+      columns.every((col) => matchesFilter(row, col.key, filters[col.key] ?? '', col.type)),
     )
     return [...filtered].sort((a, b) => compareRows(a, b, sortKey, sortDir, sortType))
-  }, [rows, filters, sortKey, sortDir])
+  }, [rows, columns, filters, sortKey, sortDir])
 
-  // Close the template dropdown on outside click
-  useEffect(() => {
-    if (!templateMenuOpen) return
-    const handleClick = (event: MouseEvent) => {
-      if (templateMenuRef.current && !templateMenuRef.current.contains(event.target as Node)) {
-        setTemplateMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [templateMenuOpen])
+  // Selected rows still shown; bulk edits never reach a row the filters hide.
+  const shownSelection = useMemo(
+    () => new Set(displayRows.filter((r) => selectedIds.has(r.id)).map((r) => r.id)),
+    [displayRows, selectedIds],
+  )
 
-  // Load the template list from the org's Drive folder when the dropdown opens
-  const loadTemplates = useCallback(async () => {
-    if (!templateFolderId) return
-    if (!isGoogleDriveConnected()) {
-      addToast('info', t('source.inspection.templateConnectDrive'))
-      return
-    }
-    setTemplatesLoading(true)
-    try {
-      const result = await getInspectionTemplates(templateFolderId)
-      if (!result.success) {
-        if (result.error === 'NOT_CONNECTED') {
-          addToast('info', t('source.inspection.templateConnectDrive'))
-        } else {
-          addToast('error', t('source.inspection.templateListFailed'))
-        }
-        setTemplates([])
-        return
-      }
-      setTemplates(result.templates ?? [])
-    } finally {
-      setTemplatesLoading(false)
-    }
-  }, [templateFolderId, addToast])
-
-  const handleTemplateMenuToggle = useCallback(() => {
-    setTemplateMenuOpen((open) => {
-      const next = !open
-      if (next) void loadTemplates()
-      return next
-    })
-  }, [loadTemplates])
-
-  const handleGenerateTemplate = useCallback(
-    async (template: InspectionTemplateFile) => {
-      setTemplateMenuOpen(false)
-      if (!templateFolderId) return
-
-      setIsGenerating(true)
-      try {
-        // The sheet is generated from what is on screen right now - the rows below are the
-        // user's uncommitted table edits - so its identifying fields follow the same overlay.
-        // A report titled with the number the user has just replaced is the drawing-export bug
-        // in a different deliverable.
-        const identity = resolveFileMetadata(file)
-        const brNumber = resolvedText(identity.partNumber)
-        const revision = resolvedText(identity.revision)
-        const description = resolvedText(identity.description)
-        const partName = description || file.pdmData?.file_name || file.name
-        const drawingName = file.pdmData?.file_name ?? file.name
-
-        // Best-effort part preview (skipped silently when unavailable)
-        let previewUrl: string | null = null
-        if (fileId && orgId) {
-          previewUrl = await uploadInspectionPreview(file.path, fileId, orgId)
-        }
-
-        // Formatted rows in the currently displayed order, keyed by field for {{COL:field}} tokens
-        const formattedRows = displayRows.map((row) => {
-          const record: Record<string, string> = {}
-          for (const col of COLUMNS) {
-            const value = row[col.key]
-            record[col.key] = value === null || value === undefined ? '' : String(value)
-          }
-          return record
-        })
-        const columnLabels: Record<string, string> = {}
-        for (const col of COLUMNS) columnLabels[col.key] = col.label
-
-        const namePrefix = brNumber || partName
-        const reportName = `${namePrefix}${revision ? ` Rev ${revision}` : ''} - ${template.name}`
-
-        const result = await generateInspectionSheet({
-          templateId: template.id,
-          destinationFolderId: templateFolderId,
-          reportName,
-          scalarTokens: {
-            BR_NUMBER: brNumber,
-            PART_NAME: partName,
-            DESCRIPTION: description,
-            REVISION: revision,
-            DATE: new Date().toLocaleDateString(),
-            DRAWING_NAME: drawingName,
-          },
-          previewImageUrl: previewUrl,
-          rows: formattedRows,
-          columnLabels,
-        })
-
-        if (!result.success || !result.spreadsheetUrl) {
-          if (result.error === 'NOT_CONNECTED') {
-            addToast('info', t('source.inspection.templateConnectDrive'))
-          } else {
-            addToast('error', t('source.inspection.templateFailed'))
-          }
-          return
-        }
-
-        window.open(result.spreadsheetUrl, '_blank')
-        addToast('success', t('source.inspection.templateSuccess'))
-      } catch (error) {
-        log.error('[InspectionTab]', 'Generate template failed', { error: String(error) })
-        addToast('error', t('source.inspection.templateFailed'))
-      } finally {
-        setIsGenerating(false)
-      }
+  const handleToggleSelect = useCallback(
+    (rowId: string, range: boolean) => {
+      const anchor = selectionAnchorRef.current
+      const shownIds = displayRows.map((r) => r.id)
+      setSelectedIds((prev) => toggleRowSelection(prev, shownIds, rowId, anchor, range))
+      selectionAnchorRef.current = rowId
     },
-    [templateFolderId, file, fileId, orgId, displayRows, addToast],
+    [displayRows],
+  )
+
+  const handleSelectAll = useCallback(
+    (select: boolean) => {
+      setSelectedIds(select ? new Set(displayRows.map((r) => r.id)) : new Set())
+      selectionAnchorRef.current = null
+    },
+    [displayRows],
+  )
+
+  const handleBulkApply = useCallback(
+    (field: BulkEditField, value: string | number | null) => {
+      const ids = shownSelection
+      if (ids.size === 0) return
+      updateRows((prev) => applyBulkEdit(prev, ids, field, value, BULK_EDIT_FIELDS))
+      addToast('success', t('source.inspection.bulkApplied', { count: ids.size }))
+    },
+    [shownSelection, updateRows, addToast],
   )
 
   if (!fileId) {
@@ -551,6 +433,32 @@ export function InspectionTab({ file }: InspectionTabProps) {
     )
   }
 
+  const extractButton = (
+    <button
+      type="button"
+      onClick={() => void drawing.handleExtract()}
+      disabled={drawing.busy}
+      className="btn btn-secondary btn-sm gap-1"
+      title={t('source.inspection.extractTitle')}
+    >
+      {drawing.isExtracting ? (
+        <Loader2 size={12} className="animate-spin" />
+      ) : (
+        <ScanSearch size={12} />
+      )}
+      {drawing.isExtracting
+        ? t('source.inspection.extracting')
+        : t('source.inspection.extractFromDrawing')}
+    </button>
+  )
+
+  const addRowButton = (
+    <button type="button" onClick={handleAddRow} className="btn btn-secondary btn-sm gap-1">
+      <Plus size={12} />
+      {t('source.inspection.addRow')}
+    </button>
+  )
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
@@ -560,300 +468,174 @@ export function InspectionTab({ file }: InspectionTabProps) {
           {t('source.inspection.title')}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-plm-fg/70">
-          <span>{t('source.inspection.version')}</span>
-          <select
-            value={selectedVersion}
-            onChange={(e) => setSelectedVersion(e.target.value)}
-            className="bg-plm-bg border border-plm-border rounded px-1.5 py-0.5 text-xs"
-          >
-            <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>
-                v{v.version}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-1" />
-
-        {isSaving && (
-          <span className="flex items-center gap-1 text-xs text-plm-fg/60">
-            <Loader2 size={12} className="animate-spin" />
-            {t('source.inspection.saving')}
-          </span>
+        {isDrawing && (
+          <SegmentedControl<InspectionView>
+            size="sm"
+            value={view}
+            onChange={setView}
+            aria-label={t('source.inspection.rptViewSwitch')}
+            options={[
+              {
+                value: 'table',
+                label: t('source.inspection.rptViewTable'),
+                icon: <Table2 size={12} />,
+              },
+              {
+                value: 'reports',
+                label: t('source.inspection.rptViewReports'),
+                icon: <FileSpreadsheet size={12} />,
+              },
+            ]}
+          />
         )}
 
-        {viewingCurrent && !isCheckedOutByMe && (
-          <span className="flex items-center gap-1 text-xs text-plm-fg/60">
-            <Lock size={12} />
-            {t('source.inspection.readOnlyCheckout')}
-          </span>
-        )}
+        {view === 'table' && (
+          <>
+            <div className="flex items-center gap-1.5 text-xs text-plm-fg/70">
+              <span>{t('source.inspection.version')}</span>
+              <select
+                value={selectedVersion}
+                onChange={(e) => setSelectedVersion(e.target.value)}
+                className="bg-plm-bg border border-plm-border rounded px-1.5 py-0.5 text-xs"
+              >
+                <option value={CURRENT_VERSION}>{t('source.inspection.current')}</option>
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    v{v.version}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {editable && isDrawing && (
-          <button
-            type="button"
-            onClick={() => void drawing.handleExtract()}
-            disabled={drawing.busy}
-            className="btn btn-secondary btn-sm gap-1"
-            title={t('source.inspection.extractTitle')}
-          >
-            {drawing.isExtracting ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <ScanSearch size={12} />
-            )}
-            {drawing.isExtracting
-              ? t('source.inspection.extracting')
-              : t('source.inspection.extractFromDrawing')}
-          </button>
-        )}
+            <div className="flex-1" />
 
-        {editable && isDrawing && rows.length > 0 && (
-          <button
-            type="button"
-            onClick={() => void drawing.handleBalloon()}
-            disabled={drawing.busy}
-            className="btn btn-secondary btn-sm gap-1"
-            title={t('source.inspection.balloonTitle')}
-          >
-            {drawing.isBallooning ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <CircleDot size={12} />
-            )}
-            {drawing.isBallooning
-              ? t('source.inspection.ballooning')
-              : t('source.inspection.balloonDrawing')}
-          </button>
-        )}
-
-        {canGenerateTemplate && (
-          <div className="relative" ref={templateMenuRef}>
-            <button
-              type="button"
-              onClick={handleTemplateMenuToggle}
-              disabled={isGenerating}
-              className="btn btn-secondary btn-sm gap-1"
-              title={t('source.inspection.generateTemplate')}
-            >
-              {isGenerating ? (
+            {isSaving && (
+              <span className="flex items-center gap-1 text-xs text-plm-fg/60">
                 <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <FileSpreadsheet size={12} />
-              )}
-              {isGenerating
-                ? t('source.inspection.generating')
-                : t('source.inspection.generateTemplate')}
-              <ChevronDown size={12} />
-            </button>
+                {t('source.inspection.saving')}
+              </span>
+            )}
 
-            {templateMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-20 min-w-56 max-h-72 overflow-auto rounded-md border border-plm-border bg-plm-bg shadow-lg py-1">
-                {templatesLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-plm-fg/60">
-                    <Loader2 size={12} className="animate-spin" />
-                    {t('source.inspection.templateLoading')}
-                  </div>
-                ) : templates.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-plm-fg/60">
-                    {t('source.inspection.templateNone')}
-                  </div>
+            {viewingCurrent && !isCheckedOutByMe && (
+              <span className="flex items-center gap-1 text-xs text-plm-fg/60">
+                <Lock size={12} />
+                {t('source.inspection.readOnlyCheckout')}
+              </span>
+            )}
+
+            {editable && isDrawing && extractButton}
+
+            {editable && isDrawing && rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void drawing.handleBalloon()}
+                disabled={drawing.busy}
+                className="btn btn-secondary btn-sm gap-1"
+                title={t('source.inspection.balloonTitle')}
+              >
+                {drawing.isBallooning ? (
+                  <Loader2 size={12} className="animate-spin" />
                 ) : (
-                  templates.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onClick={() => void handleGenerateTemplate(template)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-plm-fg hover:bg-plm-bg/40"
-                    >
-                      <FileSpreadsheet size={12} className="flex-shrink-0 text-plm-fg/60" />
-                      <span className="truncate">{template.name}</span>
-                    </button>
-                  ))
+                  <CircleDot size={12} />
                 )}
-              </div>
+                {drawing.isBallooning
+                  ? t('source.inspection.ballooning')
+                  : t('source.inspection.balloonDrawing')}
+              </button>
             )}
-          </div>
-        )}
 
-        {editable && (
-          <button
-            type="button"
-            onClick={() => setMethodModalOpen(true)}
-            className="btn btn-secondary btn-sm gap-1"
-            title={t('source.inspection.manageMethods')}
-          >
-            <Settings2 size={12} />
-            {t('source.inspection.methods')}
-          </button>
-        )}
+            {canGenerateTemplate && (
+              <GoogleSheetTemplateMenu
+                file={file}
+                fileId={fileId}
+                orgId={orgId}
+                templateFolderId={templateFolderId}
+                rows={displayRows}
+              />
+            )}
 
-        {editable && (
-          <button
-            type="button"
-            onClick={handleAddRow}
-            className="btn btn-secondary btn-sm gap-1"
-          >
-            <Plus size={12} />
-            {t('source.inspection.addRow')}
-          </button>
-        )}
-      </div>
+            <ColumnManager />
 
-      {/* Body */}
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-32 text-plm-fg/60">
-            <Loader2 size={18} className="animate-spin" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-plm-fg/60 text-center px-6">
-            <div className="text-sm">{t('source.inspection.empty')}</div>
             {editable && (
-              <div className="flex items-center gap-2 mt-3">
-                {isDrawing && (
-                  <button
-                    type="button"
-                    onClick={() => void drawing.handleExtract()}
-                    disabled={drawing.busy}
-                    className="btn btn-secondary btn-sm gap-1"
-                  >
-                    {drawing.isExtracting ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <ScanSearch size={12} />
-                    )}
-                    {drawing.isExtracting
-                      ? t('source.inspection.extracting')
-                      : t('source.inspection.extractFromDrawing')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleAddRow}
-                  className="btn btn-secondary btn-sm gap-1"
-                >
-                  <Plus size={12} />
-                  {t('source.inspection.addRow')}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setMethodModalOpen(true)}
+                className="btn btn-secondary btn-sm gap-1"
+                title={t('source.inspection.manageMethods')}
+              >
+                <Settings2 size={12} />
+                {t('source.inspection.methods')}
+              </button>
             )}
-          </div>
-        ) : (
-          <table className="text-xs border-collapse w-max min-w-full">
-            <thead className="sticky top-0 bg-plm-bg z-10">
-              <tr className="border-b border-plm-border">
-                {COLUMNS.map((col) => (
-                  <th
-                    key={col.key}
-                    className={`px-2 py-1.5 text-left font-medium text-plm-fg/70 ${col.width}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleSort(col.key)}
-                      className="flex items-center gap-1 hover:text-plm-fg w-full text-left"
-                      title={t('source.inspection.sortBy')}
-                    >
-                      <span className="truncate">{col.label}</span>
-                      {sortKey === col.key ? (
-                        sortDir === 'asc' ? (
-                          <ArrowUp size={11} className="shrink-0" />
-                        ) : (
-                          <ArrowDown size={11} className="shrink-0" />
-                        )
-                      ) : (
-                        <ChevronsUpDown size={11} className="shrink-0 opacity-30" />
-                      )}
-                    </button>
-                  </th>
-                ))}
-                {editable && <th className="px-2 py-1.5 w-12" />}
-              </tr>
-              <tr className="border-b border-plm-border">
-                {COLUMNS.map((col) => (
-                  <th key={col.key} className="px-1 py-1 align-top">
-                    <ColumnFilter
-                      col={col}
-                      value={filters[col.key] ?? ''}
-                      onChange={(value) => handleFilterChange(col.key, value)}
-                    />
-                  </th>
-                ))}
-                {editable && <th className="px-1 py-1" />}
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={COLUMNS.length + (editable ? 1 : 0)}
-                    className="px-2 py-6 text-center text-plm-fg/50"
-                  >
-                    {t('source.inspection.noMatches')}
-                  </td>
-                </tr>
-              ) : (
-                displayRows.map((row) => (
-                <tr key={row.id} className="border-b border-plm-border/50 hover:bg-plm-bg/40">
-                  {COLUMNS.map((col) => (
-                    <td key={col.key} className="px-1 py-0.5">
-                      <InspectionCell
-                        col={col}
-                        value={row[col.key]}
-                        editable={editable && col.key !== 'balloon_number' && !col.readOnly}
-                        onChange={(value) => handleCellChange(row.id, col.key, value)}
-                        methodOptions={methodOptions}
-                        onManageMethods={() => setMethodModalOpen(true)}
-                      />
-                    </td>
-                  ))}
-                  {editable && (
-                    <td className="px-1 py-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(row.id)}
-                        className="p-1 rounded hover:bg-plm-error/20 text-plm-error"
-                        title={t('source.inspection.deleteRow')}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+
+            {editable && addRowButton}
+          </>
         )}
       </div>
 
-      {drawing.pendingExtract && (
-        <ExtractPreviewDialog
-          pending={drawing.pendingExtract}
-          onToggleRemove={drawing.toggleRemove}
-          onConfirm={() => void drawing.confirmExtract()}
-          onCancel={drawing.cancelExtract}
-        />
-      )}
+      {view === 'reports' ? (
+        <div className="flex-1 overflow-hidden">
+          <InspectionReportsView file={file} focusReportId={focusReportId} />
+        </div>
+      ) : (
+        <>
+          {editable && shownSelection.size > 0 && (
+            <BulkEditBar
+              count={shownSelection.size}
+              methodOptions={methods.methodOptions}
+              onManageMethods={() => setMethodModalOpen(true)}
+              onApply={handleBulkApply}
+              onClear={() => handleSelectAll(false)}
+            />
+          )}
 
-      {drawing.pendingBalloons && (
-        <BalloonConfirmDialog
-          plan={drawing.pendingBalloons}
-          onConfirm={() => void drawing.confirmBalloon()}
-          onCancel={drawing.cancelBalloon}
-        />
+          {/* Table view (the toolbar's Table | Reports switch chooses this body) */}
+          <div className="flex-1 overflow-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32 text-plm-fg/60">
+                <Loader2 size={18} className="animate-spin" />
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-plm-fg/60 text-center px-6">
+                <div className="text-sm">{t('source.inspection.empty')}</div>
+                {editable && (
+                  <div className="flex items-center gap-2 mt-3">
+                    {isDrawing && extractButton}
+                    {addRowButton}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <InspectionTable
+                columns={columns}
+                rows={displayRows}
+                editable={editable}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                onCellChange={handleCellChange}
+                onDeleteRow={handleDeleteRow}
+                methodOptions={methods.methodOptions}
+                onManageMethods={() => setMethodModalOpen(true)}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onSelectAll={handleSelectAll}
+                generalBasis={drawing.generalBasis}
+              />
+            )}
+          </div>
+        </>
       )}
 
       {methodModalOpen && (
         <MethodManagerModal
-          methods={orgMethods}
+          methods={methods.orgMethods}
           builtInMethods={DEFAULT_INSPECTION_METHODS}
-          onAdd={handleAddMethod}
-          onRename={handleRenameMethod}
-          onRemove={handleRemoveMethod}
+          onAdd={methods.addMethod}
+          onRename={methods.renameMethod}
+          onRemove={methods.removeMethod}
           onClose={() => setMethodModalOpen(false)}
         />
       )}

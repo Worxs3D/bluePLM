@@ -1,6 +1,6 @@
 {
   "name": "blue-plm",
-  "version": "5.3.4",
+  "version": "5.4.0",
   "description": "Open-source Product Lifecycle Management",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -64,6 +64,7 @@
     "chokidar": "^5.0.0",
     "date-fns": "^3.0.6",
     "electron-updater": "^6.8.11",
+    "exceljs": "^4.4.0",
     "fastify": "^5.2.1",
     "jszip": "^3.10.2",
     "lucide-react": "^0.468.0",

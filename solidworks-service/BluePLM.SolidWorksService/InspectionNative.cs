@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -437,6 +438,96 @@ namespace BluePLM.SolidWorksService
             }
             return result;
         }
+
+        // ------------------------------------------------------------------ sheet notes
+
+        /// <summary>Wire values of <c>ExtractedSheetNote.source</c>.</summary>
+        public const string NoteSourceFormat = "format";
+        public const string NoteSourceSheet = "sheet";
+        public const string NoteSourceBlock = "block";
+
+        /// <summary>Two notes closer than this (metres, each axis) with the same text are the same note.</summary>
+        public const double NoteSamePositionM = 1e-6;
+
+        private static readonly Regex FontTag = new Regex("</?FONT\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex LineBreak = new Regex("\\r\\n|\\r|\\n", RegexOptions.Compiled);
+
+        /// <summary>
+        /// The evaluated text of a note as the wire carries it: SOLIDWORKS &lt;FONT ...&gt; formatting
+        /// tags removed, symbol tokens decoded (&lt;MOD-PM&gt; to ±, &lt;MOD-DEG&gt; to °, ...), each line's
+        /// whitespace collapsed, blank leading and trailing lines dropped, lines joined with '\n'.
+        /// </summary>
+        public static string NormalizeNoteText(string? raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "";
+            var lines = LineBreak.Split(FontTag.Replace(raw, ""))
+                .Select(DecodeSymbolTokens)
+                .ToList();
+            var first = lines.FindIndex(l => l.Length > 0);
+            if (first < 0) return "";
+            var last = lines.FindLastIndex(l => l.Length > 0);
+            return string.Join("\n", lines.GetRange(first, last - first + 1));
+        }
+
+        /// <summary>
+        /// Apply a SOLIDWORKS MathTransform's ArrayData (rotation a..i, translation j..l, scale m) to a
+        /// point in the plane: SOLIDWORKS multiplies a row vector, so x' = (a·x + d·y)·m + j and
+        /// y' = (b·x + e·y)·m + k. Null when the array is not a transform.
+        /// </summary>
+        public static (double X, double Y)? TransformPoint(double[]? arrayData, double x, double y)
+        {
+            if (arrayData == null || arrayData.Length < 13) return null;
+            var a = arrayData;
+            var scale = a[12] == 0 ? 1.0 : a[12];
+            var tx = (a[0] * x + a[3] * y) * scale + a[9];
+            var ty = (a[1] * x + a[4] * y) * scale + a[10];
+            if (double.IsNaN(tx) || double.IsNaN(ty) || double.IsInfinity(tx) || double.IsInfinity(ty)) return null;
+            return (tx, ty);
+        }
+
+        /// <summary>The doubles of a COM array (double[] or boxed numbers), or null.</summary>
+        public static double[]? Doubles(object? raw)
+        {
+            if (!(raw is Array array)) return null;
+            var result = new double[array.Length];
+            var i = 0;
+            try
+            {
+                foreach (var item in array) result[i++] = Convert.ToDouble(item, CultureInfo.InvariantCulture);
+            }
+            catch { return null; }
+            return result;
+        }
+
+        /// <summary>
+        /// One list of a sheet's notes from the three reads. A note can be returned by more than one
+        /// read (a title block note by ITitleBlock and by the sheet format, a block attribute by the
+        /// sheet view), so a note with the same text at the same position is kept once, by the most
+        /// specific read: block over format over sheet. Order: format, sheet, block, each in read order.
+        /// Notes with no text are dropped.
+        /// </summary>
+        public static List<ExtractedSheetNote> MergeSheetNotes(
+            IEnumerable<ExtractedSheetNote> format, IEnumerable<ExtractedSheetNote> sheet, IEnumerable<ExtractedSheetNote> block)
+        {
+            var kept = new List<ExtractedSheetNote>();
+            bool Same(ExtractedSheetNote a, ExtractedSheetNote b) =>
+                string.Equals(a.Text, b.Text, StringComparison.Ordinal)
+                && Math.Abs(a.X - b.X) <= NoteSamePositionM && Math.Abs(a.Y - b.Y) <= NoteSamePositionM;
+
+            // Priority order, so a note seen by a more specific read claims it first.
+            var byPriority = new List<ExtractedSheetNote>();
+            foreach (var group in new[] { block, format, sheet })
+                foreach (var note in group)
+                {
+                    if (note == null || string.IsNullOrEmpty(note.Text)) continue;
+                    if (byPriority.Any(k => Same(k, note))) continue;
+                    byPriority.Add(note);
+                }
+
+            foreach (var source in new[] { NoteSourceFormat, NoteSourceSheet, NoteSourceBlock })
+                kept.AddRange(byPriority.Where(n => n.Source == source));
+            return kept;
+        }
     }
 
     // ---------------------------------------------------------------------- wire shapes
@@ -457,6 +548,28 @@ namespace BluePLM.SolidWorksService
         [JsonProperty("name")] public string Name { get; set; } = "";
         [JsonProperty("widthM")] public double WidthM { get; set; }
         [JsonProperty("heightM")] public double HeightM { get; set; }
+        /// <summary>Sheet format, sheet and block notes (never notes inside drawing views). Empty when they could not be read.</summary>
+        [JsonProperty("notes")] public List<ExtractedSheetNote> Notes { get; set; } = new List<ExtractedSheetNote>();
+        /// <summary>
+        /// True when every notes read on this sheet ran and succeeded, so an empty or short
+        /// <c>notes</c> means "none there". False when any read (sheet, blocks, title block, sheet
+        /// format) failed or was skipped.
+        /// </summary>
+        [JsonProperty("notesRead")] public bool NotesRead { get; set; }
+    }
+
+    /// <summary>One note of a sheet, for the app's title block (general tolerance) and zone label parsing.</summary>
+    internal sealed class ExtractedSheetNote
+    {
+        /// <summary>Evaluated text (property links resolved), lines joined with '\n'.</summary>
+        [JsonProperty("text")] public string Text { get; set; } = "";
+        /// <summary>Position in sheet metres, the same space as a characteristic's x / y.</summary>
+        [JsonProperty("x")] public double X { get; set; }
+        [JsonProperty("y")] public double Y { get; set; }
+        /// <summary>Character height in metres when known.</summary>
+        [JsonProperty("height")] public double? Height { get; set; }
+        /// <summary>"format", "sheet" or "block".</summary>
+        [JsonProperty("source")] public string Source { get; set; } = InspectionNative.NoteSourceSheet;
     }
 
     internal sealed class ExtractionSkip
