@@ -18,6 +18,11 @@ Schema 507. No API or service change.
 - **Out-of-date reports are marked.** A report made of an older drawing version than the latest
   (and not superseded by a newer report of the same type) has a stale mark at the left edge of its
   row; hover it and click to generate a new report of the latest version.
+- **Hand over Vault Audit choices as a table.** On the conflicts screen, Copy choices puts every
+  conflict and the side picked for it on the clipboard as a table that pastes into a spreadsheet
+  or a message, and Paste choices reads such a table back and sets the same choices. A line must
+  name a conflict still in the scan with the values it was chosen against, and one direction per
+  file; every other line is listed as skipped. Pasting only selects: Write still does the writing.
 
 ### Changed
 
