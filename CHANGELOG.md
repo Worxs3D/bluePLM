@@ -4,6 +4,31 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.9.1] - 2026-11-03
+
+Renderer only. No schema, API or SolidWorks service change (schema 509, API 4.2.2, SolidWorks
+service 1.29.0).
+
+### Changed
+
+- **Default column order.** Name, Ver, Outputs, Item Number, Rev, Description, then the rest. Saved
+  layouts are kept; a column added by a release now lands next to its neighbour in the defaults.
+- **Parent.** A drawing's models section is called Parent (Parents for more than one).
+- **Generate from the Exports header.** The Generate… line at the end of Exports is gone; right-click
+  the Exports header to generate a kind.
+
+### Fixed
+
+- **Search finds item numbers and descriptions from any folder.** Search defaulted to the open
+  folder only, so searching an item number from a subfolder found nothing. It now searches the
+  whole vault by default, and the old default is reset once.
+
+### Added
+
+- **Select several exports and reports.** Under a file's chevron, Ctrl-click toggles a row and
+  Shift-click selects a range. Right-click the selection to save them next to the file or delete
+  them (asks first, and leaves out the ones you may not delete).
+
 ## [5.9.0] - 2026-11-03
 
 Schemas 508 and 509. No API or SolidWorks service change (API 4.2.2, SolidWorks service 1.29.0).

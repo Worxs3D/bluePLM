@@ -90,10 +90,15 @@ generate it for the latest version. **Generate** in the toolbar does the same fo
 that are missing or out of date in the selection, the folder, or the folder and its subfolders.
 
 Under a file's chevron, **Exports** lists one line per kind, the released one first. Each export's
-menu has **Regenerate at check-in** (on by default). An up-to-date export is never regenerated, and
-a released one never changes. Under a drawing, **Inspection reports** lists its reports
-(regenerating one overwrites it for the same version) and **Received inspections** the filled-in
-workbooks that came back, also listed in the Inspection tab's Received view.
+menu has **Regenerate at check-in** (on by default). Right-click the **Exports** header to generate
+a kind the file does not have yet. An up-to-date export is never regenerated, and a released one
+never changes. Under a drawing, **Parent** lists the part or assembly it shows, **Inspection
+reports** lists its reports (regenerating one overwrites it for the same version) and **Received
+inspections** the filled-in workbooks that came back, also listed in the Inspection tab's Received
+view.
+
+Click an export or report to preview it. `Ctrl`-click adds or removes one, `Shift`-click selects a
+range; right-click the selection to save them all next to the file or delete them.
 
 ## Pinned Folders
 
