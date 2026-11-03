@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 505
+export const EXPECTED_SCHEMA_VERSION = 506
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -60,6 +60,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Inspection reports. inspection_characteristic and its snapshots gain tolerance_source (drawing or general), copied by file_checkin() and kept out of inspection_hash. inspection_template is the organization's library of Excel report templates (members read, administrators write, one default). inspection_report attaches a generated report to one drawing version, with its workbook, embedded drawing PDF and returned workbook in the vault bucket; it follows the file's vault, writing needs explorer edit, and the actor columns are set by the database. can_read_vault_object() reads report and template content; server backups export both tables.",
   505:
     "Version outputs. file_version_output keeps the STEP, IGES, STL and DXF exports of a checked-in file version (per configuration) in the vault bucket; it follows the file's vault, clients only read it, and file_version_output_record() writes it (explorer edit, the file's vault, content the caller uploaded or can read; replacing a recorded output is for administrators). can_read_vault_object() reads output content; check_release_residue() covers the table; server backups export it. inspection_report gains sequence, the report's number within its naming scope.",
+  506:
+    "Inspection report types. inspection_report gains report_type (first article, production, receiving, re-inspection; none on older reports), the FAI scope, reason and baseline version, the lot, lot size, sampling plan (100 percent or a fixed sample) and sample columns, purchase order and supplier, the NCR reference, and the characteristics the report includes; all are fixed once the report is issued, and results on a typed report must be in the 5.6 format. inspection_template gains the report types it serves and the types it is the default for (one default per type per organization; archiving ends them).",
 }
 
 export interface SchemaVersionInfo {
