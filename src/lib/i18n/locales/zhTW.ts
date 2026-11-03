@@ -907,5 +907,10 @@ export const zhTW: TranslationDict = {
     telemetrySettings: '遙測設定',
     sampleRateHz: '取樣率 (Hz)',
     retentionSeconds: '保留時間（秒）',
+    trackedModules: '追蹤的模組',
+    moduleHeap: '模組堆積記憶體',
+    bufferSizeLabel: '緩衝區大小',
+    samples: '個樣本',
+    telemetryData: '遙測資料',
   },
 }

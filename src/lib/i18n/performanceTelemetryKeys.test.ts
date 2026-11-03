@@ -26,6 +26,11 @@ const PLAIN_KEYS = [
   'performanceTelemetry.telemetrySettings',
   'performanceTelemetry.sampleRateHz',
   'performanceTelemetry.retentionSeconds',
+  'performanceTelemetry.trackedModules',
+  'performanceTelemetry.moduleHeap',
+  'performanceTelemetry.bufferSizeLabel',
+  'performanceTelemetry.samples',
+  'performanceTelemetry.telemetryData',
 ] as const
 
 const COUNTED_KEYS = ['performanceTelemetry.bufferSize', 'performanceTelemetry.secondsAgo'] as const

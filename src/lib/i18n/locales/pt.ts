@@ -946,5 +946,10 @@ export const pt: TranslationDict = {
     telemetrySettings: 'Definições de telemetria',
     sampleRateHz: 'Frequência (Hz)',
     retentionSeconds: 'Retenção (segundos)',
+    trackedModules: 'Módulos acompanhados',
+    moduleHeap: 'Memória dos módulos',
+    bufferSizeLabel: 'Tamanho do buffer',
+    samples: 'amostras',
+    telemetryData: 'Dados de telemetria',
   },
 }

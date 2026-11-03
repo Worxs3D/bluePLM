@@ -2135,5 +2135,10 @@ export const en: TranslationDict = {
     telemetrySettings: 'Telemetry Settings',
     sampleRateHz: 'Sample Rate (Hz)',
     retentionSeconds: 'Retention (seconds)',
+    trackedModules: 'Tracked modules',
+    moduleHeap: 'Module heap',
+    bufferSizeLabel: 'Buffer size',
+    samples: 'samples',
+    telemetryData: 'Telemetry data',
   },
 }

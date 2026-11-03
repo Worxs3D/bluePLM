@@ -907,5 +907,10 @@ export const zhCN: TranslationDict = {
     telemetrySettings: '遥测设置',
     sampleRateHz: '采样率 (Hz)',
     retentionSeconds: '保留时间（秒）',
+    trackedModules: '跟踪的模块',
+    moduleHeap: '模块堆内存',
+    bufferSizeLabel: '缓冲区大小',
+    samples: '个样本',
+    telemetryData: '遥测数据',
   },
 }
