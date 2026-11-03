@@ -4,6 +4,39 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.7.0] - 2026-11-03
+
+SolidWorks service 1.29.0. No schema or API change (schema 506, API 4.2.2).
+
+### Added
+
+- **Preview outputs and reports with a single click.** Clicking a PDF, STEP or inspection report
+  under a file's chevron shows it in the Preview tab: the PDF with page navigation, the workbook as
+  it will open (sheets, merged cells, fills, borders, logo and drawing pages), and STEP, IGES or
+  STL in a 3D view with orbit, pan, zoom, view presets and edges. Double-click still opens the file
+  in its own application. The 3D view loads only when first used. BluePLM Web allows WebAssembly
+  compilation (`'wasm-unsafe-eval'`) for it; no JavaScript eval is allowed.
+
+### Changed
+
+- **Re-ballooning keeps your balloons.** A balloon whose number still matches its characteristic in
+  the same view is left exactly as it is (position, leader, size, style); only balloons that no
+  longer match are removed and only missing ones are placed. A run with nothing to change does not
+  save the drawing. Needs service 1.29.0; older services replace every balloon as before.
+- **Auto keeps the drawing in sync on its own.** With Auto on there is no Extract or Balloon button:
+  the Auto pill says In sync, Syncing, Waiting for SOLIDWORKS or Auto paused (with Retry). Auto also
+  brings a drawing in sync when it is opened, not only when it changes while open (service 1.29.0;
+  with an older service Auto waits for a change on disk). A drawing nothing was read from yet shows
+  one "Extract and balloon" button.
+- **Shorter report numbers.** The default pattern is now `{partNumber}_Rev{rev}_{type}`, for example
+  `BR-103849-201_RevB_FAIR`; a second report with the same number becomes `..._FAIR_2`. A pattern an
+  organization already saved is kept.
+
+### Third-party
+
+- three.js (MIT) and occt-import-js with Open CASCADE (LGPL-2.1, loaded unmodified as a separate
+  script and WebAssembly module). Their licence texts ship with the desktop app and the web build.
+
 ## [5.6.0] - 2026-11-03
 
 Schema 506 (migration `0506_inspection_report_types.sql`, applied by the release before anything is
