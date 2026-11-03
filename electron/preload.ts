@@ -1381,6 +1381,8 @@ declare global {
             missing: string[]
             removedPrevious: number
             keptPositions: number
+            kept?: number
+            unchanged?: boolean
             saved: boolean
           }
           error?: string

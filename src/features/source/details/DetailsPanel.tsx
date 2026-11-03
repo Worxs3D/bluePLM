@@ -39,6 +39,8 @@ import { hasDesktop } from '@/lib/platform'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
 import type { AnnotationOverlay } from './components/PdfAnnotationViewer'
 import { CommentSidebar } from './components/CommentSidebar'
+import { ChildPreview } from '@/features/source/outputs/preview/ChildPreview'
+import { activeChildSelection, childKey } from '@/features/source/outputs/preview/childPreviewModel'
 import {
   FileBox,
   Layers,
@@ -177,6 +179,8 @@ export function DetailsPanel() {
     })),
   )
 
+  // An output or report row selected under the file: the Preview tab shows it instead of the file.
+  const childTarget = usePDMStore((s) => activeChildSelection(s.childSelection, s.selectedFiles))
   const selectedFileObjects = getSelectedFileObjects()
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
   const isFolder = file?.isDirectory || false
@@ -767,8 +771,12 @@ export function DetailsPanel() {
         ) : (
           file && (
             <>
+              {detailsPanelTab === 'preview' && childTarget && (
+                <ChildPreview key={childKey(childTarget)} target={childTarget} />
+              )}
+
               {/* Preview tab for SolidWorks files */}
-              {detailsPanelTab === 'preview' && isSolidWorksFile && !isFolder && (
+              {detailsPanelTab === 'preview' && !childTarget && isSolidWorksFile && !isFolder && (
                 <CadFilePreview file={file} solidWorks />
               )}
 
@@ -1002,7 +1010,7 @@ export function DetailsPanel() {
                   </div>
                 ))}
 
-              {detailsPanelTab === 'preview' && !(isSolidWorksFile && !isFolder) && (
+              {detailsPanelTab === 'preview' && !childTarget && !(isSolidWorksFile && !isFolder) && (
                 <div className="flex flex-col items-center justify-center h-full py-4">
                   {!file ? (
                     <div className="text-sm text-plm-fg-muted">

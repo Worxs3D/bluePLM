@@ -11,6 +11,7 @@
 
 import { StateCreator } from 'zustand'
 
+import type { ChildSelection } from '../../features/source/outputs/preview/childPreviewModel'
 import type { VersionOutput, VersionOutputKind } from '../../types/versionOutputs'
 import type { PDMStoreState } from '../types'
 
@@ -56,6 +57,14 @@ export interface OutputsSlice {
   /** file id -> the version (number and id) whose outputs the file list shows. */
   fileOutputVersions: Map<string, FileOutputVersion>
   setFileOutputVersions: (byFile: ReadonlyMap<string, FileOutputVersion>) => void
+  /**
+   * The output or inspection report row selected under a file, shown in the Preview tab. Valid
+   * only while `selectedFiles` is still its anchor (`activeChildSelection` in
+   * src/features/source/outputs/preview/childPreviewModel.ts); write it through `selectChildRow`.
+   * Session state, never persisted.
+   */
+  childSelection: ChildSelection | null
+  setChildSelection: (selection: ChildSelection | null) => void
 }
 
 export function outputJobKey(fileId: string, kind: VersionOutputKind, configuration: string | null): string {
@@ -130,4 +139,6 @@ export const createOutputsSlice: StateCreator<
   fileOutputVersions: new Map(),
   setFileOutputVersions: (byFile) =>
     set((state) => ({ fileOutputVersions: mergeFileOutputVersions(state.fileOutputVersions, byFile) })),
+  childSelection: null,
+  setChildSelection: (childSelection) => set({ childSelection }),
 })

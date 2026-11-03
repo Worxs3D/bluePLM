@@ -29,6 +29,7 @@ import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
 import { FileOutputRow } from './FileOutputRow'
 import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
+import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
 import { hasDesktop } from '@/lib/platform'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
 import { FileRow } from './FileRow'
@@ -191,6 +192,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     const checkoutHydration = usePDMStore((s) => s.checkoutHydration)
     const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
+    const childSelectedUnder = usePDMStore((s) => childSelectionParent(s.childSelection, s.selectedFiles))
     useDrawingReportsLoader(displayFiles, expandedDrawingRefs)
     useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles)
     const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
@@ -428,7 +430,8 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
             key={file.path}
             file={file}
             index={index}
-            isSelected={isSelected}
+            // While one of its output or report rows is selected, that row carries the highlight.
+            isSelected={isSelected && file.path !== childSelectedUnder}
             isProcessing={isProcessing}
             diffClass={diffClass}
             isDragTarget={isDragTarget}
@@ -469,6 +472,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
         renderCellContent,
         user,
         checkoutHydration,
+        childSelectedUnder,
       ],
     )
 

@@ -19,8 +19,12 @@ import {
   LOOK_TEMPLATE_IDS,
   lookVersionId,
 } from './lookInspectionFixtures'
+import type { SeededContent } from './lookPreviewFixtures'
 
 type Store = typeof usePDMStore
+
+/** The look report the preview scene shows (production, returned, with results). */
+const LOOK_PREVIEW_REPORT_ID = '00000000-0000-4000-8000-1e9070000003'
 
 export interface LookControl {
   /** Scene names `scene()` accepts. */
@@ -113,6 +117,152 @@ async function analyzeLookTemplates(backend: PerfBackend): Promise<void> {
   }
 }
 
+/**
+ * The file list with every kind of child row: a drawing's referenced part, its PDF and its
+ * reports; a second drawing with its PDF being generated; a part's configurations and STEP; an
+ * assembly whose STEP failed. `content` gives the PDF and STEP real stored bytes (preview scenes).
+ */
+function showFileList(store: Store, content?: Partial<Record<VersionOutputKind, SeededContent>>): void {
+  openInspectionFolder(store)
+  const drawingPath = lookPath(store, LOOK_DRAWING)
+  const spacerDrawing = lookPath(store, LOOK_EMPTY_DRAWING)
+  const part = lookPath(store, 'BR-103849-201.SLDPRT')
+  const assembly = lookPath(store, 'BR-103849-100.SLDASM')
+  const state = store.getState()
+  state.setDrawingRefData(drawingPath, [
+    refItem(store, 'BR-103849-201.SLDPRT', 'part', 'BR-103849-201', 'Bracket, motor mount, 6061-T6'),
+  ])
+  state.setDrawingRefData(spacerDrawing, [
+    refItem(store, 'BR-103849-202.SLDPRT', 'part', 'BR-103849-202', 'Spacer, motor mount, Delrin'),
+  ])
+  state.setFileConfigurations(part, [
+    { name: 'Default', isActive: true, depth: 0, description: 'Bracket, motor mount, 6061-T6' },
+    { name: 'Anodized', depth: 1, description: 'Bracket, motor mount, anodized black' },
+  ])
+  state.setFileConfigurations(assembly, [{ name: 'Default', isActive: true, depth: 0 }])
+  const now = Date.now()
+  // The outputs the loader would read (the fake cannot answer its nested or(and(...)) filter).
+  const versionOf = (name: string, n: number) => ({ version: n, fileVersionId: lookVersionId(name, n) })
+  const latest: Array<[string, number]> = [
+    [LOOK_DRAWING, 3],
+    [LOOK_EMPTY_DRAWING, 1],
+    ['BR-103849-201.SLDPRT', 6],
+    ['BR-103849-100.SLDASM', 4],
+  ]
+  state.setFileOutputVersions(new Map(latest.map(([name, n]) => [LOOK_FILE_IDS[name], versionOf(name, n)])))
+  const output = (name: string, n: number, kind: VersionOutputKind, size: number, fileName: string | null) => ({
+    id: `look-output-${name}-${kind}`,
+    kind,
+    fileId: LOOK_FILE_IDS[name],
+    fileVersionId: lookVersionId(name, n),
+    configuration: null,
+    storageHash: content?.[kind]?.hash ?? 'f'.repeat(64),
+    fileSize: content?.[kind]?.size ?? size,
+    fileName,
+    closureExact: true,
+    generatedBy: null,
+    generatedAt: new Date(now - 4 * 86_400_000).toISOString(),
+  })
+  state.setVersionOutputs(
+    new Map<string, VersionOutput[]>([
+      [lookVersionId(LOOK_DRAWING, 3), [output(LOOK_DRAWING, 3, 'pdf', 1_303_000, null)]],
+      [lookVersionId(LOOK_EMPTY_DRAWING, 1), []],
+      [
+        lookVersionId('BR-103849-201.SLDPRT', 6),
+        [output('BR-103849-201.SLDPRT', 6, 'step', 2_830_000, 'BR-103849-201_RevB.step')],
+      ],
+      [lookVersionId('BR-103849-100.SLDASM', 4), []],
+    ]),
+  )
+  state.upsertOutputJob({
+    key: `${LOOK_FILE_IDS[LOOK_EMPTY_DRAWING]}:pdf:`,
+    fileId: LOOK_FILE_IDS[LOOK_EMPTY_DRAWING],
+    fileVersionId: lookVersionId(LOOK_EMPTY_DRAWING, 1),
+    kind: 'pdf',
+    configuration: null,
+    fileName: LOOK_EMPTY_DRAWING,
+    status: 'running',
+    detail: null,
+    auto: true,
+    updatedAt: now,
+  })
+  state.upsertOutputJob({
+    key: `${LOOK_FILE_IDS['BR-103849-100.SLDASM']}:step:`,
+    fileId: LOOK_FILE_IDS['BR-103849-100.SLDASM'],
+    fileVersionId: lookVersionId('BR-103849-100.SLDASM', 4),
+    kind: 'step',
+    configuration: null,
+    fileName: 'BR-103849-100.SLDASM',
+    status: 'failed',
+    detail: 'SW_SERVICE_OFFLINE',
+    auto: true,
+    updatedAt: now,
+  })
+  store.setState({
+    expandedDrawingRefs: new Set([drawingPath, spacerDrawing]),
+    expandedConfigFiles: new Set([part, assembly]),
+    detailsPanelVisible: false,
+    rightPanelVisible: false,
+  })
+  state.setSelectedFiles([drawingPath])
+}
+
+async function until(check: () => boolean, timeoutMs = 8000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('look: timed out waiting for the scene data')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
+/**
+ * The file list with one child row selected and previewed in the bottom panel: the drawing's
+ * inspection report (a real workbook from the engine), its PDF (two sheets) or the part's STEP.
+ * The content is stored in the fake bucket under its real hash, so the preview downloads and
+ * verifies it as in the app.
+ */
+async function showOutputPreview(store: Store, backend: PerfBackend, which: 'report' | 'pdf' | 'step'): Promise<void> {
+  const fixtures = await import('./lookPreviewFixtures')
+  const orgId = store.getState().organization?.id ?? ''
+  const content: Partial<Record<VersionOutputKind, SeededContent>> = {}
+  if (which === 'pdf') content.pdf = await fixtures.seedContent(backend, orgId, fixtures.samplePdf())
+  if (which === 'step') content.step = await fixtures.seedContent(backend, orgId, fixtures.sampleStep())
+  // The outputs loader re-reads these rows, so they carry the real content too.
+  const pointRows = (table: string, fileVersionId: string, seeded: SeededContent | undefined) => {
+    if (!seeded) return
+    for (const row of backend.db.rows(table as never) as unknown as Array<Record<string, unknown>>) {
+      if (row.file_version_id !== fileVersionId) continue
+      row.storage_hash = seeded.hash
+      row.file_size = seeded.size
+    }
+  }
+  pointRows('drawing_pdf_render', lookVersionId(LOOK_DRAWING, 3), content.pdf)
+  pointRows('file_version_output', lookVersionId('BR-103849-201.SLDPRT', 6), content.step)
+  if (which === 'report') {
+    const workbook = await fixtures.seedContent(backend, orgId, await fixtures.sampleReportWorkbook())
+    const row = backend.db.row('inspection_report' as never, LOOK_PREVIEW_REPORT_ID) as unknown as Record<string, unknown>
+    row.storage_hash = workbook.hash
+    row.returned_hash = workbook.hash
+    row.file_size = workbook.size
+  }
+  showFileList(store, content)
+  store.setState({ detailsPanelVisible: true, detailsPanelHeight: 540 })
+  const { selectChildRow } = await import('@/features/source/outputs/preview/selectChildRow')
+  const drawingId = LOOK_FILE_IDS[LOOK_DRAWING]
+  if (which === 'report') {
+    await until(() => !!store.getState().drawingInspectionReports.get(drawingId)?.some((r) => r.id === LOOK_PREVIEW_REPORT_ID))
+    const report = store.getState().drawingInspectionReports.get(drawingId)!.find((r) => r.id === LOOK_PREVIEW_REPORT_ID)!
+    const version = store.getState().reportVersionNumbers.get(report.fileVersionId) ?? 3
+    selectChildRow({ kind: 'report', filePath: lookPath(store, LOOK_DRAWING), fileId: drawingId, version, report })
+    return
+  }
+  const name = which === 'pdf' ? LOOK_DRAWING : 'BR-103849-201.SLDPRT'
+  const version = which === 'pdf' ? 3 : 6
+  const output = store.getState().versionOutputs.get(lookVersionId(name, version))?.[0]
+  if (!output) throw new Error(`look: no ${which} output`)
+  selectChildRow({ kind: 'output', filePath: lookPath(store, name), fileId: LOOK_FILE_IDS[name], version, output })
+}
+
 export function installLook(store: Store, backend: PerfBackend): void {
   const scenes: Record<string, () => void | Promise<void>> = {
     // Inspection: the table of a ballooned drawing checked out by me (editable).
@@ -164,93 +314,11 @@ export function installLook(store: Store, backend: PerfBackend): void {
       await analyzeLookTemplates(backend)
       showInspectionTab(store, LOOK_EMPTY_DRAWING, true)
     },
-    // The file list with every kind of child row: a drawing's referenced part, its PDF and its
-    // reports; a second drawing with its PDF being generated; a part's configurations and STEP; an
-    // assembly whose STEP failed.
-    'inspection-file-list': () => {
-      openInspectionFolder(store)
-      const drawingPath = lookPath(store, LOOK_DRAWING)
-      const spacerDrawing = lookPath(store, LOOK_EMPTY_DRAWING)
-      const part = lookPath(store, 'BR-103849-201.SLDPRT')
-      const assembly = lookPath(store, 'BR-103849-100.SLDASM')
-      const state = store.getState()
-      state.setDrawingRefData(drawingPath, [
-        refItem(store, 'BR-103849-201.SLDPRT', 'part', 'BR-103849-201', 'Bracket, motor mount, 6061-T6'),
-      ])
-      state.setDrawingRefData(spacerDrawing, [
-        refItem(store, 'BR-103849-202.SLDPRT', 'part', 'BR-103849-202', 'Spacer, motor mount, Delrin'),
-      ])
-      state.setFileConfigurations(part, [
-        { name: 'Default', isActive: true, depth: 0, description: 'Bracket, motor mount, 6061-T6' },
-        { name: 'Anodized', depth: 1, description: 'Bracket, motor mount, anodized black' },
-      ])
-      state.setFileConfigurations(assembly, [{ name: 'Default', isActive: true, depth: 0 }])
-      const now = Date.now()
-      // The outputs the loader would read (the fake cannot answer its nested or(and(...)) filter).
-      const versionOf = (name: string, n: number) => ({ version: n, fileVersionId: lookVersionId(name, n) })
-      const latest: Array<[string, number]> = [
-        [LOOK_DRAWING, 3],
-        [LOOK_EMPTY_DRAWING, 1],
-        ['BR-103849-201.SLDPRT', 6],
-        ['BR-103849-100.SLDASM', 4],
-      ]
-      state.setFileOutputVersions(new Map(latest.map(([name, n]) => [LOOK_FILE_IDS[name], versionOf(name, n)])))
-      const output = (name: string, n: number, kind: VersionOutputKind, size: number, fileName: string | null) => ({
-        id: `look-output-${name}-${kind}`,
-        kind,
-        fileId: LOOK_FILE_IDS[name],
-        fileVersionId: lookVersionId(name, n),
-        configuration: null,
-        storageHash: 'f'.repeat(64),
-        fileSize: size,
-        fileName,
-        closureExact: true,
-        generatedBy: null,
-        generatedAt: new Date(now - 4 * 86_400_000).toISOString(),
-      })
-      state.setVersionOutputs(
-        new Map<string, VersionOutput[]>([
-          [lookVersionId(LOOK_DRAWING, 3), [output(LOOK_DRAWING, 3, 'pdf', 1_303_000, null)]],
-          [lookVersionId(LOOK_EMPTY_DRAWING, 1), []],
-          [
-            lookVersionId('BR-103849-201.SLDPRT', 6),
-            [output('BR-103849-201.SLDPRT', 6, 'step', 2_830_000, 'BR-103849-201_RevB.step')],
-          ],
-          [lookVersionId('BR-103849-100.SLDASM', 4), []],
-        ]),
-      )
-      state.upsertOutputJob({
-        key: `${LOOK_FILE_IDS[LOOK_EMPTY_DRAWING]}:pdf:`,
-        fileId: LOOK_FILE_IDS[LOOK_EMPTY_DRAWING],
-        fileVersionId: lookVersionId(LOOK_EMPTY_DRAWING, 1),
-        kind: 'pdf',
-        configuration: null,
-        fileName: LOOK_EMPTY_DRAWING,
-        status: 'running',
-        detail: null,
-        auto: true,
-        updatedAt: now,
-      })
-      state.upsertOutputJob({
-        key: `${LOOK_FILE_IDS['BR-103849-100.SLDASM']}:step:`,
-        fileId: LOOK_FILE_IDS['BR-103849-100.SLDASM'],
-        fileVersionId: lookVersionId('BR-103849-100.SLDASM', 4),
-        kind: 'step',
-        configuration: null,
-        fileName: 'BR-103849-100.SLDASM',
-        status: 'failed',
-        detail: 'SW_SERVICE_OFFLINE',
-        auto: true,
-        updatedAt: now,
-      })
-      store.setState({
-        expandedDrawingRefs: new Set([drawingPath, spacerDrawing]),
-        expandedConfigFiles: new Set([part, assembly]),
-        detailsPanelVisible: false,
-        rightPanelVisible: false,
-      })
-      state.setSelectedFiles([drawingPath])
-    },
+    'inspection-file-list': () => showFileList(store),
+    // The same list with a child row selected and shown in the bottom panel's Preview tab.
+    'inspection-file-list-report': () => showOutputPreview(store, backend, 'report'),
+    'inspection-file-list-pdf': () => showOutputPreview(store, backend, 'pdf'),
+    'inspection-file-list-step': () => showOutputPreview(store, backend, 'step'),
     // Settings > Organization > Inspection templates (with Report naming).
     'settings-inspection-templates': async () => {
       await analyzeLookTemplates(backend)

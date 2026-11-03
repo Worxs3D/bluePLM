@@ -10,6 +10,8 @@ import { DraggableTab, TabDropZone, PanelLocation } from '@/components/shared/Dr
 import { WhereUsedTab } from '@/features/integrations/solidworks'
 import { InspectionTab } from '@/features/integrations/solidworks'
 import { CadFilePreview } from '@/features/source/details/components/CadFilePreview'
+import { ChildPreview } from '@/features/source/outputs/preview/ChildPreview'
+import { activeChildSelection, childKey } from '@/features/source/outputs/preview/childPreviewModel'
 import { VendorsTab } from '@/features/source/details/VendorsTab'
 import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPanel'
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
@@ -123,6 +125,8 @@ export function RightPanel() {
 
   const selectedFileObjects = getSelectedFileObjects()
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
+  // An output or report row selected under the file: Preview shows it instead of the file.
+  const childTarget = usePDMStore((s) => activeChildSelection(s.childSelection, s.selectedFiles))
 
   // PDF preview state
   const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null)
@@ -314,7 +318,11 @@ export function RightPanel() {
                 </div>
               )}
 
-              {rightPanelTab === 'preview' && (
+              {rightPanelTab === 'preview' && childTarget && (
+                <ChildPreview key={childKey(childTarget)} target={childTarget} />
+              )}
+
+              {rightPanelTab === 'preview' && !childTarget && (
                 <div className="flex flex-col h-full">
                   {isPDFFile ? (
                     pdfLoading ? (

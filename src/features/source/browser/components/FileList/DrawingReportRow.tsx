@@ -5,7 +5,9 @@ import { Badge } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
-import type { LocalFile } from '@/stores/pdmStore'
+import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
+import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
+import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import type { InspectionReport } from '@/types/inspectionReports'
 
 import { ChildNameCell, ChildText } from './ChildRowParts'
@@ -32,7 +34,8 @@ interface DrawingReportRowProps {
 
 /**
  * An inspection report under an expanded drawing, after its referenced files: type chip and
- * number, version, type, title and status. Click opens the workbook; the context menu is the report menu shared with the
+ * number, version, type, title and status. Click selects it and shows the workbook in the Preview
+ * tab (`selectChildRow`); double-click opens it; the context menu is the report menu shared with the
  * Reports view (Open, Regenerate, Save copy, Save next to drawing, Import results, Delete) plus
  * "Show in Inspection tab".
  */
@@ -45,6 +48,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
 }: DrawingReportRowProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const dialogs = useReportDialogs()
+  const selected = usePDMStore((s) => isChildSelected(s.childSelection, s.selectedFiles, `report:${report.id}`))
   const number = report.reportNumber || t('source.inspection.rptUntitled')
   const showsState = visibleColumns.some((c) => c.id === 'state')
   // The type chip goes in the Type column, so the name keeps its width for the report number.
@@ -71,9 +75,17 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   return (
     <>
       <tr
-        className="drawing-ref-row cursor-pointer hover:bg-plm-bg-light/50"
+        className={`drawing-ref-row cursor-pointer hover:bg-plm-bg-light/50 ${selected ? 'selected' : ''}`}
+        aria-selected={selected}
         style={{ height: rowHeight }}
         onClick={(e) => {
+          e.stopPropagation()
+          const fileId = file.pdmData?.id
+          if (fileId && e.detail < 2) {
+            selectChildRow({ kind: 'report', filePath: file.path, fileId, version: versionNumber, report })
+          }
+        }}
+        onDoubleClick={(e) => {
           e.stopPropagation()
           void openReportWithToast(report)
         }}
@@ -82,7 +94,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
           e.stopPropagation()
           setMenu({ x: e.clientX, y: e.clientY })
         }}
-        title={t('source.inspection.rptOpenRowTitle')}
+        title={t('source.outputs.previewReportRowTitle')}
       >
         {visibleColumns.map((column) => (
           <td key={column.id} style={{ width: column.width }}>

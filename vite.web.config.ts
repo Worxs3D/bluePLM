@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import pkg from './package.json'
 import { buildHeadersFile, findInlineCode } from './web/src/app/securityHeaders'
+import { thirdPartyLicenses } from './web/src/app/thirdPartyLicenses'
 
 /**
  * Writes Cloudflare Pages' `_headers` (CSP naming the pinned Supabase host, HSTS, caching) and
@@ -58,7 +59,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.PACKAGE_VERSION': JSON.stringify(pkg.version),
       'import.meta.env.BLUEPLM_WEB': 'true',
     },
-    plugins: [react(), ...(env.VITE_SUPABASE_URL ? [cloudflarePagesHeaders(env.VITE_SUPABASE_URL, apiUrls)] : [])],
+    plugins: [react(), thirdPartyLicenses(__dirname), ...(env.VITE_SUPABASE_URL ? [cloudflarePagesHeaders(env.VITE_SUPABASE_URL, apiUrls)] : [])],
     css: {
       // The desktop's postcss and Tailwind config, so classes in src/ compile the same way.
       postcss: __dirname,

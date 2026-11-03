@@ -7,6 +7,8 @@ import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
 import { generateOutputs, openOutput, outputReasonText } from '@/features/source/outputs/outputCommands'
 import { OutputMenu } from '@/features/source/outputs/OutputMenu'
+import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
+import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import { outputCopyName, type OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
@@ -30,8 +32,9 @@ function KindIcon({ kind }: { kind: VersionOutputKind }) {
 
 /**
  * A version output under an expanded file (after a drawing's referenced files, after a part's or
- * assembly's configurations, before inspection reports). A recorded output opens on double-click
- * and has the output menu on right-click. A missing primary output is a "Generate PDF" /
+ * assembly's configurations, before inspection reports). A click on a recorded output selects it
+ * and shows it in the Preview tab (`selectChildRow`); double-click opens it; right-click has the
+ * output menu. A missing primary output is a "Generate PDF" /
  * "Generate STEP" ghost (click queues it); a queued or running job shows a spinner.
  */
 export const FileOutputRow = memo(function FileOutputRow({
@@ -60,23 +63,30 @@ export const FileOutputRow = memo(function FileOutputRow({
       ? t('source.outputs.rowRegeneratingTitle', { kind })
       : output.closureExact === false
         ? t('source.outputs.rowApproximateTitle')
-        : t('source.outputs.rowOpenTitle')
+        : t('source.outputs.previewRowTitle')
     : entry.state === 'failed'
       ? t('source.outputs.rowFailedTitle', { reason: outputReasonText(entry.job?.detail) })
       : entry.state === 'missing'
         ? t('source.outputs.rowGenerateTitle', { kind })
         : undefined
   const ghost = !output
+  const selected = usePDMStore(
+    (s) => !!output && isChildSelected(s.childSelection, s.selectedFiles, `output:${output.id}`),
+  )
 
   return (
     <>
       <tr
-        className={`drawing-ref-row hover:bg-plm-bg-light/50 ${ghost && !busy ? 'cursor-pointer' : output ? 'cursor-default' : ''}`}
+        className={`drawing-ref-row hover:bg-plm-bg-light/50 ${ghost && !busy ? 'cursor-pointer' : output ? 'cursor-default' : ''} ${selected ? 'selected' : ''}`}
+        aria-selected={output ? selected : undefined}
         style={{ height: rowHeight }}
         title={title}
         onClick={(e) => {
           e.stopPropagation()
           if (ghost && (entry.state === 'missing' || entry.state === 'failed')) generateOutputs([file], entry.kind)
+          else if (output && file.pdmData?.id && e.detail < 2) {
+            selectChildRow({ kind: 'output', filePath: file.path, fileId: file.pdmData.id, version, output })
+          }
         }}
         onDoubleClick={(e) => {
           e.stopPropagation()

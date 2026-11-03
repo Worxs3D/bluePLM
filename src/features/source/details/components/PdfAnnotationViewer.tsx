@@ -23,6 +23,8 @@ import {
   Eye,
   ExternalLink,
   MousePointerSquareDashed,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 // The worker ships with the app (Vite emits it as an asset) so PDFs render offline and behind
@@ -80,7 +82,9 @@ export interface PdfAnnotationViewerProps {
    * Read the bytes (base64) from somewhere other than the vault. The default, `readFile`, is
    * confined to the vault working folder; the review viewer passes the review PDF cache reader.
    */
-  readData?: (filePath: string) => Promise<{ success: boolean; data?: string } | undefined>
+  readData?: (filePath: string) => Promise<{ success: boolean; data?: string; bytes?: Uint8Array } | undefined>
+  /** What the error state's "Open externally" does; default opens `filePath` in the default app. */
+  onOpenExternally?: () => void
 }
 
 const readVaultFile: NonNullable<PdfAnnotationViewerProps['readData']> = (filePath) =>
@@ -442,6 +446,9 @@ function ZoomToolbar({
   onFitPage,
   areaSelectActive,
   onAreaSelectToggle,
+  page,
+  pageCount,
+  onPage,
 }: {
   scale: number
   fitMode: FitMode
@@ -449,7 +456,11 @@ function ZoomToolbar({
   onFitWidth: () => void
   onFitPage: () => void
   areaSelectActive: boolean
-  onAreaSelectToggle: () => void
+  /** Absent when the viewer cannot create annotations: no area-select toggle. */
+  onAreaSelectToggle?: () => void
+  page: number
+  pageCount: number
+  onPage: (page: number) => void
 }) {
   const displayPercent = useMemo(() => {
     if (fitMode === 'width') return t('source.pdfViewer.widthLabel')
@@ -459,21 +470,53 @@ function ZoomToolbar({
 
   return (
     <div className="flex items-center justify-center gap-1 py-1.5 px-2 border-t border-plm-border bg-plm-panel">
-      <button
-        onClick={onAreaSelectToggle}
-        className={`p-1 rounded transition-colors ${
-          areaSelectActive
-            ? 'bg-plm-accent/20 text-plm-accent'
-            : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-        }`}
-        title={areaSelectActive ? t('source.pdfViewer.disableAreaSelection') : t('source.pdfViewer.enableAreaSelection')}
-        aria-label={t('source.pdfViewer.toggleAreaSelection')}
-        aria-pressed={areaSelectActive}
-      >
-        <MousePointerSquareDashed size={15} />
-      </button>
+      {onAreaSelectToggle && (
+        <>
+          <button
+            onClick={onAreaSelectToggle}
+            className={`p-1 rounded transition-colors ${
+              areaSelectActive
+                ? 'bg-plm-accent/20 text-plm-accent'
+                : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
+            }`}
+            title={areaSelectActive ? t('source.pdfViewer.disableAreaSelection') : t('source.pdfViewer.enableAreaSelection')}
+            aria-label={t('source.pdfViewer.toggleAreaSelection')}
+            aria-pressed={areaSelectActive}
+          >
+            <MousePointerSquareDashed size={15} />
+          </button>
 
-      <div className="w-px h-4 bg-plm-border mx-1" />
+          <div className="w-px h-4 bg-plm-border mx-1" />
+        </>
+      )}
+
+      {pageCount > 1 && (
+        <>
+          <button
+            onClick={() => onPage(page - 1)}
+            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
+            title={t('source.outputs.previewPrevPage')}
+            aria-label={t('source.outputs.previewPrevPage')}
+            disabled={page <= 1}
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <span className="text-xs text-plm-fg-muted min-w-[4.5rem] text-center select-none tabular-nums">
+            {t('source.outputs.previewPageOf', { page, count: pageCount })}
+          </span>
+          <button
+            onClick={() => onPage(page + 1)}
+            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
+            title={t('source.outputs.previewNextPage')}
+            aria-label={t('source.outputs.previewNextPage')}
+            disabled={page >= pageCount}
+          >
+            <ChevronRight size={15} />
+          </button>
+
+          <div className="w-px h-4 bg-plm-border mx-1" />
+        </>
+      )}
 
       <button
         onClick={() => onScaleChange(Math.max(scale - 0.25, MIN_SCALE))}
@@ -547,8 +590,10 @@ export function PdfAnnotationViewer({
   hoveredAnnotationId,
   activeAnnotationId,
   initialScale,
+  onOpenExternally,
 }: PdfAnnotationViewerProps) {
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [pages, setPages] = useState<PDFPageProxy[]>([])
   const [scale, setScale] = useState(1)
@@ -577,14 +622,15 @@ export function PdfAnnotationViewer({
       const result = await readData(filePath)
       if (cancelled) return
 
-      if (!result?.success || !result.data) {
+      if (!result?.success || (!result.data && !result.bytes)) {
         setError(t('source.pdfViewer.failedToReadPdf'))
         log.error('[PdfViewer]', 'readFile failed', { filePath, success: result?.success })
         setLoading(false)
         return
       }
 
-      task = getDocument({ data: base64ToUint8Array(result.data) })
+      // pdf.js transfers the buffer it is given to its worker, so cached bytes go in as a copy.
+      task = getDocument({ data: result.bytes ? result.bytes.slice() : base64ToUint8Array(result.data ?? '') })
       const doc = await task.promise
       if (cancelled) {
         doc.destroy()
@@ -770,6 +816,43 @@ export function PdfAnnotationViewer({
     // deps the listener would never attach to the real container (Ctrl+wheel zoom would be dead).
   }, [loading, error, pages.length])
 
+  // ── Page navigation: the page at the top third of the view is the current one ──
+  useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl || pages.length < 2) return
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const mark = scrollEl.scrollTop + scrollEl.clientHeight / 3
+      let page = 1
+      for (const el of scrollEl.querySelectorAll<HTMLElement>('[data-page-number]')) {
+        if (el.offsetTop <= mark) page = Number(el.dataset.pageNumber) || page
+      }
+      setCurrentPage(page)
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+    scrollEl.addEventListener('scroll', onScroll, { passive: true })
+    update()
+    return () => {
+      scrollEl.removeEventListener('scroll', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [loading, error, pages.length, scale])
+
+  const goToPage = useCallback(
+    (page: number) => {
+      const scrollEl = scrollRef.current
+      const target = Math.max(1, Math.min(pages.length, page))
+      const el = scrollEl?.querySelector<HTMLElement>(`[data-page-number="${target}"]`)
+      if (!scrollEl || !el) return
+      scrollEl.scrollTop = Math.max(0, el.offsetTop - PAGE_GAP)
+      setCurrentPage(target)
+    },
+    [pages.length],
+  )
+
   // ── Fit-to-width / Fit-to-page handlers ────────────────────────────────
   const handleFitWidth = useCallback(() => {
     const s = computeFitScale('width')
@@ -873,7 +956,7 @@ export function PdfAnnotationViewer({
           <Eye size={48} className="mx-auto mb-4 opacity-30" />
           <div>{error || t('source.pdfViewer.failedToLoadPdf')}</div>
           <button
-            onClick={() => window.electronAPI?.openFile(filePath)}
+            onClick={() => (onOpenExternally ? onOpenExternally() : window.electronAPI?.openFile(filePath))}
             className="btn btn-secondary gap-2 mt-4"
           >
             <ExternalLink size={14} />
@@ -928,7 +1011,10 @@ export function PdfAnnotationViewer({
         onFitWidth={handleFitWidth}
         onFitPage={handleFitPage}
         areaSelectActive={areaSelectActive}
-        onAreaSelectToggle={() => setAreaSelectActive((prev) => !prev)}
+        onAreaSelectToggle={onAnnotationCreate ? () => setAreaSelectActive((prev) => !prev) : undefined}
+        page={currentPage}
+        pageCount={pages.length}
+        onPage={goToPage}
       />
     </div>
   )

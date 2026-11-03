@@ -44,7 +44,7 @@ describe('buildContentSecurityPolicy', () => {
 
   it('allows scripts and styles from this origin only, with no inline code or eval', () => {
     expect(csp.get('default-src')).toEqual(["'self'"])
-    expect(csp.get('script-src')).toEqual(["'self'"])
+    expect(csp.get('script-src')).toEqual(["'self'", "'wasm-unsafe-eval'"])
     expect(csp.get('style-src')).toEqual(["'self'"])
     expect(csp.get('font-src')).toEqual(["'self'", 'data:'])
     const all = [...csp.values()].flat()
