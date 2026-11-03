@@ -5,7 +5,7 @@ import type { InspectionReport } from '@/types/inspectionReports'
 import type { OutputRowEntry } from '@/features/source/outputs/outputRowModel'
 
 import type { ConfigWithDepth } from '../../types'
-import type { FileSectionId, ParentModelsKind } from './fileSections'
+import type { FileSectionId } from './fileSections'
 import type { VersionOutputKind } from '@/types/versionOutputs'
 
 export interface FileVirtualRow {
@@ -67,8 +67,6 @@ export interface FileSectionVirtualRow {
   count: number | null
   isExpanded: boolean
   isLoading: boolean
-  /** A drawing's models section: what the models are (its name). */
-  parents?: ParentModelsKind
 }
 
 /** "Generate…" at the end of a file's Exports: a menu of the kinds it can have (saved configuration). */

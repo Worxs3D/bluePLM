@@ -10,7 +10,7 @@ import { receivedReports } from '@/features/integrations/solidworks/inspection/r
 import { fileOutputEntries } from '@/features/source/outputs/outputRowModel'
 import { outputKindsForPath } from '@/lib/outputs/kinds'
 import { reportHeads } from './childRowStatus'
-import { fileSectionExpanded, parentModelsKind, type FileSectionId, type ParentModelsKind } from './fileSections'
+import { fileSectionExpanded, type FileSectionId } from './fileSections'
 
 import { getFileStatus } from '../../hooks/useFileStatus'
 import type { ConfigWithDepth } from '../../types'
@@ -93,7 +93,7 @@ function pushSection(
   section: FileSectionId,
   count: number | null,
   toggles: ReadonlySet<string>,
-  opts: { show?: boolean; isLoading?: boolean; parents?: ParentModelsKind } = {},
+  opts: { show?: boolean; isLoading?: boolean } = {},
 ): boolean {
   const isExpanded = fileSectionExpanded(toggles, file.path, section)
   if (count === 0 && !opts.show) return false
@@ -104,7 +104,6 @@ function pushSection(
     count,
     isExpanded,
     isLoading: opts.isLoading === true,
-    ...(opts.parents ? { parents: opts.parents } : {}),
   })
   return isExpanded
 }
@@ -369,10 +368,8 @@ export function buildVirtualRows({
     if (expandedDrawingRefs.has(file.path)) {
       const refItems = drawingRefData.get(file.path) || []
       const refsRead = drawingRefData.has(file.path)
-      const models = refItems.filter((item) => !item.unresolved)
       const showRefs = pushSection(rows, file, 'parents', refsRead ? refItems.length : null, toggles, {
         isLoading: !refsRead,
-        parents: parentModelsKind(models),
       })
       if (showRefs) refItems.forEach((item) => {
         rows.push({

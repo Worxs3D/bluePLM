@@ -27,7 +27,7 @@ export const FileSectionRow = memo(function FileSectionRow({
   visibleColumns: { id: string; width: number }[]
 }) {
   const toggle = usePDMStore((s) => s.toggleFileSection)
-  const label = t(fileSectionLabelKey(row.section, row.parents))
+  const label = t(fileSectionLabelKey(row.section, row.count))
   const toggleTitle = row.isExpanded ? t('source.configTree.collapse', 'Collapse') : t('source.configTree.expand', 'Expand')
   const onToggle = (e: MouseEvent) => {
     e.stopPropagation()

@@ -12,7 +12,6 @@ import {
   fileSectionExpanded,
   fileSectionKey,
   fileSectionLabelKey,
-  parentModelsKind,
   uniqueParents,
 } from './fileSections'
 import { assembliesUsingModel, modelSectionsToLoad } from './modelSectionsToLoad'
@@ -112,18 +111,12 @@ describe('fileSections', () => {
     expect(fileSectionExpanded(flipped, 'q.sldprt', 'exports')).toBe(true)
   })
 
-  it('names a drawing models section by what they are', () => {
-    const part = item('p', 'a.sldprt', 'part')
-    const part2 = item('q', 'b.sldprt', 'part')
-    const asm = item('a', 'c.sldasm', 'assembly')
-    const asm2 = item('b', 'd.SLDASM', 'other')
-    const name = (items: DrawingRefItem[]) =>
-      versionOutputStrings[fileSectionLabelKey('parents', parentModelsKind(items)).replace('source.outputs.', '')]
-    expect(name([part])).toBe('Part')
-    expect(name([part, part2])).toBe('Parts')
-    expect(name([asm])).toBe('Assembly')
-    expect(name([asm, asm2])).toBe('Assemblies')
-    expect(name([part, asm])).toBe('Parts & assemblies')
+  it('names a drawing models section Parent, or Parents for more than one', () => {
+    const name = (count: number | null) =>
+      versionOutputStrings[fileSectionLabelKey('parents', count).replace('source.outputs.', '')]
+    expect(name(1)).toBe('Parent')
+    expect(name(2)).toBe('Parents')
+    expect(name(null)).toBe('Parents')
   })
 
   it('has an English name for every section', () => {
@@ -268,7 +261,7 @@ describe('chevron sections', () => {
       'received:r0',
     ])
     const parents = rows[1]
-    expect(parents.type === 'file-section' && parents.parents).toBe('part')
+    expect(parents.type === 'file-section' && parents.count).toBe(1)
   })
 
   it('lists the released export first, the newer work in progress after it, stale only on the newest', () => {
