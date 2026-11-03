@@ -449,6 +449,8 @@ export const en: TranslationDict = {
     noFilesFound: 'No files found',
     dropFilesHere: 'Drop files here to upload',
     clearSearch: 'Clear search',
+    showQuickResults: 'Show results list',
+    hideQuickResults: 'Hide results list',
   },
 
   // File operations

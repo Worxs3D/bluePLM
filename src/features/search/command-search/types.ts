@@ -70,6 +70,12 @@ export interface SearchInputProps {
   placeholder: string
   inputRef: RefObject<HTMLInputElement | null>
   onClear: () => void
+  /** The collapsed dropdown's toggle, shown while the pane lists the results. */
+  quickResults?: {
+    count: number
+    expanded: boolean
+    onToggle: () => void
+  }
 }
 
 export interface LocalFileResultProps {
