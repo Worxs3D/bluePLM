@@ -20,6 +20,7 @@ import {
   getFileVersions,
   listInspectionReports,
   listInspectionTemplates,
+  syncInspectionTemplateFolder,
   uploadInspectionContent,
 } from '@/lib/supabase'
 import { overwriteInspectionReport, ReportOverwriteError } from '@/lib/supabase/releases'
@@ -91,12 +92,26 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** The drawing's reports, versions and the organization's templates, read fresh. */
+/**
+ * Bring the library in step with the organization's templates folder first, so a workbook checked
+ * in there is offered at its latest version. Best effort: without the folder's vault, or before
+ * schema 511, the library is used as it is.
+ */
+async function syncTemplateFolder(): Promise<void> {
+  if (!usePDMStore.getState().organization?.settings?.inspection_reports?.templates_folder) return
+  try {
+    await syncInspectionTemplateFolder()
+  } catch (err) {
+    log.warn('[InspectionReports]', 'Templates folder sync failed', { error: errorText(err) })
+  }
+}
+
+/** The drawing's reports, versions and the organization's templates (after a folder sync), read fresh. */
 export async function loadReportContext(fileId: string, orgId: string): Promise<ReportContext> {
   const [reports, versionResult, templates] = await Promise.all([
     listInspectionReports(fileId),
     getFileVersions(fileId),
-    listInspectionTemplates(orgId).catch((err: unknown) => {
+    syncTemplateFolder().then(() => listInspectionTemplates(orgId)).catch((err: unknown) => {
       // Before schema 504, or no access: generation still offers the built-ins.
       log.warn('[InspectionReports]', 'Templates unavailable', { error: errorText(err) })
       return [] as InspectionTemplate[]

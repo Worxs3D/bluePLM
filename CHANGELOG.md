@@ -6,7 +6,20 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
-Schema 510 (`0510_inspection_working_copy_reports.sql`). No API or SolidWorks service change.
+Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
+(`0511_inspection_template_folder.sql`). No API or SolidWorks service change.
+
+### Added
+
+- **Inspection templates folder (schema 511).** An administrator can pick a vault folder under
+  Settings > Inspection templates > Templates folder, the same way as the SOLIDWORKS template
+  folders. Every checked-in Excel workbook in it, subfolders included, is an organization template:
+  check one in to add it, check in a new version to update it (its revision goes up), move it out
+  or delete it to archive it. Names, report types and defaults are still set on the page. The
+  library syncs when the page opens and before each report is generated
+  (`inspection_template_sync_folder()`), and a folder template's workbook can only change through
+  the vault. Members without the folder's vault keep the templates as last synced. New guide:
+  `docs/settings/inspection-templates.md`, covering how to build a template and every token.
 
 ### Changed
 

@@ -747,6 +747,19 @@ export interface InspectionReportOrgSettings {
   lot_characteristics?: 'classified' | 'all'
   /** Parts measured per characteristic in a production or receiving report generated without options (default 5). */
   default_sample_size?: number
+  /**
+   * The organization's inspection report templates folder (schema 511): every checked-in .xlsx in
+   * it, subfolders included, is an organization template (`inspection_template_sync_folder()`).
+   * Null or absent = none.
+   */
+  templates_folder?: InspectionTemplatesFolder | null
+}
+
+/** A folder of a vault, as `organization.settings.inspection_reports.templates_folder` stores it. */
+export interface InspectionTemplatesFolder {
+  vault_id: string
+  /** Relative to the vault root, forward slashes, no leading or trailing slash (`_templates/Inspection`). */
+  path: string
 }
 
 /**

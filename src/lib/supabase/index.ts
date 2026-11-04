@@ -312,7 +312,10 @@ export {
   setDefaultInspectionTemplate,
   archiveInspectionTemplate,
   deleteInspectionTemplate,
+  syncInspectionTemplateFolder,
+  templateFolderSyncChanged,
 } from './inspectionTemplates'
+export type { TemplateFolderSyncResult } from './inspectionTemplates'
 
 export {
   listInspectionReports,

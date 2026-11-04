@@ -128,6 +128,16 @@ export interface InspectionTemplate {
   /** Output of `analyzeTemplate()` (src/lib/inspection/excel). */
   layout: Json
   archivedAt: string | null
+  /**
+   * Schema 511: the vault file of the organization's templates folder this template comes from
+   * (null once that file is hard-deleted). The folder owns the workbook and whether the template is
+   * live; only `inspection_template_sync_folder()` changes them.
+   */
+  sourceFileId: string | null
+  /** Vault path of the folder file at the last sync; null for an uploaded template. */
+  sourcePath: string | null
+  /** The file version whose bytes the template holds. */
+  sourceVersion: number | null
   createdBy: string | null
   createdAt: string
   updatedBy: string | null

@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 510
+export const EXPECTED_SCHEMA_VERSION = 511
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -70,6 +70,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Released versions. file_version records its release (when, by whom, the approved review or a forced release, the note and the revision), written only by a transition into a state that releases (workflow_state.releases_version). A drawing is released through an approved review of that version or forced with workflow_transition_execute(..., p_force_release), which is logged. A released version's exports and inspection reports cannot be replaced or deleted. inspection_report_overwrite() regenerates a report of the same version in place; file_set_auto_output() sets which exports a file keeps up to date at check-in; the default workflow is WIP, In Review, Released, Obsolete.",
   510:
     "Reports of a checked-out drawing. inspection_report.working_copy marks a report generated from the creator's checked-out copy (live inspection table, local drawing) before check-in; inspection_report_pin() makes it a report of the version the check-in created. Release freezes do not apply to a working-copy report.",
+  511:
+    "Inspection templates from a vault folder. inspection_template.source_file_id, source_path and source_version tie a template to a checked-in .xlsx of the organization's templates folder; inspection_template_sync_folder() adds, replaces, archives and restores them, and only the sync changes a folder template's workbook or archive state.",
 }
 
 export interface SchemaVersionInfo {
