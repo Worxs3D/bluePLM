@@ -30,6 +30,7 @@ import {
 } from '../addToPackage'
 import { reviewableFiles } from '../lib/localCopy'
 import { reviewMenuTargets, showReviewsTarget } from '../lib/reviewMenuTargets'
+import { SubmenuArrow } from '@/features/source/browser/components/ContextMenu/components/SubmenuArrow'
 
 interface ReviewsSubmenuProps {
   contextFiles: LocalFile[]
@@ -159,7 +160,7 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
     >
       <ClipboardCheck size={14} className="text-plm-fg-dim" />
       {t('contextMenu.review.reviews')}
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+      <SubmenuArrow />
 
       {rootOpen && (
         <ContextSubmenu minWidth={220} {...rootHover}>
@@ -184,7 +185,7 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
           <div className="context-menu-item relative" {...addHover} onClick={(e) => e.stopPropagation()}>
             <PlusCircle size={14} className="text-plm-fg-dim" />
             {t('contextMenu.review.addToOpen')}
-            <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+            <SubmenuArrow />
             {open === 'add' && (
               <ContextSubmenu minWidth={220} {...addHover}>
                 {loadFailed
@@ -218,7 +219,7 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
           <div className="context-menu-item relative" {...removeHover} onClick={(e) => e.stopPropagation()}>
             <MinusCircle size={14} className="text-plm-fg-dim" />
             {t('contextMenu.review.removeFrom')}
-            <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+            <SubmenuArrow />
             {open === 'remove' && (
               <ContextSubmenu minWidth={220} {...removeHover}>
                 {targets.removeFromDraft > 0 && (

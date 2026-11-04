@@ -490,7 +490,10 @@ describe('every entry that applies draws a row', () => {
     }
     expect(silent).toEqual([])
     expect(applied).toBeGreaterThan(3)
-  })
+    // Opens and closes the menu once per registry entry (about 60 renders), about 3 s alone and
+    // past the 5 s default under the full suite's parallel load: a budget for the loop, not a
+    // looser assertion.
+  }, 20_000)
 })
 
 describe('the file list produces every list entry of the registry', () => {

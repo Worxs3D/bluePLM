@@ -30,6 +30,7 @@ import {
   readTargetState,
   requestForcedReleaseReason,
 } from '@/features/source/releases/forceRelease'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
 interface ChangeStateSubmenuProps {
   targetFile: LocalFile
@@ -248,7 +249,7 @@ export function ChangeStateSubmenu({
     >
       <RefreshCw size={14} />
       Change State
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+      <SubmenuArrow />
 
       {showStateSubmenu && (
         <ContextSubmenu
