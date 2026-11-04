@@ -48,6 +48,7 @@ export function ReviewPackagePane() {
       update: s.updateReviewPackageDraft,
       clear: s.clearReviewPackageDraft,
       setPaneOpen: s.setReviewPackagePaneOpen,
+      closePane: s.closeReviewPackagePane,
       refreshQueue: s.requestReviewQueueRefresh,
     })),
   )
@@ -138,7 +139,7 @@ export function ReviewPackagePane() {
           )}
           <button
             type="button"
-            onClick={() => actions.setPaneOpen(false)}
+            onClick={() => actions.closePane()}
             className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight"
             title={t('reviewBuilder.close')}
           >

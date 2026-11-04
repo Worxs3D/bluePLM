@@ -146,11 +146,14 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     })),
   )
 
-  // In the Reviews view the right pane is the comment sidebar beside the drawing,
-  // which has its own visibility flag; everywhere else it is the right panel. The
-  // review package pane sits in the right panel and goes first while it is showing.
+  // In the Reviews view, with a review open, the right pane is the comment sidebar beside the
+  // drawing, which has its own visibility flag; everywhere else it is the right panel. The
+  // review package pane sits in the right panel and goes first while it is showing, and fills it
+  // when nothing else would (no review open, no file tabs), so the toggle always shows something.
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
-  const rightPaneIsReviewComments = activeView === 'reviews' && !reviewPackagePaneShown
+  const activeReviewId = usePDMStore((s) => s.activeReviewId)
+  const rightPaneIsReviewComments =
+    activeView === 'reviews' && !!activeReviewId && !reviewPackagePaneShown
   const rightPaneShown = rightPaneIsReviewComments ? reviewCommentsVisible : rightPanelVisible
 
   // Filter vaults based on impersonated user's access

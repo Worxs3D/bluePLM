@@ -43,6 +43,11 @@ export interface ReviewsSlice {
   updateReviewPackageDraft: (patch: DraftMetaPatch) => void
   clearReviewPackageDraft: () => void
   setReviewPackagePaneOpen: (open: boolean) => void
+  /**
+   * The pane's close button: closes the pane, and hides the right panel too when the pane would
+   * otherwise stay on screen as its fallback content.
+   */
+  closeReviewPackagePane: () => void
   setActiveReviewId: (reviewId: string | null, itemId?: string | null) => void
   setActiveReviewItemId: (itemId: string | null) => void
   requestReviewQueueRefresh: () => void
@@ -57,12 +62,31 @@ export function selectReviewPackageDraft(state: PDMStoreState): ReviewPackageDra
 const EMPTY_DRAFT: ReviewPackageDraft = emptyReviewPackageDraft()
 
 /**
+ * Whether the right panel has nothing of its own to show, so the review pane fills it. Mirrors the
+ * owners `AppShell` and `RightPanel` check: an extension workspace's own panel, the Items view's
+ * BOM panel, the Reviews view's comment sidebar for an open review, and the file tabs elsewhere.
+ * Views that own the main area (Workflows, extension workspaces without a panel) have none.
+ */
+export function rightPanelHasNoOtherContent(state: PDMStoreState): boolean {
+  const view = state.activeView
+  if (state.extensionRightPanel && state.extensionRightPanel === view) return false
+  if (state.extensionWorkspaces.some((w) => w.id === view)) return true
+  if (view === 'items') return !state.itemPanel
+  if (view === 'reviews') return !state.activeReviewId
+  if (view === 'workflows') return true
+  return state.rightPanelTabs.length === 0
+}
+
+/**
  * Whether the review package pane is on screen. It lives in the right panel, so the top bar's
  * right-pane toggle hides and shows it like any other right-panel content; the draft is in the
- * store, so hiding loses nothing.
+ * store, so hiding loses nothing. It shows when it was opened (a context menu or the toggle), and
+ * whenever the right panel is shown with nothing else to put in it, so the toggle never opens an
+ * empty pane.
  */
 export function selectReviewPackagePaneShown(state: PDMStoreState): boolean {
-  return state.reviewPackagePaneOpen && state.rightPanelVisible
+  if (!state.rightPanelVisible) return false
+  return state.reviewPackagePaneOpen || rightPanelHasNoOtherContent(state)
 }
 
 export const createReviewsSlice: StateCreator<
@@ -117,6 +141,10 @@ export const createReviewsSlice: StateCreator<
       set({ reviewPackagePaneOpen })
       // Opening asks for the pane explicitly, so a hidden right panel comes back with it.
       if (reviewPackagePaneOpen && !get().rightPanelVisible) get().toggleRightPanel()
+    },
+    closeReviewPackagePane: () => {
+      set({ reviewPackagePaneOpen: false })
+      if (get().rightPanelVisible && rightPanelHasNoOtherContent(get())) get().toggleRightPanel()
     },
     setActiveReviewId: (activeReviewId, itemId = null) =>
       set({ activeReviewId, activeReviewItemId: activeReviewId ? itemId : null }),
