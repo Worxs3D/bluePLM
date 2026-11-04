@@ -6,7 +6,7 @@
  * and then reflected here.
  */
 
-import { useMemo, memo } from 'react'
+import { useEffect, useMemo, useState, memo } from 'react'
 import {
   FolderOpen,
   File,
@@ -56,23 +56,34 @@ export const FileIcon = memo(function FileIcon({ file, size = 16, className = ''
   const thumbnailUrl = useMemo(() => buildThumbnailUrl(file, 'grid'), [file])
 
   const { src, onError } = useRetryableImage(thumbnailUrl)
+  // The type icon shows until the thumbnail has actually loaded: while it loads, fails or waits
+  // for a retry, the row never shows an empty square or the browser's broken-image glyph.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
+  useEffect(() => {
+    if (!src) setLoadedSrc(null)
+  }, [src])
+  const loaded = !!src && loadedSrc === src
 
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        className={`flex-shrink-0 ${className}`}
-        style={{ width: size, height: size }}
-        loading="lazy"
-        decoding="async"
-        onError={onError}
-      />
-    )
-  }
-
-  // Fallback to React icons based on file type
-  return <FileTypeIcon extension={file.extension} size={size} className={className} />
+  return (
+    <span
+      className={`relative inline-flex flex-shrink-0 items-center justify-center ${className}`}
+      style={{ width: size, height: size }}
+    >
+      {!loaded && <FileTypeIcon extension={file.extension} size={size} />}
+      {src && (
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0"
+          style={{ width: size, height: size, opacity: loaded ? 1 : 0 }}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoadedSrc(src)}
+          onError={onError}
+        />
+      )}
+    </span>
+  )
 })
 
 // ============================================================================

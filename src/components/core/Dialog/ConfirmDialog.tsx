@@ -1,15 +1,17 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useId } from 'react'
 
 import { Button } from '@/components/core/ui'
 import { useHostWindow } from '@/hooks/useHostWindow'
 import { t } from '@/lib/i18n'
 
+import { enterConfirms } from './confirmKeys'
 import { Dialog } from './Dialog'
 import type { ConfirmDialogProps } from './types'
 
 /**
- * Ask before an action. Enter confirms (except inside a text area or on a focused button, which
- * handle Enter themselves) and Escape cancels.
+ * Ask before an action. Focus moves into the dialog (to the confirm button, unless a field in it
+ * took focus first). Enter confirms, except in a text area or on one of the dialog's own buttons,
+ * which handle Enter themselves (`enterConfirms`); Escape cancels.
  */
 export function ConfirmDialog({
   open,
@@ -33,11 +35,16 @@ export function ConfirmDialog({
     onClose()
   }, [confirmDisabled, onConfirm, onClose])
 
+  const confirmId = useId()
+  const confirmButton = useCallback(
+    () => host.document.querySelector<HTMLButtonElement>(`[data-confirm-id="${confirmId}"]`),
+    [host, confirmId],
+  )
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName
-      if (e.key === 'Enter' && tag !== 'TEXTAREA' && tag !== 'BUTTON') {
+      const dialog = confirmButton()?.closest('[role="dialog"]') ?? null
+      if (e.key === 'Enter' && enterConfirms(e.target as Element | null, dialog)) {
         e.preventDefault()
         confirm()
       } else if (e.key === 'Escape') {
@@ -45,8 +52,20 @@ export function ConfirmDialog({
         onClose()
       }
     },
-    [confirm, onClose],
+    [confirm, onClose, confirmButton],
   )
+
+  // Focus into the dialog, so Enter and Tab act here and not on what opened it.
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      const button = confirmButton()
+      const dialog = button?.closest('[role="dialog"]')
+      const active = host.document.activeElement
+      if (button && dialog && !(active && dialog.contains(active))) button.focus()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [open, confirmButton, host])
 
   useEffect(() => {
     if (!open) return
@@ -70,6 +89,7 @@ export function ConfirmDialog({
             variant={variant === 'danger' ? 'danger' : 'primary'}
             disabled={confirmDisabled}
             onClick={confirm}
+            data-confirm-id={confirmId}
           >
             {confirmText ?? t('common.confirm')}
           </Button>

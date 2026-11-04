@@ -47,6 +47,8 @@
  * dark values; the light theme has its own.
  */
 :root {
+  /* Native controls (checkboxes, scrollbars, date pickers) follow the theme, not the OS. */
+  color-scheme: dark;
   --ui-bg: #1f1f1f;
   --ui-nav: #181818;
   --ui-scrim: rgb(0 0 0 / 0.62);
@@ -71,6 +73,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --ui-bg: #ffffff;
   --ui-nav: #f7f7f7;
   --ui-scrim: rgb(0 0 0 / 0.32);
