@@ -13,7 +13,7 @@ export const RESERVED = new Set(('all analyse analyze and any array as asc asymm
 export const VERBS = new Set(('get list count create update delete set add remove upsert reset clear force complete ' +
   'checkout checkin move rename approve settle advance request respond resubmit cancel withdraw notify record consume validate admit ' +
   'generate import instantiate assign unassign activate deactivate apply block unblock join regenerate ensure require use ' +
-  'verify stamp escape strip enforce revoke migrate drop remediate merge repair preview execute calculate cleanup log sync').split(' '))
+  'verify stamp escape strip enforce revoke migrate drop remediate merge repair preview execute calculate cleanup log sync duplicate').split(' '))
 
 /** Prefixes that stand in for `<entity>_<verb>`. */
 export const KEPT_PREFIXES = ['is_', 'has_', 'can_', 'my_', 'check_', 'trg_']
