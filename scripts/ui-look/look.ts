@@ -126,10 +126,31 @@ async function appWindow(app: ElectronApplication): Promise<Page> {
 }
 
 /**
+ * Let a hidden window catch up before a screenshot. It produces frames only when asked, and
+ * IntersectionObserver callbacks, rAF work and canvas paints wait for frames: a lazily rendered
+ * PDF page could still be a blank sheet in the shot. A few forced frames deliver them.
+ */
+async function settle(app: ElectronApplication, page: Page): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.invalidate())
+    await page
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve())
+            setTimeout(resolve, 250)
+          }),
+      )
+      .catch(() => null)
+  }
+}
+
+/**
  * A hidden window does not always produce a new frame, and a screenshot waits for one. Asking for
  * a repaint first and retrying covers it.
  */
 async function shoot(app: ElectronApplication, page: Page, path: string, selector?: string): Promise<void> {
+  await settle(app, page)
   if (!selector) {
     // The whole window through Electron's own capture: Playwright's page screenshot of a hidden
     // window now and then came back as a magnified crop of the page.

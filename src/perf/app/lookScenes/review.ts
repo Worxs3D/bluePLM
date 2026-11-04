@@ -121,11 +121,26 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     store.getState().requestReviewQueueRefresh()
   }
 
+  /**
+   * `applyUser`, then wait for App.tsx to clear the file session (open review included), which it
+   * does in an effect after the user changes. Opening a review before that reset lands would see
+   * it closed again: the race multi-scene runs hit now and then.
+   */
+  const switchUser = async (userId: string) => {
+    const before = store.getState()
+    applyUser(userId)
+    if (before.user?.id === userId) return
+    await until(() => {
+      const s = store.getState()
+      return s.expandedFolders !== before.expandedFolders && s.serverFolderPaths !== before.serverFolderPaths
+    }, 3000).catch(() => null)
+  }
+
   const actAs = async (key: string) => {
     const known = ['author', 'sam', 'alex', 'olive']
     if (!known.includes(key)) throw new Error(`look: unknown person "${key}"; use ${known.join(', ')}`)
     const userId = reviews.personId(key as LookPersonKey)
-    applyUser(userId)
+    await switchUser(userId)
     // The notification channel resubscribes for the new user; then their unseen rows arrive.
     await until(() => db.subscribedChannels().includes(`notifications:${userId}`), 4000).catch(() => null)
     await sleep(200)
@@ -191,6 +206,8 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
           : f,
       ),
     }))
+    // An open review shows "v5 checked in" on the file, as the app's file-change refresh does.
+    store.getState().requestReviewQueueRefresh()
     return id
   }
 
@@ -256,11 +273,11 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     store.setState({ files: files.map((f) => originalFiles.get(f.path) ?? f) })
   }
 
-  const reset = (base = true) => {
+  const reset = async (base = true) => {
     for (const key of Object.keys(ids)) delete ids[key]
-    restoreFiles()
     reviews.reset()
-    applyUser(reviews.personId('author'))
+    await switchUser(reviews.personId('author'))
+    restoreFiles()
     if (base) seedBase()
     // The base world's notifications are history; only what a scene does next is announced.
     for (const key of ['author', 'sam', 'alex', 'olive'] as const) reviews.takeUndelivered(reviews.personId(key))
@@ -385,49 +402,49 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
   const scenes: Record<string, () => Promise<void>> = {
     // --- Flow start: the project folder, the pane in the right panel, nothing in it -------------
     'review-flow-start': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
     },
 
     // --- Builder pane (right panel) --------------------------------------------------------------
     'review-pane-empty': async () => {
-      reset(false)
+      await reset(false)
       showExplorer({ pane: true })
     },
     'review-pane-empty-lists': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
     },
     'review-pane-empty-selection': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
       select(['PMP-2000.SLDDRW', 'PMP-2000.SLDASM', 'PMP-2003.SLDDRW'])
     },
     'review-pane-empty-error': async () => {
-      reset()
+      await reset()
       reviews.fail(['review_list_queue', 'review_count_badge', 'review_list_open_for_files'])
       showExplorer({ pane: true })
     },
     'review-pane-draft': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
       setDraft(fullDraft)
     },
     'review-pane-draft-warnings': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
       setDraft({ files: [['PMP-2002.SLDDRW'], ['PMP-2001.SLDDRW', 2], ['PMP-2003.SLDDRW'], ['PMP-2004.SLDDRW'], ['PMP-2000.SLDDRW']], reviewers: ['sam'], teams: ['electrical'] })
       // The local copy of the pump drawing has edits that are not in any version.
       store.setState((s) => ({ files: s.files.map((f) => (f.pdmData?.id === fileId('PMP-2000.SLDDRW') ? { ...f, diffStatus: 'modified' as const } : f)) }))
     },
     'review-pane-draft-blocked': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: true })
       setDraft({ files: fullDraft.files, title: fullDraft.title })
     },
     // Submit refused: Olive was named but cannot see the vault (REVIEWER_NO_VAULT_ACCESS).
     'review-pane-error': async () => {
-      reset()
+      await reset()
       reviews.setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft({ ...fullDraft, reviewers: ['sam', 'olive'], teams: [] })
@@ -435,14 +452,28 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     },
     // Sent, with the Quality team's only member left out (no vault access).
     'review-pane-sent': async () => {
-      reset()
+      await reset()
       reviews.setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft(fullDraft)
       await clickButton(t('reviewBuilder.submit'))
     },
+    // "Add to open review ▸ <title>" asks first, naming the versions (added by the pane work).
+    'review-add-open-confirm': async () => {
+      await reset()
+      showExplorer({ pane: false })
+      store.getState().setReviewAddConfirm({
+        reviewId: ids.housing,
+        title: 'Pump housing, rev C',
+        versions: [
+          { fileVersionId: lookReviewVersionId('PMP-2000.SLDDRW', 4), fileName: 'PMP-2000.SLDDRW', version: 4 },
+          { fileVersionId: lookReviewVersionId('PMP-2003.SLDDRW', 1), fileName: 'PMP-2003.SLDDRW', version: 1 },
+        ],
+        skipped: 0,
+      })
+    },
     'review-pane-reviewer-search': async () => {
-      reset()
+      await reset()
       reviews.setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft({ files: fullDraft.files })
@@ -451,7 +482,7 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       typeInto(input, 'o')
     },
     'review-menu': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: false })
       select(['PMP-2000.SLDDRW', 'PMP-2000.SLDASM'])
       await sleep(300)
@@ -460,84 +491,84 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
 
     // --- The top-bar right-pane toggle in each view (hover it with --hover) ---------------------
     'toggle-explorer-tabs': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: false, tabs: true })
       store.setState({ rightPanelVisible: true })
       select(['PMP-2001.SLDDRW'])
     },
     'toggle-explorer-no-tabs': async () => {
-      reset()
+      await reset()
       showExplorer({ pane: false })
       store.setState({ rightPanelVisible: true })
     },
     'toggle-reviews-none': async () => {
-      reset()
+      await reset()
       await showReviews()
     },
     'toggle-reviews-review': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'toggle-reviews-review-builder': async () => {
-      reset()
+      await reset()
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
       setDraft({ files: [['PMP-2000.SLDDRW']] })
       store.getState().setReviewPackagePaneOpen(true)
     },
     'toggle-workflows': async () => {
-      reset()
+      await reset()
       store.getState().closeSettings()
       store.setState({ activeView: 'workflows', rightPanelVisible: true })
     },
 
     // --- Reviews page: queue -----------------------------------------------------------------------
     'reviews-overview': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews()
     },
     'reviews-overview-empty': async () => {
-      reset(false)
+      await reset(false)
       await actAs('alex')
       await showReviews()
     },
     // Awaiting the author: an urgent overdue package, one due today, and a workflow gate.
     'reviews-queue-awaiting': async () => {
-      reset()
+      await reset()
       await showReviews()
     },
     'reviews-queue-requested': async () => {
-      reset()
+      await reset()
       await showReviews(undefined, undefined, 'requested_by_me')
     },
     'reviews-queue-teams': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(undefined, undefined, 'my_teams')
     },
     'reviews-queue-done': async () => {
-      reset()
+      await reset()
       await showReviews(undefined, undefined, 'done')
     },
     ...Object.fromEntries(
       (['awaiting_me', 'requested_by_me', 'my_teams', 'done'] as const).map((bucket) => [
         `reviews-queue-empty-${bucket.replace(/_/g, '-')}`,
         async () => {
-          reset(false)
+          await reset(false)
           await actAs('alex')
           await showReviews(undefined, undefined, bucket)
         },
       ]),
     ),
     'reviews-queue-error': async () => {
-      reset()
+      await reset()
       reviews.fail(['review_list_queue'])
       await showReviews()
     },
     // More than one page (50) awaiting Sam.
     'reviews-queue-load-more': async () => {
-      reset()
+      await reset()
       for (let i = 1; i <= 54; i++) {
         request('author', { files: [[i % 2 ? 'PMP-2001.SLDPRT' : 'PMP-2002.SLDPRT']], reviewers: ['sam'], title: `Batch check ${String(i).padStart(2, '0')}`, due: i % 9 })
       }
@@ -545,7 +576,7 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       await showReviews()
     },
     'reviews-bulk': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews()
       const boxes = await until(() => {
@@ -557,94 +588,94 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
 
     // --- Reviews page: one review ------------------------------------------------------------------
     'review-detail-reviewer': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'review-detail-not-owed-decided': async () => {
-      reset()
+      await reset()
       decide('sam', ids.housing, [['PMP-2001.SLDDRW', 'approved']])
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'review-detail-not-owed-any': async () => {
-      reset()
+      await reset()
       decide('alex', ids.impeller, [['PMP-2002.SLDDRW', 'approved_with_comments', 'Blade fillet note is fine as drawn.']])
       await actAs('sam')
       await showReviews(ids.impeller, 'PMP-2002.SLDDRW')
     },
     'review-detail-not-owed-carried': async () => {
-      reset()
+      await reset()
       await housingRound2()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDPRT')
     },
     'review-detail-not-owed-reviewer': async () => {
-      reset()
+      await reset()
       await actAs('olive')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'review-detail-done': async () => {
-      reset()
+      await reset()
       decide('sam', ids.housing, [['PMP-2001.SLDDRW', 'approved'], ['PMP-2001.SLDPRT', 'approved']])
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'review-detail-activity': async () => {
-      reset()
+      await reset()
       await housingRound2()
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
     },
     'review-detail-author-kickback': async () => {
-      reset()
+      await reset()
       kickBackHousing()
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
     },
     'review-detail-rejected': async () => {
-      reset()
+      await reset()
       ids.rejected = request('author', { files: [['PMP-2003.SLDDRW']], reviewers: ['alex'], title: 'Seal drawing, alternative' })
       decide('alex', ids.rejected, [['PMP-2003.SLDDRW', 'rejected', 'We are keeping the lip seal; this variant is not needed.']])
       await showReviews(ids.rejected, 'PMP-2003.SLDDRW', 'done')
     },
     'review-resubmit': async () => {
-      reset()
+      await reset()
       kickBackHousing()
       await checkIn('PMP-2001.SLDDRW')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
       await clickButton(t('reviewDetail.resubmit.button'))
     },
     'review-resubmit-missing-pdf': async () => {
-      reset()
+      await reset()
       kickBackHousing()
       await checkIn('PMP-2001.SLDDRW', { pdf: false })
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
       await clickButton(t('reviewDetail.resubmit.button'))
     },
     'review-resubmit-no-newer': async () => {
-      reset()
+      await reset()
       kickBackHousing()
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
       await clickButton(t('reviewDetail.resubmit.button'))
     },
     'review-detail-round2': async () => {
-      reset()
+      await reset()
       await housingRound2()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     // `all` mode, partly decided: Sam approved both files, Alex has not decided yet.
     'review-detail-partial': async () => {
-      reset()
+      await reset()
       decide('sam', ids.housing, [['PMP-2001.SLDDRW', 'approved'], ['PMP-2001.SLDPRT', 'approved']])
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
     },
     // Approved, files still in the review stage: the requester moves the package (hold).
     'review-detail-approved-hold': async () => {
-      reset()
+      await reset()
       await showReviews(ids.seal, 'PMP-2003.SLDPRT', 'done')
     },
     'review-detail-approved-advance': async () => {
-      reset()
+      await reset()
       const org = db.rows('organization')[0]
       org.settings = { ...((org.settings as Record<string, unknown> | null) ?? {}), review_stage_on_approval: 'advance' }
       ids.advanced = request('author', { files: [['PMP-2002.SLDDRW']], reviewers: ['alex'], title: 'Impeller drawing, final' })
@@ -652,32 +683,32 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       await showReviews(ids.advanced, 'PMP-2002.SLDDRW', 'done')
     },
     'review-detail-released': async () => {
-      reset()
+      await reset()
       as('author', () => reviews.model.advanceFiles({ p_review_id: ids.seal, p_only_approved: false }))
       await showReviews(ids.seal, 'PMP-2003.SLDPRT', 'done')
     },
     'review-detail-cancelled': async () => {
-      reset()
+      await reset()
       await showReviews(ids.cancelled, 'PMP-2000.SLDASM', 'done')
     },
     'review-detail-nobody-left': async () => {
-      reset()
+      await reset()
       await showReviews(ids.nobodyLeft, 'PMP-2003.SLDDRW', 'requested_by_me')
     },
     'review-detail-pdf-pending': async () => {
-      reset()
+      await reset()
       ids.pending = request('author', { files: [['PMP-2003.SLDDRW']], reviewers: ['sam'], title: 'Seal drawing' })
       await actAs('sam')
       await showReviews(ids.pending, 'PMP-2003.SLDDRW')
     },
     'review-detail-unsupported': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDPRT')
     },
     // A recorded PDF whose bytes are not in the bucket: the download fails.
     'review-detail-preview-error': async () => {
-      reset()
+      await reset()
       db.seed('drawing_pdf_render', {
         file_id: fileId('PMP-2003.SLDDRW'), file_version_id: lookReviewVersionId('PMP-2003.SLDDRW', 1), org_id: String(db.rows('organization')[0].id),
         storage_hash: 'e'.repeat(64), file_size: 1000, is_closure_exact: true, generated_by: reviews.personId('author'), generated_at: new Date().toISOString(),
@@ -687,13 +718,13 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       await showReviews(ids.broken, 'PMP-2003.SLDDRW')
     },
     'review-detail-error': async () => {
-      reset()
+      await reset()
       reviews.fail(['review_get_detail'])
       await actAs('sam')
       await showReviews(ids.housing)
     },
     'review-detail-not-found': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews()
       store.getState().setActiveReviewId('00000000-0000-4000-8000-0000dead0001')
@@ -701,34 +732,48 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
 
     // --- Comments ----------------------------------------------------------------------------------
     'review-comments-empty': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(ids.impeller, 'PMP-2002.SLDDRW')
     },
     'review-comments-threads': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
     'review-comments-readonly-closed': async () => {
-      reset()
+      await reset()
       await showReviews(ids.seal, 'PMP-2003.SLDPRT', 'done')
     },
     'review-comments-load-error': async () => {
-      reset()
+      await reset()
       await actAs('sam')
       db.failNext('file_comment', 'select', { message: 'The server is unavailable (look scene)', code: '08006' })
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
     },
 
     // --- Gate reviews, dialogs, notifications ------------------------------------------------------
+    // A gate opens in the main area (GateReviewDetail): checklist, then Approve / Kick back / Reject.
+    'gate-detail': async () => {
+      await reset()
+      await showReviews()
+      store.getState().setActiveGateReviewId(reviews.model.gates[0].id)
+      await sleep(600)
+    },
+    // Kick back chosen: its own comment box with Cancel; Approve waits for the required checklist item.
+    'gate-detail-kickback': async () => {
+      await reset()
+      await showReviews()
+      store.getState().setActiveGateReviewId(reviews.model.gates[0].id)
+      await clickButton(t('reviewQueue.gate.kickBack'))
+    },
     'review-dialogs': async () => {
-      reset()
+      await reset()
       await showReviews(ids.housing, 'PMP-2001.SLDDRW', 'requested_by_me')
     },
     // The author sent a package; Sam signs in and gets the notification toast and the badge.
     'review-notifications': async () => {
-      reset()
+      await reset()
       request('author', { files: [['PMP-2000.SLDDRW']], reviewers: ['sam'], title: 'Pump assembly drawing, rev B', priority: 'high', due: 2 })
       showExplorer({ pane: false })
       await actAs('sam')

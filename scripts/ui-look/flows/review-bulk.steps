@@ -1,0 +1,23 @@
+# Bulk actions in the Reviews queue: three rows selected as Sam, the bar, the approve confirmation
+# (how many files, in how many reviews, how many unopened), then cancel.
+#   npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme dark --out <dir> --steps scripts/ui-look/flows/review-bulk.steps
+
+--scene reviews-bulk
+--wait 1000
+--shot 01-selected
+--click button:has-text('Approve…')
+--wait 500
+--shot 02-confirm
+--press Escape
+--wait 300
+--scene review-detail-reviewer
+--wait 2500
+--eval __blueplmLook.store.getState().setActiveReviewId(null)
+--wait 800
+--click input[type=checkbox] >> nth=0
+--wait 300
+--shot 03-after-opening-one
+--click button:has-text('Approve…')
+--wait 500
+--shot 04-confirm-after-opening
+--press Escape

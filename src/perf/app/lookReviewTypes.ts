@@ -83,6 +83,8 @@ export interface WorkflowState {
   isReviewStage: boolean
   reviewApprovedStateId: string | null
   checkoutRequired: boolean
+  /** Entering this state releases the file's current version (schema 509 `releases_version`). */
+  releasesVersion?: boolean
 }
 
 export interface WorkflowTransition {

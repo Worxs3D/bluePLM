@@ -72,7 +72,7 @@ export const LOOK_WORKFLOW = {
   states: [
     { id: '00000000-0000-4000-8000-5a7e00000001', name: 'In Work', color: '#eab308', isReviewStage: false, reviewApprovedStateId: null, checkoutRequired: false },
     { id: '00000000-0000-4000-8000-5a7e00000002', name: 'In Review', color: '#a855f7', isReviewStage: true, reviewApprovedStateId: '00000000-0000-4000-8000-5a7e00000003', checkoutRequired: false },
-    { id: '00000000-0000-4000-8000-5a7e00000003', name: 'Released', color: '#22c55e', isReviewStage: false, reviewApprovedStateId: null, checkoutRequired: false },
+    { id: '00000000-0000-4000-8000-5a7e00000003', name: 'Released', color: '#22c55e', isReviewStage: false, reviewApprovedStateId: null, checkoutRequired: false, releasesVersion: true },
   ],
   transitions: [
     { id: '00000000-0000-4000-8000-7a2500000001', name: 'Submit for review', fromStateId: '00000000-0000-4000-8000-5a7e00000001', toStateId: '00000000-0000-4000-8000-5a7e00000002', blockingGate: false },

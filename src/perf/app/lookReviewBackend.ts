@@ -164,9 +164,15 @@ function makeWorld(db: FakeSupabase, lostVaultAccess: Set<string>, delivered: { 
       delivered.pending.push(row as unknown as Row)
     },
     applyTransition: (fileId, t) => {
-      const name = LOOK_WORKFLOW.states.find((s) => s.id === t.toStateId)?.name ?? ''
+      const to = LOOK_WORKFLOW.states.find((s) => s.id === t.toStateId)
+      const name = to?.name ?? ''
       const f = findRow(db, 'file', fileId)
       if (f) f.state = name
+      // workflow_transition_apply (schema 509): a releasing state stamps the current version.
+      const fv = f && to?.releasesVersion ? db.rows('file_version').find((v) => v.file_id === fileId && Number(v.version) === Number(f.version)) : null
+      if (fv && !fv.released_at) {
+        Object.assign(fv, { released_at: new Date().toISOString(), released_by: db.actorId ?? null, release_revision: String(fv.revision ?? f?.revision ?? '') || null, release_forced: false })
+      }
       hooks.onState(fileId, name)
     },
     now: () => {
@@ -428,6 +434,9 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
         const keep = new Set(spec.pdfVersions.map((n) => lookReviewVersionId(spec.name, n)))
         db.removeRows('drawing_pdf_render', db.rows('drawing_pdf_render').filter((r) => r.file_id === id && !keep.has(String(r.file_version_id))))
         db.removeRows('file_version', db.rows('file_version').filter((v) => v.file_id === id && Number(v.version) > spec.version))
+        for (const v of db.rows('file_version')) {
+          if (v.file_id === id) Object.assign(v, { released_at: null, released_by: null, release_revision: null, release_forced: false })
+        }
         const f = findRow(db, 'file', id)
         if (!f) continue
         Object.assign(f, { state: 'In Review', version: spec.version, content_hash: lookReviewContentHash(spec.name, spec.version) })

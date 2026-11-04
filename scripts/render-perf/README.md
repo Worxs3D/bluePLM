@@ -91,7 +91,8 @@ be driven and screenshot headlessly, by clicks or by scene. Pieces:
   (`PMP-2003.SLDDRW` has none: "missing PDF"; `PMP-2002.SLDDRW` is checked out by the author,
   `PMP-2004.SLDDRW` by Sam), colleagues Sam Rivera and Alex Kim beside the perf user and Olive Other,
   teams Mechanical Review (Sam, Alex), Quality (Olive) and Electrical (empty), and a workflow
-  In Work -> In Review (review stage) -> Released.
+  In Work -> In Review (review stage) -> Released, where entering Released releases the file's
+  current version (`released_at`, `release_revision`, as schema 509 does).
 - `src/perf/app/lookScenes/review.ts`: the scenes and `actAs`.
 
 People: `author` (the perf user, an admin), `sam`, `alex`, `olive`. `--as sam` (or
@@ -139,18 +140,34 @@ Adding a scene: write it in `lookScenes/review.ts` (or a new `lookScenes/<area>.
 `checkIn` as the right person, then a `show*` helper. Never set review state directly. The state
 machine has its own test, `src/perf/app/lookReviewBackend.test.ts`.
 
-### The full flow, by clicks
+### The flows, by clicks
 
-`scripts/ui-look/flows/review-full.steps` is the whole flow in one run, 24 screenshots: the author
-selects three files, opens Reviews > New review, adds Sam and Alex and sends; Sam gets the
-notification, opens the drawing's PDF, drags a markup and requests changes; Alex approves; the
-author resolves the markup, checks in v5, resubmits and opens round 2; both approve; the author moves
-the package out of the review stage to Released.
+Three steps files in `scripts/ui-look/flows/` walk the review UI end to end, one screenshot per step:
+
+- `review-full.steps` (28 shots), the canonical flow: the author selects three files, Reviews >
+  Start a review, gives it a title and message, adds Sam and Alex and sends; Sam gets the
+  notification, opens the drawing, drags two markups, replies to one, requests changes on the
+  drawing and approves the rest; Alex approves; the author sees what to fix, resolves Sam's comment
+  (schema 512), checks in v5 and resubmits; in round 2 Sam sees round 1's comments, the
+  carried-forward files (not decidable), approves, undoes and approves again; Alex approves; the
+  author moves the package to Released and the files read "Released as Rev B".
+- `review-gate.steps`: a workflow gate kicked back (then cancelled), approved once its required
+  checklist item is ticked (with the Undo window), and rejected.
+- `review-bulk.steps`: three queue rows selected, the bulk bar and the approve confirmation.
+
+Decision buttons are found by `data-decision`; file names show with lowercase extensions (the
+display preference) and `text=` is case-insensitive. A decision waits 5 s in its Undo window, so a
+flow waits that long before the next person acts. Run each in both themes, and the narrow layout
+with `--size 1100x760`.
 
 ```
 npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --build --list
 npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme dark --out ui-look-out/review-flow --steps scripts/ui-look/flows/review-full.steps
 ```
+
+`actAs` waits for the app's own reset on a user change (App.tsx clears the open review in an
+effect), so a scene can open a review right after switching user. Every screenshot first forces a
+few frames, so lazily rendered PDF pages are painted in a hidden window.
 
 A steps file holds one `--kind value` per line, unquoted, so the same file runs from PowerShell and
 Git Bash. On the command line in Git Bash, set `MSYS_NO_PATHCONV=1` first, or a Playwright regex
