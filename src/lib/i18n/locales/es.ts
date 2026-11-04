@@ -6,6 +6,7 @@ import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
 import { ordersStrings } from './orders'
 import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { supplierPortalStrings } from './supplierPortal'
 
@@ -48,6 +49,7 @@ export const es: TranslationDict = {
   releases: releasesStrings.es,
   orders: ordersStrings.es,
   versionOpen: versionOpenStrings.es,
+  officialExtensions: officialExtensionsStrings.es,
   securityMonitoring: securityMonitoringStrings.es,
   supplierPortal: supplierPortalStrings.es,
   checkoutDisplay: {

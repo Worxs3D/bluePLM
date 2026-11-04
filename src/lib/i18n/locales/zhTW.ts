@@ -6,6 +6,7 @@ import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
 import { ordersStrings } from './orders'
 import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { supplierPortalStrings } from './supplierPortal'
 
@@ -45,6 +46,7 @@ export const zhTW: TranslationDict = {
   releases: releasesStrings.zhTW,
   orders: ordersStrings.zhTW,
   versionOpen: versionOpenStrings.zhTW,
+  officialExtensions: officialExtensionsStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
   supplierPortal: supplierPortalStrings.zhTW,
   checkoutDisplay: {

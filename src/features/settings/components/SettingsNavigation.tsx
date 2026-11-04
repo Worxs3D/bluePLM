@@ -6,6 +6,7 @@ import { logSettings } from '@/lib/userActionLogger'
 import { hasDesktop } from '@/lib/platform'
 
 import { isSettingsTabAvailable, settingsSections } from '../settingsCatalog'
+import { parseExtensionIds, uninstalledOfficialExtensions } from '@/lib/officialExtensions'
 import { useSettingsSearch } from '../useSettingsSearch'
 import { SettingsSearchBox } from './SettingsSearchBox'
 
@@ -61,6 +62,9 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
   )
 
   const desktop = hasDesktop()
+  const uninstalled = parseExtensionIds(
+    usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(',')),
+  )
   const { query, groups } = useSettingsSearch()
   const matchedTabs = new Set(groups.map((g) => g.tab))
 
@@ -70,7 +74,8 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
       ...section,
       items: section.items.filter(
         (item) =>
-          isSettingsTabAvailable(item, isAdmin, desktop) && (!query || matchedTabs.has(item.id)),
+          isSettingsTabAvailable(item, isAdmin, desktop, uninstalled) &&
+          (!query || matchedTabs.has(item.id)),
       ),
     }))
     .filter((section) => section.items.length > 0)

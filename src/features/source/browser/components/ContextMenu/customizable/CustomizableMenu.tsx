@@ -7,7 +7,8 @@
  * drops what does not apply and every group or separator left empty by that, and this draws the
  * rest: entries, separators, flyout groups (`ContextMenuGroup`), inline groups (a small heading
  * when a person named the group) and the collapsed "More actions" group. The last row, outside
- * every layout, opens the settings page where the menu is customised.
+ * every layout, opens the settings page where the menu is customised. Entries of an official
+ * extension the organization uninstalled are left out here, for every menu (schema 515).
  */
 import { Fragment, useState, type ReactNode } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
@@ -22,6 +23,11 @@ import {
 import type { MenuLayout } from '@/lib/contextMenu/types'
 import { useContextMenuLayout } from '@/lib/contextMenu/useContextMenuLayout'
 import { t } from '@/lib/i18n'
+import {
+  extensionOfMenuEntry,
+  parseExtensionIds,
+  uninstalledOfficialExtensions,
+} from '@/lib/officialExtensions'
 import { usePDMStore } from '@/stores/pdmStore'
 
 import { ContextMenuGroup, ExpandableSection } from '../components'
@@ -65,7 +71,16 @@ export function CustomizableMenu({
   const openSettings = usePDMStore((s) => s.openSettings)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
-  const available = isAvailable ?? ((id: ContextMenuEntryId) => entries[id] != null)
+  // An entry an uninstalled official extension adds never shows (Settings > Extensions), whatever
+  // its hook returned. Its overlays stay mounted by the hook, as for any hidden entry.
+  const uninstalled = parseExtensionIds(
+    usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(',')),
+  )
+  const applies = isAvailable ?? ((id: ContextMenuEntryId) => entries[id] != null)
+  const available = (id: ContextMenuEntryId) => {
+    const extension = uninstalled.length > 0 ? extensionOfMenuEntry(id) : null
+    return (!extension || !uninstalled.includes(extension)) && applies(id)
+  }
   const nodes = resolveLayout(layout ?? personLayout, available)
 
   const renderNodes = (list: readonly ResolvedNode[], topLevel: boolean): ReactNode[] =>

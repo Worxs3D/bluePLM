@@ -26,7 +26,6 @@ const WEB_HIDDEN_TABS: readonly SettingsTab[] = [
   'preferences',
   'supabase',
   'backup',
-  'extensions',
   'solidworks',
   'performance',
   'logs',

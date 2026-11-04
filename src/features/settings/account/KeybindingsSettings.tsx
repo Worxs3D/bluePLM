@@ -21,6 +21,11 @@ import {
   type ShortcutAction,
 } from '@/lib/keybindings'
 import { hasDesktop } from '@/lib/platform'
+import {
+  extensionOfShortcutCategory,
+  parseExtensionIds,
+  uninstalledOfficialExtensions,
+} from '@/lib/officialExtensions'
 import { usePDMStore } from '@/stores/pdmStore'
 
 import { HeldModifiers, Keycaps } from './keybindings/Keycaps'
@@ -103,7 +108,13 @@ export function KeybindingsSettings() {
     })
   }, [available, modifiedOnly, overrides, recording, recordedCombo, query, bindings, t])
 
-  const sections = SHORTCUT_CATEGORIES.map((category) => ({
+  // The shortcuts of an official extension the organization uninstalled are not listed.
+  const uninstalledKey = usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(','))
+  const uninstalled = parseExtensionIds(uninstalledKey)
+  const sections = SHORTCUT_CATEGORIES.filter((category) => {
+    const extension = extensionOfShortcutCategory(category)
+    return !extension || !uninstalled.includes(extension)
+  }).map((category) => ({
     category,
     actions: visible.filter((action) => action.category === category),
   })).filter(

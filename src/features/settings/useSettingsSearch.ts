@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { hasDesktop } from '@/lib/platform'
+import { parseExtensionIds, uninstalledOfficialExtensions } from '@/lib/officialExtensions'
 import { isSettingsTabAvailable, settingsCatalogFor, settingsSections } from './settingsCatalog'
 import {
   buildSettingsSearchIndex,
@@ -20,12 +21,18 @@ interface SettingsSearchState {
 // result keeps that to a single pass.
 let cache: { key: string; value: SettingsSearchState } | null = null
 
-function runSearch(query: string, isAdmin: boolean, desktop: boolean): SettingsSearchState {
-  const key = `${isAdmin ? 1 : 0}${desktop ? 1 : 0}\u0000${query}`
+function runSearch(
+  query: string,
+  isAdmin: boolean,
+  desktop: boolean,
+  uninstalledKey: string,
+): SettingsSearchState {
+  const key = `${isAdmin ? 1 : 0}${desktop ? 1 : 0}${uninstalledKey}\u0000${query}`
   if (cache?.key === key) return cache.value
+  const uninstalled = parseExtensionIds(uninstalledKey)
   const sections = settingsSections().map((section) => ({
     ...section,
-    items: section.items.filter((item) => isSettingsTabAvailable(item, isAdmin, desktop)),
+    items: section.items.filter((item) => isSettingsTabAvailable(item, isAdmin, desktop, uninstalled)),
   }))
   const groups = query.trim()
     ? searchSettings(buildSettingsSearchIndex(sections, settingsCatalogFor(desktop)), query)
@@ -40,5 +47,10 @@ export function useSettingsSearch(): SettingsSearchState {
   const query = usePDMStore((s) => s.settingsSearchQuery)
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
   const desktop = hasDesktop()
-  return useMemo(() => runSearch(query, isAdmin, desktop), [query, isAdmin, desktop])
+  // A comma-joined key: a store selector must return a stable value.
+  const uninstalledKey = usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(','))
+  return useMemo(
+    () => runSearch(query, isAdmin, desktop, uninstalledKey),
+    [query, isAdmin, desktop, uninstalledKey],
+  )
 }

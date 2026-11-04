@@ -1,3 +1,4 @@
+import { extensionOfSettingsTab, type OfficialExtensionId } from '@/lib/officialExtensions'
 import {
   ArrowUpCircle,
   Box,
@@ -306,10 +307,9 @@ export const settingsSections = (): SettingsSection[] => [
         id: 'extensions',
         label: 'Extensions',
         icon: Puzzle,
-        description: 'Extensions installed for your organization.',
+        description: 'Reviews, Inspection, Orders and the other extensions your organization installs.',
         layout: 'wide',
-        desktopOnly: true,
-        keywords: ['plugins', 'install', 'bpx', 'organization'],
+        keywords: ['plugins', 'install', 'uninstall', 'bpx', 'organization', 'reviews', 'inspection', 'orders'],
       },
     ],
   },
@@ -646,6 +646,13 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Push to All Users', keywords: ['push', 'everyone'] },
   ],
   'item-designations': [{ label: 'Add designation', keywords: ['new designation', 'item type'] }],
+  extensions: [
+    { label: 'BluePLM extensions', keywords: ['official', 'built in', 'install', 'uninstall'] },
+    { label: 'Reviews', keywords: ['drawing review', 'approval', 'uninstall reviews'] },
+    { label: 'Inspection', keywords: ['balloon', 'inspection report', 'fai', 'uninstall inspection'] },
+    { label: 'Orders', keywords: ['supplier order', 'purchase', 'uninstall orders'] },
+    { label: 'Organization extensions', keywords: ['bpx', 'native', 'package', 'install for organization'], desktopOnly: true },
+  ],
   'inspection-templates': [
     { label: 'Upload template', keywords: ['xlsx', 'excel', 'add template'] },
     {
@@ -797,13 +804,20 @@ export const settingsCatalog: SettingsCatalog = {
   ],
 }
 
-/** Whether a settings tab shows for this user on this host (admin-only and desktop-only gates). */
+/**
+ * Whether a settings tab shows for this user on this host: the admin-only and desktop-only gates,
+ * and a tab an official extension adds (Inspection templates) only while it is installed.
+ */
 export function isSettingsTabAvailable(
-  item: Pick<SettingsNavigationItem, 'adminOnly' | 'desktopOnly'>,
+  item: Pick<SettingsNavigationItem, 'id' | 'adminOnly' | 'desktopOnly'>,
   isAdmin: boolean,
   desktop: boolean,
+  uninstalled: readonly OfficialExtensionId[] = [],
 ): boolean {
-  return (!item.adminOnly || isAdmin) && (!item.desktopOnly || desktop)
+  if (item.adminOnly && !isAdmin) return false
+  if (item.desktopOnly && !desktop) return false
+  const extension = extensionOfSettingsTab(item.id)
+  return !extension || !uninstalled.includes(extension)
 }
 
 /** True for a tab that only the desktop app shows (marked `desktopOnly` in settingsSections). */

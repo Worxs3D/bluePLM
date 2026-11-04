@@ -267,3 +267,23 @@ records every missing PDF and STEP of the drafts (what Generate missing does wit
 which the boot does not have), `plan(['PMP-2000.SLDASM'])` runs the line planner on review files
 and returns its lines or error, `lastExport` is the request Export zip sent, `model` the RPC model
 (`model.failing.add('supply_order_create')` makes an RPC fail).
+
+## Official extension scenes
+
+Settings > Extensions and the app without Reviews, Inspection or Orders (schema 515). The scenes
+(`src/perf/app/lookScenes/extensions.ts`) write `organization.settings.extensions` on the fake
+organization row and in the store, and define `org_extension_set_installed` on the fake with the
+migration's rules (admin only, known ids), so Install and Uninstall work end to end.
+
+Scenes: `extensions-catalog` (all installed), `extensions-catalog-mixed` (Inspection and Orders
+not installed), `extensions-uninstall-reviews` and `extensions-uninstall-inspection` (the
+confirmation), `extensions-install-orders`, `extensions-none-installed` (the drawing with its
+Inspection tab asked for, all three uninstalled: no Reviews or Orders view, no Inspection tab) and
+`extensions-all-installed` to compare. `--as sam` shows the member's read-only catalog.
+
+```
+npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --scene extensions-uninstall-reviews --shot uninstall --out <dir>
+npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --as sam --scene extensions-catalog --shot member --out <dir>
+```
+
+`window.__blueplmLookExtensions.set('blueplm.orders', false)` changes one extension for `--eval`.

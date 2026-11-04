@@ -6,11 +6,12 @@ import { SettingsSearchResults } from './SettingsSearchResults'
 import { findSettingElement, flashSettingElement } from '../revealSetting'
 import { findSettingsItem, isDesktopOnlySettingsTab } from '../settingsCatalog'
 import { hasDesktop } from '@/lib/platform'
+import { extensionOfSettingsTab, officialExtensionInstalled } from '@/lib/officialExtensions'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
-const OrgExtensionsPanel = lazy(() =>
-  import('@/features/nativeExtensions/OrgExtensionsPanel').then((m) => ({ default: m.OrgExtensionsPanel })),
+const ExtensionsSettings = lazy(() =>
+  import('../organization/extensions/ExtensionsSettings').then((m) => ({ default: m.ExtensionsSettings })),
 )
 const ProfileSettings = lazy(() =>
   import('../account/ProfileSettings').then((m) => ({ default: m.ProfileSettings })),
@@ -186,6 +187,7 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
   // Pages that hold an organization's state in their own (drafts, selection) start over on an
   // organization switch or once the organization has loaded.
   const orgKey = usePDMStore((s) => s.organization?.id ?? 'no-org')
+  const organization = usePDMStore((s) => s.organization)
   const containerRef = useRevealSearchedSetting(activeTab)
 
   // Each page opens at its top, not at the previous page's scroll position.
@@ -196,6 +198,9 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
   const renderContent = () => {
     // A desktop-only tab (persisted or deep-linked) never renders on the web.
     if (!hasDesktop() && isDesktopOnlySettingsTab(activeTab)) return <ProfileSettings />
+    // A tab of an uninstalled official extension opens Extensions, where an admin can install it.
+    const extension = extensionOfSettingsTab(activeTab)
+    if (extension && !officialExtensionInstalled(organization, extension)) return <ExtensionsSettings />
     switch (activeTab) {
       case 'profile':
         return <ProfileSettings />
@@ -269,7 +274,7 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         // Account deletion is the last section of Profile; old links land there.
         return <ProfileSettings />
       case 'extensions':
-        return <OrgExtensionsPanel />
+        return <ExtensionsSettings />
       default:
         return <ProfileSettings />
     }
