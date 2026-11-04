@@ -4,12 +4,44 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.10.0] - 2026-11-04
 
-Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
-(`0511_inspection_template_folder.sql`). SolidWorks service 1.29.1; no API change.
+Schemas 510 (`0510_inspection_working_copy_reports.sql`), 511
+(`0511_inspection_template_folder.sql`) and 512 (`0512_comment_resolve.sql`). SolidWorks service
+1.29.1; no API change.
 
 ### Added
+
+- **Drawing reviews, redesigned end to end, in the settings look.**
+  - *Starting a review.* The review pane opens on a home with **Start a review** (from the
+    selected files), **Waiting on you** and **Your requests**. A draft lists its files compactly
+    and only mentions problems, finds people and teams in one search, sends with Ctrl+Enter, says
+    why the server refused and offers the fix, confirms who was left out once sent, and can be
+    discarded with Undo. The Reviews submenu reads **Start a review**, **Add to draft**, **Add to
+    open review** (which now asks first and names the versions), **Remove from** and **Show
+    reviews of this file**; the forced-release warning offers **Request a review instead**.
+  - *The Reviews page.* The queue says whose move each review is, with due dates and priority, and
+    works from the keyboard. A review shows each reviewer's status in words, a banner only when the
+    state needs one (what to fix, rejected, nobody left to decide, approved, cancelled, what
+    changed in round 2), its files grouped by what they need, and an activity timeline per round.
+    When you have decided everything you owe, **Next review** (N) takes you on.
+  - *Decisions.* A decision is held 5 seconds with Undo before it is sent, and is sent before you
+    move on, sign out, switch organization or close the window. Disabled buttons say why (already
+    decided, decided by someone else, carried forward). **Approve remaining** approves exactly the
+    files it names. Bulk approve asks first, counts the files you have not opened, and leaves out
+    workflow gates with required checklist items. Workflow gates open in the main area with their
+    checklist, and each decision sends only its own comment.
+  - *Kickbacks and rounds.* After changes are requested, the author sees what to fix with the
+    reviewers' comments and **Show in vault** / **Check out**. Resubmit keeps the chosen versions,
+    says when a file has no newer version yet, checks the new versions' PDFs, and its note is shown
+    to reviewers. Files approved in an earlier round are not decided again.
+  - *Comments.* Numbered pins on the drawing match the comment list; comments from earlier rounds
+    stay visible in the next one; Comment (M) toggles markup. **Move approved files** is offered
+    only where the organization's package policy allows it, and says why otherwise.
+- **Resolving review comments (schema 512).** The author of a drawing, the requester and reviewers
+  of the review a comment was made in, and administrators can resolve and reopen it
+  (`file_comment_set_resolved()`); before, only the comment's author could, and anyone else's
+  Resolve was refused and rolled back. Vault access is still required.
 
 - **Right-click menu customizer.** Settings > Right-click menu lets each person arrange the file
   and folder menu (file list and explorer tree): pin actions to the top (Export STEP first, say),
@@ -34,6 +66,10 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
 
 ### Changed
 
+- **Dialogs and toasts take the settings look**, and Enter in a confirmation confirms it (focus
+  moves into the dialog) instead of clicking the button that opened it again. File names in
+  review screens follow the lowercase-extensions preference, and a thumbnail that fails to load
+  shows the file-type icon instead of a broken image.
 - **Settings opens as a modal again.** It sits centred over the blurred app and cannot be moved
   or resized; click outside it or press Esc to close it. On the desktop, the button at its top
   right opens it in a separate window you can move, resize and put on another screen. That window
@@ -51,6 +87,9 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
 
 ### Fixed
 
+- **The top-bar right-pane button never opens an empty pane.** With nothing else for the right
+  panel (no file tabs, the Workflows view, or the Reviews view with no review open) it shows the
+  review pane, and closing the pane hides the panel.
 - **A checked-out file opened in SOLIDWORKS no longer stays read-only (SolidWorks service
   1.29.1).** When no SOLIDWORKS was running at startup, BluePLM launched a hidden one and kept
   talking to it for the rest of the session, so a SOLIDWORKS opened later was invisible: checkout
