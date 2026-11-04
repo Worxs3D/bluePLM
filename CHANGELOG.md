@@ -4,6 +4,39 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.11.0] - 2026-11-04
+
+Schema 513 (`0513_supply_orders.sql`) and API 4.2.3 (server backups include orders). No SolidWorks
+service change. Apply the schema and redeploy the API; the release pipeline does both.
+
+### Added
+
+- **Orders.** A new Orders page in the left column, on by default (Supply Chain group). An order
+  is a named list of parts for a supplier, for a quote or a purchase: each line pins a checked-in
+  version of a part or assembly, the drawing that goes with it, a quantity and the files to send
+  (drawing PDF, STEP, IGES, STL, DXF or the native file). The files are the version's own outputs,
+  stored with the version, so nothing has to be exported into a local release folder first.
+  - Add files from the file list (right-click > Orders: add to a recent draft, or New order with
+    these files), or a single version from its history. A drawing brings its part, a part brings its
+    drawing. "With referenced parts" adds an assembly and every part it uses, at the versions it
+    references.
+  - Each line shows which files are ready and which are missing; Generate missing makes them on a
+    machine with SOLIDWORKS. A newer checked-in version shows "Update to vN".
+  - Export zip (or Save files to folder) writes the files, a CSV of the lines and an `order.json`
+    with every file's hash, checked as they download.
+  - Mark sent freezes the lines and records the exact files that went out, so the order can be
+    exported again later even after a newer output replaces one. Then Received, Closed, or Cancel;
+    Duplicate starts a new draft from any order.
+  - Numbers are `ORD-0001` onward per organization (`organization.settings.orders.number_prefix`
+    changes the prefix) and are never reused. Lines in vaults you cannot see stay hidden, and the
+    order says how many. Works on BluePLM Web, except generating outputs and saving to a folder.
+  - Guide: `docs/orders.md`.
+
+### Changed
+
+- A sidebar layout saved by an organization or team before a new module shipped now places the new
+  module in its own section, keeping dividers and group headers where they were.
+
 ## [5.10.0] - 2026-11-04
 
 Schemas 510 (`0510_inspection_working_copy_reports.sql`), 511
