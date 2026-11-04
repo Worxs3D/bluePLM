@@ -51,7 +51,7 @@ export const AddMenu = memo(function AddMenu({ onAddFiles, onAddFolder }: AddMen
           }
           setIsOpen(!isOpen)
         }}
-        className={`btn btn-sm gap-1 ${canAdd ? 'btn-primary' : 'btn-secondary opacity-50 cursor-not-allowed'}`}
+        className={`btn btn-sm btn-secondary gap-1 ${canAdd ? '' : 'opacity-50 cursor-not-allowed'}`}
         title={
           canAdd
             ? 'Add files or folder to vault'
