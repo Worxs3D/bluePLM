@@ -224,6 +224,7 @@ automatically:
 @.cursor/rules/solidworks-service.mdc
 @.cursor/rules/plans.mdc
 @.cursor/rules/testing.mdc
+@.cursor/rules/ui-look.mdc
 
 The points that most often get violated:
 

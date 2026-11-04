@@ -1,0 +1,39 @@
+---
+description: UI work is designed and checked through the central headless render harness (ui-look), never a live app
+alwaysApply: true
+---
+
+# UI work: the central render harness
+
+There is one render harness for the whole app: `scripts/ui-look/look.ts`. It runs the real Electron
+renderer, built as the perf app (`dist/perf.html`), in a hidden window against the perf boot's fake
+backend (`src/perf/app/boot.ts`, `backend.ts`, `lenientClient.ts`, `src/test/fakeSupabase.ts`), and
+`window.__blueplmLook` (`src/perf/app/look.ts`) puts the app into named scenes. Steps on the command
+line click, type, evaluate and screenshot, so a screen or a whole flow is designed and checked by
+reading its PNGs. Set by the user on 2026-11-04: build on this harness for this sort of development.
+
+- Use it for any UI design or UX change, and to walk a multi-step flow end to end (for example a
+  review from package to approval, with comments and a kickback). Render every state the change
+  touches: empty, loading, error, populated, narrow and wide, light and dark where it matters.
+- Never open the live app, a dev server or a browser to look at a screen (the user's global
+  no-visual-verification rule). This harness is the one sanctioned exception: it never touches the
+  user's running app, vault or user data.
+- Extend the harness; never build a second one. New screens get a scene in `src/perf/app/look.ts`
+  (or a per-area module it imports when the file grows), fixture data beside the existing
+  `look*Fixtures.ts` files, and server behaviour as RPCs or rows on the same `FakeSupabase`
+  (`defineRpc`, `seed`). Scenes drive the store through the same actions the UI calls.
+- A stateful flow (several users, several steps) keeps its state in the fake backend, and scenes
+  switch the acting user through the look control, so the same run can go author, reviewer, author.
+- Name scenes `<area>-<state>` (`inspection-reports`, `review-detail-kickback`), list them with
+  `--list`, and document new areas with their command sequence in `scripts/render-perf/README.md`.
+- Keep it light: one hidden Electron per agent at a time, and never alongside a local test or tsc
+  run. Rebuild the perf app (`--build`) after changing renderer code, or the shots show old code.
+- Screenshots go to a scratch folder, never into the repository.
+- A screen the harness cannot reach yet is a harness gap: add the scene. Only when that is not
+  possible, ask the user to look, saying exactly what to check.
+
+```
+npx tsx scripts/ui-look/look.ts --list
+npx tsx scripts/ui-look/look.ts --build --scene <name> --shot <name> --out <scratch dir>
+npx tsx scripts/ui-look/look.ts --scene <name> --click "text=Approve" --wait 300 --shot after --out <dir>
+```
