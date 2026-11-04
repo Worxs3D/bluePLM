@@ -92,15 +92,20 @@ export const inspectionReportStrings: Record<string, string> = {
   rptDeleteMessage: 'Delete inspection report {{number}}? The workbook stays in storage, but the report is no longer listed.',
   rptDeleted: 'Report {{number}} deleted',
   rptDeleteFailed: 'Could not delete the report: {{error}}',
-  rptGenerateHint: 'Generate a report from the latest checked-in version with the default template',
+  rptGenerateHint:
+    'Generate a report with the default template: of your checked-out copy when you have changed it, else of the latest checked-in version',
   rptGenerateFromMenu: 'Generate inspection report',
   rptGenerateWithOptions: 'Generate with options…',
   rptGeneratingFor: 'Generating the inspection report of {{name}}',
   rptAlreadyGenerating: 'A report of {{name}} is already being generated',
   rptNoRows:
-    'Version {{version}} has no inspection characteristics, so no report was generated. Extract the characteristics from the drawing and check it in, then generate again.',
+    'Version {{version}} has no inspection characteristics, so no report was generated. Check the drawing out and extract its characteristics, then generate again.',
   rptNoRowsLive:
-    'Version {{version}} has no inspection characteristics, so no report was generated. The inspection table has {{count}} rows that are not checked in yet: check the drawing in, then generate again.',
+    'Version {{version}} has no inspection characteristics, so no report was generated. The inspection table has {{count}} rows that are not checked in yet: whoever has the drawing checked out can generate a report of their copy.',
+  rptWorkingCopy:
+    'Report of your checked-out copy (based on version {{version}}), with the inspection table and balloons as they are now. It is not recorded under the drawing: check the drawing in to record a report of the new version.',
+  rptWorkingCopySave: 'Save as…',
+  rptWorkingCopyVersion: '{{version}} + checked-out changes',
   rptNotCheckedIn:
     'The report was built from checked-in version {{version}}. Your changes to the drawing or its inspection table are not checked in, so they are not in it.',
   rptVersionGone: 'The drawing version of this report is no longer available.',

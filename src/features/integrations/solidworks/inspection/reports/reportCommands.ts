@@ -13,7 +13,7 @@
  */
 import { t } from '@/lib/i18n'
 import { builtInTemplateNames, drawingOmittedKey } from '@/lib/inspection/issueText'
-import { saveWorkbook, type DeliverOutcome } from '@/lib/inspection/reportFiles'
+import { openWorkbook, saveWorkbook, type DeliverOutcome } from '@/lib/inspection/reportFiles'
 import { log } from '@/lib/logger'
 import {
   deleteInspectionReport,
@@ -51,6 +51,7 @@ import {
 import { liveInspectionRowCount, organizationLogo, reportIdentity } from './reportSources'
 import { defaultTypeRequest, reportTypeKey, type ReportTypeRequest } from './reportTypeModel'
 import { overwriteFallback, overwriteKeepsLayout } from './regenerateModel'
+import { workingCopySource } from './workingCopyReport'
 
 export interface ReportContext {
   reports: InspectionReport[]
@@ -153,14 +154,24 @@ export interface GenerateOptions {
    * or recording a report (its number is not reserved).
    */
   toFile?: boolean
+  /**
+   * Default true: when the drawing is checked out by this user and the copy holds changes the
+   * latest version does not (extracted rows, balloons), build the workbook from the copy and open
+   * it, unrecorded (`workingCopyReport.ts`). A regeneration passes false: it is of a version.
+   */
+  allowWorkingCopy?: boolean
+  /** Called after a workbook of the checked-out copy was delivered (nothing is recorded). */
+  onWorkingCopy?: () => void
   /** Progress, for a dialog; without it a progress toast shows the phases. */
   onPhase?: (phase: GeneratePhase) => void
 }
 
 /**
- * Generate an inspection report of a drawing. Refuses a version without inspection rows (toast:
- * extract and check in), and warns afterwards when the user's own checked-out copy has changes the
- * version does not hold. Returns the new report, or null when nothing was generated.
+ * Generate an inspection report of a drawing. Of the latest version, a drawing checked out by this
+ * user with changes the version does not hold is reported from that copy instead: the workbook is
+ * opened (or saved, `toFile`) and not recorded, since a recorded report belongs to a checked-in
+ * version. Refuses when there are no inspection rows (toast). Returns the new recorded report, or
+ * null when none was recorded.
  */
 export async function generateForDrawing(file: LocalFile, options: GenerateOptions = {}): Promise<InspectionReport | null> {
   const state = usePDMStore.getState()
@@ -210,6 +221,14 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       naming.includeLogo ? organizationLogo(organization) : Promise.resolve(null),
     ])
 
+    // Only a report of the latest version may come from the checked-out copy: an older version
+    // chosen in the dialog is reported as it was checked in.
+    const latest = context.versions[0]
+    const workingCopy =
+      options.allowWorkingCopy !== false && !options.supersedesReportId && latest && version.id === latest.id
+        ? await workingCopySource(file, version)
+        : null
+
     const params = {
       orgId,
       orgName: organization?.name ?? '',
@@ -225,6 +244,30 @@ export async function generateForDrawing(file: LocalFile, options: GenerateOptio
       type,
       supersedesReportId: options.supersedesReportId ?? null,
       onPhase,
+    }
+    if (workingCopy) {
+      const local = await generateReport({ ...params, localOnly: true, workingCopy })
+      const fileName = `${local.reportNumber || file.name.replace(/\.[^.]+$/, '')}.xlsx`
+      const delivered = options.toFile ? await saveWorkbook(fileName, local.workbook) : await openWorkbook(fileName, local.workbook)
+      if (delivered === 'canceled') return null
+      options.onWorkingCopy?.()
+      addToast('info', t('source.inspection.rptWorkingCopy', { version: version.version }), 12000, {
+        label: t('source.inspection.rptWorkingCopySave'),
+        onClick: () => {
+          saveWorkbook(fileName, local.workbook)
+            .then((d) => {
+              if (d !== 'canceled') deliveredToast(d)
+            })
+            .catch((err: unknown) =>
+              usePDMStore.getState().addToast('error', t('source.inspection.rptGenerateFailed', { error: errorText(err) })),
+            )
+        },
+      })
+      if (local.selectionNote === 'no_classified') {
+        addToast('info', t('source.inspection.rptNoClassified', { count: local.characteristicCount }), 10000)
+      }
+      if (local.drawingOmitted) addToast('info', t(drawingOmittedKey(local.drawingOmitted)), 10000)
+      return null
     }
     if (options.toFile) {
       const local = await generateReport({ ...params, localOnly: true })
@@ -410,6 +453,7 @@ export async function regenerateReport(
       template: template ?? undefined,
       type,
       supersedesReportId: options.asCopy ? null : report.id,
+      allowWorkingCopy: false,
     })
   } catch (err) {
     log.error('[InspectionReports]', 'Regenerate failed', { reportId: report.id, error: errorText(err) })

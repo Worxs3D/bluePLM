@@ -197,7 +197,14 @@ export function InspectionReportsView({ file, focusReportId, leading }: Inspecti
       setPhase('rows')
       setGenerating(true)
       try {
-        const report = await generateForDrawing(file, { context: data.context, template, version, type, onPhase: setPhase })
+        const report = await generateForDrawing(file, {
+          context: data.context,
+          template,
+          version,
+          type,
+          onPhase: setPhase,
+          onWorkingCopy: () => setOptionsOpen(false),
+        })
         if (report) setOptionsOpen(false)
       } finally {
         setPhase(null)

@@ -3,8 +3,9 @@
  * download a report, read a returned workbook and record its results.
  *
  * A report's inputs are immutable (the version's inspection snapshot and its stored drawing PDF),
- * so the same version and template give the same report. Nothing here reads the live table or a
- * local copy of the drawing.
+ * so the same version and template give the same report. The one exception is a workbook of the
+ * user's checked-out copy (`workingCopy`, `workingCopyReport.ts`): live table and local drawing,
+ * built only with `localOnly`, never recorded.
  */
 import {
   analyzeTemplate,
@@ -62,6 +63,7 @@ import {
   type VersionInfo,
 } from './reportModel'
 import type { ReportLogo } from './reportSources'
+import { workingCopyDrawingPages, type WorkingCopySource } from './workingCopyReport'
 import {
   faiReasonKey,
   includedRows,
@@ -105,6 +107,11 @@ export interface GenerateReportParams {
    * are printed in the workbook instead of a new id and the next number. Only with `localOnly`.
    */
   reuse?: { reportId: string; reportNumber: string | null }
+  /**
+   * Build from the user's checked-out copy (live table, local drawing) instead of the version's
+   * snapshot and stored PDF; `version` is the version it is based on. Only with `localOnly`.
+   */
+  workingCopy?: WorkingCopySource
   onPhase?: (phase: GeneratePhase) => void
 }
 
@@ -271,8 +278,13 @@ export async function generateReport(
       }
     : params.type
 
+  const { workingCopy } = params
+  if (workingCopy && !params.localOnly) throw new Error('A report of a checked-out copy is never recorded')
+
   onPhase?.('rows')
-  const rows = await rowsAtVersion(fileId, version.id)
+  const rows = workingCopy
+    ? { rows: workingCopy.rows, exact: true, sourceVersion: null }
+    : await rowsAtVersion(fileId, version.id)
   if (rows.rows.length === 0) throw new ReportHasNoRowsError(version.version)
 
   // Partial FAI: the characteristics changed since the baseline version's snapshot. Without a
@@ -322,7 +334,9 @@ export async function generateReport(
   }
 
   onPhase?.('drawing')
-  const drawing = await drawingPages(orgId, version.id)
+  const drawing = workingCopy
+    ? { ...(await workingCopyDrawingPages(workingCopy.drawingPath)), pdfHash: null }
+    : await drawingPages(orgId, version.id)
 
   const generatedAt = new Date()
   const values = reportNumberValues(identity, params.drawingName, version.version, generatedAt, request.reportType)
@@ -368,7 +382,9 @@ export async function generateReport(
         REVISION: identity.revision ?? '',
         DESCRIPTION: identity.description ?? '',
         DRAWING_NAME: params.drawingName,
-        DRAWING_VERSION: String(version.version),
+        DRAWING_VERSION: workingCopy
+          ? t('source.inspection.rptWorkingCopyVersion', { version: version.version })
+          : String(version.version),
         REPORT_NUMBER: reportNumber,
         ORG_NAME: params.orgName,
       },

@@ -4,6 +4,19 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+Renderer only. No schema, API or SolidWorks service change.
+
+### Changed
+
+- **Inspection reports of a checked-out drawing.** Generate no longer asks you to check the drawing
+  in after extracting or ballooning. When you have the drawing checked out and its inspection table
+  or file has changed since the last version, the report is built from your copy: the live table and
+  a PDF of the local drawing, balloons included. It opens in Excel (Save as… on the toast) and is not
+  recorded under the drawing, because a recorded report belongs to a checked-in version. A report of
+  an older version, and Regenerate, still use the checked-in version.
+
 ## [5.9.1] - 2026-11-03
 
 Renderer only. No schema, API or SolidWorks service change (schema 509, API 4.2.2, SolidWorks
