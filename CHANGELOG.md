@@ -11,6 +11,17 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
 
 ### Added
 
+- **Right-click menu customizer.** Settings > Right-click menu lets each person arrange the file
+  and folder menu (file list and explorer tree): pin actions to the top (Export STEP first, say),
+  hide the ones they never use, or customize everything (reorder by drag or keyboard, make groups as
+  a submenu, a section or a "More" expander, add separators), with a live preview for a part,
+  assembly, drawing, folder or several files in any state, undo, and import/export to a file. The
+  layout is saved on this computer per organization, like keyboard shortcuts. Administrators keep
+  named templates under Settings > Menu templates (`organization.settings.context_menu`), pick the
+  organization default, and can apply it to everyone. The menu still decides per file whether an
+  action applies, so a layout only rearranges; hiding is not a permission. Every menu ends with
+  "Customize this menu…". The explorer tree now uses the same order and groups as the file list.
+  No schema or API change.
 - **Inspection templates folder (schema 511).** An administrator can pick a vault folder under
   Settings > Inspection templates > Templates folder, the same way as the SOLIDWORKS template
   folders. Every checked-in Excel workbook in it, subfolders included, is an organization template:
