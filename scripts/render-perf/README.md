@@ -162,3 +162,36 @@ Selectors are the review UI's English labels; when the UI changes, update the st
 scene helpers that click a label, `clickButton(t(...))`, follow the i18n keys on their own). If the
 build fails in someone else's half-finished edit, build `HEAD` plus the harness files from a
 `git archive HEAD` copy under `.ui-look/` with `BLUEPLM_PERF_OUT` pointing at your `--dist` folder.
+
+### Right-click menu customizer
+
+Scenes in `src/perf/app/lookContextMenu.ts` (registered in `look.ts`). They write the organization's
+`settings.context_menu` (two templates, Drafting the default) into the store and the fake backend, and
+the person's `contextMenuPrefs`.
+
+- `settings-context-menu`: Settings > Right-click menu, following Drafting with Export STEP and Check In
+  pinned and Copy Folder Path hidden; the preview on the right.
+- `settings-context-menu-custom`: the person's own layout (STEP pinned first, a "Mine" section, two
+  hidden entries) in the full editor, with the "template has changed" callout.
+- `settings-context-menu-templates`: Settings > Menu templates as an admin, Drafting open in the editor.
+- `settings-context-menu-drag` / `settings-context-menu-dropped`: the editor's drag and drop through
+  real DOM drag events (Open dragged onto the top edge of Export STEP): mid-drag with the drop line,
+  then dropped (the scene throws unless Open is first).
+- `context-menu-list-default`, `context-menu-list-custom`, `context-menu-list-flyout` (Export STEP's
+  flyout open) and `context-menu-tree-custom`: the real right-click menus of the file list and the
+  explorer tree, opened by a `contextmenu` event on the part's row, with the app default or a
+  person's layout (Export STEP first, a "Mine" flyout).
+
+Shoot the menus and drags as the whole window (`--shot name`) after `--wait 600` or more: element
+shots (`name@sel`) can come back as the wrong crop of a hidden window.
+
+```
+npx tsx scripts/ui-look/look.ts --build --scene settings-context-menu --shot user --out <dir>
+npx tsx scripts/ui-look/look.ts --scene settings-context-menu --click "text=Pin an action" --fill "input[type=search]=step" --shot picker --out <dir>
+npx tsx scripts/ui-look/look.ts --scene settings-context-menu-custom --click "[data-editor-row='e:generate.local.step'] button >> nth=0" --wait 600 --shot selected --out <dir>
+npx tsx scripts/ui-look/look.ts --scene settings-context-menu-drag --wait 900 --shot drag --scene settings-context-menu-dropped --wait 900 --shot dropped --out <dir>
+npx tsx scripts/ui-look/look.ts --scene context-menu-list-flyout --wait 600 --shot flyout --out <dir>
+npx tsx scripts/ui-look/look.ts --scene settings-context-menu-custom --click "text=Add group" --shot group-dialog --out <dir>
+npx tsx scripts/ui-look/look.ts --eval "__blueplmLook.store.getState().setTheme('light')" --scene settings-context-menu-templates --shot light --out <dir>
+npx tsx scripts/ui-look/look.ts --size 1100x800 --scene settings-context-menu --shot narrow --out <dir>
+```

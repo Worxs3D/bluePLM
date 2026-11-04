@@ -9,6 +9,7 @@ import type { Json } from '@/types/supabase'
 import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import type { PerfBackend } from './backend'
+import { contextMenuLookScenes } from './lookContextMenu'
 import type { LookReviews } from './lookReviewBackend'
 import type { ReviewLookApi } from './lookScenes/review'
 import { lookVaultAuditReport } from './lookFixtures'
@@ -425,6 +426,8 @@ export async function installLook(store: Store, backend: PerfBackend, reviews: L
     },
     // Settings > Export.
     'settings-export': () => store.getState().openSettings('export'),
+    // Settings > Right-click menu and Menu templates (lookContextMenu.ts).
+    ...contextMenuLookScenes(store, backend),
     // Resolve Pending Moves: several moves in one folder (click the folder's badge to open it).
     'resolve-moves': () => showPendingMoves(store),
     // Drawing reviews: review-*, reviews-*, toggle-*, gate-* (lookScenes/review.ts).
