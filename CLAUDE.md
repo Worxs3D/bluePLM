@@ -225,6 +225,7 @@ automatically:
 @.cursor/rules/plans.mdc
 @.cursor/rules/testing.mdc
 @.cursor/rules/ui-look.mdc
+@.cursor/rules/ui-style.mdc
 
 The points that most often get violated:
 
