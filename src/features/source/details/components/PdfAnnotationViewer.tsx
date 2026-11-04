@@ -14,18 +14,15 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
 import { useShortcuts } from '@/lib/keybindings'
+import { Loader2, Eye, ExternalLink } from 'lucide-react'
+
 import {
-  Loader2,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  Columns,
-  Eye,
-  ExternalLink,
-  MousePointerSquareDashed,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+  AnnotationBoxOverlay,
+  MAX_SCALE,
+  MIN_SCALE,
+  ZoomToolbar,
+  type FitMode,
+} from './PdfViewerParts'
 
 // The worker ships with the app (Vite emits it as an asset) so PDFs render offline and behind
 // firewalls; it used to load from unpkg at runtime (audit M7). Same pdfjs-dist version by construction.
@@ -64,6 +61,8 @@ export interface AnnotationOverlay {
   }
   color?: string
   resolved?: boolean
+  /** The thread's number, drawn as a pin on the box. */
+  label?: number
 }
 
 export interface PdfAnnotationViewerProps {
@@ -82,9 +81,26 @@ export interface PdfAnnotationViewerProps {
    * Read the bytes (base64) from somewhere other than the vault. The default, `readFile`, is
    * confined to the vault working folder; the review viewer passes the review PDF cache reader.
    */
-  readData?: (filePath: string) => Promise<{ success: boolean; data?: string; bytes?: Uint8Array } | undefined>
+  readData?: (
+    filePath: string,
+  ) => Promise<{ success: boolean; data?: string; bytes?: Uint8Array } | undefined>
   /** What the error state's "Open externally" does; default opens `filePath` in the default app. */
   onOpenExternally?: () => void
+  /** Where the toolbar sits (default bottom). Reviews put it on top, beside the title block. */
+  toolbarPosition?: 'top' | 'bottom'
+  /**
+   * Comment mode (drag draws a box), controlled by the parent when given; otherwise the viewer
+   * keeps it and starts with it on whenever comments can be created.
+   */
+  areaSelectActive?: boolean
+  onAreaSelectChange?: (active: boolean) => void
+  /** The Comment toggle's shortcut, shown inside it. */
+  commentKey?: string | null
+  /**
+   * Scroll to a comment's box and flash it: a new `tick` (the comment list was clicked) moves the
+   * view even when the id is the same as last time.
+   */
+  focusRequest?: { id: string; tick: number } | null
 }
 
 const readVaultFile: NonNullable<PdfAnnotationViewerProps['readData']> = (filePath) =>
@@ -94,11 +110,8 @@ const readVaultFile: NonNullable<PdfAnnotationViewerProps['readData']> = (filePa
 // Constants
 // ============================================================================
 
-const RESOLVED_OPACITY = 0.3
 const SCROLLBAR_WIDTH = 15
 const PAGE_GAP = 8
-const MIN_SCALE = 0.1
-const MAX_SCALE = 5
 
 // ============================================================================
 // Helpers
@@ -109,79 +122,6 @@ function base64ToUint8Array(base64: string): Uint8Array {
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
   return bytes
-}
-
-type FitMode = 'width' | 'page' | null
-
-// ============================================================================
-// AnnotationBoxOverlay — percentage-positioned, scale-independent
-// ============================================================================
-
-function AnnotationBoxOverlay({
-  position,
-  color = 'rgba(59, 130, 246, 0.8)',
-  isHovered = false,
-  isActive = false,
-  isPending = false,
-  opacity = 1,
-  onClick,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  position: {
-    x: number
-    y: number
-    width: number
-    height: number
-    pageWidth: number
-    pageHeight: number
-  }
-  color?: string
-  isHovered?: boolean
-  isActive?: boolean
-  isPending?: boolean
-  opacity?: number
-  onClick?: () => void
-  onMouseEnter?: () => void
-  onMouseLeave?: () => void
-}) {
-  const interactive = !isPending
-
-  return (
-    <div
-      data-annotation-overlay
-      style={{
-        position: 'absolute',
-        left: `${(position.x / position.pageWidth) * 100}%`,
-        top: `${(position.y / position.pageHeight) * 100}%`,
-        width: `${(position.width / position.pageWidth) * 100}%`,
-        height: `${(position.height / position.pageHeight) * 100}%`,
-        border: isActive ? '2px solid rgba(59, 130, 246, 1)' : `2px solid ${color}`,
-        background: color.replace(/[\d.]+\)$/, '0.15)'),
-        pointerEvents: interactive ? 'auto' : 'none',
-        cursor: interactive ? 'pointer' : 'default',
-        zIndex: isActive || isHovered ? 5 : 4,
-        opacity,
-        transition: 'outline 0.15s, box-shadow 0.15s, border-color 0.15s',
-        ...(isActive
-          ? {
-              outline: '2px solid rgba(59, 130, 246, 1)',
-              outlineOffset: '2px',
-              boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.3), 0 0 12px rgba(59, 130, 246, 0.4)',
-            }
-          : isHovered
-            ? {
-                outline: '2px solid rgba(59, 130, 246, 0.9)',
-                outlineOffset: '1px',
-                boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)',
-              }
-            : {}),
-      }}
-      onClick={interactive ? onClick : undefined}
-      onMouseEnter={interactive ? onMouseEnter : undefined}
-      onMouseLeave={interactive ? onMouseLeave : undefined}
-    />
-  )
 }
 
 // ============================================================================
@@ -195,6 +135,7 @@ interface PdfPageProps {
   pendingAnnotation?: NewAnnotationData | null
   hoveredAnnotationId?: string | null
   activeAnnotationId?: string | null
+  flashingAnnotationId?: string | null
   areaSelectActive: boolean
   onAnnotationCreate?: (annotation: NewAnnotationData) => void
   onAnnotationClick?: (annotationId: string) => void
@@ -208,6 +149,7 @@ const PdfPage = memo(function PdfPage({
   pendingAnnotation,
   hoveredAnnotationId,
   activeAnnotationId,
+  flashingAnnotationId,
   areaSelectActive,
   onAnnotationCreate,
   onAnnotationClick,
@@ -394,24 +336,21 @@ const PdfPage = memo(function PdfPage({
           {pageAnnotations.map((ann) => (
             <AnnotationBoxOverlay
               key={ann.id}
+              id={ann.id}
               position={ann.position}
               color={ann.color}
+              label={ann.label}
+              resolved={ann.resolved}
               isHovered={hoveredAnnotationId === ann.id}
               isActive={activeAnnotationId === ann.id}
-              opacity={ann.resolved ? RESOLVED_OPACITY : 1}
+              isFlashing={flashingAnnotationId === ann.id}
               onClick={() => onAnnotationClick?.(ann.id)}
               onMouseEnter={() => onAnnotationHover?.(ann.id)}
               onMouseLeave={() => onAnnotationHover?.(null)}
             />
           ))}
 
-          {pagePending && (
-            <AnnotationBoxOverlay
-              position={pagePending.position}
-              color="rgba(59, 130, 246, 0.8)"
-              isPending
-            />
-          )}
+          {pagePending && <AnnotationBoxOverlay position={pagePending.position} isPending />}
 
           {selRect && selRect.w > 0 && selRect.h > 0 && (
             <div
@@ -435,145 +374,6 @@ const PdfPage = memo(function PdfPage({
 })
 
 // ============================================================================
-// ZoomToolbar
-// ============================================================================
-
-function ZoomToolbar({
-  scale,
-  fitMode,
-  onScaleChange,
-  onFitWidth,
-  onFitPage,
-  areaSelectActive,
-  onAreaSelectToggle,
-  page,
-  pageCount,
-  onPage,
-}: {
-  scale: number
-  fitMode: FitMode
-  onScaleChange: (scale: number) => void
-  onFitWidth: () => void
-  onFitPage: () => void
-  areaSelectActive: boolean
-  /** Absent when the viewer cannot create annotations: no area-select toggle. */
-  onAreaSelectToggle?: () => void
-  page: number
-  pageCount: number
-  onPage: (page: number) => void
-}) {
-  const displayPercent = useMemo(() => {
-    if (fitMode === 'width') return t('source.pdfViewer.widthLabel')
-    if (fitMode === 'page') return t('source.pdfViewer.fitLabel')
-    return `${Math.round(scale * 100)}%`
-  }, [scale, fitMode])
-
-  return (
-    <div className="flex items-center justify-center gap-1 py-1.5 px-2 border-t border-plm-border bg-plm-panel">
-      {onAreaSelectToggle && (
-        <>
-          <button
-            onClick={onAreaSelectToggle}
-            className={`p-1 rounded transition-colors ${
-              areaSelectActive
-                ? 'bg-plm-accent/20 text-plm-accent'
-                : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-            }`}
-            title={areaSelectActive ? t('source.pdfViewer.disableAreaSelection') : t('source.pdfViewer.enableAreaSelection')}
-            aria-label={t('source.pdfViewer.toggleAreaSelection')}
-            aria-pressed={areaSelectActive}
-          >
-            <MousePointerSquareDashed size={15} />
-          </button>
-
-          <div className="w-px h-4 bg-plm-border mx-1" />
-        </>
-      )}
-
-      {pageCount > 1 && (
-        <>
-          <button
-            onClick={() => onPage(page - 1)}
-            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
-            title={t('source.outputs.previewPrevPage')}
-            aria-label={t('source.outputs.previewPrevPage')}
-            disabled={page <= 1}
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <span className="text-xs text-plm-fg-muted min-w-[4.5rem] text-center select-none tabular-nums">
-            {t('source.outputs.previewPageOf', { page, count: pageCount })}
-          </span>
-          <button
-            onClick={() => onPage(page + 1)}
-            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
-            title={t('source.outputs.previewNextPage')}
-            aria-label={t('source.outputs.previewNextPage')}
-            disabled={page >= pageCount}
-          >
-            <ChevronRight size={15} />
-          </button>
-
-          <div className="w-px h-4 bg-plm-border mx-1" />
-        </>
-      )}
-
-      <button
-        onClick={() => onScaleChange(Math.max(scale - 0.25, MIN_SCALE))}
-        className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
-        title={t('source.pdfViewer.zoomOutTitle')}
-        aria-label={t('source.pdfViewer.zoomOut')}
-        disabled={scale <= MIN_SCALE}
-      >
-        <ZoomOut size={15} />
-      </button>
-
-      <span className="text-xs text-plm-fg-muted w-12 text-center select-none tabular-nums">
-        {displayPercent}
-      </span>
-
-      <button
-        onClick={() => onScaleChange(Math.min(scale + 0.25, MAX_SCALE))}
-        className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-30"
-        title={t('source.pdfViewer.zoomInTitle')}
-        aria-label={t('source.pdfViewer.zoomIn')}
-        disabled={scale >= MAX_SCALE}
-      >
-        <ZoomIn size={15} />
-      </button>
-
-      <div className="w-px h-4 bg-plm-border mx-1" />
-
-      <button
-        onClick={onFitWidth}
-        className={`p-1 rounded transition-colors ${
-          fitMode === 'width'
-            ? 'bg-plm-accent/20 text-plm-accent'
-            : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-        }`}
-        title={t('source.pdfViewer.fitToWidth')}
-        aria-label={t('source.pdfViewer.fitToWidth')}
-      >
-        <Columns size={15} />
-      </button>
-
-      <button
-        onClick={onFitPage}
-        className={`p-1 rounded transition-colors ${
-          fitMode === 'page'
-            ? 'bg-plm-accent/20 text-plm-accent'
-            : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-        }`}
-        title={t('source.pdfViewer.fitToPage')}
-        aria-label={t('source.pdfViewer.fitToPage')}
-      >
-        <Maximize size={15} />
-      </button>
-    </div>
-  )
-}
-
-// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -591,6 +391,11 @@ export function PdfAnnotationViewer({
   activeAnnotationId,
   initialScale,
   onOpenExternally,
+  toolbarPosition = 'bottom',
+  areaSelectActive: areaSelectProp,
+  onAreaSelectChange,
+  commentKey,
+  focusRequest,
 }: PdfAnnotationViewerProps) {
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
@@ -598,7 +403,14 @@ export function PdfAnnotationViewer({
   const [pages, setPages] = useState<PDFPageProxy[]>([])
   const [scale, setScale] = useState(1)
   const [fitMode, setFitMode] = useState<FitMode>(initialScale === 'page-fit' ? 'page' : 'width')
-  const [areaSelectActive, setAreaSelectActive] = useState(!!onAnnotationCreate)
+  const [areaSelectOwn, setAreaSelectOwn] = useState(!!onAnnotationCreate)
+  const areaSelectActive = areaSelectProp ?? areaSelectOwn
+  const toggleAreaSelect = useCallback(() => {
+    const next = !areaSelectActive
+    if (areaSelectProp === undefined) setAreaSelectOwn(next)
+    onAreaSelectChange?.(next)
+  }, [areaSelectActive, areaSelectProp, onAreaSelectChange])
+  const [flashingId, setFlashingId] = useState<string | null>(null)
   const [localPending, setLocalPending] = useState<NewAnnotationData | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -630,7 +442,9 @@ export function PdfAnnotationViewer({
       }
 
       // pdf.js transfers the buffer it is given to its worker, so cached bytes go in as a copy.
-      task = getDocument({ data: result.bytes ? result.bytes.slice() : base64ToUint8Array(result.data ?? '') })
+      task = getDocument({
+        data: result.bytes ? result.bytes.slice() : base64ToUint8Array(result.data ?? ''),
+      })
       const doc = await task.promise
       if (cancelled) {
         doc.destroy()
@@ -853,6 +667,42 @@ export function PdfAnnotationViewer({
     [pages.length],
   )
 
+  // ── Scroll to a comment chosen in the list, and flash its box ──────────
+  const focusId = focusRequest?.id ?? null
+  const focusTick = focusRequest?.tick ?? 0
+  useEffect(() => {
+    if (!focusId) return
+    const target = annotations.find((a) => a.id === focusId)
+    const scrollEl = scrollRef.current
+    const pageEl = target
+      ? scrollEl?.querySelector<HTMLElement>(`[data-page-number="${target.pageNumber}"]`)
+      : null
+    if (!target || !scrollEl || !pageEl) return
+    const fraction = target.position.y / target.position.pageHeight
+    const boxTop = pageEl.offsetTop + fraction * pageEl.offsetHeight
+    const boxHeight = (target.position.height / target.position.pageHeight) * pageEl.offsetHeight
+    const visibleTop = scrollEl.scrollTop
+    const visibleBottom = visibleTop + scrollEl.clientHeight
+    if (boxTop < visibleTop + 24 || boxTop + boxHeight > visibleBottom - 24) {
+      scrollEl.scrollTo({
+        top: Math.max(0, boxTop - scrollEl.clientHeight / 3),
+        behavior: 'smooth',
+      })
+    }
+    const leftFraction = target.position.x / target.position.pageWidth
+    const boxLeft = pageEl.offsetLeft + leftFraction * pageEl.offsetWidth
+    if (
+      boxLeft < scrollEl.scrollLeft ||
+      boxLeft > scrollEl.scrollLeft + scrollEl.clientWidth - 40
+    ) {
+      scrollEl.scrollTo({ left: Math.max(0, boxLeft - 40), behavior: 'smooth' })
+    }
+    setFlashingId(focusId)
+    const handle = setTimeout(() => setFlashingId(null), 1200)
+    return () => clearTimeout(handle)
+    // A new tick is a new request; the annotation list changing alone is not.
+  }, [focusId, focusTick, pages.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Fit-to-width / Fit-to-page handlers ────────────────────────────────
   const handleFitWidth = useCallback(() => {
     const s = computeFitScale('width')
@@ -956,7 +806,9 @@ export function PdfAnnotationViewer({
           <Eye size={48} className="mx-auto mb-4 opacity-30" />
           <div>{error || t('source.pdfViewer.failedToLoadPdf')}</div>
           <button
-            onClick={() => (onOpenExternally ? onOpenExternally() : window.electronAPI?.openFile(filePath))}
+            onClick={() =>
+              onOpenExternally ? onOpenExternally() : window.electronAPI?.openFile(filePath)
+            }
             className="btn btn-secondary gap-2 mt-4"
           >
             <ExternalLink size={14} />
@@ -967,20 +819,43 @@ export function PdfAnnotationViewer({
     )
   }
 
+  const toolbar = (
+    <ZoomToolbar
+      position={toolbarPosition}
+      scale={scale}
+      fitMode={fitMode}
+      onScaleChange={(s) => {
+        setFitMode(null)
+        setScale(s)
+      }}
+      onFitWidth={handleFitWidth}
+      onFitPage={handleFitPage}
+      areaSelectActive={areaSelectActive}
+      onAreaSelectToggle={onAnnotationCreate ? toggleAreaSelect : undefined}
+      commentKey={commentKey}
+      page={currentPage}
+      pageCount={pages.length}
+      onPage={goToPage}
+    />
+  )
+
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col min-h-0">
+      {toolbarPosition === 'top' && toolbar}
       <div ref={pdfAreaRef} className="flex-1 min-h-0 relative">
         <div
           ref={scrollRef}
           className="absolute inset-0 overflow-auto"
-          style={{ background: 'var(--plm-bg-light)' }}
+          style={{
+            background: toolbarPosition === 'top' ? 'var(--ui-nav)' : 'var(--plm-bg-light)',
+          }}
         >
           <div
             // 'safe center' keeps pages centered when they fit, but left-aligns (and stays
             // scrollable) when a page is wider than the viewport. Plain 'items-center' makes the
             // left overflow unreachable once zoomed past the viewport width. Tailwind 3.4 has no
             // built-in 'safe' utility, so this uses an arbitrary property.
-            className="flex flex-col py-2 [align-items:safe_center]"
+            className="flex flex-col py-3 [align-items:safe_center]"
           >
             {pages.map((page) => (
               <PdfPage
@@ -991,6 +866,7 @@ export function PdfAnnotationViewer({
                 pendingAnnotation={effectivePending}
                 hoveredAnnotationId={hoveredAnnotationId}
                 activeAnnotationId={activeAnnotationId}
+                flashingAnnotationId={flashingId}
                 areaSelectActive={areaSelectActive}
                 onAnnotationCreate={onAnnotationCreate ? handleAnnotationCreate : undefined}
                 onAnnotationClick={onAnnotationClick}
@@ -1000,22 +876,7 @@ export function PdfAnnotationViewer({
           </div>
         </div>
       </div>
-
-      <ZoomToolbar
-        scale={scale}
-        fitMode={fitMode}
-        onScaleChange={(s) => {
-          setFitMode(null)
-          setScale(s)
-        }}
-        onFitWidth={handleFitWidth}
-        onFitPage={handleFitPage}
-        areaSelectActive={areaSelectActive}
-        onAreaSelectToggle={onAnnotationCreate ? () => setAreaSelectActive((prev) => !prev) : undefined}
-        page={currentPage}
-        pageCount={pages.length}
-        onPage={goToPage}
-      />
+      {toolbarPosition === 'bottom' && toolbar}
     </div>
   )
 }

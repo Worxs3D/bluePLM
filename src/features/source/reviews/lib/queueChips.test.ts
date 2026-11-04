@@ -91,12 +91,18 @@ describe('queue row chips', () => {
   })
 
   it('shows due and priority only while the review is open', () => {
-    const open = queueRowChips(row({ priority: 'high', dueDate: '2026-10-27', overdue: true }), '2026-10-28')
+    const open = queueRowChips(
+      row({ priority: 'high', dueDate: '2026-10-27', overdue: true }),
+      '2026-10-28',
+    )
     expect(open.due?.tone).toBe('overdue')
     expect(open.priority).toBe('high')
     expect(open.progress).toEqual({ decided: 1, total: 4 })
 
-    const done = queueRowChips(row({ status: 'approved', priority: 'high', dueDate: '2026-10-27' }), '2026-10-28')
+    const done = queueRowChips(
+      row({ status: 'approved', priority: 'high', dueDate: '2026-10-27' }),
+      '2026-10-28',
+    )
     expect(done.due).toBeNull()
     expect(done.priority).toBeNull()
   })

@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { mapDecisionKey, nextOwedItem, stepItem, type DecisionKeyEvent } from './decisionKeys'
 
 function key(k: string, extra: Partial<DecisionKeyEvent> = {}): DecisionKeyEvent {
-  return { key: k, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, inEditable: false, ...extra }
+  return {
+    key: k,
+    shiftKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    inEditable: false,
+    ...extra,
+  }
 }
 
 describe('mapDecisionKey', () => {

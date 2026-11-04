@@ -13,10 +13,21 @@ export interface ReviewStageSummary {
   approvedWaiting: number
   /** The whole review is approved and something is still in a review stage. */
   packageReady: boolean
+  /**
+   * "Move approved files" may be offered: some approved files wait, the rest is not approved yet,
+   * and the organization moves files one by one (`review_stage_package_policy = 'approved_only'`).
+   * Under the default `together` the package moves as one, so moving part of it early would
+   * contradict the policy even though `review_advance_files(.., true)` would accept it.
+   */
+  partialMoveAllowed: boolean
+  /** Approved files wait for the rest of the package (policy `together`, review not approved). */
+  heldForPackage: boolean
   /** Files already moved by this review, per state they went to. */
   moved: { state: string; count: number }[]
   /** Distinct next stages of the files still waiting. */
   nextStates: string[]
+  /** Distinct review stages the waiting files sit in ("In Review"). */
+  stages: string[]
   /** Something in this review touches a review stage: the bar is worth showing. */
   relevant: boolean
 }
@@ -36,12 +47,17 @@ export function summarizeReviewStage(
   const nextStates = [
     ...new Set(waiting.map((i) => i.nextStateName).filter((s): s is string => !!s)),
   ]
+  const packageReady = reviewOutcome === 'approved' && waiting.length > 0
+  const partial = approvedWaiting > 0 && !packageReady && reviewOutcome !== 'cancelled'
   return {
     inStage: waiting.length,
     approvedWaiting,
-    packageReady: reviewOutcome === 'approved' && waiting.length > 0,
+    packageReady,
+    partialMoveAllowed: partial && status.packagePolicy === 'approved_only',
+    heldForPackage: partial && status.packagePolicy !== 'approved_only',
     moved: [...movedBy].map(([state, count]) => ({ state, count })),
     nextStates,
+    stages: [...new Set(waiting.map((i) => i.stateName).filter((s): s is string => !!s))],
     relevant: status.workflowsEnabled && (waiting.length > 0 || movedBy.size > 0),
   }
 }

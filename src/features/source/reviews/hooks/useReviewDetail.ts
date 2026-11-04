@@ -7,9 +7,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { log } from '@/lib/logger'
+import { ReviewRpcError } from '@/lib/supabase/reviewMapping'
 import { getReviewDetail } from '@/lib/supabase/reviews'
 import { usePDMStore } from '@/stores/pdmStore'
-import type { ReviewDetail } from '@/types/reviews'
+import type { ReviewDetail, ReviewErrorCode } from '@/types/reviews'
 
 import { describeReviewError } from '../lib/reviewErrors'
 
@@ -17,6 +18,8 @@ export interface ReviewDetailState {
   detail: ReviewDetail | null
   loading: boolean
   error: string | null
+  /** The server's code for the error (`REVIEW_NOT_FOUND`: gone or not visible). */
+  errorCode: ReviewErrorCode | null
   reload: () => Promise<ReviewDetail | null>
 }
 
@@ -25,6 +28,7 @@ export function useReviewDetail(reviewId: string | null): ReviewDetailState {
   const [detail, setDetail] = useState<ReviewDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<ReviewErrorCode | null>(null)
   const generation = useRef(0)
 
   const load = useCallback(async (): Promise<ReviewDetail | null> => {
@@ -36,11 +40,13 @@ export function useReviewDetail(reviewId: string | null): ReviewDetailState {
       if (gen !== generation.current) return null
       setDetail(next)
       setError(null)
+      setErrorCode(null)
       return next
     } catch (error) {
       if (gen !== generation.current) return null
       log.warn('[Reviews]', 'Loading the review failed', { error, reviewId })
       setError(describeReviewError(error))
+      setErrorCode(error instanceof ReviewRpcError ? error.code : 'UNKNOWN')
       return null
     } finally {
       if (gen === generation.current) setLoading(false)
@@ -51,11 +57,12 @@ export function useReviewDetail(reviewId: string | null): ReviewDetailState {
   useEffect(() => {
     setDetail(null)
     setError(null)
+    setErrorCode(null)
   }, [reviewId])
 
   useEffect(() => {
     void load()
   }, [load, refreshTick])
 
-  return { detail, loading, error, reload: load }
+  return { detail, loading, error, errorCode, reload: load }
 }

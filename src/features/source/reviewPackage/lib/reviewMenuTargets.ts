@@ -38,3 +38,22 @@ export function reviewMenuTargets(
     ),
   }
 }
+
+/** Where "Show reviews of this file" goes. */
+export type ShowReviewsTarget =
+  | { kind: 'review'; reviewId: string }
+  | { kind: 'queue'; bucket: 'requested_by_me' | 'awaiting_me' }
+
+/**
+ * One open review holds the files: open it. Otherwise the queue, searched by file name, in the
+ * bucket that holds them: "My requests" when one of the holding reviews is the user's, else
+ * "Waiting on me". `reviews` null (not loaded, or the load failed) goes to the queue.
+ */
+export function showReviewsTarget(
+  fileIds: readonly string[],
+  reviews: readonly OpenReviewForFiles[] | null,
+): ShowReviewsTarget {
+  const holding = (reviews ?? []).filter((r) => r.containedFileIds.some((id) => fileIds.includes(id)))
+  if (holding.length === 1) return { kind: 'review', reviewId: holding[0].reviewId }
+  return { kind: 'queue', bucket: holding.some((r) => r.requestedByMe) ? 'requested_by_me' : 'awaiting_me' }
+}

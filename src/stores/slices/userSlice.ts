@@ -2,6 +2,8 @@ import { StateCreator } from 'zustand'
 import { resetLoadFilesCoordination } from '@/hooks/loadFilesCoordination'
 import { isAdminUser } from '@/lib/isAdminUser'
 import { resetOutputQueue } from '@/lib/outputs/queueReset'
+import { resetViewedItems } from '@/lib/reviewViewedItems'
+import { DEFAULT_REVIEW_QUEUE_VIEW } from './reviewsSlice'
 
 import type { PDMStoreState, UserSlice, ImpersonatedUser } from '../types'
 import type { User, Organization } from '../../types/pdm'
@@ -132,6 +134,8 @@ export const createUserSlice: StateCreator<
   },
   resetSessionState: (options) => {
     get().resetFileSessionState()
+    // Which review files were opened belongs to this session's user.
+    resetViewedItems()
     const state = get()
     state.clearOrganizationData()
     state.clearOrganizationMetadata()
@@ -156,10 +160,14 @@ export const createUserSlice: StateCreator<
       deniedModules: [],
       apiServerUrl: null,
       orgColorSwatches: [],
-      // Drafts stay (they are keyed by user); what is open belongs to the session.
+      // Drafts stay (they are keyed by user and organization); what is open belongs to the session.
       reviewPackagePaneOpen: false,
+      reviewPackageLastSent: null,
       activeReviewId: null,
       activeReviewItemId: null,
+      activeGateReviewId: null,
+      reviewQueueView: DEFAULT_REVIEW_QUEUE_VIEW,
+      reviewAddConfirm: null,
     })
   },
   signOut: () => get().resetSessionState(),

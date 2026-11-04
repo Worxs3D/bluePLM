@@ -3,7 +3,7 @@
  * open.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { log } from '@/lib/logger'
 import { getOrgUsers } from '@/lib/supabase'
@@ -27,10 +27,13 @@ export interface ReviewerDirectory {
   teams: TeamWithMembers[]
   loading: boolean
   error: string | null
+  /** Read the directory again (after a failure). */
+  reload: () => void
 }
 
 export function useReviewerDirectory(orgId: string | null | undefined): ReviewerDirectory {
-  const [directory, setDirectory] = useState<ReviewerDirectory>({
+  const [attempt, setAttempt] = useState(0)
+  const [directory, setDirectory] = useState<Omit<ReviewerDirectory, 'reload'>>({
     users: [],
     teams: [],
     loading: false,
@@ -57,7 +60,8 @@ export function useReviewerDirectory(orgId: string | null | undefined): Reviewer
     return () => {
       cancelled = true
     }
-  }, [orgId])
+  }, [orgId, attempt])
 
-  return directory
+  const reload = useCallback(() => setAttempt((n) => n + 1), [])
+  return { ...directory, reload }
 }

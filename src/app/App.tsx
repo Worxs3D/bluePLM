@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { installReviewDecisionUnloadGuard } from '@/lib/reviewDecisionFlush'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
@@ -276,6 +277,9 @@ export function App() {
       sessionGeneration,
     }
   }, [sessionGeneration, user?.id])
+
+  // Closing the window with review decisions still in their undo window sends them first.
+  useEffect(() => installReviewDecisionUnloadGuard(() => window.close()), [])
 
   useSessionHeartbeat(user, organization)
   useBackupHeartbeat(organization?.id)

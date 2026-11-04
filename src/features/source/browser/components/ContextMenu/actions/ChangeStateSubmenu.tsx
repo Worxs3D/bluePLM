@@ -146,9 +146,13 @@ export function ChangeStateSubmenu({
     )
     onRefresh(true)
     const target = await readTargetState(transition.to_state_id)
-    // Into a review stage: put the file in the review package so its reviewers can be chosen.
-    // The review's approval later moves it on (Settings > File Workflows).
-    if (target.isReviewStage) void addFilesToReviewPackage([targetFile])
+    // Into a review stage: put the file in the review draft; the toast's button opens the pane so
+    // its reviewers can be chosen. The review's approval later moves it on (Settings > File Workflows).
+    if (target.isReviewStage)
+      void addFilesToReviewPackage([targetFile], {
+        openPane: false,
+        actionLabel: t('reviewBuilder.toast.chooseReviewers'),
+      })
     // Released (schema 509): a released drawing gets its PDF and STEP, missing ones only.
     if (target.releasesVersion) queueReleasedDrawingOutputs([targetFile])
   }
@@ -160,6 +164,8 @@ export function ChangeStateSubmenu({
       fileName: targetFile.name,
       version: targetFile.pdmData?.version ?? null,
       count: 1,
+      // The dialog's other way out: send the drawing for review instead of forcing it.
+      onRequestReview: () => void addFilesToReviewPackage([targetFile]),
     })
     if (!reason) return
     const outcome = await forceTransition(targetFile, transition.transition_id, reason)

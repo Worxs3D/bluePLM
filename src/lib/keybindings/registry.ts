@@ -107,6 +107,8 @@ const actions = [
   { id: 'reviews.reject', category: 'reviews', scope: 'reviews', defaults: ['R'], noRepeat: true },
   { id: 'reviews.nextItem', category: 'reviews', scope: 'reviews', defaults: ['J'] },
   { id: 'reviews.previousItem', category: 'reviews', scope: 'reviews', defaults: ['K'] },
+  { id: 'reviews.nextReview', category: 'reviews', scope: 'reviews', defaults: ['N'], noRepeat: true },
+  { id: 'reviews.markup', category: 'reviews', scope: 'reviews', defaults: ['M'], noRepeat: true },
 
   // ── PDF viewer ─────────────────────────────────────────────────────────
   { id: 'pdfViewer.zoomIn', category: 'pdfViewer', scope: 'pdfViewer', defaults: ['Mod+=', 'Mod+Plus', 'Mod+Shift+Plus'] },

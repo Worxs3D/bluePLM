@@ -30,6 +30,7 @@ interface FileCommentRow {
   resolved_by: string | null
   resolved_at: string | null
   file_version: number | null
+  review_id?: string | null
   edited_at: string | null
   created_at: string
   user: { email: string; full_name: string | null; avatar_url: string | null } | null
@@ -52,6 +53,7 @@ function toFileAnnotation(row: FileCommentRow): FileAnnotation {
     resolved_by: row.resolved_by,
     resolved_at: row.resolved_at,
     file_version: row.file_version,
+    review_id: row.review_id ?? null,
     edited_at: row.edited_at,
     created_at: row.created_at,
     user: row.user ?? undefined,
@@ -142,6 +144,7 @@ export async function getFileAnnotations(
       resolved_by,
       resolved_at,
       file_version,
+      review_id,
       edited_at,
       created_at,
       user:app_user!user_id(email, full_name, avatar_url)

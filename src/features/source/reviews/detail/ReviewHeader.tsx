@@ -1,236 +1,127 @@
 /**
- * The open review's header: who asked, the message, due date, priority, round and mode, who is
- * reviewing, and the requester's actions (edit priority / due date, resubmit, cancel), plus
- * "Download package for SOLIDWORKS" for anyone who can see the review.
+ * The open review's header: back, the title, one line saying whose move it is and the review's
+ * facts (requester, when, due, round, who decides, priority), and the reviewers of this round, each
+ * with their status in words (never colour alone; review UX audit F14). The pane passes the one
+ * primary action for the viewer's next move and the overflow menu.
  */
 
-import { useState } from 'react'
-import { ArrowLeft, Ban, FolderDown, Loader2, RotateCcw } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import type { ReactNode } from 'react'
+import { ArrowLeft } from 'lucide-react'
 
-import { Dialog } from '@/components/core/Dialog'
-import { executeCommand } from '@/lib/commands'
+import { IconButton, MetaLine } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
-import { chooseReviewPackageDestination } from '@/lib/reviewPackage'
-import { cancelReview, updateReviewMeta } from '@/lib/supabase/reviews'
-import { usePDMStore } from '@/stores/pdmStore'
-import type { ReviewDetail, ReviewPriority } from '@/types/reviews'
+import type { ReviewDetail } from '@/types/reviews'
 
-import { DueDateChip, PriorityChip, StatusChip } from '../components/QueueChips'
+import { TONE_CLASS } from '../components/QueueRow'
 import { dueChip, formatDateOnly, localDateString } from '../lib/queueChips'
-import { describeReviewError } from '../lib/reviewErrors'
-
-const PRIORITIES: ReviewPriority[] = ['low', 'normal', 'high', 'urgent']
-
-const REVIEWER_STATUS_CLASS: Record<string, string> = {
-  pending: 'text-plm-info',
-  approved: 'text-plm-success',
-  changes_requested: 'text-plm-warning',
-  rejected: 'text-plm-error',
-  cancelled: 'text-plm-fg-muted',
-}
+import { intlLocale, relativeTime } from '../lib/reviewDates'
+import {
+  describeNextMove,
+  displayName,
+  isReviewOpen,
+  nextMoveTone,
+  type ReviewNextMove,
+} from '../lib/reviewState'
 
 interface ReviewHeaderProps {
   detail: ReviewDetail
+  move: ReviewNextMove
   onBack: () => void
-  onResubmit: () => void
-  onChanged: () => void
+  /** The primary action for the viewer's next move, and the overflow menu. */
+  actions?: ReactNode
 }
 
-export function ReviewHeader({ detail, onBack, onResubmit, onChanged }: ReviewHeaderProps) {
-  const addToast = usePDMStore((s) => s.addToast)
-  const { review, me, reviewers } = detail
-  const [busy, setBusy] = useState(false)
-  const [cancelOpen, setCancelOpen] = useState(false)
-  const [reason, setReason] = useState('')
-  const [downloading, setDownloading] = useState(false)
+const STATUS_TONE: Record<string, string> = {
+  pending: 'text-ui-fg-secondary',
+  approved: 'text-ui-success',
+  changes_requested: 'text-ui-warning',
+  rejected: 'text-ui-danger',
+  cancelled: 'text-ui-fg-tertiary',
+}
 
-  const open = review.status === 'open' || review.status === 'changes_requested'
-  const chip = open ? dueChip(review.dueDate, localDateString(), review.overdue) : null
-  const requester = review.requestedBy?.fullName || review.requestedBy?.email
-  const currentReviewers = reviewers.filter((r) => r.roundNumber === review.currentRound)
+export function ReviewHeader({ detail, move, onBack, actions }: ReviewHeaderProps) {
+  const { review, reviewers } = detail
+  const open = isReviewOpen(review.status)
+  const requester = displayName(review.requestedBy)
+  const current = reviewers.filter((r) => r.roundNumber === review.currentRound)
+  const due = open ? dueChip(review.dueDate, localDateString(), review.overdue) : null
+  const dueText = review.dueDate
+    ? due?.tone === 'overdue'
+      ? t('reviewDetail.meta.overdue', { date: formatDateOnly(review.dueDate, intlLocale()) })
+      : t('reviewDetail.meta.due', { date: formatDateOnly(review.dueDate, intlLocale()) })
+    : null
 
-  const updateMeta = async (patch: { priority?: ReviewPriority; dueDate?: string | null }) => {
-    setBusy(true)
-    try {
-      await updateReviewMeta(review.id, patch)
-      onChanged()
-    } catch (error) {
-      addToast('error', describeReviewError(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const doCancel = async () => {
-    setBusy(true)
-    try {
-      await cancelReview(review.id, reason.trim() || null)
-      addToast('success', t('reviewDetail.cancel.done'))
-      setCancelOpen(false)
-      setReason('')
-      onChanged()
-    } catch (error) {
-      addToast('error', describeReviewError(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const download = async () => {
-    const destination = await chooseReviewPackageDestination()
-    if (!destination) return
-    setDownloading(true)
-    try {
-      await executeCommand('download-review-package', { reviewId: review.id, destination })
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  const ACTION = 'flex items-center gap-1 px-2 py-1 text-[11px] rounded disabled:opacity-50'
+  const facts = [
+    requester
+      ? t('reviewDetail.meta.requestedBy', {
+          name: requester,
+          time: relativeTime(review.requestedAt),
+        })
+      : null,
+    dueText ? { text: dueText, danger: due?.tone === 'overdue' } : null,
+    review.currentRound > 1 ? t('reviewDetail.meta.round', { round: review.currentRound }) : null,
+    t(`reviewDetail.mode.${review.mode}`),
+    open && review.priority !== 'normal'
+      ? t('reviewDetail.meta.priority', { priority: t(`reviewQueue.priority.${review.priority}`) })
+      : null,
+  ]
+    .filter((f): f is string | { text: string; danger: boolean } => !!f)
+    .map((f) => (typeof f === 'string' ? { text: f, danger: false } : f))
 
   return (
-    <div className="border-b border-plm-border bg-plm-sidebar px-3 py-2 space-y-1.5 flex-shrink-0">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
+    <div className="flex-shrink-0 border-b border-ui-border bg-ui-bg px-4 py-3 font-ui">
+      <div className="flex items-start gap-2">
+        <IconButton
+          label={t('reviewDetail.back')}
+          icon={<ArrowLeft size={16} />}
           onClick={onBack}
-          className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-highlight"
-          title={t('reviewDetail.back')}
-        >
-          <ArrowLeft size={14} />
-        </button>
-        <h2 className="text-sm font-medium text-plm-fg truncate">{review.title}</h2>
-        <StatusChip status={review.status} />
-        {review.priority !== 'normal' && <PriorityChip priority={review.priority} />}
-        {chip && review.dueDate && <DueDateChip chip={chip} dueDate={review.dueDate} />}
-
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => void download()}
-            disabled={downloading}
-            className={`${ACTION} bg-plm-bg-light text-plm-fg hover:bg-plm-highlight border border-plm-border`}
-            title={t('reviewDetail.download.hint')}
+          className="mt-0.5"
+        />
+        <div className="min-w-0 flex-1">
+          <h2
+            className="truncate text-[16px] font-semibold leading-7 text-ui-fg"
+            title={review.title}
           >
-            {downloading ? <Loader2 size={12} className="animate-spin" /> : <FolderDown size={12} />}
-            {t('reviewDetail.download.button')}
-          </button>
-          {me.canResubmit && (
-            <button
-              type="button"
-              onClick={onResubmit}
-              className={`${ACTION} bg-plm-accent/15 text-plm-accent hover:bg-plm-accent/25`}
-            >
-              <RotateCcw size={12} />
-              {t('reviewDetail.resubmit.button')}
-            </button>
-          )}
-          {me.canCancel && open && (
-            <button
-              type="button"
-              onClick={() => setCancelOpen(true)}
-              className={`${ACTION} bg-plm-error/10 text-plm-error hover:bg-plm-error/20`}
-            >
-              <Ban size={12} />
-              {t('reviewDetail.cancel.button')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-plm-fg-muted">
-        {requester && <span>{t('reviewQueue.requestedBy', { name: requester })}</span>}
-        {review.requestedAt && (
-          <span>{formatDistanceToNow(new Date(review.requestedAt), { addSuffix: true })}</span>
-        )}
-        <span>{t('reviewQueue.round', { round: review.currentRound })}</span>
-        <span>{t(`reviewDetail.mode.${review.mode}`)}</span>
-        {review.dueDate && (
-          <span>{t('reviewDetail.dueOn', { date: formatDateOnly(review.dueDate) })}</span>
-        )}
-        {me.canEditMeta && open && (
-          <span className="flex items-center gap-1">
-            <select
-              value={review.priority}
-              disabled={busy}
-              onChange={(e) => void updateMeta({ priority: e.target.value as ReviewPriority })}
-              className="px-1 py-0.5 text-[11px] bg-plm-bg-light border border-plm-border rounded"
-              aria-label={t('reviewBuilder.meta.priority')}
-            >
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {t(`reviewQueue.priority.${p}`)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={review.dueDate ?? ''}
-              min={localDateString()}
-              disabled={busy}
-              onChange={(e) => void updateMeta({ dueDate: e.target.value || null })}
-              className="px-1 py-0.5 text-[11px] bg-plm-bg-light border border-plm-border rounded"
-              aria-label={t('reviewBuilder.meta.dueDate')}
+            {review.title}
+          </h2>
+          <p className="text-[13px] leading-5 text-ui-fg-secondary">
+            <MetaLine
+              parts={[
+                <span key="move" className={`font-medium ${TONE_CLASS[nextMoveTone(move)]}`}>
+                  {describeNextMove(move)}
+                </span>,
+                ...facts.map((f, i) => (
+                  <span key={i} className={f.danger ? 'text-ui-danger' : undefined}>
+                    {f.text}
+                  </span>
+                )),
+              ]}
             />
-          </span>
-        )}
+          </p>
+          {current.length > 0 && (
+            <p className="mt-0.5 text-[13px] leading-5">
+              <span className="text-ui-fg-tertiary">{t('reviewDetail.reviewers')}: </span>
+              <MetaLine
+                parts={current.map((r, index) => (
+                  <span key={`${r.user?.id ?? 'unknown'}-${index}`}>
+                    <span className={r.withdrawnReason ? 'text-ui-fg-tertiary' : 'text-ui-fg'}>
+                      {displayName(r.user) ?? t('reviewDetail.unknownUser')}
+                    </span>{' '}
+                    <span
+                      className={r.withdrawnReason ? 'text-ui-fg-tertiary' : STATUS_TONE[r.status]}
+                    >
+                      {r.withdrawnReason
+                        ? t(`reviewDetail.reviewerWithdrawn.${r.withdrawnReason}`)
+                        : t(`reviewDetail.reviewerStatus.${r.status}`)}
+                    </span>
+                  </span>
+                ))}
+              />
+            </p>
+          )}
+        </div>
+        {actions && <div className="flex flex-shrink-0 items-center gap-1.5">{actions}</div>}
       </div>
-
-      {review.message && (
-        <p className="text-xs text-plm-fg whitespace-pre-wrap border-l-2 border-plm-accent/40 pl-2">
-          {review.message}
-        </p>
-      )}
-      {review.status === 'cancelled' && review.cancelReason && (
-        <p className="text-[11px] text-plm-fg-muted">
-          {t('reviewDetail.cancel.reason', { reason: review.cancelReason })}
-        </p>
-      )}
-
-      {currentReviewers.length > 0 && (
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px]">
-          {currentReviewers.map((r, index) => (
-            <span key={`${r.user?.id ?? 'unknown'}-${index}`} className={REVIEWER_STATUS_CLASS[r.status]}>
-              {r.user?.fullName || r.user?.email || t('reviewDetail.unknownUser')} ·{' '}
-              {r.withdrawnReason
-                ? t(`reviewDetail.reviewerWithdrawn.${r.withdrawnReason}`)
-                : t(`reviewDetail.reviewerStatus.${r.status}`)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={cancelOpen} onClose={() => setCancelOpen(false)} title={t('reviewDetail.cancel.title')}>
-        <div className="space-y-3">
-          <p className="text-sm text-plm-fg-muted">{t('reviewDetail.cancel.message')}</p>
-          <textarea
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={2}
-            placeholder={t('reviewDetail.cancel.reasonPlaceholder')}
-            className="w-full px-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setCancelOpen(false)}
-              className="px-3 py-1.5 text-xs rounded text-plm-fg-muted hover:bg-plm-highlight"
-            >
-              {t('reviewDetail.cancel.keep')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void doCancel()}
-              disabled={busy}
-              className="px-3 py-1.5 text-xs rounded bg-plm-error text-white hover:bg-plm-error/90 disabled:opacity-50"
-            >
-              {t('reviewDetail.cancel.confirm')}
-            </button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   )
 }

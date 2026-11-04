@@ -1,12 +1,13 @@
 /**
  * The release gate's warning (schema 509): a drawing version without an approved review is being
  * released. Releasing anyway bypasses the release process, so it needs a reason, which is stored
- * with the release and shown in version history and the History view.
+ * with the release and shown in version history and the History view. The other way out is to
+ * request a review of the drawing instead (`onRequestReview`).
  */
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
 
 import { Dialog } from '@/components/core/Dialog'
+import { Button, TextArea } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { normalizeReason } from '@/features/source/releases/releaseModel'
 
@@ -17,9 +18,18 @@ export interface ForcedReleaseDialogProps {
   count: number
   onCancel: () => void
   onConfirm: (reason: string) => void
+  /** Offer "Request a review instead"; called after the dialog closes. */
+  onRequestReview?: () => void
 }
 
-export function ForcedReleaseDialog({ fileName, version, count, onCancel, onConfirm }: ForcedReleaseDialogProps) {
+export function ForcedReleaseDialog({
+  fileName,
+  version,
+  count,
+  onCancel,
+  onConfirm,
+  onRequestReview,
+}: ForcedReleaseDialogProps) {
   const [reason, setReason] = useState('')
   const normalized = normalizeReason(reason)
 
@@ -29,15 +39,35 @@ export function ForcedReleaseDialog({ fileName, version, count, onCancel, onConf
       : t('releases.forceBody', { name: fileName, version: version ?? '?' })
 
   return (
-    <Dialog open onClose={onCancel} title={t('releases.forceTitle')}>
-      <div className="flex gap-3">
-        <AlertTriangle size={24} className="text-plm-error flex-shrink-0" />
-        <p className="text-sm text-plm-fg-muted">{message}</p>
-      </div>
-      <label className="block text-xs text-plm-fg-muted mt-4 mb-1" htmlFor="forced-release-reason">
+    <Dialog
+      open
+      onClose={onCancel}
+      title={t('releases.forceTitle')}
+      footer={
+        <>
+          {onRequestReview && (
+            <Button variant="secondary" className="mr-auto" onClick={onRequestReview}>
+              {t('reviewBuilder.forced.requestReview')}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onCancel}>
+            {t('releases.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={!normalized}
+            onClick={() => normalized && onConfirm(normalized)}
+          >
+            {t('releases.forceConfirm')}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-ui-fg-secondary">{message}</p>
+      <label className="mb-1 mt-4 block text-[13px] text-ui-fg-secondary" htmlFor="forced-release-reason">
         {t('releases.reasonLabel')}
       </label>
-      <textarea
+      <TextArea
         id="forced-release-reason"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
@@ -48,27 +78,10 @@ export function ForcedReleaseDialog({ fileName, version, count, onCancel, onConf
           }
         }}
         placeholder={t('releases.reasonPlaceholder')}
-        className="w-full bg-plm-input border border-plm-border rounded px-2 py-1.5 text-sm text-plm-fg resize-none focus:outline-none focus:border-plm-accent"
+        className="resize-none"
         rows={3}
         autoFocus
       />
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-sm text-plm-fg-muted hover:bg-plm-bg-tertiary rounded"
-        >
-          {t('releases.cancel')}
-        </button>
-        <button
-          type="button"
-          disabled={!normalized}
-          onClick={() => normalized && onConfirm(normalized)}
-          className="px-4 py-2 text-sm text-white rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {t('releases.forceConfirm')}
-        </button>
-      </div>
     </Dialog>
   )
 }

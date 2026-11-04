@@ -1,7 +1,6 @@
 import { Profiler, Suspense, lazy, useEffect, useRef, type ProfilerOnRenderCallback } from 'react'
-import { Loader2, FileSearch } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { log } from '@/lib/logger'
-import { t } from '@/lib/i18n'
 import { REACT_COMMIT_THRESHOLD_MS } from '@/lib/performanceThresholds'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useLoadFiles, useVaultManagement } from '@/hooks'
@@ -27,8 +26,8 @@ const GoogleDrivePanel = lazy(() =>
 const WorkflowsView = lazy(() =>
   import('@/features/source/workflows/WorkflowsView').then((m) => ({ default: m.WorkflowsView })),
 )
-const ReviewDetailPane = lazy(() =>
-  import('@/features/source/reviews').then((m) => ({ default: m.ReviewDetailPane })),
+const ReviewsMain = lazy(() =>
+  import('@/features/source/reviews').then((m) => ({ default: m.ReviewsMain })),
 )
 const ItemBrowserView = lazy(() =>
   import('@/features/items/itemBrowser').then((m) => ({ default: m.ItemBrowserView })),
@@ -82,7 +81,6 @@ export function MainContent({
   onResizeDetailsStart,
   handleChangeOrg,
 }: MainContentProps) {
-  const activeReviewId = usePDMStore((s) => s.activeReviewId)
   const extensionWorkspace = useExtensionWorkspace(activeView)
 
   // Call hooks directly instead of receiving as props
@@ -136,14 +134,10 @@ export function MainContent({
           <ItemBrowserView />
         </Suspense>
       ) : activeView === 'reviews' ? (
-        /* Reviews View - the open review, or an empty state */
-        activeReviewId ? (
-          <Suspense fallback={<ContentLoading />}>
-            <ReviewDetailPane />
-          </Suspense>
-        ) : (
-          <ReviewEmptyState />
-        )
+        /* Reviews View - an open gate or review, or the overview of what waits */
+        <Suspense fallback={<ContentLoading />}>
+          <ReviewsMain />
+        </Suspense>
       ) : (
         <>
           {/* File Pane (lazy loaded) */}
@@ -166,21 +160,6 @@ export function MainContent({
           )}
         </>
       )}
-    </div>
-  )
-}
-
-/** Placeholder shown in the main content area when no review item is selected */
-function ReviewEmptyState() {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-plm-bg text-center px-6">
-      <div className="w-16 h-16 rounded-full bg-plm-accent/10 flex items-center justify-center mb-4">
-        <FileSearch size={28} className="text-plm-accent" />
-      </div>
-      <p className="text-sm font-medium text-plm-fg">{t('reviewQueue.emptyMain.title')}</p>
-      <p className="text-xs text-plm-fg-muted mt-1.5 max-w-[260px]">
-        {t('reviewQueue.emptyMain.hint')}
-      </p>
     </div>
   )
 }

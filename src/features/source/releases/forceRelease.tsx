@@ -26,11 +26,16 @@ import {
   type LegacyState,
 } from './releaseModel'
 
-/** Ask for the reason of a forced release. Resolves with the trimmed reason, or null on cancel. */
+/**
+ * Ask for the reason of a forced release. Resolves with the trimmed reason, or null on cancel.
+ * With `onRequestReview` the dialog also offers "Request a review instead", which resolves null
+ * and then calls it.
+ */
 export function requestForcedReleaseReason(opts: {
   fileName: string | null
   version: number | null
   count: number
+  onRequestReview?: () => void
 }): Promise<string | null> {
   return new Promise((resolve) => {
     const host = document.createElement('div')
@@ -54,6 +59,14 @@ export function requestForcedReleaseReason(opts: {
         count={opts.count}
         onCancel={() => finish(null)}
         onConfirm={(reason) => finish(reason)}
+        onRequestReview={
+          opts.onRequestReview
+            ? () => {
+                finish(null)
+                opts.onRequestReview?.()
+              }
+            : undefined
+        }
       />,
     )
   })

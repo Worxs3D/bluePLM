@@ -24,3 +24,24 @@ export function reviewToastType(type: string): ToastType {
 export function isReviewNotification(row: { entity_type: string | null; type: string }): boolean {
   return row.entity_type === 'review' || row.type.startsWith('review_')
 }
+
+/** The fields of a notification row a review toast uses. */
+export interface ReviewToastRow {
+  type: string
+  title: string
+  message: string | null
+  entity_type: string | null
+  entity_id: string | null
+}
+
+/** More than this many in one burst become one summary toast. */
+export const COALESCE_OVER = 3
+
+/** One toast per row, or one summary for a burst. */
+export function coalesceNotifications<T extends ReviewToastRow>(
+  rows: readonly T[],
+): { kind: 'each'; rows: T[] } | { kind: 'summary'; count: number } {
+  return rows.length > COALESCE_OVER
+    ? { kind: 'summary', count: rows.length }
+    : { kind: 'each', rows: [...rows] }
+}
