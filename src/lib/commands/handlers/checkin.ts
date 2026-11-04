@@ -46,6 +46,7 @@ import {
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { queueCheckinOutputs } from '@/lib/outputs/autoQueue'
+import { notifyCheckoutEnd } from '../checkoutLifecycle'
 import { isRetryableError, getBackoffDelay, sleep } from '../../network'
 import { FileOperationTracker } from '../../fileOperationTracker'
 import {
@@ -1972,6 +1973,8 @@ export const checkinCommand: Command<CheckinParams> = {
     // Automatic PDF / STEP outputs of what was checked in: queued in the background once the
     // references are recorded, never awaited (src/lib/outputs/autoQueue.ts).
     queueCheckinOutputs(successfulFiles, referencesExtracted)
+    // Inspection reports of the checked-out copies move to the versions just made (workingCopyPin.ts).
+    notifyCheckoutEnd('checkin', successfulFiles, referencesExtracted)
 
     const { duration } = progress.finish()
 

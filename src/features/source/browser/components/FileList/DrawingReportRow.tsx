@@ -149,6 +149,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
         received && report.returnedAt
           ? t('source.inspection.rptReturnedOn', { date: formatDateTime(report.returnedAt) })
           : null,
+        report.workingCopy ? t('source.inspection.rptWorkingCopyTitle', { version: versionNumber ?? '' }) : null,
         reportTypeName(report),
         reportTypeDetail(report, () => null),
         report.title || report.templateName,
@@ -218,6 +219,11 @@ export const DrawingReportRow = memo(function DrawingReportRow({
                 // Type and status go after the name only when their columns are hidden.
                 after={
                   <>
+                    {report.workingCopy && (
+                      <ChildChip title={t('source.inspection.rptWorkingCopyTitle', { version: versionNumber ?? '' })}>
+                        {t('source.inspection.rptWorkingCopyBadge')}
+                      </ChildChip>
+                    )}
                     {results && <ChildChip title={results}>{results}</ChildChip>}
                     {!showsType && typeChip}
                     {!showsState && statusBadge}

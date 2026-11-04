@@ -75,10 +75,12 @@ interface InspectionReportRow {
   sample_columns: number | null
   // Schema 508.
   supersedes_report_id: string | null
+  // Schema 510.
+  working_copy: boolean
 }
 
 const REPORT_COLUMNS =
-  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at, report_type, fai_scope, fai_reason, fai_baseline_version_id, lot_number, lot_size, sampling, po_number, supplier_name, ncr_reference, characteristic_ids, sample_columns, supersedes_report_id'
+  'id, org_id, file_id, file_version_id, template_id, template_name, template_hash, report_number, sequence, title, status, storage_hash, file_size, characteristic_count, drawing_pdf_hash, returned_hash, returned_at, returned_by, results, results_summary, notes, created_by, created_at, updated_by, updated_at, report_type, fai_scope, fai_reason, fai_baseline_version_id, lot_number, lot_size, sampling, po_number, supplier_name, ncr_reference, characteristic_ids, sample_columns, supersedes_report_id, working_copy'
 
 const FAI_REASON_SET: ReadonlySet<string> = new Set([
   'new_part',
@@ -212,6 +214,7 @@ export function toInspectionReport(row: InspectionReportRow): InspectionReport {
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
     supersedesReportId: row.supersedes_report_id ?? null,
+    workingCopy: row.working_copy === true,
     ...toReportTypeFields(row),
   }
 }
@@ -327,6 +330,7 @@ export async function createInspectionReport(
       results_summary: input.resultsSummary ?? null,
       notes: input.notes ?? null,
       supersedes_report_id: input.supersedesReportId ?? null,
+      ...(input.workingCopy ? { working_copy: true } : {}),
       ...typeInsertColumns(input.type),
     })
     .select(REPORT_COLUMNS)
@@ -349,6 +353,45 @@ export async function updateInspectionReport(
   if (error) throw reportWriteError(error, patch.reportNumber)
   if (!data) throw new Error('Report not found, or you do not have permission to edit it')
   return toInspectionReport(data as InspectionReportRow)
+}
+
+export interface PinInspectionReportInput {
+  reportId: string
+  /** The version the check-in made from the checked-out copy (the base version when it made none). */
+  fileVersionId: string
+  /** The included characteristics as snapshot rows of that version; null = every row. */
+  characteristicIds: string[] | null
+  /** The workbook rebuilt for that version, uploaded first. */
+  storageHash: string
+  fileSize: number
+  characteristicCount: number
+  /** The version's stored drawing PDF the workbook embeds, or null (pages from the local drawing). */
+  drawingPdfHash: string | null
+  /** The template the workbook was rebuilt with. */
+  templateId: string | null
+  templateName: string | null
+  templateHash: string | null
+}
+
+/**
+ * Make a report of a checked-out copy a report of the version its check-in made
+ * (`inspection_report_pin()`, schema 510). Throws with the database's hint as `code`
+ * (`NOT_CHECKED_IN`, `WRONG_VERSION`, `NOT_WORKING_COPY`, ...).
+ */
+export async function pinInspectionReport(input: PinInspectionReportInput): Promise<void> {
+  const { error } = await db().rpc('inspection_report_pin', {
+    p_report_id: input.reportId,
+    p_file_version_id: input.fileVersionId,
+    p_characteristic_ids: input.characteristicIds,
+    p_storage_hash: input.storageHash,
+    p_file_size: input.fileSize,
+    p_characteristic_count: input.characteristicCount,
+    p_drawing_pdf_hash: input.drawingPdfHash,
+    p_template_id: input.templateId,
+    p_template_name: input.templateName,
+    p_template_hash: input.templateHash,
+  })
+  if (error) throw Object.assign(new Error(error.message), { code: (error as { hint?: string }).hint ?? 'UNKNOWN' })
 }
 
 /** Delete a report (its creator or an administrator). The workbook bytes stay in the vault bucket. */

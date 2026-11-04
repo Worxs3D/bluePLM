@@ -51,6 +51,7 @@ function report(id: string, over: Partial<InspectionReport> = {}): InspectionRep
     updatedBy: null,
     updatedAt: '2026-01-01T00:00:00Z',
     supersedesReportId: null,
+    workingCopy: false,
     ...over,
   }
 }

@@ -417,9 +417,21 @@ describe('generateReport of a checked-out copy', () => {
     expect(mocks.created).toHaveLength(0)
   })
 
-  it('refuses to record a report of a checked-out copy', async () => {
-    await expect(generateReport({ ...params(), workingCopy })).rejects.toThrow(/never recorded/)
-    expect(mocks.created).toHaveLength(0)
+  it('records a report of a checked-out copy as a working copy naming the live rows', async () => {
+    const outcome = await generateReport({ ...params(), workingCopy })
+    expect(mocks.created).toHaveLength(1)
+    expect(mocks.created[0]).toMatchObject({ workingCopy: true, drawingPdfHash: null, fileVersionId: 'v2' })
+    expect(mocks.created[0].type?.characteristicIds).toEqual(expect.arrayContaining(['live1', 'live2']))
+    expect(outcome.report.workingCopy).toBe(true)
+  })
+
+  it('takes the drawing pages from a local drawing when asked, with the version rows', async () => {
+    vi.mocked(workingCopyDrawingPages).mockClear()
+    vi.mocked(getInspectionRowsAtVersion).mockClear()
+    await generateReport({ ...params(), localOnly: true, localDrawingPath: 'C:/vault/BRK.SLDDRW' })
+    expect(getInspectionRowsAtVersion).toHaveBeenCalled()
+    expect(workingCopyDrawingPages).toHaveBeenCalledWith('C:/vault/BRK.SLDDRW')
+    expect(mocks.scalars[0]?.DRAWING_VERSION).toBe('2')
   })
 
   it('refuses a copy without inspection rows', async () => {

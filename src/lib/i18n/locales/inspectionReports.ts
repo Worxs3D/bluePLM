@@ -93,7 +93,7 @@ export const inspectionReportStrings: Record<string, string> = {
   rptDeleted: 'Report {{number}} deleted',
   rptDeleteFailed: 'Could not delete the report: {{error}}',
   rptGenerateHint:
-    'Generate a report with the default template: of your checked-out copy when you have changed it, else of the latest checked-in version',
+    'Generate a report with the default template and attach it to the drawing: of your checked-out copy when you have changed it, else of the latest checked-in version',
   rptGenerateFromMenu: 'Generate inspection report',
   rptGenerateWithOptions: 'Generate with options…',
   rptGeneratingFor: 'Generating the inspection report of {{name}}',
@@ -102,9 +102,16 @@ export const inspectionReportStrings: Record<string, string> = {
     'Version {{version}} has no inspection characteristics, so no report was generated. Check the drawing out and extract its characteristics, then generate again.',
   rptNoRowsLive:
     'Version {{version}} has no inspection characteristics, so no report was generated. The inspection table has {{count}} rows that are not checked in yet: whoever has the drawing checked out can generate a report of their copy.',
-  rptWorkingCopy:
-    'Report of your checked-out copy (based on version {{version}}), with the inspection table and balloons as they are now. It is not recorded under the drawing: check the drawing in to record a report of the new version.',
-  rptWorkingCopySave: 'Save as…',
+  rptGeneratedWorkingCopy:
+    'Report {{number}} ({{type}}) of your checked-out copy is attached to the drawing. It moves to the new version when you check the drawing in.',
+  rptWorkingCopyBadge: 'Checked-out copy',
+  rptWorkingCopyTitle: 'Built from the checked-out copy of version {{version}}; it becomes a report of the new version at check-in',
+  rptWorkingCopyPinned: 'Report {{number}} is now a report of version {{version}}',
+  rptWorkingCopyPinFailed: 'Report {{number}} could not be moved to the checked-in version: {{error}}',
+  rptWorkingCopyUnmapped:
+    'Report {{number}} could not be moved to version {{version}}: balloons {{balloons}} are no longer in the inspection table. Generate it again.',
+  rptWorkingCopyNoImport: 'This report is of a checked-out copy. Check the drawing in before importing results.',
+  rptWorkingCopyDiscarded: 'Removed {{count}} report(s) of the checked-out copy you discarded',
   rptWorkingCopyVersion: '{{version}} + checked-out changes',
   rptNotCheckedIn:
     'The report was built from checked-in version {{version}}. Your changes to the drawing or its inspection table are not checked in, so they are not in it.',

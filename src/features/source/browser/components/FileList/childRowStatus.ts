@@ -5,7 +5,9 @@
  */
 import type { InspectionReport } from '@/types/inspectionReports'
 
-type ReportLike = Pick<InspectionReport, 'id' | 'fileVersionId' | 'reportType' | 'createdAt'>
+type ReportLike = Pick<InspectionReport, 'id' | 'fileVersionId' | 'reportType' | 'createdAt'> & {
+  workingCopy?: boolean
+}
 
 /**
  * The reports the file list shows under a drawing: those no other listed report supersedes
@@ -22,7 +24,8 @@ export function reportHeads<T extends Pick<InspectionReport, 'id' | 'supersedesR
  * The drawing's newer version number when `report` is out of date, else null. A report is out of
  * date when the drawing has a newer checked-in version and the report is the newest of its type
  * (an older one is superseded, not stale): regenerating it makes a report of that version. A
- * report whose version number is not known yet is never flagged.
+ * report whose version number is not known yet is never flagged, nor is a report of a checked-out
+ * copy (it becomes a report of the version its check-in makes).
  */
 export function outdatedReportVersion(
   report: ReportLike,
@@ -30,10 +33,11 @@ export function outdatedReportVersion(
   versionOf: ReadonlyMap<string, number>,
   latestVersion: number | null | undefined,
 ): number | null {
+  if (report.workingCopy) return null
   const own = versionOf.get(report.fileVersionId)
   if (own === undefined || !latestVersion || own >= latestVersion) return null
   const newerOfType = reports.some((r) => {
-    if (r.id === report.id || r.reportType !== report.reportType) return false
+    if (r.id === report.id || r.reportType !== report.reportType || r.workingCopy) return false
     const v = versionOf.get(r.fileVersionId)
     if (v === undefined) return false
     return v > own || (v === own && r.createdAt > report.createdAt)

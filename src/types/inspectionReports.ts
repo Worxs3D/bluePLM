@@ -210,6 +210,12 @@ export interface InspectionReport extends InspectionReportTypeFields {
    * insert; null when it replaces nothing or the replaced report was deleted.
    */
   supersedesReportId: string | null
+  /**
+   * Built from the creator's checked-out copy of the drawing (live inspection table, local
+   * drawing), based on `fileVersionId`; it becomes a report of the version the check-in makes
+   * (`inspection_report_pin()`, schema 510). Its `characteristicIds` are live row ids.
+   */
+  workingCopy: boolean
 }
 
 export interface InspectionReportCreate {
@@ -240,6 +246,8 @@ export interface InspectionReportCreate {
   type?: Partial<InspectionReportTypeFields>
   /** The report of the same drawing this one replaces (schema 508). */
   supersedesReportId?: string | null
+  /** A report of the creator's checked-out copy (schema 510). */
+  workingCopy?: boolean
 }
 
 /**

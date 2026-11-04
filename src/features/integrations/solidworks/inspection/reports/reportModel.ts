@@ -370,6 +370,8 @@ export interface VersionInfo {
   partNumber: string | null
   description: string | null
   createdAt: string | null
+  /** Who checked the version in (where read; a checked-out copy's report pins to its creator's). */
+  createdBy?: string | null
 }
 
 export interface ReportVersionGroup {

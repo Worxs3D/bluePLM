@@ -12,6 +12,7 @@ import type { InspectionReport, InspectionTemplate } from '@/types/inspectionRep
 
 import { loadReportContext, publishReports, type ReportContext } from './reportCommands'
 import type { VersionInfo } from './reportModel'
+import { retryWorkingCopyPins } from './workingCopyPin'
 
 export interface InspectionReportsData {
   reports: InspectionReport[]
@@ -56,6 +57,7 @@ export function useInspectionReports(fileId: string | undefined, orgId: string |
       setTemplates(context.templates)
       publishReports(fileId, context.reports)
       setLoaded(true)
+      retryWorkingCopyPins(fileId, context.reports)
     } catch (err) {
       if (mine !== generation.current) return
       const message = err instanceof Error ? err.message : String(err)

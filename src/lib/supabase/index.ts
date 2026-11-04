@@ -322,6 +322,7 @@ export {
   createInspectionReport,
   updateInspectionReport,
   deleteInspectionReport,
+  pinInspectionReport,
   InspectionReportNumberTakenError,
   getInspectionRowsAtVersion,
   uploadInspectionContent,

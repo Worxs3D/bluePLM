@@ -9,9 +9,23 @@ import '@fontsource/plus-jakarta-sans/600.css'
 import '@fontsource/plus-jakarta-sans/700.css'
 import '@/index.css'
 import { hasDesktop } from '@/lib/platform'
+import { registerCheckoutEndListener } from '@/lib/commands/checkoutLifecycle'
+import { log } from '@/lib/logger'
 
 // Lets index.css style the browser build (BluePLM Web) where it differs from the desktop.
 if (!hasDesktop()) document.documentElement.dataset.host = 'web'
+
+// Inspection reports of a checked-out copy move to the checked-in version, or go with a discard
+// (workingCopyPin.ts). Loaded on first use: the reports module pulls in the workbook engine.
+registerCheckoutEndListener((end, files, after) => {
+  void import('@/features/integrations/solidworks/inspection/reports/workingCopyPin')
+    .then((m) => m.onCheckoutEnd(end, files, after))
+    .catch((err: unknown) =>
+      log.warn('[InspectionReports]', 'Working-copy report handling unavailable', {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    )
+})
 
 // Initialize Sentry analytics if user has consented
 // Read from persisted store in localStorage

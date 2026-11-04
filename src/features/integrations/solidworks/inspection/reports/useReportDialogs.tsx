@@ -43,6 +43,10 @@ export function useReportDialogs(onImported?: (report: InspectionReport) => void
 
   const startImport = useCallback(
     (report: InspectionReport) => {
+      if (report.workingCopy) {
+        addToast('info', t('source.inspection.rptWorkingCopyNoImport'), 8000)
+        return
+      }
       void (async () => {
         setBusyId(report.id)
         try {
