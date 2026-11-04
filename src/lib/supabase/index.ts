@@ -300,6 +300,9 @@ export {
 
 export type { CreateAnnotationParams } from './annotations'
 
+export { setCommentResolved } from './commentResolve'
+export type { CommentResolveErrorCode, CommentResolveResult } from './commentResolve'
+
 // ============================================
 // Inspection templates and reports (schema 504)
 // ============================================
