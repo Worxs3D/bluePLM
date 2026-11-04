@@ -72,6 +72,39 @@ function deadBuilder(error: unknown): unknown {
   return proxy
 }
 
+/**
+ * A read the typed fake cannot shape (a nested embedded select such as
+ * `team_member(user:app_user!fk(...))`), answered by a scene fixture instead of failing. `matches`
+ * sees the select list; `rows` gets the `.eq()` filters the query chained.
+ */
+export interface QueryOverride {
+  table: string
+  matches(select: string): boolean
+  rows(eq: Readonly<Record<string, unknown>>): Row[]
+}
+
+/** A builder that answers `override`: chained filters are collected, awaiting it gives the rows. */
+function overrideBuilder(override: QueryOverride): unknown {
+  const eq: Record<string, unknown> = {}
+  const target = function canned() {}
+  const proxy: unknown = new Proxy(target, {
+    get(_t, prop) {
+      if (prop === 'then') {
+        return (resolve: (v: unknown) => unknown, reject?: (r: unknown) => unknown) =>
+          Promise.resolve()
+            .then(() => ({ data: structuredClone(override.rows(eq)), error: null, count: null }))
+            .then(resolve, reject)
+      }
+      if (typeof prop === 'symbol') return undefined
+      return (...args: unknown[]) => {
+        if (prop === 'eq' && typeof args[0] === 'string') eq[args[0]] = args[1]
+        return proxy
+      }
+    },
+  })
+  return proxy
+}
+
 /** Wrap a query builder (or the thenable an RPC returns) so a throw anywhere becomes `{ error }`. */
 function guard(target: object, label: string, misses: Misses): unknown {
   const proxy: unknown = new Proxy(target, {
@@ -165,6 +198,7 @@ export function lenientClient(
   session: PerfSession,
   misses: Misses,
   hooks?: Partial<LenientClientHooks>,
+  overrides: readonly QueryOverride[] = [],
 ): SupabaseClient<Database> {
   const raw = db.client as unknown as {
     from: (table: string) => object
@@ -194,6 +228,22 @@ export function lenientClient(
   const client = {
     from(table: string) {
       trimCalls(db)
+      const candidates = overrides.filter((o) => o.table === table)
+      if (candidates.length > 0) {
+        // Decided at .select(), the first call the app makes on a read.
+        const real = raw.from(table) as { select: (columns?: string, options?: unknown) => object }
+        const wrapped = guard(real, `from(${table})`, misses) as Record<string, unknown>
+        return new Proxy(wrapped, {
+          get(obj, prop, receiver) {
+            if (prop !== 'select') return Reflect.get(obj, prop, receiver)
+            return (columns = '*', options?: unknown) => {
+              const hit = candidates.find((o) => o.matches(columns))
+              if (hit) return overrideBuilder(hit)
+              return (Reflect.get(obj, prop, receiver) as Fn)(columns, options)
+            }
+          },
+        })
+      }
       try {
         return guard(raw.from(table), `from(${table})`, misses)
       } catch (error) {

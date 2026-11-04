@@ -9,6 +9,8 @@ import type { Json } from '@/types/supabase'
 import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import type { PerfBackend } from './backend'
+import type { LookReviews } from './lookReviewBackend'
+import type { ReviewLookApi } from './lookScenes/review'
 import { lookVaultAuditReport } from './lookFixtures'
 import {
   LOOK_DRAWING,
@@ -33,6 +35,16 @@ export interface LookControl {
   scene(name: string): Promise<void>
   /** The store, for one-off setup from a runner `--eval`. */
   store: Store
+  /**
+   * Sign in as another person of the review fixtures (`author` = the perf user, `sam`, `alex`,
+   * `olive`): the store's user and teams, the fake's RPC actor and the auth session switch together,
+   * and the person's unseen notifications arrive as Realtime inserts (toasts).
+   */
+  actAs(person: string): Promise<void>
+  /** The app theme for the shots. */
+  theme(mode: 'dark' | 'light'): void
+  /** Review scene helpers for `--eval` (lookScenes/review.ts): checkIn, ids, reviews (the backend). */
+  review: ReviewLookApi | null
 }
 
 declare global {
@@ -349,7 +361,8 @@ async function showOutputPreview(store: Store, backend: PerfBackend, which: 'rep
   selectChildRow({ kind: 'output', filePath: lookPath(store, name), fileId: LOOK_FILE_IDS[name], version, output })
 }
 
-export function installLook(store: Store, backend: PerfBackend): void {
+export async function installLook(store: Store, backend: PerfBackend, reviews: LookReviews | null): Promise<void> {
+  const reviewLook = reviews ? (await import('./lookScenes/review')).createReviewLook(store, backend, reviews) : null
   const scenes: Record<string, () => void | Promise<void>> = {
     // Inspection: the table of a ballooned drawing checked out by me (editable).
     'inspection-table': () => showInspectionTab(store, LOOK_DRAWING, false),
@@ -414,6 +427,8 @@ export function installLook(store: Store, backend: PerfBackend): void {
     'settings-export': () => store.getState().openSettings('export'),
     // Resolve Pending Moves: several moves in one folder (click the folder's badge to open it).
     'resolve-moves': () => showPendingMoves(store),
+    // Drawing reviews: review-*, reviews-*, toggle-*, gate-* (lookScenes/review.ts).
+    ...(reviewLook?.scenes ?? {}),
     'vault-audit-scope': () => {
       store.getState().clearVaultAuditRun()
       openVaultAudit(store)
@@ -452,6 +467,14 @@ export function installLook(store: Store, backend: PerfBackend): void {
   window.__blueplmLook = {
     scenes: () => Object.keys(scenes),
     store,
+    review: reviewLook,
+    async actAs(person) {
+      if (!reviewLook) throw new Error('look: the review backend is not installed')
+      await reviewLook.actAs(person)
+    },
+    theme(mode) {
+      store.getState().setTheme(mode)
+    },
     async scene(name) {
       const set = scenes[name]
       if (!set) throw new Error(`unknown scene "${name}"; scenes: ${Object.keys(scenes).join(', ')}`)

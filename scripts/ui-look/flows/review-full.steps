@@ -1,0 +1,130 @@
+# The whole drawing-review flow by clicks, one screenshot per step (scripts/render-perf/README.md,
+# "Review workflow scenes"):
+#   npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme dark --out <dir> --steps scripts/ui-look/flows/review-full.steps
+# Selectors are the English labels of the review UI; when the UI is redesigned, update them here.
+# Verified 2026-11-04 against the review UI of 5.9.x.
+
+# Author builds a package from a selection and sends it to Sam and Alex.
+--scene review-flow-start
+--wait 600
+--shot 01-start
+--click text=PMP-2000.slddrw
+--ctrlclick text=PMP-2000.sldasm
+--ctrlclick text=PMP-2003.slddrw
+--rclick text=PMP-2003.slddrw
+--hover text=Reviews >> nth=-1
+--shot 02-menu
+--click text=/startReview|Request review|New review/i
+--wait 800
+--shot 03-package
+# Generate PDFs needs SOLIDWORKS, which the boot does not have (04 shows the refusal); record it instead.
+--click text=/Generate PDFs/
+--wait 1500
+--shot 04-generate-pdfs
+--eval __blueplmLook.review.reviews.renderPdf('PMP-2003.SLDDRW')
+--fill input[placeholder='Search people or teams']=sam
+--wait 300
+--click text=Sam Rivera
+--fill input[placeholder='Search people or teams']=alex
+--wait 300
+--click text=Alex Kim
+--wait 300
+--shot 05-reviewers
+--click button:has-text('Request review')
+--wait 1000
+--shot 06-sent
+
+# Sam: notification, queue, the drawing's PDF, a markup, changes requested on the drawing.
+--as sam
+--wait 1500
+--shot 07-sam-notified
+--eval __blueplmLook.store.getState().setActiveView('reviews')
+--wait 1000
+--shot 08-sam-queue
+--click text="PMP-2000.SLDASM"
+--wait 2500
+--shot 09-sam-detail
+--click text="PMP-2000.SLDDRW"
+--wait 2500
+--shot 10-sam-drawing
+--drag 720,330,790,380
+--wait 500
+--fill textarea[placeholder]=Add the seal part PMP-2003 to the BOM table.
+--press Enter
+--wait 800
+--shot 11-sam-markup
+--click button:has-text('Request changes')
+--fill textarea[placeholder^='Comment']=BOM table is missing the seal part; see the markup.
+--shot 12-sam-changes-prompt
+--press Control+Enter
+--wait 800
+--click button:has-text('Approve all remaining')
+--press Control+Enter
+--wait 1000
+--shot 13-sam-decided
+
+# Alex approves everything: the review settles as changes requested (all mode).
+--as alex
+--wait 1500
+--click text="PMP-2000.SLDASM"
+--wait 1500
+--shot 14-alex-detail
+--click button:has-text('Approve all remaining')
+--press Control+Enter
+--wait 1200
+--shot 15-alex-decided
+
+# Author: the kickback, resolves the markup, checks in v5 and opens round 2.
+--as author
+--wait 1500
+--click text=Requested by me
+--click text="PMP-2000.SLDASM"
+--wait 1200
+--click text="PMP-2000.SLDDRW"
+--wait 2000
+--shot 16-author-kickback
+--click text=Resolve
+--wait 800
+--shot 17-author-resolved
+--eval __blueplmLook.review.checkIn('PMP-2000.SLDDRW')
+--wait 500
+--click button:has-text('Resubmit')
+--wait 1200
+--shot 18-resubmit-dialog
+--click button:has-text('Open next round')
+--wait 2500
+--shot 19-round2-author
+
+# Round 2: Sam and Alex approve the new drawing version (the others carried forward).
+--as sam
+--wait 1500
+--click text=Awaiting me
+--click text="PMP-2000.SLDASM"
+--wait 1500
+--click text="PMP-2000.SLDDRW"
+--wait 2000
+--shot 20-sam-round2
+--click button:text-is("Approve")
+--wait 1000
+--shot 21-sam-round2-approved
+--as alex
+--wait 1200
+--click text=Awaiting me
+--click text="PMP-2000.SLDASM"
+--wait 1500
+--click text="PMP-2000.SLDDRW"
+--wait 1500
+--click button:text-is("Approve")
+--wait 1000
+--shot 22-alex-round2-approved
+
+# Author: approved, files held in the review stage; moves the package to Released.
+--as author
+--wait 1500
+--click text=Done
+--click text="PMP-2000.SLDASM"
+--wait 2000
+--shot 23-approved-stage
+--click button:has-text('Move package')
+--wait 1500
+--shot 24-moved

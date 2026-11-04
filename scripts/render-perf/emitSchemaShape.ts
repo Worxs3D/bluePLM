@@ -9,7 +9,9 @@ import { dirname, resolve } from 'node:path'
 import { parseSchemaShape } from '../../src/test/supabaseSchema'
 
 /** PERF_SCHEMA_SHAPE_FILE in vite.perf.ts (a different tsconfig project, so not importable here). */
-const PERF_SCHEMA_SHAPE_FILE = 'node_modules/.cache/blueplm-perf/schema-shape.json'
+const PERF_SCHEMA_SHAPE_FILE = process.env.BLUEPLM_PERF_OUT
+  ? resolve(process.env.BLUEPLM_PERF_OUT, 'schema-shape.json')
+  : 'node_modules/.cache/blueplm-perf/schema-shape.json'
 
 const root = resolve(__dirname, '../..')
 const shape = parseSchemaShape(readFileSync(resolve(root, 'src/types/supabase.ts'), 'utf8'))

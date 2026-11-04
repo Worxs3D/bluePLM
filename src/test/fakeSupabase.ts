@@ -59,6 +59,23 @@ export interface FakeError {
   message: string
   code: string
   details?: string
+  /** A RAISE ... USING HINT, which the review RPCs use for their refusal code. */
+  hint?: string
+}
+
+/**
+ * Thrown by an RPC handler to refuse the way plpgsql's `RAISE ... USING ERRCODE, HINT, DETAIL`
+ * does: the client gets the SQLSTATE as `code` and the hint and detail beside the message.
+ */
+export class FakeRpcRefusal extends Error {
+  constructor(
+    message: string,
+    readonly sqlState: string,
+    readonly hint?: string,
+    readonly details?: string,
+  ) {
+    super(message)
+  }
 }
 
 export interface FakeResult<T> {
@@ -858,6 +875,12 @@ export class FakeSupabase {
       return { data: data === undefined ? null : structuredClone(data), error: null }
     } catch (error) {
       if (error instanceof FakeSupabaseMisuse) throw error
+      if (error instanceof FakeRpcRefusal) {
+        const refused: FakeError = { message: error.message, code: error.sqlState }
+        if (error.hint) refused.hint = error.hint
+        if (error.details) refused.details = error.details
+        return { data: null, error: refused }
+      }
       return { data: null, error: { message: (error as Error).message, code: 'P0001' } }
     }
   }
