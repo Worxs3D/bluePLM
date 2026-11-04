@@ -45,7 +45,11 @@ export const createUserSlice: StateCreator<
   setAuthInitialized: (authInitialized) => set({ authInitialized }),
   setOrganization: (organization: Organization | null) => {
     // Another organization's output jobs must not run (or report) in this one.
-    if ((get().organization?.id ?? null) !== (organization?.id ?? null)) resetOutputQueue()
+    if ((get().organization?.id ?? null) !== (organization?.id ?? null)) {
+      resetOutputQueue()
+      // Orders are org-wide: another organization's list and open order must not show.
+      get().resetOrders()
+    }
     set({ organization, isConnecting: false })
   },
   setOfflineMode: (isOfflineMode) => set({ isOfflineMode }),
@@ -66,6 +70,7 @@ export const createUserSlice: StateCreator<
     state.clearStagedCheckins()
     state.clearMissingStorageFiles()
     state.clearPendingLargeUpload()
+    state.resetOrders()
 
     set({
       files: [],

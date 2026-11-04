@@ -4,6 +4,7 @@ import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Simplified Chinese translations (简体中文)
@@ -40,6 +41,7 @@ export const zhCN: TranslationDict = {
   reviewPackage: reviewPackageStrings.zhCN,
   dbUpgrade: dbUpgradeStrings.zhCN,
   releases: releasesStrings.zhCN,
+  orders: ordersStrings.zhCN,
   securityMonitoring: securityMonitoringStrings.zhCN,
   checkoutDisplay: {
     you: '你',

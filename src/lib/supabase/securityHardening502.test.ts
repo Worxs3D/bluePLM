@@ -290,7 +290,8 @@ describe('2. realtime deletes arrive as tombstones under RLS', () => {
   it('the client listens for exactly the tables the migration writes tombstones for', () => {
     const block = /FOREACH t IN ARRAY ARRAY\[([^\]]*)\]/.exec(MIGRATION)?.[1] ?? ''
     const tables = [...block.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
-    expect(tables.sort()).toEqual([...TOMBSTONE_TABLES].sort())
+    // 0513 adds its own tombstone trigger for supply_order (an order delete).
+    expect([...tables, 'supply_order'].sort()).toEqual([...TOMBSTONE_TABLES].sort())
   })
 
   it('clients cannot write tombstones', async () => {

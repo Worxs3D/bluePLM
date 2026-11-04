@@ -13,6 +13,8 @@ export interface OverflowMenuItem {
   onSelect: () => void
   disabled?: boolean
   danger?: boolean
+  /** A toggle: a check on the right while on. */
+  checked?: boolean
   title?: string
 }
 
@@ -24,15 +26,18 @@ interface OverflowMenuProps {
   align?: 'left' | 'right'
   size?: IconButtonSize
   disabled?: boolean
+  /** The button's icon (default "…"); for a menu of options rather than more actions. */
+  icon?: ReactNode
 }
 
-/** A "…" IconButton that opens a small menu. Escape and a click outside close it. */
+/** A "…" IconButton (or `icon`) that opens a small menu. Escape and a click outside close it. */
 export function OverflowMenu({
   label,
   items,
   align = 'right',
   size = 'md',
   disabled,
+  icon,
 }: OverflowMenuProps) {
   const host = useHostWindow()
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -61,7 +66,7 @@ export function OverflowMenu({
     <div ref={wrapRef} className="relative">
       <IconButton
         label={label}
-        icon={<MoreHorizontal size={16} />}
+        icon={icon ?? <MoreHorizontal size={16} />}
         size={size}
         disabled={disabled}
         aria-haspopup="menu"
@@ -78,6 +83,7 @@ export function OverflowMenu({
               icon={item.icon}
               disabled={item.disabled}
               danger={item.danger}
+              checked={item.checked}
               title={item.title}
               onSelect={() => {
                 setOpen(false)

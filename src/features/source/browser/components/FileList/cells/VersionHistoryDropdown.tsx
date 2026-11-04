@@ -34,6 +34,7 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { describeVersion } from '@/lib/files/versionDisplay'
 import { AddVersionToPackageButton } from '@/features/source/reviewPackage/components/AddVersionToPackageButton'
+import { AddVersionToOrderButton } from '@/features/orders/AddVersionToOrderButton'
 import { releaseOfVersionRow } from '@/features/source/releases/releaseModel'
 import { VersionReleaseBadge } from './VersionReleaseBadge'
 import { useVersionStateNames } from './useVersionStateNames'
@@ -577,6 +578,7 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
                               version={version}
                               latestVersion={serverVersion}
                             />
+                            <AddVersionToOrderButton file={file} version={version} />
                             {!hasDesktop() && version.content_hash && (
                               <button
                                 onClick={() => void handleDownloadVersion(version)}

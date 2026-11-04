@@ -8,6 +8,7 @@
  * entries keep their own conditions and labels. Dialogs are driven by `useContextMenuState` and
  * rendered beside the menu, never inside it, so moving or hiding an entry cannot unmount one.
  */
+import { useOrdersEntries } from '@/features/orders/contextMenu/OrdersEntry'
 import { useRef, type ReactNode } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -354,6 +355,7 @@ function TreeFileContextMenu({
   })
   const generate = useGenerateEntries(base)
   const reviews = useReviewsEntries(base)
+  const orders = useOrdersEntries(base)
   const fileOperations = useTreeFileOperationEntries({
     firstFile,
     multiSelect,
@@ -445,6 +447,7 @@ function TreeFileContextMenu({
     ...pdm.entries,
     ...generate.entries,
     ...reviews.entries,
+    ...orders.entries,
     ...fileOperations.entries,
     ...navigation.entries,
     ...clipboardEntries.entries,

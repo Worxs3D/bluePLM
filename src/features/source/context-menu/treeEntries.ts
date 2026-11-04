@@ -31,6 +31,7 @@ export const TREE_MENU_ENTRY_IDS = [
   'generate.local.exportOptions',
   'generate.local.inspectionReport',
   'reviews',
+  'orders',
   'fileActions.showInExplorer',
   'fileActions.pin',
   'fileActions.rename',

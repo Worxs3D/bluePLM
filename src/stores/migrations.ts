@@ -14,7 +14,7 @@ export interface StoreMigration {
 }
 
 // Current schema version - increment when adding migrations
-export const CURRENT_STORE_VERSION = 13
+export const CURRENT_STORE_VERSION = 14
 
 // In-development Quality modules that were previously nested under the
 // 'group-quality' cascade menu and are now removed from the default sidebar.
@@ -373,7 +373,58 @@ export const migrations: StoreMigration[] = [
     migrate: (state) =>
       state.searchScope === 'current-folder' ? { ...state, searchScope: 'all-folders' } : state,
   },
+  {
+    version: 14,
+    description:
+      'Orders (5.11.0): put the new Orders module right after the Item Browser in a saved sidebar, and keep the dividers and group headers after it where they were',
+    migrate: (state) => insertModuleAfter(state, 'orders', 'items'),
+  },
 ]
+
+/**
+ * Insert `moduleId` into a saved sidebar order right after `anchorId`, shifting the divider and
+ * group-header positions at or after the insertion point by one so the rest of the sidebar looks
+ * the same. A divider that sat directly after the anchor ends up after the new module (as in
+ * `DEFAULT_DIVIDERS`). Leaves the state alone when there is no saved order, the module is already
+ * in it, or the anchor is missing (the store's merge step then places the module).
+ */
+export function insertModuleAfter(
+  state: Record<string, unknown>,
+  moduleId: string,
+  anchorId: string,
+): Record<string, unknown> {
+  const moduleConfig = state.moduleConfig
+  if (!moduleConfig || typeof moduleConfig !== 'object') return state
+  const config = moduleConfig as Record<string, unknown>
+  if (!Array.isArray(config.moduleOrder)) return state
+  const order = config.moduleOrder as string[]
+  if (order.includes(moduleId)) return state
+  const anchor = order.indexOf(anchorId)
+  if (anchor === -1) return state
+
+  const insertAt = anchor + 1
+  const moduleOrder = [...order.slice(0, insertAt), moduleId, ...order.slice(insertAt)]
+
+  // A divider's position is the index it sits after; a group header's the index it sits before.
+  const shift = (items: unknown, from: number) =>
+    Array.isArray(items)
+      ? (items as Array<Record<string, unknown>>).map((item) =>
+          typeof item.position === 'number' && item.position >= from
+            ? { ...item, position: item.position + 1 }
+            : item,
+        )
+      : items
+
+  return {
+    ...state,
+    moduleConfig: {
+      ...config,
+      moduleOrder,
+      dividers: shift(config.dividers, anchor),
+      customGroups: shift(config.customGroups, insertAt),
+    },
+  }
+}
 
 /**
  * Run all necessary migrations on persisted state

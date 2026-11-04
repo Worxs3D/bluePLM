@@ -58,6 +58,7 @@ import {
   Scissors,
   Settings,
   Share2,
+  ShoppingCart,
   Sparkles,
   Star,
   Table,
@@ -160,6 +161,8 @@ export const CONTEXT_MENU_ENTRIES = [
 
   // Reviews
   { id: 'reviews', category: 'reviews', icon: ClipboardCheck, appliesTo: ANY, surfaces: BOTH, submenu: true },
+  // Orders (5.11.0): add the selection to a draft order or a new one
+  { id: 'orders', category: 'reviews', icon: ShoppingCart, appliesTo: ANY, surfaces: BOTH, submenu: true },
 
   // File
   { id: 'fileActions.showInExplorer', category: 'file', icon: FolderOpen, appliesTo: ANY, surfaces: BOTH, desktopOnly: true },
@@ -345,6 +348,7 @@ export const DEFAULT_LAYOUT: MenuLayout = {
       ],
     },
     e('reviews'),
+    e('orders'),
     sep,
     {
       kind: 'group',

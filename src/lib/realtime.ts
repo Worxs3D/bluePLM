@@ -88,6 +88,7 @@ let vaultsChannel: RealtimeChannel | null = null
 let memberChangesChannel: RealtimeChannel | null = null
 let foldersChannel: RealtimeChannel | null = null
 let notificationsChannel: RealtimeChannel | null = null
+let supplyOrdersChannel: RealtimeChannel | null = null
 
 /** The `notifications` columns a client toast needs (RLS lets a user read only their own rows). */
 export interface NotificationRealtimeRow {
@@ -477,6 +478,58 @@ export function subscribeToVaults(orgId: string, onVaultChange: VaultChangeCallb
 }
 
 /**
+ * Subscribe to order changes (schema 513): inserts and updates of `supply_order` and
+ * `supply_order_line` in the organization, as the id of the order they belong to. RLS filters
+ * the events like reads, so a line in a vault this user cannot read never arrives. An order
+ * delete arrives as a `supply_order` tombstone; removing lines sends no line event but updates the
+ * order's `line_count` and `updated_at`, which does. Callers debounce: one save can touch many
+ * lines.
+ */
+export function subscribeToSupplyOrders(
+  orgId: string,
+  onOrderChange: (orderId: string, table: 'supply_order' | 'supply_order_line') => void,
+): () => void {
+  rebuilders.set('supply_orders', () => subscribeToSupplyOrders(orgId, onOrderChange))
+  if (supplyOrdersChannel) {
+    supplyOrdersChannel.unsubscribe()
+  }
+
+  const idOf = (row: unknown, key: 'id' | 'order_id'): string | null => {
+    const value = row && typeof row === 'object' ? (row as Record<string, unknown>)[key] : null
+    return typeof value === 'string' && value ? value : null
+  }
+  supplyOrdersChannel = supabase
+    .channel(`supply_orders:${orgId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'supply_order', filter: `org_id=eq.${orgId}` },
+      (payload) => {
+        const id = idOf(payload.new, 'id')
+        if (id) onOrderChange(id, 'supply_order')
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'supply_order_line', filter: `org_id=eq.${orgId}` },
+      (payload) => {
+        const id = idOf(payload.new, 'order_id')
+        if (id) onOrderChange(id, 'supply_order_line')
+      },
+    )
+  // An order delete arrives as a tombstone (0513); refreshing the order finds it gone.
+  onRowDeleted(supplyOrdersChannel, 'supply_order', (row) => onOrderChange(row.row_id, 'supply_order'))
+  supplyOrdersChannel.subscribe()
+
+  return () => {
+    rebuilders.delete('supply_orders')
+    if (supplyOrdersChannel) {
+      supplyOrdersChannel.unsubscribe()
+      supplyOrdersChannel = null
+    }
+  }
+}
+
+/**
  * Subscribe to org-wide member attribute changes
  *
  * Used by admin views (e.g., TeamMembersSettings) to see real-time updates when:
@@ -798,6 +851,7 @@ export function realtimeChannelStates(): Array<{ kind: string; state: string }> 
     ['member_changes', memberChangesChannel],
     ['permissions', permissionsChannel],
     ['notifications', notificationsChannel],
+    ['supply_orders', supplyOrdersChannel],
   ]
   return channels
     .filter((entry): entry is [string, RealtimeChannel] => entry[1] !== null)
@@ -858,6 +912,10 @@ export function unsubscribeAll() {
   if (notificationsChannel) {
     notificationsChannel.unsubscribe()
     notificationsChannel = null
+  }
+  if (supplyOrdersChannel) {
+    supplyOrdersChannel.unsubscribe()
+    supplyOrdersChannel = null
   }
 }
 

@@ -29,6 +29,7 @@ import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
 import type { InspectionReportsSlice } from './slices/inspectionReportsSlice'
 import type { OutputsSlice } from './slices/outputsSlice'
+import type { OrdersSlice } from './slices/ordersSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -65,6 +66,8 @@ export type CoreSidebarView =
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
+  // Supply Chain - Orders
+  | 'orders'
   // Integrations
   | 'google-drive'
   // System
@@ -2100,6 +2103,7 @@ export type PDMStoreState = ToastsSlice &
   ReviewsSlice &
   InspectionReportsSlice &
   OutputsSlice &
+  OrdersSlice &
   DbUpgradeSlice
 
 // ============================================================================

@@ -4,6 +4,7 @@ import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // French translations
@@ -43,6 +44,7 @@ export const fr: TranslationDict = {
   reviewPackage: reviewPackageStrings.fr,
   dbUpgrade: dbUpgradeStrings.fr,
   releases: releasesStrings.fr,
+  orders: ordersStrings.fr,
   securityMonitoring: securityMonitoringStrings.fr,
   checkoutDisplay: {
     you: 'Vous',

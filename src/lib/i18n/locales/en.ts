@@ -4,6 +4,7 @@ import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
 import { securityMonitoringStrings } from './securityMonitoring'
 import { shortcutsStrings } from './shortcuts'
 import { inspectionReportStrings } from './inspectionReports'
@@ -47,6 +48,7 @@ export const en: TranslationDict = {
   reviewPackage: reviewPackageStrings.en,
   dbUpgrade: dbUpgradeStrings.en,
   releases: releasesStrings.en,
+  orders: ordersStrings.en,
   securityMonitoring: securityMonitoringStrings.en,
   shortcuts: shortcutsStrings,
   app: {
@@ -431,6 +433,8 @@ export const en: TranslationDict = {
     // Supply Chain - Suppliers
     supplierDatabase: 'Supplier Database',
     supplierPortal: 'Supplier Portal',
+    // Supply Chain - Orders
+    orders: 'Orders',
     // Integrations
     googleDrive: 'Google Drive',
     // System

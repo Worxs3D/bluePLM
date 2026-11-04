@@ -4,6 +4,7 @@ import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Spanish translations
@@ -43,6 +44,7 @@ export const es: TranslationDict = {
   reviewPackage: reviewPackageStrings.es,
   dbUpgrade: dbUpgradeStrings.es,
   releases: releasesStrings.es,
+  orders: ordersStrings.es,
   securityMonitoring: securityMonitoringStrings.es,
   checkoutDisplay: {
     you: 'Tú',

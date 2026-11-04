@@ -8,9 +8,11 @@ import {
   subscribeToColorSwatches,
   subscribeToPermissions,
   subscribeToVaults,
+  subscribeToSupplyOrders,
   unsubscribeAll,
   type FolderRealtimeRow,
 } from '@/lib/realtime'
+import { createOrdersRealtimeRefresh } from '@/lib/orders/realtimeRefresh'
 import { buildFullPath } from '@/lib/commands/types'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -1357,6 +1359,10 @@ export function useRealtimeSubscriptions(
       addToast('info', messages[eventType] || 'Vault configuration changed', 5000)
     })
 
+    // Orders (schema 513): the list and the loaded orders refresh, debounced.
+    const ordersRefresh = createOrdersRealtimeRefresh()
+    const unsubscribeOrders = subscribeToSupplyOrders(organization.id, (orderId) => ordersRefresh.add(orderId))
+
     return () => {
       subscriptionActive = false
       // Clear any pending notification timeout
@@ -1382,6 +1388,8 @@ export function useRealtimeSubscriptions(
       unsubscribeColorSwatches()
       unsubscribePermissions()
       unsubscribeVaults()
+      ordersRefresh.cancel()
+      unsubscribeOrders()
       unsubscribeAll()
     }
     // requestSilentRefresh is intentionally not a dependency - see requestSilentRefreshRef above.

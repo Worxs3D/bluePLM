@@ -656,6 +656,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('version-outputs:open', url, fileName, expectedHash),
   },
 
+  // Orders (src/lib/orders): export an order's files as a zip or into a new folder
+  orders: {
+    export: (request: {
+      mode: 'zip' | 'folder'
+      name: string
+      files: Array<{ path: string; url: string; sha256: string; size: number }>
+      texts: Array<{ path: string; content: string }>
+    }) => ipcRenderer.invoke('orders:export', request),
+    onExportProgress: (
+      callback: (progress: { phase: 'downloading' | 'writing'; completed: number; total: number }) => void,
+    ) => {
+      const handler = (
+        _: unknown,
+        progress: { phase: 'downloading' | 'writing'; completed: number; total: number },
+      ) => callback(progress)
+      ipcRenderer.on('orders:export-progress', handler)
+      return () => ipcRenderer.removeListener('orders:export-progress', handler)
+    },
+  },
+
   // Archive (ZIP) operations
   archive: {
     createZip: (files: Array<{ path: string; relativePath: string }>, outputPath: string) =>

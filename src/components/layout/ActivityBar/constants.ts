@@ -21,6 +21,8 @@ export const moduleTranslationKeys: Record<ModuleId, string> = {
   // Supply Chain - Suppliers
   'supplier-database': 'sidebar.supplierDatabase',
   'supplier-portal': 'sidebar.supplierPortal',
+  // Supply Chain - Orders
+  orders: 'sidebar.orders',
   // Integrations
   'google-drive': 'sidebar.googleDrive',
   // System

@@ -32,6 +32,9 @@ const ReviewsMain = lazy(() =>
 const ItemBrowserView = lazy(() =>
   import('@/features/items/itemBrowser').then((m) => ({ default: m.ItemBrowserView })),
 )
+const OrderDetailView = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrderDetailView })),
+)
 
 // Loading fallback for lazy-loaded components
 function ContentLoading() {
@@ -69,6 +72,7 @@ interface MainContentProps {
  * - Settings
  * - Google Drive
  * - Workflows
+ * - Orders
  * - Native extension workspaces
  * - File Browser (default)
  */
@@ -109,7 +113,7 @@ export function MainContent({
       {/* Tab bar (browser-like tabs) - shown when FilePane is visible (not settings, google-drive, workflows, or reviews) */}
       {!showWelcome &&
         !extensionWorkspace &&
-        !['google-drive', 'workflows', 'reviews', 'items'].includes(activeView) && (
+        !['google-drive', 'workflows', 'reviews', 'items', 'orders'].includes(activeView) && (
           <TabBar />
         )}
 
@@ -132,6 +136,11 @@ export function MainContent({
         /* Item Browser (Quality) - replaces entire main content area (full width, lazy loaded) */
         <Suspense fallback={<ContentLoading />}>
           <ItemBrowserView />
+        </Suspense>
+      ) : activeView === 'orders' ? (
+        /* Orders - the open order, or an empty state (the list is in the sidebar) */
+        <Suspense fallback={<ContentLoading />}>
+          <OrderDetailView />
         </Suspense>
       ) : activeView === 'reviews' ? (
         /* Reviews View - an open gate or review, or the overview of what waits */

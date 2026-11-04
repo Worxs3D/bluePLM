@@ -87,6 +87,7 @@ import {
   createReviewsSlice,
   createInspectionReportsSlice,
   createOutputsSlice,
+  createOrdersSlice,
   createDbUpgradeSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
@@ -248,6 +249,7 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createReviewsSlice(...a),
       ...createInspectionReportsSlice(...a),
       ...createOutputsSlice(...a),
+      ...createOrdersSlice(...a),
       ...createDbUpgradeSlice(...a),
     })),
     {

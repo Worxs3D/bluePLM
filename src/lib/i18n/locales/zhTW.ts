@@ -4,6 +4,7 @@ import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
 import { securityMonitoringStrings } from './securityMonitoring'
 
 // Traditional Chinese translations (繁體中文)
@@ -40,6 +41,7 @@ export const zhTW: TranslationDict = {
   reviewPackage: reviewPackageStrings.zhTW,
   dbUpgrade: dbUpgradeStrings.zhTW,
   releases: releasesStrings.zhTW,
+  orders: ordersStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
   checkoutDisplay: {
     you: '你',

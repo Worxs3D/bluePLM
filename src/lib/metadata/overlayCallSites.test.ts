@@ -1015,6 +1015,12 @@ const DELIBERATE: readonly Allowance[] = [
       'Names an output generated from a checked-in version, recorded on the server for everyone. A pending edit is not in that version.',
   },
   {
+    file: 'features/orders/actions.ts',
+    symbols: ['addFilesToOrder', 'addVersionToOrder'],
+    reason:
+      'Titles a new order after the checked-in versions it pins (the lines snapshot their committed part numbers on the server). A pending edit is not in those versions.',
+  },
+  {
     file: 'stores/slices/filesSlice.ts',
     symbols: ['clearPendingConfigMetadata'],
     reason: 'The store layer that owns pendingMetadata and decides what an edit is.',

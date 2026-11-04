@@ -7,6 +7,7 @@
  * just "the hook returned an element", and the dialogs they open (overlays) are rendered beside
  * the menu, never inside it, so moving or hiding an entry cannot unmount one.
  */
+import { useOrdersEntries } from '@/features/orders/contextMenu/OrdersEntry'
 import React from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -203,6 +204,7 @@ export function FileContextMenu({
   })
   const generate = useGenerateEntries(base)
   const reviews = useReviewsEntries(base)
+  const orders = useOrdersEntries(base)
   const fileSystem = useFileSystemEntries({ ...base, platform, startRenaming, userId: user?.id })
   const folderVisibility = useFolderVisibilityEntries(base)
   const clipboard = useClipboardEntries({ ...base, handleCopy, handleCut, handlePaste })
@@ -242,6 +244,7 @@ export function FileContextMenu({
     checkout,
     generate,
     reviews,
+    orders,
     fileSystem,
     folderVisibility,
     clipboard,
@@ -260,6 +263,7 @@ export function FileContextMenu({
     ...checkout.entries,
     ...generate.entries,
     ...reviews.entries,
+    ...orders.entries,
     ...fileSystem.entries,
     ...folderVisibility.entries,
     ...clipboard.entries,

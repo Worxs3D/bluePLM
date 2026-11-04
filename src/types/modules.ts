@@ -21,6 +21,8 @@ export type ModuleId =
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
+  // Supply Chain - Orders
+  | 'orders'
   // Integrations
   | 'google-drive'
   // System
@@ -156,7 +158,7 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
   {
     id: 'supply-chain',
     name: 'Supply Chain',
-    description: 'Suppliers',
+    description: 'Suppliers and orders',
     isMasterToggle: true,
     defaultEnabled: true,
   },
@@ -330,6 +332,16 @@ export const MODULES: ModuleDefinition[] = [
     defaultEnabled: true,
     implemented: true,
   },
+  {
+    // Version-pinned outputs (PDF, STEP, ...) grouped for a supplier (schema 513). Top level in
+    // the default sidebar, right after the Item Browser.
+    id: 'orders',
+    name: 'Orders',
+    group: 'supply-chain',
+    icon: 'ShoppingCart',
+    defaultEnabled: true,
+    implemented: true,
+  },
 
   // ============================================
   // INTEGRATIONS
@@ -379,7 +391,7 @@ export const MODULES_MOVED_TO_EXTENSIONS: readonly string[] = ['customers']
 // Default section dividers (groups provide visual separation, so minimal dividers)
 export const DEFAULT_DIVIDERS: SectionDivider[] = [
   // Divider before integrations/system
-  { id: 'divider-1', enabled: true, position: 13 }, // After the Item Browser
+  { id: 'divider-1', enabled: true, position: 14 }, // After Orders
 ]
 
 // Default module order
@@ -403,8 +415,10 @@ export const DEFAULT_MODULE_ORDER: ModuleId[] = [
   'supplier-portal',
   // Quality (single top-level entry; opens the Item Browser)
   'items', // 13
+  // Supply Chain - Orders (single top-level entry)
+  'orders', // 14
   // Integrations
-  'google-drive', // 14
+  'google-drive', // 15
   // System (reviews and settings at bottom)
   'terminal',
   'reviews',
@@ -486,6 +500,8 @@ export const DEFAULT_MODULE_PARENT_MAP: Record<ModuleId, ParentId> = {
   'supplier-portal': 'group-supply-chain',
   // Quality: single top-level entry (Item Browser)
   items: null,
+  // Orders: single top-level entry
+  orders: null,
   // Top-level (no parent)
   'google-drive': null,
   terminal: null,
@@ -558,6 +574,64 @@ export function mergeModuleOrder(
   })
 
   return result
+}
+
+/**
+ * `mergeModuleOrder` for a whole saved layout: modules missing from the saved order are put back
+ * next to their default neighbour, and the divider and group-header positions (indexes into the
+ * order) move with the modules they belong to, so a new module joins its neighbour's section
+ * instead of landing on the far side of a divider or inside the next group.
+ *
+ * A divider's position is the index of the module it sits after; a group header's the index of
+ * the module it sits before. A module put after neighbour `a` keeps a divider that followed `a`
+ * after itself and stays before a group that started right after `a`. A module put before
+ * neighbour `b` joins `b`'s group and stays before a divider that followed `b`.
+ */
+export function mergeModuleLayout<D extends { position: number }, G extends { position: number }>(
+  saved: { moduleOrder: ModuleId[]; dividers: D[]; customGroups: G[] },
+  defaults: ModuleId[] = DEFAULT_MODULE_ORDER,
+): { moduleOrder: ModuleId[]; dividers: D[]; customGroups: G[] } {
+  const order = [...saved.moduleOrder]
+  let dividers = [...saved.dividers]
+  let customGroups = [...saved.customGroups]
+  const present = new Set(order)
+
+  const shift = <T extends { position: number }>(items: T[], test: (p: number) => boolean): T[] =>
+    items.map((item) => (test(item.position) ? { ...item, position: item.position + 1 } : item))
+
+  defaults.forEach((moduleId, defaultIndex) => {
+    if (present.has(moduleId)) return
+    present.add(moduleId)
+
+    let after: number | null = null
+    for (let i = defaultIndex - 1; i >= 0 && after === null; i--) {
+      const idx = order.indexOf(defaults[i])
+      if (idx >= 0) after = idx
+    }
+    let before: number | null = null
+    if (after === null) {
+      for (let i = defaultIndex + 1; i < defaults.length && before === null; i++) {
+        const idx = order.indexOf(defaults[i])
+        if (idx >= 0) before = idx
+      }
+    }
+
+    if (after !== null) {
+      const a = after
+      order.splice(a + 1, 0, moduleId)
+      dividers = shift(dividers, (p) => p >= a)
+      customGroups = shift(customGroups, (p) => p > a)
+    } else if (before !== null) {
+      const b = before
+      order.splice(b, 0, moduleId)
+      dividers = shift(dividers, (p) => p >= b)
+      customGroups = shift(customGroups, (p) => p > b)
+    } else {
+      order.push(moduleId)
+    }
+  })
+
+  return { moduleOrder: order, dividers, customGroups }
 }
 
 /**

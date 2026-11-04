@@ -1172,6 +1172,42 @@ declare global {
         ) => Promise<{ success: boolean; path?: string; error?: string }>
       }
 
+      orders: {
+        /**
+         * Export an order's files (5.11.0). The main process asks where (a save dialog for
+         * `zip`, a folder picker for `folder`, which gets a new subfolder named `name`),
+         * downloads each signed `url` checking it against `sha256`, and writes the zip or the
+         * folder. Any mismatch or failure fails the whole export and leaves nothing behind.
+         * Paths are relative (`a.pdf`, no `..`, no drive letters); URLs https.
+         */
+        export: (request: {
+          mode: 'zip' | 'folder'
+          name: string
+          files: Array<{ path: string; url: string; sha256: string; size: number }>
+          texts: Array<{ path: string; content: string }>
+        }) => Promise<
+          | { success: true; path: string; files: number; bytes: number }
+          | { success: false; canceled: true }
+          | {
+              success: false
+              canceled?: false
+              code:
+                | 'INVALID_REQUEST'
+                | 'TOO_MANY_FILES'
+                | 'TOO_LARGE'
+                | 'HASH_MISMATCH'
+                | 'DOWNLOAD_FAILED'
+                | 'WRITE_FAILED'
+              error: string
+              path?: string
+            }
+        >
+        /** Progress of the running export; returns an unsubscribe function. */
+        onExportProgress: (
+          callback: (progress: { phase: 'downloading' | 'writing'; completed: number; total: number }) => void,
+        ) => () => void
+      }
+
       // RFQ Release Files API
       rfq: {
         getOutputDir: (
