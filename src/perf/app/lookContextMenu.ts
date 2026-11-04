@@ -98,16 +98,20 @@ async function customLayout(): Promise<MenuLayout> {
   return hideEntry(custom, 'edit.cut')
 }
 
+/** Closes a menu left open by an earlier scene the way a person does: Escape, then a click. */
+async function closeOpenMenu(): Promise<void> {
+  if (!document.querySelector('.context-menu')) return
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  const backdrop = document.querySelector<HTMLElement>('[data-native-preview-overlay="context-menu"]') ?? document.body
+  backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+  backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await until(() => !document.querySelector('.context-menu'), 3000).catch(() => undefined)
+}
+
 /** Right-clicks the row of `name` in `scope` (the file list table or the explorer tree). */
 async function rightClick(name: string, scope: 'list' | 'tree'): Promise<void> {
   const selector = scope === 'list' ? `tr[data-path$="${name}"]` : `:not(tr)[data-path$="${name}"]`
-  // A menu left open by an earlier scene closes the way a person closes it: Escape, then a click.
-  if (document.querySelector('.context-menu')) {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await until(() => !document.querySelector('.context-menu'), 3000).catch(() => undefined)
-  }
+  await closeOpenMenu()
   await until(() => !!document.querySelector(selector))
   const row = document.querySelector<HTMLElement>(selector)!
   row.scrollIntoView({ block: 'center' })
@@ -162,6 +166,7 @@ export function contextMenuLookScenes(store: Store, backend: PerfBackend): Recor
   const scenes: Record<string, () => Promise<void>> = {
     // Settings > Right-click menu: following the org default (Drafting) with two pins and a hidden action.
     'settings-context-menu': async () => {
+      await closeOpenMenu()
       const now = Date.now()
       setOrgMenu(store, backend, await lookTemplates(now))
       await setPrefs(store, {
@@ -176,6 +181,7 @@ export function contextMenuLookScenes(store: Store, backend: PerfBackend): Recor
     // The same page with the person's own layout: STEP pinned first, their own "Mine" section,
     // the editor open; Drafting has changed since they started.
     'settings-context-menu-custom': async () => {
+      await closeOpenMenu()
       const now = Date.now()
       const templates = await lookTemplates(now)
       setOrgMenu(store, backend, templates)
@@ -249,6 +255,7 @@ export function contextMenuLookScenes(store: Store, backend: PerfBackend): Recor
     },
     // Settings > Menu templates (admin): Drafting (the default) and Shop floor, Drafting open.
     'settings-context-menu-templates': async () => {
+      await closeOpenMenu()
       setOrgMenu(store, backend, await lookTemplates(Date.now()))
       store.getState().openSettings('context-menu-templates')
     },
