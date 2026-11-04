@@ -1,4 +1,8 @@
-// src/features/source/context-menu/items/FileOperationItems.tsx
+/**
+ * The explorer tree's file operation entries: `open.open`, `fileActions.showInExplorer`,
+ * `fileActions.rename` and `fileActions.newFolder`. All four act on the local vault, so none
+ * applies on BluePLM Web.
+ */
 import { ExternalLink, FolderOpen, Edit, FolderPlus } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -6,8 +10,9 @@ import { usePDMStore } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
 import { buildFullPath } from '@/lib/utils/path'
 import { hasDesktop } from '@/lib/platform'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface FileOperationItemsProps {
+export interface FileOperationEntriesProps {
   firstFile: LocalFile
   multiSelect: boolean
   isFolder: boolean
@@ -19,7 +24,13 @@ interface FileOperationItemsProps {
   onRefresh: (silent?: boolean) => void
 }
 
-export function FileOperationItems({
+type FileOperationEntryId =
+  | 'open.open'
+  | 'fileActions.showInExplorer'
+  | 'fileActions.rename'
+  | 'fileActions.newFolder'
+
+export function useTreeFileOperationEntries({
   firstFile,
   multiSelect,
   isFolder,
@@ -29,7 +40,7 @@ export function FileOperationItems({
   onNewFolder,
   onClose,
   onRefresh,
-}: FileOperationItemsProps) {
+}: FileOperationEntriesProps): EntryHookResult<FileOperationEntryId> {
   const { files, vaultPath } = usePDMStore(
     useShallow((s) => ({
       files: s.files,
@@ -97,64 +108,64 @@ export function FileOperationItems({
   const isLocalItem = firstFile.diffStatus !== 'cloud'
 
   // Open, Show in Explorer, Rename and New Folder all act on the local vault: none on BluePLM Web.
-  if (!hasDesktop()) return null
+  const desktop = hasDesktop()
 
-  return (
-    <>
-      {/* Open - only for local files/folders (not cloud-only) */}
-      {!multiSelect && isLocalItem && (
-        <div className="context-menu-item" onClick={handleOpen}>
-          <ExternalLink size={14} />
-          {isFolder ? 'Open Folder' : 'Open'}
-        </div>
-      )}
+  return {
+    entries: {
+      // Open - only for local files/folders (not cloud-only)
+      'open.open':
+        desktop && !multiSelect && isLocalItem ? (
+          <div className="context-menu-item" onClick={handleOpen}>
+            <ExternalLink size={14} />
+            {isFolder ? 'Open Folder' : 'Open'}
+          </div>
+        ) : null,
 
-      {/* Show in Explorer/Finder */}
-      {isLocalItem && (
-        <div className="context-menu-item" onClick={handleShowInExplorer}>
-          <FolderOpen size={14} />
-          {platform === 'darwin' ? 'Reveal in Finder' : 'Show in Explorer'}
-        </div>
-      )}
+      // Show in Explorer/Finder
+      'fileActions.showInExplorer':
+        desktop && isLocalItem ? (
+          <div className="context-menu-item" onClick={handleShowInExplorer}>
+            <FolderOpen size={14} />
+            {platform === 'darwin' ? 'Reveal in Finder' : 'Show in Explorer'}
+          </div>
+        ) : null,
 
-      {/* Rename - right after pin */}
-      {onRename && !multiSelect && (isLocalItem || isFolder) && (
-        <div
-          className={`context-menu-item ${!canRename ? 'disabled' : ''}`}
-          onClick={() => {
-            if (canRename) {
-              onRename(firstFile)
-              onClose()
+      'fileActions.rename':
+        desktop && onRename && !multiSelect && (isLocalItem || isFolder) ? (
+          <div
+            className={`context-menu-item ${!canRename ? 'disabled' : ''}`}
+            onClick={() => {
+              if (canRename) {
+                onRename(firstFile)
+                onClose()
+              }
+            }}
+            title={
+              !canRename
+                ? isMovedAway
+                  ? 'File has moved - resolve the pending move first'
+                  : isFolder
+                    ? 'Another user has files checked out in this folder'
+                    : 'Check out file first to rename'
+                : ''
             }
-          }}
-          title={
-            !canRename
-              ? isMovedAway
-                ? 'File has moved - resolve the pending move first'
-                : isFolder
-                  ? 'Another user has files checked out in this folder'
-                  : 'Check out file first to rename'
-              : ''
-          }
-        >
-          <Edit size={14} />
-          Rename
-          <span className="text-xs text-plm-fg-muted ml-auto">
-            {!canRename
-              ? isMovedAway
-                ? '(moved)'
-                : isFolder
-                  ? '(has checkouts)'
-                  : '(checkout required)'
-              : 'F2'}
-          </span>
-        </div>
-      )}
+          >
+            <Edit size={14} />
+            Rename
+            <span className="text-xs text-plm-fg-muted ml-auto">
+              {!canRename
+                ? isMovedAway
+                  ? '(moved)'
+                  : isFolder
+                    ? '(has checkouts)'
+                    : '(checkout required)'
+                : 'F2'}
+            </span>
+          </div>
+        ) : null,
 
-      {/* New Folder */}
-      {onNewFolder && isFolder && !multiSelect && isLocalItem && (
-        <>
-          <div className="context-menu-separator" />
+      'fileActions.newFolder':
+        desktop && onNewFolder && isFolder && !multiSelect && isLocalItem ? (
           <div
             className="context-menu-item"
             onClick={() => {
@@ -165,8 +176,7 @@ export function FileOperationItems({
             <FolderPlus size={14} />
             New Folder
           </div>
-        </>
-      )}
-    </>
-  )
+        ) : null,
+    },
+  }
 }

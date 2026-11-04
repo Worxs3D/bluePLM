@@ -1,7 +1,7 @@
 /**
- * Sync actions for context menu (download, first check in, ignore)
+ * Sync entries for the context menu: `sync.download`, `sync.getLatest`, `sync.keepLocalOnly`
+ * (Keep Local Only, a flyout) and `sync.firstCheckIn`.
  */
-import React from 'react'
 import { ArrowDown, ArrowUp, EyeOff, FileX, FolderX, RefreshCw } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
@@ -12,17 +12,19 @@ import { executeCommand, getCloudOnlyFilesFromSelection } from '@/lib/commands'
 import { getOutdatedFilesFromSelection } from '@/lib/commands/handlers/getLatest'
 import type { RefreshableActionProps, SelectionCounts, SelectionState } from './types'
 import { ContextSubmenu } from '../components'
+import { useFlyout } from '../customizable/flyout'
+import type { EntryHookResult } from '../customizable/types'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
-interface SyncActionsProps extends RefreshableActionProps {
+export interface SyncEntriesProps extends RefreshableActionProps {
   counts: SelectionCounts
   state: SelectionState
   unsyncedFilesInSelection: LocalFile[]
-  showIgnoreSubmenu: boolean
-  setShowIgnoreSubmenu: (show: boolean) => void
-  ignoreSubmenuTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>
 }
 
-export function SyncActions({
+type SyncEntryId = 'sync.download' | 'sync.getLatest' | 'sync.keepLocalOnly' | 'sync.firstCheckIn'
+
+export function useSyncEntries({
   contextFiles,
   multiSelect,
   firstFile,
@@ -31,17 +33,11 @@ export function SyncActions({
   counts,
   state,
   unsyncedFilesInSelection,
-  showIgnoreSubmenu,
-  setShowIgnoreSubmenu,
-  ignoreSubmenuTimeoutRef,
-}: SyncActionsProps) {
-  const { files, activeVaultId, addIgnorePattern, getIgnorePatterns, addToast } = usePDMStore(
+}: SyncEntriesProps): EntryHookResult<SyncEntryId> {
+  const { files, activeVaultId } = usePDMStore(
     useShallow((s) => ({
       files: s.files,
       activeVaultId: s.activeVaultId,
-      addIgnorePattern: s.addIgnorePattern,
-      getIgnorePatterns: s.getIgnorePatterns,
-      addToast: s.addToast,
     })),
   )
 
@@ -58,12 +54,9 @@ export function SyncActions({
   // BluePLM Web keeps Download (a browser download) but has no local vault to update or upload.
   const desktop = hasDesktop()
 
-  return (
-    <>
-      {(anyCloudOnly || anyOutdated) && <div className="context-menu-separator" />}
-
-      {/* Download cloud-only files. Never touches outdated files - see Get Latest below. */}
-      {anyCloudOnly && (
+  return {
+    entries: {
+      'sync.download': anyCloudOnly ? (
         <div
           className="context-menu-item text-plm-success"
           onClick={() => {
@@ -76,142 +69,153 @@ export function SyncActions({
           Download{' '}
           {counts.cloudOnlyCount > 0 ? `${counts.cloudOnlyCount} files` : multiSelect ? '' : ''}
         </div>
-      )}
+      ) : null,
+      'sync.getLatest':
+        desktop && anyOutdated ? (
+          <div
+            className="context-menu-item text-purple-400"
+            onClick={() => {
+              onClose()
+              executeCommand('get-latest', { files: outdatedFilesInSelection }, { onRefresh })
+            }}
+          >
+            <RefreshCw size={14} className="text-purple-400" />
+            {t('fileOps.getLatest', 'Get Latest')}{' '}
+            {outdatedFilesInSelection.length > 0 ? `${outdatedFilesInSelection.length} files` : ''}
+          </div>
+        ) : null,
+      'sync.keepLocalOnly':
+        desktop && state.anyUnsynced && !state.allCloudOnly && currentVaultId ? (
+          <KeepLocalOnlyEntry
+            contextFiles={contextFiles}
+            multiSelect={multiSelect}
+            firstFile={firstFile}
+            onClose={onClose}
+            onRefresh={onRefresh}
+            state={state}
+            currentVaultId={currentVaultId}
+          />
+        ) : null,
+      'sync.firstCheckIn':
+        desktop && state.anyUnsynced ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              onClose()
+              executeCommand('sync', { files: contextFiles }, { onRefresh })
+            }}
+          >
+            <ArrowUp size={14} className="text-plm-info" />
+            First Check In{' '}
+            {unsyncedFilesInSelection.length > 0
+              ? `${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}`
+              : ''}
+          </div>
+        ) : null,
+    },
+  }
+}
 
-      {/* Get Latest for outdated files. Never touches cloud-only files - see Download above. */}
-      {desktop && anyOutdated && (
-        <div
-          className="context-menu-item text-purple-400"
-          onClick={() => {
-            onClose()
-            executeCommand('get-latest', { files: outdatedFilesInSelection }, { onRefresh })
-          }}
-        >
-          <RefreshCw size={14} className="text-purple-400" />
-          {t('fileOps.getLatest', 'Get Latest')}{' '}
-          {outdatedFilesInSelection.length > 0 ? `${outdatedFilesInSelection.length} files` : ''}
-        </div>
-      )}
+/** Keep Local Only (Ignore) - for unsynced files */
+function KeepLocalOnlyEntry({
+  contextFiles,
+  multiSelect,
+  firstFile,
+  onClose,
+  onRefresh,
+  state,
+  currentVaultId,
+}: RefreshableActionProps & { state: SelectionState; currentVaultId: string }) {
+  const { addIgnorePattern, getIgnorePatterns, addToast } = usePDMStore(
+    useShallow((s) => ({
+      addIgnorePattern: s.addIgnorePattern,
+      getIgnorePatterns: s.getIgnorePatterns,
+      addToast: s.addToast,
+    })),
+  )
+  const flyout = useFlyout('sync.keepLocalOnly')
 
-      {/* Keep Local Only (Ignore) - for unsynced files */}
-      {desktop && state.anyUnsynced && !state.allCloudOnly && currentVaultId && (
-        <div
-          className="context-menu-item relative"
-          onMouseEnter={() => {
-            if (ignoreSubmenuTimeoutRef.current) {
-              clearTimeout(ignoreSubmenuTimeoutRef.current)
-            }
-            setShowIgnoreSubmenu(true)
-          }}
-          onMouseLeave={() => {
-            ignoreSubmenuTimeoutRef.current = setTimeout(() => {
-              setShowIgnoreSubmenu(false)
-            }, 150)
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            setShowIgnoreSubmenu(!showIgnoreSubmenu)
-          }}
+  return (
+    <div
+      className="context-menu-item relative"
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
+      onClick={(e) => {
+        e.stopPropagation()
+        flyout.toggle()
+      }}
+    >
+      <EyeOff size={14} />
+      Keep Local Only
+      <SubmenuArrow />
+      {/* Submenu */}
+      {flyout.isOpen && (
+        <ContextSubmenu
+          minWidth={200}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
         >
-          <EyeOff size={14} />
-          Keep Local Only
-          <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-          {/* Submenu */}
-          {showIgnoreSubmenu && (
-            <ContextSubmenu
-              minWidth={200}
-              onMouseEnter={() => {
-                if (ignoreSubmenuTimeoutRef.current) {
-                  clearTimeout(ignoreSubmenuTimeoutRef.current)
+          {/* Ignore this specific file/folder */}
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.stopPropagation()
+              for (const file of contextFiles) {
+                if (file.isDirectory) {
+                  addIgnorePattern(currentVaultId, file.relativePath + '/')
+                } else {
+                  addIgnorePattern(currentVaultId, file.relativePath)
                 }
-                setShowIgnoreSubmenu(true)
-              }}
-              onMouseLeave={() => {
-                ignoreSubmenuTimeoutRef.current = setTimeout(() => {
-                  setShowIgnoreSubmenu(false)
-                }, 150)
+              }
+              addToast(
+                'success',
+                `Added ${contextFiles.length > 1 ? `${contextFiles.length} items` : contextFiles[0].name} to ignore list`,
+              )
+              onClose()
+              onRefresh(true)
+            }}
+          >
+            {state.isFolder ? <FolderX size={14} /> : <FileX size={14} />}
+            This {state.isFolder ? 'folder' : 'file'}
+            {multiSelect ? ` (${contextFiles.length})` : ''}
+          </div>
+
+          {/* Ignore all files with this extension - only for single file */}
+          {!state.isFolder && !multiSelect && firstFile.extension && (
+            <div
+              className="context-menu-item"
+              onClick={(e) => {
+                e.stopPropagation()
+                const pattern = `*${firstFile.extension}`
+                addIgnorePattern(currentVaultId, pattern)
+                addToast('success', `Now ignoring all ${firstFile.extension} files`)
+                onClose()
+                onRefresh(true)
               }}
             >
-              {/* Ignore this specific file/folder */}
-              <div
-                className="context-menu-item"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  for (const file of contextFiles) {
-                    if (file.isDirectory) {
-                      addIgnorePattern(currentVaultId, file.relativePath + '/')
-                    } else {
-                      addIgnorePattern(currentVaultId, file.relativePath)
-                    }
-                  }
-                  addToast(
-                    'success',
-                    `Added ${contextFiles.length > 1 ? `${contextFiles.length} items` : contextFiles[0].name} to ignore list`,
-                  )
-                  onClose()
-                  onRefresh(true)
-                }}
-              >
-                {state.isFolder ? <FolderX size={14} /> : <FileX size={14} />}
-                This {state.isFolder ? 'folder' : 'file'}
-                {multiSelect ? ` (${contextFiles.length})` : ''}
-              </div>
-
-              {/* Ignore all files with this extension - only for single file */}
-              {!state.isFolder && !multiSelect && firstFile.extension && (
-                <div
-                  className="context-menu-item"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const pattern = `*${firstFile.extension}`
-                    addIgnorePattern(currentVaultId, pattern)
-                    addToast('success', `Now ignoring all ${firstFile.extension} files`)
-                    onClose()
-                    onRefresh(true)
-                  }}
-                >
-                  <FileX size={14} />
-                  All *{firstFile.extension} files
-                </div>
-              )}
-
-              {/* Show current patterns count */}
-              {(() => {
-                const currentPatterns = getIgnorePatterns(currentVaultId)
-                if (currentPatterns.length > 0) {
-                  return (
-                    <>
-                      <div className="context-menu-separator" />
-                      <div className="px-3 py-1.5 text-xs text-plm-fg-muted">
-                        {currentPatterns.length} pattern{currentPatterns.length > 1 ? 's' : ''}{' '}
-                        configured
-                      </div>
-                    </>
-                  )
-                }
-                return null
-              })()}
-            </ContextSubmenu>
+              <FileX size={14} />
+              All *{firstFile.extension} files
+            </div>
           )}
-        </div>
-      )}
 
-      {/* First Check In - for unsynced items */}
-      {desktop && state.anyUnsynced && (
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            onClose()
-            executeCommand('sync', { files: contextFiles }, { onRefresh })
-          }}
-        >
-          <ArrowUp size={14} className="text-plm-info" />
-          First Check In{' '}
-          {unsyncedFilesInSelection.length > 0
-            ? `${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}`
-            : ''}
-        </div>
+          {/* Show current patterns count */}
+          {(() => {
+            const currentPatterns = getIgnorePatterns(currentVaultId)
+            if (currentPatterns.length > 0) {
+              return (
+                <>
+                  <div className="context-menu-separator" />
+                  <div className="px-3 py-1.5 text-xs text-plm-fg-muted">
+                    {currentPatterns.length} pattern{currentPatterns.length > 1 ? 's' : ''}{' '}
+                    configured
+                  </div>
+                </>
+              )
+            }
+            return null
+          })()}
+        </ContextSubmenu>
       )}
-    </>
+    </div>
   )
 }

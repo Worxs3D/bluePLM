@@ -1,5 +1,6 @@
 // PDM Types for SolidWorks and CAD file management
 
+import type { OrgContextMenuSettings } from '../lib/contextMenu/types'
 import type { OrgOutputSettings } from './versionOutputs'
 
 export interface CheckoutUserProfile {
@@ -727,6 +728,11 @@ export interface OrgSettings {
   outputs?: OrgOutputSettings
   /** Inspection report naming (5.5.0); read through `reportNamingFromSettings` (defaults applied). */
   inspection_reports?: InspectionReportOrgSettings
+  /**
+   * Right-click menu templates and the organization default (admins). Untrusted JSON: read it
+   * through `orgTemplates` / `sanitizeOrgContextMenu`, write it through `contextMenuTemplates.ts`.
+   */
+  context_menu?: OrgContextMenuSettings
 }
 
 /** `organization.settings.inspection_reports`: report number pattern, where `{n}` counts, logo. */

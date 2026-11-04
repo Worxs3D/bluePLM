@@ -29,6 +29,7 @@ import {
 } from '../types/modules'
 import type { SettingsTab } from '../types/settings'
 import { restorePersistedShortcuts } from '../lib/keybindings/bindings'
+import { sanitizeContextMenuPrefsByOrg } from '../lib/contextMenu/sanitize'
 import type {
   PDMStoreState,
   Tab,
@@ -379,6 +380,7 @@ export const usePDMStore = create<PDMStoreState>()(
         topbarConfig: state.topbarConfig,
         shortcutOverrides: state.shortcutOverrides,
         quickExportFolder: state.quickExportFolder,
+        contextMenuPrefs: state.contextMenuPrefs,
         pinnedFolders: state.pinnedFolders,
         pinnedSectionExpanded: state.pinnedSectionExpanded,
         colorSwatches: state.colorSwatches,
@@ -585,6 +587,8 @@ export const usePDMStore = create<PDMStoreState>()(
           // migrated to overrides once.
           shortcutOverrides: restorePersistedShortcuts(persisted.shortcutOverrides, persisted.keybindings),
           quickExportFolder: (persisted.quickExportFolder as string | null | undefined) ?? null,
+          // Untrusted local storage: unknown ids, bad keys and broken layouts are dropped.
+          contextMenuPrefs: sanitizeContextMenuPrefsByOrg(persisted.contextMenuPrefs),
           // Ensure onboarding state has defaults
           onboardingComplete: (persisted.onboardingComplete as boolean) || false,
           logSharingEnabled: (persisted.logSharingEnabled as boolean) || false,

@@ -2,9 +2,11 @@
  * Context menu group component with submenu
  * Groups related actions under a single menu item that expands on hover
  */
-import { useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ContextSubmenu } from './ContextSubmenu'
+import { FlyoutProvider, useFlyout } from '../customizable/flyout'
+import { SubmenuArrow } from './SubmenuArrow'
 
 interface ContextMenuGroupProps {
   label: string
@@ -15,6 +17,8 @@ interface ContextMenuGroupProps {
   hasItems?: boolean
   /** Minimum width for the submenu */
   minWidth?: number
+  /** Names this flyout among its siblings (one open at a time); defaults to the label. */
+  flyoutKey?: string
 }
 
 export function ContextMenuGroup({
@@ -24,49 +28,36 @@ export function ContextMenuGroup({
   children,
   hasItems = true,
   minWidth = 180,
+  flyoutKey,
 }: ContextMenuGroupProps) {
-  const [showSubmenu, setShowSubmenu] = useState(false)
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const flyout = useFlyout(flyoutKey ?? `group:${label}`)
 
   // Don't render if no items
   if (!hasItems) {
     return null
   }
 
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-    }
-    setShowSubmenu(true)
-  }
-
-  const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      setShowSubmenu(false)
-    }, 150)
-  }
-
   return (
     <div
       className="context-menu-item relative"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
       onClick={(e) => {
         e.stopPropagation()
-        setShowSubmenu(!showSubmenu)
+        flyout.toggle()
       }}
     >
       <Icon size={14} className={iconColorClass} />
       {label}
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+      <SubmenuArrow />
 
-      {showSubmenu && (
+      {flyout.isOpen && (
         <ContextSubmenu
           minWidth={minWidth}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
         >
-          {children}
+          <FlyoutProvider>{children}</FlyoutProvider>
         </ContextSubmenu>
       )}
     </div>

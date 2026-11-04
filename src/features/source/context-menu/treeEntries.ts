@@ -1,0 +1,62 @@
+/**
+ * The entries the explorer tree's menu (`FileContextMenu`) produces, by id. `FileContextMenu`
+ * types its entry map with `TreeMenuEntryId`, so a hook that stops producing one of these fails
+ * to compile, and `treeMenu.test.tsx` checks this list against the registry's `surfaces`.
+ */
+import type { ContextMenuEntryId } from '@/lib/contextMenu/entries'
+
+export const TREE_MENU_ENTRY_IDS = [
+  'open.open',
+  'assembly.downloadReferenced',
+  'sync.download',
+  'sync.getLatest',
+  'sync.keepLocalOnly',
+  'sync.firstCheckIn',
+  'checkout.checkOut',
+  'checkout.checkIn',
+  'checkout.discard',
+  'checkout.matchGhost',
+  'checkout.forceRelease',
+  'checkout.syncMetadata',
+  'generate.server.pdf',
+  'generate.server.step',
+  'generate.server.inspectionReport',
+  'generate.local.table',
+  'generate.local.step',
+  'generate.local.iges',
+  'generate.local.stl',
+  'generate.local.pdf',
+  'generate.local.dxf',
+  'generate.local.stepFromDrawing',
+  'generate.local.exportOptions',
+  'generate.local.inspectionReport',
+  'reviews',
+  'fileActions.showInExplorer',
+  'fileActions.pin',
+  'fileActions.rename',
+  'fileActions.newFolder',
+  'fileActions.folderVisibility',
+  'fileActions.auditFolderMetadata',
+  'edit.copy',
+  'edit.cut',
+  'edit.paste',
+  'vaultTransfer.copyTo',
+  'vaultTransfer.moveTo',
+  'moves.resolve',
+  'delete.removeLocal',
+  'delete.deleteLocal',
+  'delete.serverKeepLocal',
+  'delete.everywhere',
+  'delete.discardOrphaned',
+  'collab.properties',
+  'collab.extractReferences',
+  'collab.requestCheckout',
+  'collab.notify',
+  'collab.watch',
+  'collab.shareLink',
+  'collab.addToEco',
+  'nav.showDeleted',
+  'nav.refreshVault',
+] as const satisfies readonly ContextMenuEntryId[]
+
+export type TreeMenuEntryId = (typeof TREE_MENU_ENTRY_IDS)[number]

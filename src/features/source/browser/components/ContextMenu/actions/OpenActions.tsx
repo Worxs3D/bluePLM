@@ -1,7 +1,8 @@
 /**
- * Open file/folder actions for context menu
+ * Open file/folder entries for the context menu: `open.open` (Open / Open All / Open Folder) and
+ * `open.goToFolder`.
  */
-import { FolderSearch } from 'lucide-react'
+import { ExternalLink, FolderOpen, FolderSearch } from 'lucide-react'
 
 import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -10,15 +11,16 @@ import { hasDesktop } from '@/lib/platform'
 import { useTranslation } from '@/lib/i18n'
 import type { ActionComponentProps } from './types'
 import { getCountLabel } from '@/lib/utils'
+import type { EntryHookResult } from '../customizable/types'
 
-interface OpenActionsProps extends ActionComponentProps {
+export interface OpenEntriesProps extends ActionComponentProps {
   navigateToFolder: (path: string) => void
   /** When searching, offer a jump from a result row to its parent folder. */
   isSearching?: boolean
   onGoToFolder?: (file: LocalFile) => void
 }
 
-export function OpenActions({
+export function useOpenEntries({
   contextFiles,
   multiSelect,
   firstFile,
@@ -26,7 +28,7 @@ export function OpenActions({
   navigateToFolder,
   isSearching,
   onGoToFolder,
-}: OpenActionsProps) {
+}: OpenEntriesProps): EntryHookResult<'open.open' | 'open.goToFolder'> {
   const vaultPath = usePDMStore((s) => s.vaultPath)
   const { t } = useTranslation()
 
@@ -70,54 +72,69 @@ export function OpenActions({
 
   // Single file - not cloud only
   if (!multiSelect && !isFolder && canOpenFiles) {
-    return (
-      <>
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            openFile(firstFile)
-            onClose()
-          }}
-        >
-          Open
-        </div>
-        {goToFolderItem}
-      </>
-    )
+    return {
+      entries: {
+        'open.open': (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              openFile(firstFile)
+              onClose()
+            }}
+          >
+            <ExternalLink size={14} />
+            Open
+          </div>
+        ),
+        'open.goToFolder': goToFolderItem,
+      },
+    }
   }
 
   // Multiple files - all are files, not cloud only
   if (multiSelect && allFiles && canOpenFiles) {
-    return (
-      <div
-        className="context-menu-item"
-        onClick={async () => {
-          for (const file of contextFiles) {
-            openFile(file)
-          }
-          onClose()
-        }}
-      >
-        Open All {countLabel}
-      </div>
-    )
+    return {
+      entries: {
+        'open.open': (
+          <div
+            className="context-menu-item"
+            onClick={async () => {
+              for (const file of contextFiles) {
+                openFile(file)
+              }
+              onClose()
+            }}
+          >
+            <ExternalLink size={14} />
+            Open All {countLabel}
+          </div>
+        ),
+        'open.goToFolder': null,
+      },
+    }
   }
 
   // Single folder - not cloud only
   if (!multiSelect && isFolder && !allCloudOnly) {
-    return (
-      <div
-        className="context-menu-item"
-        onClick={() => {
-          navigateToFolder(firstFile.relativePath)
-          onClose()
-        }}
-      >
-        Open Folder
-      </div>
-    )
+    return {
+      entries: {
+        'open.open': (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              navigateToFolder(firstFile.relativePath)
+              onClose()
+            }}
+          >
+            <FolderOpen size={14} />
+            Open Folder
+          </div>
+        ),
+        'open.goToFolder': null,
+      },
+    }
   }
 
   // Cloud-only single file (no Open above): still allow jumping to its folder while searching.
-  return goToFolderItem
+  return { entries: { 'open.open': null, 'open.goToFolder': goToFolderItem } }
 }

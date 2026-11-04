@@ -1,5 +1,6 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
@@ -35,6 +36,7 @@ export const zhTW: TranslationDict = {
     openInEDrawingsFailed: '無法在 eDrawings 中開啟此檔案。',
   },
   ...reviewsUiStrings.zhTW,
+  ...contextMenuCustomizerStrings.zhTW,
   reviewPackage: reviewPackageStrings.zhTW,
   dbUpgrade: dbUpgradeStrings.zhTW,
   releases: releasesStrings.zhTW,

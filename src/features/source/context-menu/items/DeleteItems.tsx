@@ -1,5 +1,8 @@
-// src/features/source/context-menu/items/DeleteItems.tsx
-import { useRef, useLayoutEffect, useState, type ReactNode } from 'react'
+/**
+ * The explorer tree's delete entries: `sync.keepLocalOnly` (Keep Local Only, a flyout),
+ * `delete.removeLocal`, `delete.deleteLocal`, `delete.serverKeepLocal`, `delete.everywhere` and
+ * `delete.discardOrphaned`.
+ */
 import { Trash2, EyeOff, FileX, FolderX, CloudOff, UserX } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -14,57 +17,12 @@ import {
 import { checkOperationPermission, getPermissionRequirement } from '@/lib/permissions'
 import type { DialogName } from '../types'
 import type { ToastType } from '@/stores/types'
+import { ContextSubmenu } from '@/features/source/browser/components/ContextMenu/components'
+import { useFlyout } from '@/features/source/browser/components/ContextMenu/customizable/flyout'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
+import { SubmenuArrow } from '@/features/source/browser/components/ContextMenu/components/SubmenuArrow'
 
-/**
- * Viewport-aware submenu component that adjusts position to stay within screen bounds
- */
-function ViewportAwareSubmenu({
-  children,
-  position,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  children: ReactNode
-  position: 'right' | 'left'
-  onMouseEnter: () => void
-  onMouseLeave: () => void
-}) {
-  const submenuRef = useRef<HTMLDivElement>(null)
-  const [verticalOffset, setVerticalOffset] = useState(-4)
-
-  useLayoutEffect(() => {
-    if (!submenuRef.current) return
-
-    const submenu = submenuRef.current
-    const rect = submenu.getBoundingClientRect()
-    const viewportHeight = window.innerHeight
-    const padding = 16
-
-    const bottomOverflow = rect.bottom - (viewportHeight - padding)
-
-    if (bottomOverflow > 0) {
-      const maxShift = rect.top - padding
-      const actualShift = Math.min(bottomOverflow, maxShift)
-      setVerticalOffset(-4 - actualShift)
-    }
-  }, [])
-
-  return (
-    <div
-      ref={submenuRef}
-      className={`absolute top-0 min-w-[200px] bg-plm-bg-lighter border border-plm-border rounded-md py-1 shadow-lg z-[100] ${
-        position === 'right' ? 'left-full ml-1' : 'right-full mr-1'
-      }`}
-      style={{ marginTop: verticalOffset }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {children}
-    </div>
-  )
-}
-
-interface DeleteItemsProps {
+export interface DeleteEntriesProps {
   files: LocalFile[]
   contextFiles: LocalFile[]
   syncedFilesInSelection: LocalFile[]
@@ -80,10 +38,6 @@ interface DeleteItemsProps {
   hasFoldersOnServer: boolean
   activeVaultId: string | null | undefined
   userId: string | undefined
-  showIgnoreSubmenu: boolean
-  submenuPosition: 'right' | 'left'
-  handleIgnoreSubmenuEnter: () => void
-  handleIgnoreSubmenuLeave: () => void
   onClose: () => void
   onRefresh: (silent?: boolean) => void
   openDialog: (name: DialogName) => void
@@ -96,7 +50,15 @@ interface DeleteItemsProps {
   firstFile: LocalFile
 }
 
-export function DeleteItems({
+type DeleteEntryId =
+  | 'sync.keepLocalOnly'
+  | 'delete.removeLocal'
+  | 'delete.deleteLocal'
+  | 'delete.serverKeepLocal'
+  | 'delete.everywhere'
+  | 'delete.discardOrphaned'
+
+export function useTreeDeleteEntries({
   files,
   contextFiles,
   syncedFilesInSelection,
@@ -112,10 +74,6 @@ export function DeleteItems({
   hasFoldersOnServer,
   activeVaultId,
   userId,
-  showIgnoreSubmenu,
-  submenuPosition,
-  handleIgnoreSubmenuEnter,
-  handleIgnoreSubmenuLeave,
   onClose,
   onRefresh,
   openDialog,
@@ -126,7 +84,7 @@ export function DeleteItems({
   getIgnorePatterns,
   addToast,
   firstFile,
-}: DeleteItemsProps) {
+}: DeleteEntriesProps): EntryHookResult<DeleteEntryId> {
   const { hasPermission } = usePDMStore(useShallow((s) => ({ hasPermission: s.hasPermission })))
   const serverFiles = usePDMStore((s) => s.serverFiles)
   const vaultPath = usePDMStore((s) => s.vaultPath)
@@ -238,203 +196,136 @@ export function DeleteItems({
     openDialog('deleteConfirm')
   }
 
-  // Toggle submenu on click (for touch/trackpad users)
-  const handleIgnoreSubmenuClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    // Toggle handled by parent
-  }
+  const lockedTitle = `Cannot delete: ${filesCheckedOutByOthers.length} file(s) checked out by others`
 
-  return (
-    <>
-      <div className="context-menu-separator" />
+  return {
+    entries: {
+      // Keep Local Only (Ignore) - for unsynced files and folders
+      'sync.keepLocalOnly':
+        anyUnsynced && !allCloudOnly && activeVaultId ? (
+          <KeepLocalOnlyEntry
+            contextFiles={contextFiles}
+            firstFile={firstFile}
+            isFolder={isFolder}
+            multiSelect={multiSelect}
+            activeVaultId={activeVaultId}
+            addIgnorePattern={addIgnorePattern}
+            getIgnorePatterns={getIgnorePatterns}
+            addToast={addToast}
+            onClose={onClose}
+            onRefresh={onRefresh}
+          />
+        ) : null,
 
-      {/* Keep Local Only (Ignore) - for unsynced files and folders */}
-      {anyUnsynced && !allCloudOnly && activeVaultId && (
-        <div
-          className="context-menu-item relative"
-          onMouseEnter={handleIgnoreSubmenuEnter}
-          onMouseLeave={handleIgnoreSubmenuLeave}
-          onClick={handleIgnoreSubmenuClick}
-        >
-          <EyeOff size={14} />
-          Keep Local Only
-          <span className="text-xs text-plm-fg-muted ml-auto">
-            {submenuPosition === 'right' ? '▶' : '◀'}
-          </span>
-          {/* Submenu */}
-          {showIgnoreSubmenu && (
-            <ViewportAwareSubmenu
-              position={submenuPosition}
-              onMouseEnter={handleIgnoreSubmenuEnter}
-              onMouseLeave={handleIgnoreSubmenuLeave}
-            >
-              {/* Ignore this specific file/folder */}
-              <div
-                className="context-menu-item"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  for (const file of contextFiles) {
-                    if (file.isDirectory) {
-                      addIgnorePattern(activeVaultId, file.relativePath + '/')
-                    } else {
-                      addIgnorePattern(activeVaultId, file.relativePath)
-                    }
-                  }
-                  addToast(
-                    'success',
-                    `Added ${contextFiles.length > 1 ? `${contextFiles.length} items` : contextFiles[0].name} to ignore list`,
-                  )
-                  onRefresh(true)
-                  onClose()
-                }}
-              >
-                {isFolder ? <FolderX size={14} /> : <FileX size={14} />}
-                This {isFolder ? 'folder' : 'file'}
-                {multiSelect ? ` (${contextFiles.length})` : ''}
-              </div>
+      // Remove Local Copy - for synced files (not for empty folder-only selections)
+      'delete.removeLocal':
+        anySynced && !allCloudOnly && !isEmptyFolderSelection ? (
+          <div
+            className={`context-menu-item ${!canDeleteLocal.allowed || hasFilesCheckedOutByOthers ? 'disabled' : ''}`}
+            onClick={hasFilesCheckedOutByOthers ? undefined : handleDeleteLocal}
+            title={
+              hasFilesCheckedOutByOthers
+                ? lockedTitle
+                : !canDeleteLocal.allowed
+                  ? `Requires ${getPermissionRequirement('delete-local')}`
+                  : ''
+            }
+          >
+            <Trash2 size={14} />
+            Remove Local Copy ({syncedFilesInSelection.length} file
+            {syncedFilesInSelection.length !== 1 ? 's' : ''})
+            {hasFilesCheckedOutByOthers && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
+            )}
+            {!hasFilesCheckedOutByOthers && !canDeleteLocal.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
 
-              {/* Ignore all files with this extension */}
-              {!isFolder && !multiSelect && firstFile.extension && (
-                <div
-                  className="context-menu-item"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const pattern = `*${firstFile.extension}`
-                    addIgnorePattern(activeVaultId, pattern)
-                    addToast('success', `Now ignoring all ${firstFile.extension} files`)
-                    onRefresh(true)
-                    onClose()
-                  }}
-                >
-                  <FileX size={14} />
-                  All *{firstFile.extension} files
-                </div>
-              )}
+      // Delete Locally - for local files/folders that aren't synced.
+      // For empty folder-only selections, simplify label to just "Delete"
+      'delete.deleteLocal':
+        (hasUnsyncedLocalFiles || hasLocalFolders) && !allCloudOnly && !anySynced ? (
+          <div
+            className={`context-menu-item ${canDeleteLocal.allowed ? 'danger' : 'disabled'}`}
+            onClick={handleDeleteLocal}
+            title={
+              !canDeleteLocal.allowed ? `Requires ${getPermissionRequirement('delete-local')}` : ''
+            }
+          >
+            <Trash2 size={14} />
+            {isEmptyFolderSelection
+              ? `Delete${folderCount > 0 ? ` (${folderCount} folder${folderCount !== 1 ? 's' : ''})` : ''}`
+              : `Delete (${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}${folderCount > 0 ? `, ${folderCount} folder${folderCount !== 1 ? 's' : ''}` : ''})`}
+            {!canDeleteLocal.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
 
-              {/* Show current patterns count */}
-              {(() => {
-                const currentPatterns = getIgnorePatterns(activeVaultId)
-                if (currentPatterns.length > 0) {
-                  return (
-                    <>
-                      <div className="context-menu-separator" />
-                      <div className="px-3 py-1.5 text-xs text-plm-fg-muted">
-                        {currentPatterns.length} pattern{currentPatterns.length > 1 ? 's' : ''}{' '}
-                        configured
-                      </div>
-                    </>
-                  )
-                }
-                return null
-              })()}
-            </ViewportAwareSubmenu>
-          )}
-        </div>
-      )}
+      // Delete from Server (Keep Local) - for synced files that have local copies (not for
+      // empty folder-only selections)
+      'delete.serverKeepLocal':
+        anySynced && !allCloudOnly && !isEmptyFolderSelection ? (
+          <div
+            className={`context-menu-item ${!canDeleteServer.allowed || hasFilesCheckedOutByOthers ? 'disabled' : ''}`}
+            onClick={hasFilesCheckedOutByOthers ? undefined : () => handleDeleteFromServer(true)}
+            title={
+              hasFilesCheckedOutByOthers
+                ? lockedTitle
+                : !canDeleteServer.allowed
+                  ? `Requires ${getPermissionRequirement('delete-server')}`
+                  : ''
+            }
+          >
+            <CloudOff size={14} />
+            Delete from Server ({syncedFilesInSelection.length} file
+            {syncedFilesInSelection.length !== 1 ? 's' : ''})
+            {hasFilesCheckedOutByOthers && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
+            )}
+            {!hasFilesCheckedOutByOthers && !canDeleteServer.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
 
-      {/* Remove Local Copy - for synced files (not for empty folder-only selections) */}
-      {anySynced && !allCloudOnly && !isEmptyFolderSelection && (
-        <div
-          className={`context-menu-item ${!canDeleteLocal.allowed || hasFilesCheckedOutByOthers ? 'disabled' : ''}`}
-          onClick={hasFilesCheckedOutByOthers ? undefined : handleDeleteLocal}
-          title={
-            hasFilesCheckedOutByOthers
-              ? `Cannot delete: ${filesCheckedOutByOthers.length} file(s) checked out by others`
-              : !canDeleteLocal.allowed
-                ? `Requires ${getPermissionRequirement('delete-local')}`
-                : ''
-          }
-        >
-          <Trash2 size={14} />
-          Remove Local Copy ({syncedFilesInSelection.length} file
-          {syncedFilesInSelection.length !== 1 ? 's' : ''})
-          {hasFilesCheckedOutByOthers && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
-          )}
-          {!hasFilesCheckedOutByOthers && !canDeleteLocal.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Delete Locally - for local files/folders that aren't synced */}
-      {/* For empty folder-only selections, simplify label to just "Delete" */}
-      {(hasUnsyncedLocalFiles || hasLocalFolders) && !allCloudOnly && !anySynced && (
-        <div
-          className={`context-menu-item ${canDeleteLocal.allowed ? 'danger' : 'disabled'}`}
-          onClick={handleDeleteLocal}
-          title={
-            !canDeleteLocal.allowed ? `Requires ${getPermissionRequirement('delete-local')}` : ''
-          }
-        >
-          <Trash2 size={14} />
-          {isEmptyFolderSelection
-            ? `Delete${folderCount > 0 ? ` (${folderCount} folder${folderCount !== 1 ? 's' : ''})` : ''}`
-            : `Delete (${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}${folderCount > 0 ? `, ${folderCount} folder${folderCount !== 1 ? 's' : ''}` : ''})`}
-          {!canDeleteLocal.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Delete from Server (Keep Local) - for synced files that have local copies (not for empty folder-only selections) */}
-      {anySynced && !allCloudOnly && !isEmptyFolderSelection && (
-        <div
-          className={`context-menu-item ${!canDeleteServer.allowed || hasFilesCheckedOutByOthers ? 'disabled' : ''}`}
-          onClick={hasFilesCheckedOutByOthers ? undefined : () => handleDeleteFromServer(true)}
-          title={
-            hasFilesCheckedOutByOthers
-              ? `Cannot delete: ${filesCheckedOutByOthers.length} file(s) checked out by others`
-              : !canDeleteServer.allowed
-                ? `Requires ${getPermissionRequirement('delete-server')}`
-                : ''
-          }
-        >
-          <CloudOff size={14} />
-          Delete from Server ({syncedFilesInSelection.length} file
-          {syncedFilesInSelection.length !== 1 ? 's' : ''})
-          {hasFilesCheckedOutByOthers && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
-          )}
-          {!hasFilesCheckedOutByOthers && !canDeleteServer.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Delete Local & Server - show if any content exists on server (synced, cloud-only, or folder exists on server) */}
-      {/* For empty folder-only selections, simplify to just "Delete" since folders are always synced */}
-      {(anySynced ||
+      // Delete Local & Server - show if any content exists on server (synced, cloud-only, or
+      // folder exists on server). For empty folder-only selections, simplify to just "Delete"
+      // since folders are always synced
+      'delete.everywhere':
+        anySynced ||
         allCloudOnly ||
         contextFiles.some((f) => f.diffStatus === 'cloud') ||
         hasFoldersOnServer ||
-        (isOnlyFolders && hasSyncedFolders)) && (
-        <div
-          className={`context-menu-item ${canDeleteServer.allowed && !hasFilesCheckedOutByOthers ? 'danger' : 'disabled'}`}
-          onClick={hasFilesCheckedOutByOthers ? undefined : () => handleDeleteFromServer(false)}
-          title={
-            hasFilesCheckedOutByOthers
-              ? `Cannot delete: ${filesCheckedOutByOthers.length} file(s) checked out by others`
-              : !canDeleteServer.allowed
-                ? `Requires ${getPermissionRequirement('delete-server')}`
-                : ''
-          }
-        >
-          <Trash2 size={14} />
-          {isEmptyFolderSelection
-            ? `Delete${folderCount > 0 ? ` (${folderCount} folder${folderCount !== 1 ? 's' : ''})` : ''}`
-            : `${allCloudOnly ? 'Delete from Server' : 'Delete Local & Server'} (${syncedFilesInSelection.length + cloudOnlyFilesInSelection.length} file${syncedFilesInSelection.length + cloudOnlyFilesInSelection.length !== 1 ? 's' : ''}${folderCount > 0 ? `, ${folderCount} folder${folderCount !== 1 ? 's' : ''}` : ''})`}
-          {hasFilesCheckedOutByOthers && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
-          )}
-          {!hasFilesCheckedOutByOthers && !canDeleteServer.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
+        (isOnlyFolders && hasSyncedFolders) ? (
+          <div
+            className={`context-menu-item ${canDeleteServer.allowed && !hasFilesCheckedOutByOthers ? 'danger' : 'disabled'}`}
+            onClick={hasFilesCheckedOutByOthers ? undefined : () => handleDeleteFromServer(false)}
+            title={
+              hasFilesCheckedOutByOthers
+                ? lockedTitle
+                : !canDeleteServer.allowed
+                  ? `Requires ${getPermissionRequirement('delete-server')}`
+                  : ''
+            }
+          >
+            <Trash2 size={14} />
+            {isEmptyFolderSelection
+              ? `Delete${folderCount > 0 ? ` (${folderCount} folder${folderCount !== 1 ? 's' : ''})` : ''}`
+              : `${allCloudOnly ? 'Delete from Server' : 'Delete Local & Server'} (${syncedFilesInSelection.length + cloudOnlyFilesInSelection.length} file${syncedFilesInSelection.length + cloudOnlyFilesInSelection.length !== 1 ? 's' : ''}${folderCount > 0 ? `, ${folderCount} folder${folderCount !== 1 ? 's' : ''}` : ''})`}
+            {hasFilesCheckedOutByOthers && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(locked)</span>
+            )}
+            {!hasFilesCheckedOutByOthers && !canDeleteServer.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
 
-      {/* Discard Orphaned Files - for files deleted from server by another user */}
-      {hasOrphanedFiles && (
+      // Discard Orphaned Files - for files deleted from server by another user
+      'delete.discardOrphaned': hasOrphanedFiles ? (
         <div
           className={`context-menu-item ${canDeleteLocal.allowed ? 'danger' : 'disabled'}`}
           onClick={() => {
@@ -458,7 +349,114 @@ export function DeleteItems({
             <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
           )}
         </div>
+      ) : null,
+    },
+  }
+}
+
+interface KeepLocalOnlyEntryProps {
+  contextFiles: LocalFile[]
+  firstFile: LocalFile
+  isFolder: boolean
+  multiSelect: boolean
+  activeVaultId: string
+  addIgnorePattern: (vaultId: string, pattern: string) => void
+  getIgnorePatterns: (vaultId: string) => string[]
+  addToast: (type: ToastType, message: string, duration?: number) => void
+  onClose: () => void
+  onRefresh: (silent?: boolean) => void
+}
+
+/** Keep Local Only: a flyout to ignore this file or folder, or every file of its extension. */
+function KeepLocalOnlyEntry({
+  contextFiles,
+  firstFile,
+  isFolder,
+  multiSelect,
+  activeVaultId,
+  addIgnorePattern,
+  getIgnorePatterns,
+  addToast,
+  onClose,
+  onRefresh,
+}: KeepLocalOnlyEntryProps) {
+  const flyout = useFlyout('sync.keepLocalOnly')
+  const currentPatterns = flyout.isOpen ? getIgnorePatterns(activeVaultId) : []
+
+  return (
+    <div
+      className="context-menu-item relative"
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
+      onClick={(e) => {
+        // Toggle on click (for touch/trackpad users)
+        e.stopPropagation()
+        flyout.toggle()
+      }}
+    >
+      <EyeOff size={14} />
+      Keep Local Only
+      <SubmenuArrow />
+      {flyout.isOpen && (
+        <ContextSubmenu
+          minWidth={200}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
+        >
+          {/* Ignore this specific file/folder */}
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.stopPropagation()
+              for (const file of contextFiles) {
+                if (file.isDirectory) {
+                  addIgnorePattern(activeVaultId, file.relativePath + '/')
+                } else {
+                  addIgnorePattern(activeVaultId, file.relativePath)
+                }
+              }
+              addToast(
+                'success',
+                `Added ${contextFiles.length > 1 ? `${contextFiles.length} items` : contextFiles[0].name} to ignore list`,
+              )
+              onRefresh(true)
+              onClose()
+            }}
+          >
+            {isFolder ? <FolderX size={14} /> : <FileX size={14} />}
+            This {isFolder ? 'folder' : 'file'}
+            {multiSelect ? ` (${contextFiles.length})` : ''}
+          </div>
+
+          {/* Ignore all files with this extension */}
+          {!isFolder && !multiSelect && firstFile.extension && (
+            <div
+              className="context-menu-item"
+              onClick={(e) => {
+                e.stopPropagation()
+                const pattern = `*${firstFile.extension}`
+                addIgnorePattern(activeVaultId, pattern)
+                addToast('success', `Now ignoring all ${firstFile.extension} files`)
+                onRefresh(true)
+                onClose()
+              }}
+            >
+              <FileX size={14} />
+              All *{firstFile.extension} files
+            </div>
+          )}
+
+          {/* Show current patterns count */}
+          {currentPatterns.length > 0 && (
+            <>
+              <div className="context-menu-separator" />
+              <div className="px-3 py-1.5 text-xs text-plm-fg-muted">
+                {currentPatterns.length} pattern{currentPatterns.length > 1 ? 's' : ''} configured
+              </div>
+            </>
+          )}
+        </ContextSubmenu>
       )}
-    </>
+    </div>
   )
 }

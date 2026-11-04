@@ -1,7 +1,8 @@
 /**
- * Export a CSV table (BR number, description, revision) for selected PDF / STEP files.
+ * Export a CSV table (BR number, description, revision) for selected PDF / STEP files: the
+ * `generate.local.table` entry, a flyout.
  */
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { Loader2, Table } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -18,6 +19,9 @@ import { log } from '@/lib/logger'
 import { saveBlobAs } from '@/lib/browserDownload'
 import { ContextSubmenu } from '../components'
 import type { ActionComponentProps } from './types'
+import { useFlyout } from '../customizable/flyout'
+import type { EntryHookResult } from '../customizable/types'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
 /** Same as file type detection in supabase/files/mutations (STEP + PDF). */
 const PDF_STEP_EXTENSIONS = new Set(['.pdf', '.step', '.stp', '.stpz', '.p21'])
@@ -69,7 +73,31 @@ async function getBrNumberForFile(
   return fullItemNumber
 }
 
-export function ExportMetadataTableActions({ contextFiles, onClose }: ActionComponentProps) {
+export function useExportTableEntries({
+  contextFiles,
+  onClose,
+}: ActionComponentProps): EntryHookResult<'generate.local.table'> {
+  const tableFiles = contextFiles.filter(isPdfOrStepFile)
+  const show =
+    tableFiles.length > 0 &&
+    typeof window !== 'undefined' &&
+    !!window.electronAPI?.saveTextFileWithDialog
+  return {
+    entries: {
+      'generate.local.table': show ? (
+        <TableExportEntry tableFiles={tableFiles} onClose={onClose} />
+      ) : null,
+    },
+  }
+}
+
+function TableExportEntry({
+  tableFiles,
+  onClose,
+}: {
+  tableFiles: LocalFile[]
+  onClose: () => void
+}) {
   const { addToast, organization } = usePDMStore(
     useShallow((s) => ({
       addToast: s.addToast,
@@ -77,27 +105,7 @@ export function ExportMetadataTableActions({ contextFiles, onClose }: ActionComp
     })),
   )
   const [isSaving, setIsSaving] = useState(false)
-  const [submenuOpen, setSubmenuOpen] = useState(false)
-  const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  const tableFiles = contextFiles.filter(isPdfOrStepFile)
-
-  if (
-    tableFiles.length === 0 ||
-    typeof window === 'undefined' ||
-    !window.electronAPI?.saveTextFileWithDialog
-  ) {
-    return null
-  }
-
-  const handleMouseEnter = () => {
-    if (submenuTimeoutRef.current) clearTimeout(submenuTimeoutRef.current)
-    setSubmenuOpen(true)
-  }
-
-  const handleMouseLeave = () => {
-    submenuTimeoutRef.current = setTimeout(() => setSubmenuOpen(false), 150)
-  }
+  const flyout = useFlyout('generate.local.table')
 
   const buildCsv = async (): Promise<string> => {
     const rows: string[][] = [['BR Number', 'Description', 'Revision']]
@@ -150,11 +158,11 @@ export function ExportMetadataTableActions({ contextFiles, onClose }: ActionComp
   return (
     <div
       className={`context-menu-item relative ${isSaving ? 'opacity-50' : ''}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
       onClick={(e) => {
         e.stopPropagation()
-        setSubmenuOpen((s) => !s)
+        flyout.toggle()
       }}
     >
       {isSaving ? (
@@ -163,15 +171,12 @@ export function ExportMetadataTableActions({ contextFiles, onClose }: ActionComp
         <Table size={14} className="text-sky-400" />
       )}
       Table{countLabel}
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-      {submenuOpen && (
+      <SubmenuArrow />
+      {flyout.isOpen && (
         <ContextSubmenu
           minWidth={160}
-          onMouseEnter={() => {
-            if (submenuTimeoutRef.current) clearTimeout(submenuTimeoutRef.current)
-            setSubmenuOpen(true)
-          }}
-          onMouseLeave={handleMouseLeave}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
         >
           <div
             className="context-menu-item"

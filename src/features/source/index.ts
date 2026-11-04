@@ -30,13 +30,7 @@ export * from './backup'
 // Context menu exports - only non-conflicting items
 // (pane already exports FileContextMenu, dialogs, etc.)
 export {
-  ClipboardItems,
-  FileOperationItems,
-  PDMItems,
-  CollaborationItems,
-  NavigationItems,
-  AdminItems,
-  DeleteItems,
+  TREE_MENU_ENTRY_IDS,
   useMenuPosition,
   formatSize,
   getCountLabel,

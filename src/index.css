@@ -1585,6 +1585,10 @@ input::placeholder {
 .context-menu {
   position: fixed;
   min-width: 180px;
+  /* A long customised menu scrolls instead of running off the window. Flyouts are position:
+     fixed (ContextSubmenu), so this overflow does not clip them. */
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
   background: var(--plm-bg-lighter);
   border: 1px solid var(--plm-border);
   border-radius: 6px;

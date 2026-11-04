@@ -11,6 +11,7 @@ import type {
 } from '../types/nativeExtensions'
 import type { SettingsTab } from '../types/settings'
 import type { ShortcutOverrides } from '../lib/keybindings/bindings'
+import type { ContextMenuPrefsByOrg, UserContextMenuPrefs } from '../lib/contextMenu/types'
 import type {
   WorkflowTemplate,
   WorkflowState,
@@ -799,6 +800,11 @@ export interface SettingsSlice {
   shortcutOverrides: ShortcutOverrides
   /** Where the export shortcuts write on this computer; null exports next to each source file */
   quickExportFolder: string | null
+  /**
+   * The right-click menu layout this person chose, per organization (`orgKey`), on this computer.
+   * Sanitized on load; read through `useContextMenuLayout` / `effectiveLayout`.
+   */
+  contextMenuPrefs: ContextMenuPrefsByOrg
 
   // State - Tree Filtering
   hideCloudOnlyFolders: boolean // Hide folders containing only cloud (non-downloaded) files
@@ -895,6 +901,8 @@ export interface SettingsSlice {
   /** Replaces every override (import). */
   replaceShortcutOverrides: (overrides: ShortcutOverrides) => void
   setQuickExportFolder: (folder: string | null) => void
+  /** Sets one organization's right-click menu prefs (`orgKey`); null removes them. */
+  setContextMenuPrefs: (orgKey: string, prefs: UserContextMenuPrefs | null) => void
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (enabled: boolean) => void

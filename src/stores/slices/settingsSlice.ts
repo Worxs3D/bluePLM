@@ -9,6 +9,10 @@ import type {
   Language,
 } from '../types'
 import { withBindings, withoutOverride } from '../../lib/keybindings/bindings'
+import {
+  isContextMenuPrefsKey,
+  sanitizeUserContextMenuPrefs,
+} from '../../lib/contextMenu/sanitize'
 import { supabase } from '../../lib/supabase'
 import { IS_WEB_BUILD } from '../../lib/platform'
 
@@ -94,6 +98,7 @@ export const createSettingsSlice: StateCreator<
   language: 'en',
   shortcutOverrides: {},
   quickExportFolder: null,
+  contextMenuPrefs: {},
 
   // Initial state - Tree Filtering
   hideCloudOnlyFolders: false, // Show all folders by default
@@ -194,6 +199,16 @@ export const createSettingsSlice: StateCreator<
   resetAllShortcuts: () => set({ shortcutOverrides: {} }),
   replaceShortcutOverrides: (shortcutOverrides) => set({ shortcutOverrides }),
   setQuickExportFolder: (quickExportFolder) => set({ quickExportFolder }),
+  setContextMenuPrefs: (orgKey, prefs) =>
+    set((state) => {
+      if (!isContextMenuPrefsKey(orgKey)) return {}
+      const { [orgKey]: _previous, ...rest } = state.contextMenuPrefs
+      const clean = prefs ? sanitizeUserContextMenuPrefs(prefs) : null
+      if (!clean) return { contextMenuPrefs: rest }
+      // A change with no time is stamped now, so an admin's later force compares correctly.
+      if (!clean.updatedAt) clean.updatedAt = new Date().toISOString()
+      return { contextMenuPrefs: { ...rest, [orgKey]: clean } }
+    }),
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (hideCloudOnlyFolders) => set({ hideCloudOnlyFolders }),

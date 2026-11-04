@@ -3,6 +3,7 @@ import { Loader2, Check, Package, Settings, FolderOpen, FolderDown } from 'lucid
 import type { ConfigContextMenuState } from '../../hooks/useContextMenuState'
 import { ContextSubmenu } from './components'
 import { hasDesktop } from '@/lib/platform'
+import { SubmenuArrow } from './components/SubmenuArrow'
 
 export interface ConfigContextMenuProps {
   configContextMenu: ConfigContextMenuState
@@ -90,7 +91,7 @@ export function ConfigContextMenu({
         )}
         Export {config.label}
         {countLabel}
-        <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+        <SubmenuArrow />
         {/* Export destination submenu */}
         {exportSubmenu === format && (
           <ContextSubmenu

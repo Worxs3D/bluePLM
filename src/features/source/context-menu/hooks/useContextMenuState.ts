@@ -1,5 +1,5 @@
 // src/features/source/context-menu/hooks/useContextMenuState.ts
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DialogState, DialogName, ForceCheckinFilesState, OrgUser } from '../types'
 import type { LocalFile } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -65,12 +65,6 @@ interface UseContextMenuStateResult {
   activeECOs: ECO[]
   loadingECOs: boolean
   loadActiveECOs: () => Promise<void>
-
-  // Ignore submenu
-  showIgnoreSubmenu: boolean
-  setShowIgnoreSubmenu: (value: boolean) => void
-  handleIgnoreSubmenuEnter: () => void
-  handleIgnoreSubmenuLeave: () => void
 
   // Match ghost file state
   matchGhostFile: LocalFile | null
@@ -168,10 +162,6 @@ export function useContextMenuState({
   }, [members, userId])
   const loadingUsers = membersLoading
 
-  // Ignore submenu
-  const [showIgnoreSubmenu, setShowIgnoreSubmenu] = useState(false)
-  const ignoreSubmenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
   // Platform
   const [platform, setPlatform] = useState<string>('win32')
 
@@ -210,15 +200,6 @@ export function useContextMenuState({
       })
     }
   }, [userId, contextFiles])
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (ignoreSubmenuTimeoutRef.current) {
-        clearTimeout(ignoreSubmenuTimeoutRef.current)
-      }
-    }
-  }, [])
 
   // Dialog handlers
   const openDialog = useCallback((name: DialogName) => {
@@ -266,21 +247,6 @@ export function useContextMenuState({
     },
     [currentMachineId, userId, openDialog],
   )
-
-  // Ignore submenu handlers
-  const handleIgnoreSubmenuEnter = useCallback(() => {
-    if (ignoreSubmenuTimeoutRef.current) {
-      clearTimeout(ignoreSubmenuTimeoutRef.current)
-      ignoreSubmenuTimeoutRef.current = null
-    }
-    setShowIgnoreSubmenu(true)
-  }, [])
-
-  const handleIgnoreSubmenuLeave = useCallback(() => {
-    ignoreSubmenuTimeoutRef.current = setTimeout(() => {
-      setShowIgnoreSubmenu(false)
-    }, 150)
-  }, [])
 
   // Load active ECOs
   const loadActiveECOs = useCallback(async () => {
@@ -336,10 +302,6 @@ export function useContextMenuState({
     activeECOs,
     loadingECOs,
     loadActiveECOs,
-    showIgnoreSubmenu,
-    setShowIgnoreSubmenu,
-    handleIgnoreSubmenuEnter,
-    handleIgnoreSubmenuLeave,
     matchGhostFile,
     setMatchGhostFile,
     matchGhostCandidates,

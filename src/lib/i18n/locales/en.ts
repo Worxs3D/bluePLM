@@ -1,5 +1,6 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
@@ -42,6 +43,7 @@ export const en: TranslationDict = {
     openInEDrawingsFailed: 'The file could not be opened in eDrawings.',
   },
   ...reviewsUiStrings.en,
+  ...contextMenuCustomizerStrings.en,
   reviewPackage: reviewPackageStrings.en,
   dbUpgrade: dbUpgradeStrings.en,
   releases: releasesStrings.en,
