@@ -722,8 +722,6 @@ export const es: TranslationDict = {
     scopeFile: 'Este archivo',
     scopeFolder: 'Esta carpeta',
     scopeVault: 'Todo el almacén',
-    vaultWideNote:
-      'Resolver siempre procesa todos los movimientos pendientes del almacén, no solo los que se muestran arriba.',
 
     listHeading_one: '{{count}} movimiento pendiente mostrado',
     listHeading_other: '{{count}} movimientos pendientes mostrados',
@@ -759,6 +757,32 @@ export const es: TranslationDict = {
     runAdopt: 'Restaurar archivos locales',
 
     contextMenuItem: 'Resolver archivos movidos…',
+
+    selectionNote: 'Solo se resuelven los movimientos marcados en esta lista. Los demás no se tocan.',
+    selectAll: 'Seleccionar todo',
+    selectedCount_one: '{{count}} seleccionado',
+    selectedCount_other: '{{count}} seleccionados',
+    vaultLabel: 'En el almacén',
+    diskLabel: 'En tu disco',
+    vaultMovedBy: 'Ruta del almacén fijada por {{name}}, {{date}}',
+    vaultNeverMoved: 'Ruta del almacén sin cambios desde la primera protección, {{date}}',
+    lastChanged: 'Último cambio en el almacén {{date}}',
+    lastChangedBy: 'Último cambio en el almacén por {{name}}, {{date}}',
+    versionLabel: 'Versión {{version}}',
+    diskModified: 'Modificado en disco {{date}}',
+    checkedOutBy: 'Desprotegido por {{name}}',
+    checkedOutByYou: 'Desprotegido por ti',
+    historyUnavailable: 'No se pudo leer el historial de movimientos.',
+    rowConflictVault: 'Actualizar el almacén: el almacén ya tiene un archivo en la ruta del disco.',
+    rowConflictDisk: 'Restaurar: ya hay algo en la ruta del almacén en el disco.',
+    rowUnverified: 'El contenido cambió desde la última protección. Protégelo para registrar la nueva ubicación con los cambios.',
+    rowHeldVault: 'Actualizar el almacén: desprotegido por {{name}}.',
+    rowUpdateVault: 'Actualizar almacén',
+    rowRestore: 'Restaurar',
+    rowUpdateVaultHint: 'Escribir en el almacén la ruta de este archivo en el disco',
+    rowRestoreHint: 'Renombrar este archivo en el disco a la ruta del almacén',
+    noneSelected: 'Marca al menos un movimiento.',
+    you: 'ti',
   },
 
   realign: {

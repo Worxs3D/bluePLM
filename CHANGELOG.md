@@ -17,6 +17,17 @@ Renderer only. No schema, API or SolidWorks service change.
   recorded under the drawing, because a recorded report belongs to a checked-in version. A report of
   an older version, and Regenerate, still use the checked-in version.
 
+### Fixed
+
+- **Resolve Pending Moves stays inside what you are looking at.** Opened from a folder (or a file),
+  Update the Vault and Restore Local Files used to act on every pending move in the vault, and the
+  confirmation listed them all. They now act only on the moves in the chosen scope that are ticked.
+- **Resolve Pending Moves shows the whole story per file.** Each move lists both full paths with the
+  part that differs highlighted, who last set the vault path and when (from the activity log), the
+  last vault change, the version, the modified time on disk, who has it checked out, and why a
+  direction would skip it. Every row has its own Update vault and Restore buttons, and rows can be
+  ticked or unticked for the bulk actions.
+
 ## [5.9.1] - 2026-11-03
 
 Renderer only. No schema, API or SolidWorks service change (schema 509, API 4.2.2, SolidWorks

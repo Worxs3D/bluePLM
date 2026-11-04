@@ -727,8 +727,6 @@ export const de: TranslationDict = {
     scopeFile: 'Diese Datei',
     scopeFolder: 'Dieser Ordner',
     scopeVault: 'Gesamter Tresor',
-    vaultWideNote:
-      'Das Lösen verarbeitet immer alle ausstehenden Verschiebungen im Tresor, nicht nur die oben angezeigten.',
 
     listHeading_one: '{{count}} ausstehende Verschiebung angezeigt',
     listHeading_other: '{{count}} ausstehende Verschiebungen angezeigt',
@@ -764,6 +762,32 @@ export const de: TranslationDict = {
     runAdopt: 'Lokale Dateien wiederherstellen',
 
     contextMenuItem: 'Verschobene Dateien lösen…',
+
+    selectionNote: 'Nur die angehakten Verschiebungen in dieser Liste werden gelöst. Alles außerhalb bleibt unverändert.',
+    selectAll: 'Alle auswählen',
+    selectedCount_one: '{{count}} ausgewählt',
+    selectedCount_other: '{{count}} ausgewählt',
+    vaultLabel: 'Im Tresor',
+    diskLabel: 'Auf Ihrem Datenträger',
+    vaultMovedBy: 'Tresorpfad gesetzt von {{name}}, {{date}}',
+    vaultNeverMoved: 'Tresorpfad seit dem ersten Einchecken unverändert, {{date}}',
+    lastChanged: 'Zuletzt im Tresor geändert {{date}}',
+    lastChangedBy: 'Zuletzt im Tresor geändert von {{name}}, {{date}}',
+    versionLabel: 'Version {{version}}',
+    diskModified: 'Auf dem Datenträger geändert {{date}}',
+    checkedOutBy: 'Ausgecheckt von {{name}}',
+    checkedOutByYou: 'Von Ihnen ausgecheckt',
+    historyUnavailable: 'Der Verschiebungsverlauf konnte nicht gelesen werden.',
+    rowConflictVault: 'Tresor aktualisieren: Der Tresor hat bereits eine Datei am Pfad auf dem Datenträger.',
+    rowConflictDisk: 'Wiederherstellen: Am Tresorpfad liegt auf dem Datenträger bereits etwas.',
+    rowUnverified: 'Der Inhalt hat sich seit dem letzten Einchecken geändert. Checken Sie die Datei ein, um den neuen Ort mit den Änderungen zu speichern.',
+    rowHeldVault: 'Tresor aktualisieren: ausgecheckt von {{name}}.',
+    rowUpdateVault: 'Tresor aktualisieren',
+    rowRestore: 'Wiederherstellen',
+    rowUpdateVaultHint: 'Den Pfad dieser Datei auf dem Datenträger in den Tresor schreiben',
+    rowRestoreHint: 'Diese Datei auf dem Datenträger zurück auf den Tresorpfad umbenennen',
+    noneSelected: 'Haken Sie mindestens eine Verschiebung an.',
+    you: 'Ihnen',
   },
 
   realign: {

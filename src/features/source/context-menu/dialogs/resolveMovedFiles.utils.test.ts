@@ -16,6 +16,9 @@ import {
   filterByScope,
   inferDefaultScopeType,
   isInScope,
+  countSelected,
+  splitPathDifference,
+  statusByFileId,
   type MovedPair,
 } from './resolveMovedFiles.utils'
 
@@ -46,7 +49,7 @@ describe('buildMovedPairs', () => {
       }),
     ])
 
-    expect(pairs).toEqual<MovedPair[]>([
+    expect(pairs).toMatchObject<Partial<MovedPair>[]>([
       { fileId: 'file-1', name: 'part.sldprt', serverPath: 'old/part.sldprt', localPath: 'new/part.sldprt' },
     ])
   })
@@ -61,7 +64,7 @@ describe('buildMovedPairs', () => {
       }),
     ])
 
-    expect(pairs).toEqual<MovedPair[]>([
+    expect(pairs).toMatchObject<Partial<MovedPair>[]>([
       { fileId: 'file-1', name: 'part.sldprt', serverPath: 'old/part.sldprt', localPath: 'new/part.sldprt' },
     ])
   })
@@ -183,5 +186,142 @@ describe('buildScope', () => {
   it('always builds a vault scope regardless of context', () => {
     expect(buildScope('vault', baseFile({}))).toEqual({ type: 'vault' })
     expect(buildScope('vault', null)).toEqual({ type: 'vault' })
+  })
+})
+
+describe('buildMovedPairs facts', () => {
+  it('carries the dates, version and checkout a row shows', () => {
+    const [pair] = buildMovedPairs([
+      baseFile({
+        relativePath: 'new/part.sldprt',
+        modifiedTime: '2026-11-02T10:00:00Z',
+        diffStatus: 'moved',
+        pdmData: pdm({
+          id: 'file-1',
+          file_path: 'old/part.sldprt',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-10-01T00:00:00Z',
+          updated_by: 'user-2',
+          version: 4,
+          checked_out_by: 'user-3',
+        }),
+      }),
+    ])
+    expect(pair).toMatchObject({
+      localModifiedAt: '2026-11-02T10:00:00Z',
+      vaultCreatedAt: '2026-01-01T00:00:00Z',
+      vaultUpdatedAt: '2026-10-01T00:00:00Z',
+      vaultUpdatedBy: 'user-2',
+      version: 4,
+      checkedOutBy: 'user-3',
+    })
+  })
+
+  it('has no disk date for a lone moved_away stub', () => {
+    const [pair] = buildMovedPairs([
+      baseFile({
+        relativePath: 'old/part.sldprt',
+        modifiedTime: '2026-11-02T10:00:00Z',
+        diffStatus: 'moved_away',
+        movedToRelativePath: 'new/part.sldprt',
+        pdmData: pdm({ id: 'file-1', file_path: 'old/part.sldprt' }),
+      }),
+    ])
+    expect(pair.localModifiedAt).toBeNull()
+  })
+})
+
+describe('splitPathDifference', () => {
+  const join = (parts: { prefix: string; serverMiddle: string; localMiddle: string; suffix: string }) => [
+    parts.prefix + parts.serverMiddle + parts.suffix,
+    parts.prefix + parts.localMiddle + parts.suffix,
+  ]
+
+  it('isolates a folder inserted in the middle', () => {
+    const parts = splitPathDifference('P00/Assy/x.sldasm', 'P00/Released/Rev A/Assy/x.sldasm')
+    expect(parts).toEqual({
+      prefix: 'P00/',
+      serverMiddle: '',
+      localMiddle: 'Released/Rev A/',
+      suffix: 'Assy/x.sldasm',
+    })
+  })
+
+  it('isolates a removed folder and a rename', () => {
+    expect(splitPathDifference('A/B/_ARCHIVE/x.sldprt', 'A/B/x.sldprt')).toEqual({
+      prefix: 'A/B/',
+      serverMiddle: '_ARCHIVE/',
+      localMiddle: '',
+      suffix: 'x.sldprt',
+    })
+    expect(splitPathDifference('a/old.sldprt', 'a/new.sldprt')).toEqual({
+      prefix: 'a/',
+      serverMiddle: 'old.sldprt',
+      localMiddle: 'new.sldprt',
+      suffix: '',
+    })
+  })
+
+  it('matches whole segments only, ignoring case', () => {
+    expect(splitPathDifference('Fixed Lens/a.sldprt', 'Fixed Lens Models/a.sldprt').prefix).toBe('')
+    expect(splitPathDifference('dev/A/a.sldprt', 'DEV/B/a.sldprt').prefix).toBe('dev/')
+  })
+
+  it('always reassembles both paths exactly', () => {
+    const cases: Array<[string, string]> = [
+      ['x.sldprt', 'y.sldprt'],
+      ['a/x.sldprt', 'a/x.sldprt'],
+      ['a/b/c/x.sldprt', 'q/x.sldprt'],
+      ['a/x.sldprt', 'a/b/b/x.sldprt'],
+      ['0 - SHARED/02-TEMPLATES/Archive/BR-NUMBER.SLDDRW', 'WTE/release/wte5/BR-102614.SLDDRW'],
+    ]
+    for (const [server, local] of cases) {
+      expect(join(splitPathDifference(server, local))).toEqual([server, local])
+    }
+  })
+})
+
+describe('statusByFileId', () => {
+  it('maps each bucket to a row status', () => {
+    const map = statusByFileId({
+      eligible: [{ fileId: 'a' }],
+      blocked: [{ fileId: 'b', holderName: 'Sam' }],
+      skipped: [
+        { fileId: 'c', reason: 'conflict' },
+        { fileId: 'd', reason: 'unverified' },
+      ],
+    })
+    expect(map.get('a')).toEqual({ kind: 'ready' })
+    expect(map.get('b')).toEqual({ kind: 'held', holderName: 'Sam' })
+    expect(map.get('c')).toEqual({ kind: 'conflict' })
+    expect(map.get('d')).toEqual({ kind: 'unverified' })
+    expect(map.get('e')).toBeUndefined()
+  })
+})
+
+describe('countSelected', () => {
+  it('counts only the ticked rows and groups holders', () => {
+    const counts = countSelected(
+      {
+        eligible: [{ fileId: 'a' }, { fileId: 'x' }],
+        blocked: [
+          { fileId: 'b', holderName: 'Sam' },
+          { fileId: 'c', holderName: 'Sam' },
+          { fileId: 'y', holderName: 'Kim' },
+        ],
+        skipped: [
+          { fileId: 'd', reason: 'conflict' },
+          { fileId: 'e', reason: 'unverified' },
+        ],
+      },
+      new Set(['a', 'b', 'c', 'd', 'e']),
+    )
+    expect(counts).toEqual({
+      eligible: 1,
+      blocked: 2,
+      conflicts: 1,
+      unverified: 1,
+      holders: [{ holderName: 'Sam', count: 2 }],
+    })
   })
 })

@@ -58,6 +58,80 @@ function auditRunBase(store: Store) {
   }
 }
 
+/** A colleague for scenes that name another user. */
+const LOOK_COLLEAGUE = {
+  id: '00000000-0000-4000-8000-c011ea6e0001',
+  email: 'sam.rivera@example.com',
+  full_name: 'Sam Rivera',
+  avatar_url: null,
+}
+
+/**
+ * Pending moves in one top-level folder, for Resolve Pending Moves: most moved into a deeper
+ * folder on disk and ready either way, one checked out by a colleague, one edited after the move.
+ * Open the dialog with `--click "[title*='pending file move']"`.
+ */
+function showPendingMoves(store: Store): void {
+  const state = store.getState()
+  state.closeSettings()
+  store.setState({
+    activeView: 'explorer',
+    sidebarWidth: 300,
+    members: [
+      {
+        ...LOOK_COLLEAGUE,
+        custom_avatar_url: null,
+        role: 'engineer',
+        last_sign_in_at: null,
+        last_online_at: null,
+      },
+    ],
+  })
+
+  const byFolder = new Map<string, string[]>()
+  for (const file of state.files) {
+    if (file.isDirectory || !file.pdmData?.id) continue
+    const parts = file.relativePath.replace(/\\/g, '/').split('/')
+    if (parts.length < 2) continue
+    const list = byFolder.get(parts[0]) ?? []
+    list.push(file.path)
+    byFolder.set(parts[0], list)
+  }
+  const [folder, paths] = Array.from(byFolder.entries()).sort((a, b) => b[1].length - a[1].length)[0] ?? []
+  if (!folder || !paths) return
+  const chosen = new Set(paths.slice(0, 7))
+  const now = Date.now()
+  let index = 0
+  const files = state.files.map((file) => {
+    if (!chosen.has(file.path) || !file.pdmData) return file
+    const i = index++
+    const serverPath = file.relativePath.replace(/\\/g, '/')
+    const rest = serverPath.slice(folder.length + 1)
+    const diskPath = `${folder}/Released/Rev ${String.fromCharCode(65 + (i % 3))}/${rest}`
+    const root = state.vaultPath ?? ''
+    const held = i === 2
+    return {
+      ...file,
+      relativePath: diskPath,
+      path: [root, ...diskPath.split('/')].join('\\'),
+      diffStatus: 'moved' as const,
+      modifiedTime: new Date(now - (i + 1) * 3_600_000).toISOString(),
+      localHash: i === 4 ? 'e'.repeat(64) : file.pdmData.content_hash ?? undefined,
+      pdmData: {
+        ...file.pdmData,
+        file_path: serverPath,
+        content_hash: file.pdmData.content_hash ?? 'c'.repeat(64),
+        created_at: new Date(now - 220 * 86_400_000).toISOString(),
+        updated_at: new Date(now - (i + 3) * 86_400_000).toISOString(),
+        updated_by: LOOK_COLLEAGUE.id,
+        checked_out_by: held ? LOOK_COLLEAGUE.id : null,
+        checked_out_user: held ? LOOK_COLLEAGUE : null,
+      },
+    }
+  })
+  store.setState({ files })
+}
+
 /** Local path of a look inspection file. */
 function lookPath(store: Store, name: string): string {
   const root = store.getState().vaultPath ?? ''
@@ -338,6 +412,8 @@ export function installLook(store: Store, backend: PerfBackend): void {
     },
     // Settings > Export.
     'settings-export': () => store.getState().openSettings('export'),
+    // Resolve Pending Moves: several moves in one folder (click the folder's badge to open it).
+    'resolve-moves': () => showPendingMoves(store),
     'vault-audit-scope': () => {
       store.getState().clearVaultAuditRun()
       openVaultAudit(store)

@@ -181,7 +181,8 @@ export {
 // ============================================
 // Activity exports
 // ============================================
-export { getRecentActivity, getFileActivity } from './activity'
+export { getRecentActivity, getFileActivity, getLatestFileMoves } from './activity'
+export type { FileMoveRecord } from './activity'
 
 // ============================================
 // Review exports

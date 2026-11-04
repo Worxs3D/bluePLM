@@ -727,8 +727,6 @@ export const fr: TranslationDict = {
     scopeFile: 'Ce fichier',
     scopeFolder: 'Ce dossier',
     scopeVault: 'Tout le coffre',
-    vaultWideNote:
-      'La résolution traite toujours tous les déplacements en attente du coffre, pas seulement ceux affichés ci-dessus.',
 
     listHeading_one: '{{count}} déplacement en attente affiché',
     listHeading_other: '{{count}} déplacements en attente affichés',
@@ -764,6 +762,32 @@ export const fr: TranslationDict = {
     runAdopt: 'Restaurer les fichiers locaux',
 
     contextMenuItem: 'Résoudre les fichiers déplacés…',
+
+    selectionNote: 'Seuls les déplacements cochés dans cette liste sont résolus. Les autres ne sont pas touchés.',
+    selectAll: 'Tout sélectionner',
+    selectedCount_one: '{{count}} sélectionné',
+    selectedCount_other: '{{count}} sélectionnés',
+    vaultLabel: 'Dans le coffre',
+    diskLabel: 'Sur votre disque',
+    vaultMovedBy: 'Chemin du coffre défini par {{name}}, {{date}}',
+    vaultNeverMoved: 'Chemin du coffre inchangé depuis le premier archivage, {{date}}',
+    lastChanged: 'Dernière modification dans le coffre {{date}}',
+    lastChangedBy: 'Dernière modification dans le coffre par {{name}}, {{date}}',
+    versionLabel: 'Version {{version}}',
+    diskModified: 'Modifié sur le disque {{date}}',
+    checkedOutBy: 'Extrait par {{name}}',
+    checkedOutByYou: 'Extrait par vous',
+    historyUnavailable: 'L’historique des déplacements n’a pas pu être lu.',
+    rowConflictVault: 'Mettre à jour le coffre : le coffre a déjà un fichier au chemin du disque.',
+    rowConflictDisk: 'Restaurer : quelque chose occupe déjà le chemin du coffre sur le disque.',
+    rowUnverified: 'Le contenu a changé depuis le dernier archivage. Archivez-le pour enregistrer le nouvel emplacement avec les modifications.',
+    rowHeldVault: 'Mettre à jour le coffre : extrait par {{name}}.',
+    rowUpdateVault: 'Mettre à jour le coffre',
+    rowRestore: 'Restaurer',
+    rowUpdateVaultHint: 'Écrire dans le coffre le chemin de ce fichier sur le disque',
+    rowRestoreHint: 'Renommer ce fichier sur le disque vers le chemin du coffre',
+    noneSelected: 'Cochez au moins un déplacement.',
+    you: 'vous',
   },
 
   realign: {

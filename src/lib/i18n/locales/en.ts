@@ -2341,8 +2341,6 @@ export const en: TranslationDict = {
     scopeFile: 'This file',
     scopeFolder: 'This folder',
     scopeVault: 'Whole vault',
-    vaultWideNote:
-      'Resolving always processes every pending move in the vault, not just the ones shown above.',
 
     listHeading_one: '{{count}} pending move shown',
     listHeading_other: '{{count}} pending moves shown',
@@ -2377,6 +2375,32 @@ export const en: TranslationDict = {
     runAdopt: 'Restore Local Files',
 
     contextMenuItem: 'Resolve Moved Files…',
+
+    selectionNote: 'Only the ticked moves in this list are resolved. Moves outside it are left alone.',
+    selectAll: 'Select all',
+    selectedCount_one: '{{count}} selected',
+    selectedCount_other: '{{count}} selected',
+    vaultLabel: 'In the vault',
+    diskLabel: 'On your disk',
+    vaultMovedBy: 'Vault path set by {{name}}, {{date}}',
+    vaultNeverMoved: 'Vault path unchanged since first check-in, {{date}}',
+    lastChanged: 'Last changed in the vault {{date}}',
+    lastChangedBy: 'Last changed in the vault by {{name}}, {{date}}',
+    versionLabel: 'Version {{version}}',
+    diskModified: 'Modified on disk {{date}}',
+    checkedOutBy: 'Checked out by {{name}}',
+    checkedOutByYou: 'Checked out by you',
+    historyUnavailable: 'Move history could not be read.',
+    rowConflictVault: 'Update the vault: the vault already has a file at the disk path.',
+    rowConflictDisk: 'Restore: something already sits at the vault path on disk.',
+    rowUnverified: 'Contents changed since the last check-in. Check it in to record the new location with the changes.',
+    rowHeldVault: 'Update the vault: checked out by {{name}}.',
+    rowUpdateVault: 'Update vault',
+    rowRestore: 'Restore',
+    rowUpdateVaultHint: 'Write this file’s disk path to the vault',
+    rowRestoreHint: 'Rename this file on disk back to the vault path',
+    noneSelected: 'Tick at least one move to resolve.',
+    you: 'you',
   },
 
   // "Re-align with server" — a synchronous, local-only comparison of the vault's files against
