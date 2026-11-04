@@ -10,6 +10,7 @@ import {
   checkinCandidates,
   createOutputQueue,
   existingOutputKinds,
+  openDocumentNames,
   planCheckinOutputs,
   queuedJobKey,
   SAME_NAME_MAX_ATTEMPTS,
@@ -203,6 +204,50 @@ describe('createOutputQueue', () => {
     await q.idle()
     expect(h.calls).toHaveLength(SAME_NAME_MAX_ATTEMPTS)
     expect(lastStatus(h.jobs, 'a')).toBe('failed')
+  })
+})
+
+describe('same-named document open in SOLIDWORKS, a job the user asked for', () => {
+  it('fails at once, naming the open documents, instead of waiting behind a spinner', async () => {
+    const sameName: EnsureVersionOutputResult = {
+      status: 'failed',
+      error: 'C:\\vault\\A.SLDASM, C:/other/B.SLDPRT',
+      errorCode: 'SAME_NAME_OPEN',
+      openDocuments: ['C:\\vault\\A.SLDASM', 'C:/other/B.SLDPRT'],
+    }
+    const h = harness([sameName, sameName])
+    const q = createOutputQueue(h.deps)
+    q.enqueue([{ fileId: 'a', version: 1, kind: 'pdf', fileName: 'A.SLDDRW' }], false)
+    await q.idle()
+    expect(h.calls).toHaveLength(1)
+    expect(h.timers).toHaveLength(0)
+    const last = [...h.jobs].reverse().find((j) => j.fileId === 'a')
+    expect(last).toMatchObject({ status: 'failed', detail: 'SAME_NAME_OPEN', openDocuments: ['A.SLDASM', 'B.SLDPRT'] })
+  })
+
+  it('still waits for a check-in job, and says what it waits for', async () => {
+    const sameName: EnsureVersionOutputResult = {
+      status: 'failed',
+      error: 'X',
+      errorCode: 'SAME_NAME_OPEN',
+      openDocuments: ['C:/v/A.SLDDRW'],
+    }
+    const h = harness([sameName])
+    const q = createOutputQueue(h.deps)
+    q.enqueue([{ fileId: 'a', version: 1, kind: 'pdf', fileName: 'A.SLDDRW' }])
+    await new Promise((r) => setTimeout(r, 0))
+    const last = [...h.jobs].reverse().find((j) => j.fileId === 'a')
+    expect(last).toMatchObject({ status: 'queued', detail: 'SAME_NAME_OPEN', openDocuments: ['A.SLDDRW'] })
+    h.advance(SAME_NAME_RETRY_MS)
+    await q.idle()
+    const done = [...h.jobs].reverse().find((j) => j.fileId === 'a')
+    expect(done).toMatchObject({ status: 'done', openDocuments: undefined })
+  })
+
+  it('names each open document once, by file name', () => {
+    expect(openDocumentNames(undefined)).toBeUndefined()
+    expect(openDocumentNames([])).toBeUndefined()
+    expect(openDocumentNames(['C:\\a\\X.SLDPRT', 'D:/b/X.SLDPRT', 'Y.SLDASM'])).toEqual(['X.SLDPRT', 'Y.SLDASM'])
   })
 })
 

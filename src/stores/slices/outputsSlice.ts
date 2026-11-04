@@ -43,6 +43,8 @@ export interface OutputJob {
   status: OutputJobStatus
   /** Why it was skipped or failed (an error code or message), for the tooltip and the log. */
   detail: string | null
+  /** With `detail` SAME_NAME_OPEN: the file names open in SOLIDWORKS that block it. */
+  openDocuments?: readonly string[]
   /** Started from a check-in (true) or by the user. */
   auto: boolean
   updatedAt: number

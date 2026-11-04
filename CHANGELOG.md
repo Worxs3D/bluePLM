@@ -42,6 +42,12 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
   last vault change, the version, the modified time on disk, who has it checked out, and why a
   direction would skip it. Every row has its own Update vault and Restore buttons, and rows can be
   ticked or unticked for the bulk actions.
+- **Generate PDF / STEP no longer spins for ten minutes when SOLIDWORKS has a same-named file
+  open.** SOLIDWORKS cannot open two files of the same name, so an output cannot be made while the
+  drawing, or a part or assembly it shows, is open there (on its own or inside an open assembly).
+  A Generate you click used to wait and retry every minute, ten times, behind a spinner, and only
+  then fail. It now fails at once and names the files to close. Check-in's automatic outputs still
+  wait, and their row's tooltip now says what they are waiting for.
 
 ## [5.9.1] - 2026-11-03
 

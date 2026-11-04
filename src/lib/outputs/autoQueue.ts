@@ -9,8 +9,10 @@
  * background reference extraction (so the closure is exact), and runs one job at a time. A batch
  * of more than `AUTO_OUTPUT_MAX_BATCH` files, BluePLM Web and a machine without SOLIDWORKS are
  * skipped (logged, nothing else). At most `AUTO_OUTPUT_MAX_QUEUED` jobs wait; more are dropped.
- * A job that finds a same-named document open in SOLIDWORKS (the drawing just checked in usually
- * is) waits and tries again, a bounded number of times. Every failure is logged and kept on the
+ * A check-in's job that finds a same-named document open in SOLIDWORKS (the drawing just checked
+ * in usually is) waits and tries again, a bounded number of times; a job the user asked for fails
+ * at once and names the open documents (it used to wait up to ten minutes behind a spinner).
+ * Every failure is logged and kept on the
  * job in the store (`outputJobs`); nothing is thrown.
  */
 
@@ -182,6 +184,12 @@ export interface OutputQueue {
   reset: () => void
 }
 
+/** The file names of open documents (full paths), each once, for the user. Pure. */
+export function openDocumentNames(paths: readonly string[] | undefined): string[] | undefined {
+  if (!paths || paths.length === 0) return undefined
+  return [...new Set(paths.map((p) => p.split(/[\\/]/).pop() || p))]
+}
+
 /** Two jobs are the same only for the same file, kind, version asked for and regenerate flag. */
 export function queuedJobKey(planned: PlannedOutputJob): string {
   return `${outputJobKey(planned.fileId, planned.kind, null)}:${planned.version ?? 'latest'}:${
@@ -252,7 +260,7 @@ export function createOutputQueue(
         return
       }
       if (gen !== generation) return
-      emit(q, { status: 'running', fileVersionId, detail: null }, gen)
+      emit(q, { status: 'running', fileVersionId, detail: null, openDocuments: undefined }, gen)
       const result = await deps.ensure(
         fileVersionId,
         q.job.kind,
@@ -272,21 +280,26 @@ export function createOutputQueue(
         case 'unsupported':
           emit(q, { status: 'skipped', detail: result.status }, gen)
           return
-        case 'failed':
-          if (result.errorCode === 'SAME_NAME_OPEN' && q.attempts < SAME_NAME_MAX_ATTEMPTS) {
+        case 'failed': {
+          const sameName = result.errorCode === 'SAME_NAME_OPEN'
+          const openDocuments = sameName ? openDocumentNames(result.openDocuments) : undefined
+          // Only a check-in's job waits for the document to close: the drawing just checked in is
+          // usually still open. The user's own click is answered at once, naming what to close.
+          if (sameName && q.job.auto && q.attempts < SAME_NAME_MAX_ATTEMPTS) {
             q.notBefore = deps.now() + SAME_NAME_RETRY_MS
             waiting.push(q)
-            emit(q, { status: 'queued', detail: 'SAME_NAME_OPEN' }, gen)
+            emit(q, { status: 'queued', detail: 'SAME_NAME_OPEN', openDocuments }, gen)
             return
           }
-          emit(q, { status: 'failed', detail: result.errorCode ?? result.error }, gen)
-          log.warn('[Outputs]', 'Automatic output failed', {
+          emit(q, { status: 'failed', detail: result.errorCode ?? result.error, openDocuments }, gen)
+          log.warn('[Outputs]', q.job.auto ? 'Automatic output failed' : 'Output failed', {
             fileId: q.job.fileId,
             kind: q.job.kind,
             errorCode: result.errorCode,
             error: result.error,
           })
           return
+        }
       }
     } catch (err) {
       emit(q, { status: 'failed', detail: err instanceof Error ? err.message : String(err) }, gen)

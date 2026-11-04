@@ -111,10 +111,15 @@ export const FileOutputRow = memo(function FileOutputRow({
         ? t('source.outputs.rowApproximateTitle')
         : t('source.outputs.previewRowTitle')
     : entry.state === 'failed'
-      ? t('source.outputs.rowFailedTitle', { reason: outputReasonText(entry.job?.detail) })
+      ? t('source.outputs.rowFailedTitle', { reason: outputReasonText(entry.job?.detail, entry.job?.openDocuments) })
       : entry.state === 'missing'
         ? t('source.outputs.rowGenerateTitle', { kind })
-        : undefined
+        : entry.state === 'queued' && entry.job?.detail === 'SAME_NAME_OPEN'
+          ? t('source.outputs.rowWaitingSameNameTitle', {
+              kind,
+              reason: outputReasonText(entry.job.detail, entry.job.openDocuments),
+            })
+          : undefined
   const ghost = !output
   const wipTitle = entry.secondary && output ? t('source.outputs.wipTitle', { version: output.version }) : undefined
   const selected = usePDMStore(

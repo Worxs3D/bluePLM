@@ -150,6 +150,7 @@ async function renderAndRecord(
         status: 'failed',
         errorCode: 'SAME_NAME_OPEN',
         error: clashes.join(', '),
+        openDocuments: clashes,
       }
     }
 

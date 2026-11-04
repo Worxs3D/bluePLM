@@ -71,6 +71,9 @@ export const versionOutputStrings: Record<string, string> = {
   reason_unsupported: 'This file cannot have that output.',
   reason_NO_VERSION: 'The file has no checked-in version.',
   reason_SAME_NAME_OPEN: 'A document with the same name is open in SOLIDWORKS. Close it and try again.',
+  reason_SAME_NAME_OPEN_named:
+    'SOLIDWORKS has {{files}} open (on its own or inside an open assembly), and it cannot open a second file of the same name. Close it in SOLIDWORKS and try again.',
+  rowWaitingSameNameTitle: 'Waiting to generate the {{kind}}: {{reason}} It is tried again every minute.',
   reason_STAGING: 'The version and its references could not be downloaded.',
   reason_RETARGET_FAILED: 'The references of the downloaded version could not be pointed at each other.',
   reason_EXPORT_FAILED: 'SOLIDWORKS could not export the file.',

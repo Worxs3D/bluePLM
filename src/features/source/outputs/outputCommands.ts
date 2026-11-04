@@ -32,9 +32,18 @@ import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 
 import { generateJobs, OUTPUT_REASON_CODES, outputCopyName, outputReasonKey } from './outputRowModel'
 
-/** A job's detail (a code, or the service's own text) as a sentence for the user. */
-export function outputReasonText(detail: string | null | undefined): string {
+/**
+ * A job's detail (a code, or the service's own text) as a sentence for the user. A same-name
+ * clash names the open documents when the job carries them.
+ */
+export function outputReasonText(
+  detail: string | null | undefined,
+  openDocuments?: readonly string[],
+): string {
   if (!detail) return t('source.outputs.reason_unknown')
+  if (detail === 'SAME_NAME_OPEN' && openDocuments && openDocuments.length > 0) {
+    return t('source.outputs.reason_SAME_NAME_OPEN_named', { files: openDocuments.join(', ') })
+  }
   return (OUTPUT_REASON_CODES as readonly string[]).includes(detail) ? t(outputReasonKey(detail)) : detail
 }
 
@@ -76,7 +85,11 @@ function settle(batch: Batch): void {
   if (batch.problems.length === 1 && batch.total === 1) {
     toast(
       first.status === 'failed' ? 'error' : 'warning',
-      t('source.outputs.generateFailedOne', { kind, name: first.fileName, reason: outputReasonText(first.detail) }),
+      t('source.outputs.generateFailedOne', {
+        kind,
+        name: first.fileName,
+        reason: outputReasonText(first.detail, first.openDocuments),
+      }),
     )
     return
   }
@@ -86,7 +99,7 @@ function settle(batch: Batch): void {
       failed: batch.problems.length,
       total: batch.total,
       name: first.fileName,
-      reason: outputReasonText(first.detail),
+      reason: outputReasonText(first.detail, first.openDocuments),
     }),
   )
 }
