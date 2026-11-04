@@ -127,7 +127,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => ipcRenderer.invoke('app:get-platform'),
   getTitleBarOverlayRect: (): Promise<TitleBarOverlayRect> =>
     ipcRenderer.invoke('app:get-titlebar-overlay-rect'),
-  setTitleBarOverlay: (options: { color: string; symbolColor: string }) =>
+  setTitleBarOverlay: (options: { color: string; symbolColor: string; target?: 'settings' }) =>
     ipcRenderer.invoke('app:set-titlebar-overlay', options),
   getZoomFactor: () => ipcRenderer.invoke('app:get-zoom-factor'),
   setZoomFactor: (factor: number) => ipcRenderer.invoke('app:set-zoom-factor', factor),
@@ -959,6 +959,8 @@ declare global {
       setTitleBarOverlay: (options: {
         color: string
         symbolColor: string
+        /** 'settings': the settings window's controls instead of the calling window's. */
+        target?: 'settings'
       }) => Promise<{ success: boolean; error?: string }>
       getPathForFile: (file: File) => string
       reloadApp: () => Promise<{ success: boolean; error?: string }>

@@ -303,6 +303,8 @@ export const en: TranslationDict = {
     maximize: 'Maximize',
     restoreSize: 'Restore size',
     close: 'Close settings (Esc)',
+    popOut: 'Open in a separate window',
+    dockBack: 'Put back in the main window',
   },
 
   // Log viewer

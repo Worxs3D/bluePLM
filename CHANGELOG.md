@@ -23,6 +23,12 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
 
 ### Changed
 
+- **Settings opens as a modal again.** It sits centred over the blurred app and cannot be moved
+  or resized; click outside it or press Esc to close it. On the desktop, the button at its top
+  right opens it in a separate window you can move, resize and put on another screen. That window
+  has its own title bar with the BluePLM mark and a button that puts Settings back in the main
+  window. Closing Settings forgets the choice. The web's draggable floating panel is gone.
+
 - **Inspection reports of a checked-out drawing.** Extract, balloon and generate the report without
   checking the drawing in first. When you have the drawing checked out and its inspection table or
   file has changed since the last version, Generate builds the report from your copy (the live table

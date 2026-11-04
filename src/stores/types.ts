@@ -621,8 +621,8 @@ export interface UISlice {
 
   // Settings navigation
   /**
-   * Settings is open: its own window on the desktop, a floating panel on the web. Never a
-   * sidebar view.
+   * Settings is open: a modal over the app, or (desktop, after its pop-out button) a window of
+   * its own. Never a sidebar view.
    */
   settingsOpen: boolean
   /** Counts `openSettings` calls, so an open settings window comes to the front when asked again. */

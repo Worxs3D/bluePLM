@@ -6,6 +6,8 @@ export interface DesktopLifecycleAPI {
   setTitleBarOverlay: (options: {
     color: string
     symbolColor: string
+    /** 'settings': the settings window's controls instead of the calling window's. */
+    target?: 'settings'
   }) => Promise<{ success: boolean; error?: string }>
   getZoomFactor: () => Promise<number>
   setZoomFactor: (factor: number) => Promise<{ success: boolean; factor?: number; error?: string }>

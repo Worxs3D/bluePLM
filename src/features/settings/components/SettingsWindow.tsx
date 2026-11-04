@@ -64,15 +64,35 @@ function canRenderInto(child: Window): boolean {
 }
 
 /**
- * Settings in a window of its own (desktop): it moves, resizes, goes to another screen, and the
- * main window stays usable behind it. The window is an empty same-origin page that the main
+ * Colours for the system's window controls over the title bar, from the app's `ui-*` tokens on
+ * `doc` (the title bar is `bg-ui-nav`), or null before the stylesheets have loaded.
+ */
+function windowControlColors(doc: Document): { color: string; symbolColor: string } | null {
+  const style = doc.defaultView?.getComputedStyle(doc.documentElement)
+  const color = style?.getPropertyValue('--ui-nav').trim()
+  const symbolColor = style?.getPropertyValue('--ui-fg').trim()
+  return color && symbolColor ? { color, symbolColor } : null
+}
+
+/**
+ * Settings in a window of its own (desktop), after the modal's pop-out button: it moves,
+ * resizes, goes to another screen, and the main window stays usable behind it. The window is an empty same-origin page that the main
  * window renders into through a portal, so Settings runs on the main window's store as before;
  * only the document differs, which is why components under it use `useHostWindow()` for their
- * listeners. Electron opens it with the saved bounds (`electron/settingsWindow.ts`).
+ * listeners. Electron opens it with the saved bounds and no system title bar
+ * (`electron/settingsWindow.ts`): Settings draws its own, with the BluePLM mark, and the system's
+ * window controls sit over it in colours that follow the theme.
  *
- * `onUnavailable` is called when no window could be opened (the caller shows the floating panel).
+ * `onUnavailable` is called when no window could be opened (the caller shows the modal);
+ * `onDockBack` puts Settings back in the main window.
  */
-export function SettingsWindow({ onUnavailable }: { onUnavailable: () => void }) {
+export function SettingsWindow({
+  onUnavailable,
+  onDockBack,
+}: {
+  onUnavailable: () => void
+  onDockBack: () => void
+}) {
   const [host, setHost] = useState<{ child: Window; root: HTMLElement } | null>(null)
   const openRequest = usePDMStore((s) => s.settingsOpenRequest)
 
@@ -138,6 +158,22 @@ export function SettingsWindow({ onUnavailable }: { onUnavailable: () => void })
     }
   }, [onUnavailable])
 
+  // The window controls follow the theme: the main document's `<html>` attributes carry it.
+  useEffect(() => {
+    if (!host) return
+    let last = ''
+    const apply = () => {
+      const colors = windowControlColors(document)
+      if (!colors || JSON.stringify(colors) === last) return
+      last = JSON.stringify(colors)
+      void window.electronAPI?.setTitleBarOverlay?.({ ...colors, target: 'settings' })
+    }
+    apply()
+    const observer = new MutationObserver(apply)
+    observer.observe(document.documentElement, { attributes: true })
+    return () => observer.disconnect()
+  }, [host])
+
   // Asked to open while already open (a shortcut or a link in the main window): come to the front.
   useEffect(() => {
     if (host && !host.child.closed) host.child.focus()
@@ -146,7 +182,7 @@ export function SettingsWindow({ onUnavailable }: { onUnavailable: () => void })
   if (!host) return null
   return createPortal(
     <HostWindowProvider value={host.child}>
-      <SettingsPanel showHeader={false} />
+      <SettingsPanel variant="window" onDockBack={onDockBack} />
       <CommandConfirmContainer />
       <Toast />
     </HostWindowProvider>,

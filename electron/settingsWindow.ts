@@ -2,7 +2,9 @@
 // same-origin page with `window.open('', SETTINGS_WINDOW_FRAME)` and renders Settings into it, so
 // the window shares the main window's renderer and store. This module lets that one window open,
 // gives it the bounds it was last closed with (on a display that is still attached), and keeps it
-// from navigating or opening anything itself.
+// from navigating or opening anything itself. It has no system title bar: Settings draws its own
+// (with the BluePLM mark) and the system's window controls sit over its right end, in colours the
+// renderer sets through `setSettingsWindowOverlay` as the theme changes.
 import {
   BrowserWindow,
   screen,
@@ -19,6 +21,11 @@ export const SETTINGS_WINDOW_FRAME = 'blueplm-settings'
 
 const MIN_WIDTH = 640
 const MIN_HEIGHT = 420
+/** Must equal `SETTINGS_TITLE_BAR_HEIGHT` in src/features/settings/components/settingsWindowLayout.ts. */
+export const TITLE_BAR_HEIGHT = 40
+
+/** The open settings window, so the renderer's overlay colours can reach it. */
+let openWindow: BrowserWindow | null = null
 
 interface SettingsWindowState extends Rectangle {
   isMaximized: boolean
@@ -83,6 +90,10 @@ export function settingsWindowOptions(
     autoHideMenuBar: true,
     backgroundColor: '#181818',
     show: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#181818', symbolColor: '#ececec', height: TITLE_BAR_HEIGHT },
+    // macOS: the traffic lights, centred in the same title bar.
+    trafficLightPosition: { x: 14, y: 13 },
   }
   if (bounds) return { ...options, ...bounds }
   // First open, or its display is gone: the old modal's size, centred over the main window.
@@ -98,6 +109,21 @@ export function settingsWindowOptions(
   }
 }
 
+/** Recolours the settings window's controls (Windows, Linux); a no-op when none is open. */
+export function setSettingsWindowOverlay(colors: { color: string; symbolColor: string }): {
+  success: boolean
+  error?: string
+} {
+  const win = openWindow
+  if (!win || win.isDestroyed() || process.platform === 'darwin') return { success: true }
+  try {
+    win.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT })
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+}
+
 /** Wires up a settings window the main window just opened (`did-create-window`). */
 export function adoptSettingsWindow(
   win: BrowserWindow,
@@ -105,6 +131,7 @@ export function adoptSettingsWindow(
   options: { userData: string; allowDevServer: boolean; log: (message: string) => void },
 ): void {
   win.setMenu(null)
+  openWindow = win
   if (loadState(options.userData)?.isMaximized) win.maximize()
 
   installNavigationGuard(win.webContents, {
@@ -135,6 +162,7 @@ export function adoptSettingsWindow(
   }
   owner.once('closed', closeWithOwner)
   win.on('closed', () => {
+    if (openWindow === win) openWindow = null
     if (!owner.isDestroyed()) owner.removeListener('closed', closeWithOwner)
   })
   options.log('[SettingsWindow] Opened')
