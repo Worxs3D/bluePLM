@@ -98,6 +98,8 @@ function overrideBuilder(override: QueryOverride): unknown {
       if (typeof prop === 'symbol') return undefined
       return (...args: unknown[]) => {
         if (prop === 'eq' && typeof args[0] === 'string') eq[args[0]] = args[1]
+        // A paged read (`.range(from, to)`) reaches `rows` as `eq['@range']`, so it can end.
+        if (prop === 'range') eq['@range'] = [args[0], args[1]]
         return proxy
       }
     },

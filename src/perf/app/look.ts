@@ -11,6 +11,7 @@ import type { VersionOutput, VersionOutputKind } from '@/types/versionOutputs'
 import type { PerfBackend } from './backend'
 import { contextMenuLookScenes } from './lookContextMenu'
 import type { LookReviews } from './lookReviewBackend'
+import { createOrdersLook } from './lookScenes/orders'
 import type { ReviewLookApi } from './lookScenes/review'
 import { lookVaultAuditReport } from './lookFixtures'
 import {
@@ -432,6 +433,8 @@ export async function installLook(store: Store, backend: PerfBackend, reviews: L
     'resolve-moves': () => showPendingMoves(store),
     // Drawing reviews: review-*, reviews-*, toggle-*, gate-* (lookScenes/review.ts).
     ...(reviewLook?.scenes ?? {}),
+    // Orders: orders-* (lookScenes/orders.ts).
+    ...createOrdersLook(store, backend),
     'vault-audit-scope': () => {
       store.getState().clearVaultAuditRun()
       openVaultAudit(store)

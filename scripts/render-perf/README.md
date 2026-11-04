@@ -212,3 +212,46 @@ npx tsx scripts/ui-look/look.ts --scene settings-context-menu-custom --click "te
 npx tsx scripts/ui-look/look.ts --eval "__blueplmLook.store.getState().setTheme('light')" --scene settings-context-menu-templates --shot light --out <dir>
 npx tsx scripts/ui-look/look.ts --size 1100x800 --scene settings-context-menu --shot narrow --out <dir>
 ```
+
+## Orders scenes
+
+The Orders module (schema 513) runs on the same boot against an in-memory model of its RPCs, so
+every screen and the whole add, generate, send and export flow can be driven headlessly. Pieces:
+
+- `src/perf/app/lookOrdersModel.ts`: the `supply_order_*` RPCs of
+  `supabase/migrations/0513_supply_orders.sql` over the fake's `supply_order` and
+  `supply_order_line` rows (`schemaShape.ts` adds both tables until `gen:types` has them), with the
+  same rules, JSON shapes and `HINT` codes (`MISSING_OUTPUTS` carries its list in `details`). Not
+  modelled: module access and RLS. Lines RLS would hide are a per-order count that only
+  `line_count` (and the server's missing list) sees.
+- `src/perf/app/lookOrdersFixtures.ts`: on the review folder's files, STEP outputs with real stored
+  bytes for some model versions, the drawing-to-model `file_version_reference` rows the planner
+  pairs on, three suppliers, and the world every scene starts from: one order in every status, a
+  draft by Sam, and the main draft `pumpBuild` (ready, missing and unchosen outputs, a line pinned
+  to an older version, a purged line, two lines in an unreadable vault).
+- `src/perf/app/lookScenes/orders.ts`: the scenes; a fake `orders:export` that downloads every
+  signed URL from the fake bucket and checks its SHA-256; a query override for the planner's
+  embedded reference read.
+
+Scenes: `orders-empty`, `orders-list` (filter All), `orders-detail-draft`, `orders-detail-sent`,
+`orders-send-dialog-missing`, `orders-context-menu` (file list, Orders submenu open),
+`orders-version-history` (a part's history, the Order menu of its latest version), `orders-loading`,
+`orders-error` (list and order), `orders-web` (no Electron bridge: no Generate, no Save to folder),
+`orders-narrow` (run with `--size 1000x760`: the drawing and note columns fold into the item cell),
+`orders-flow-start`.
+
+```
+npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme dark --scene orders-detail-draft --shot draft --out <dir>
+npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --size 1000x760 --scene orders-narrow --shot narrow --out <dir>
+npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme light --steps scripts/ui-look/flows/orders-full.steps --out <dir>
+```
+
+The flow (`orders-full.steps`): right-click three files, Orders > New order with these 3 files, add
+DXF in a line's outputs menu, set a quantity, Generate missing, record the outputs, Mark sent (the
+server refuses: the DXF is missing), Send anyway, Export zip.
+
+Helpers for `--eval`, on `window.__blueplmLookOrders`: `ids` (order ids by key), `renderMissing()`
+records every missing PDF and STEP of the drafts (what Generate missing does with SOLIDWORKS,
+which the boot does not have), `plan(['PMP-2000.SLDASM'])` runs the line planner on review files
+and returns its lines or error, `lastExport` is the request Export zip sent, `model` the RPC model
+(`model.failing.add('supply_order_create')` makes an RPC fail).

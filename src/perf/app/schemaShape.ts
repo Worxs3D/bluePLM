@@ -52,6 +52,25 @@ const PENDING_TABLES: Record<string, { columns: string[]; requiredOnInsert: stri
     ],
     requiredOnInsert: ['org_id', 'file_id', 'file_version_id', 'kind', 'storage_hash', 'file_size'],
   },
+  // Schema 513 (orders; lookOrdersModel.ts writes them as the RPCs would).
+  supply_order: {
+    columns: [
+      'id', 'org_id', 'sequence', 'order_number', 'title', 'purpose', 'status', 'supplier_id',
+      'supplier_name', 'due_date', 'notes', 'line_count', 'created_by', 'created_at', 'updated_by',
+      'updated_at', 'sent_by', 'sent_at', 'received_at', 'closed_at', 'cancelled_at',
+    ],
+    requiredOnInsert: ['org_id', 'sequence', 'order_number', 'title'],
+  },
+  supply_order_line: {
+    columns: [
+      'id', 'order_id', 'org_id', 'position', 'file_id', 'file_version_id', 'vault_id',
+      'configuration', 'drawing_file_id', 'drawing_version_id', 'drawing_vault_id', 'quantity',
+      'output_kinds', 'notes', 'file_name', 'part_number', 'description', 'revision', 'version',
+      'drawing_file_name', 'drawing_version', 'sent_outputs', 'missing_kinds', 'added_by',
+      'added_at', 'updated_at',
+    ],
+    requiredOnInsert: ['order_id', 'org_id', 'vault_id', 'file_name'],
+  },
 }
 
 type MutableTables = Map<string, { columns: Set<string>; requiredOnInsert: Set<string> }>
