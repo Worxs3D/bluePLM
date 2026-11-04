@@ -7,7 +7,7 @@ All notable changes to BluePLM will be documented in this file.
 ## [Unreleased]
 
 Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
-(`0511_inspection_template_folder.sql`). No API or SolidWorks service change.
+(`0511_inspection_template_folder.sql`). SolidWorks service 1.29.1; no API change.
 
 ### Added
 
@@ -40,6 +40,12 @@ Schemas 510 (`0510_inspection_working_copy_reports.sql`) and 511
 
 ### Fixed
 
+- **A checked-out file opened in SOLIDWORKS no longer stays read-only (SolidWorks service
+  1.29.1).** When no SOLIDWORKS was running at startup, BluePLM launched a hidden one and kept
+  talking to it for the rest of the session, so a SOLIDWORKS opened later was invisible: checkout
+  saw none of its documents and never made the open file writable, however often it was checked
+  out and in. Between commands, the service now attaches to the user's SOLIDWORKS as soon as one is
+  running and closes its hidden instance.
 - **Resolve Pending Moves stays inside what you are looking at.** Opened from a folder (or a file),
   Update the Vault and Restore Local Files used to act on every pending move in the vault, and the
   confirmation listed them all. They now act only on the moves in the chosen scope that are ticked.

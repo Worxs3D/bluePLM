@@ -35,7 +35,7 @@ namespace BluePLM.SolidWorksService
         /// Service version - bump this when making changes that affect functionality.
         /// The app checks this version and warns if there's a mismatch.
         /// </summary>
-        private const string SERVICE_VERSION = "1.29.0";
+        private const string SERVICE_VERSION = "1.29.1";
 
         /// <summary>
         /// Error code returned for an action this build does not implement. The app matches on this
@@ -273,6 +273,11 @@ namespace BluePLM.SolidWorksService
                     }
                     catch { /* Ignore parse errors - ProcessCommand will handle them */ }
                     
+                    // Between commands, nothing uses SolidWorks: the one moment it is safe to move
+                    // off a hidden instance onto a SolidWorks the user has since started.
+                    try { _swApi?.HandOverToUserSolidWorksIfNeeded(); }
+                    catch (Exception ex) { Console.Error.WriteLine($"[Service] Handover check failed: {ex.Message}"); }
+
                     try
                     {
                         var result = ProcessCommand(line);
