@@ -49,6 +49,8 @@ export function testRow(extra: Partial<ReviewQueueRow> = {}): ReviewQueueRow {
     itemCount: 4,
     itemsDecided: 1,
     itemsOwedByMe: 0,
+    reviewersOwing: null,
+    reviewersWithdrawn: null,
     preview: null,
     gate: null,
     cursor: 'c1',

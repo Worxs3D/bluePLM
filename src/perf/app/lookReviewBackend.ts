@@ -19,6 +19,7 @@ import {
   seedLookReviews,
   storeLookReviewPdf,
 } from './lookReviewFixtures'
+import { commentResolveAccess, notifyReviewComment, type ExplorerEdit } from './lookReviewComments'
 import { LookReviewModel, ReviewRefusal, type ReviewWorld, type WorldUser } from './lookReviewModel'
 
 export type LookPersonKey = 'author' | keyof typeof LOOK_REVIEW_PEOPLE
@@ -47,6 +48,8 @@ export interface LookReviews {
   onFileState: ((fileId: string, stateName: string) => void) | null
   /** Lose or regain vault access, then withdraw reviewers who can no longer decide (schema 108). */
   setVaultAccess(key: LookPersonKey, hasAccess: boolean): number
+  /** The vaults a person has explorer edit on (`'all'`, the default, or a list of vault ids). */
+  setExplorerEdit(key: LookPersonKey, vaults: 'all' | string[]): void
   /** Forget every review, comment and notification (the scenes rebuild their state from here). */
   reset(): void
 }
@@ -225,6 +228,11 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
   model.transitions = LOOK_WORKFLOW.transitions.map((t) => ({ ...t }))
   const inReview = LOOK_WORKFLOW.states[1].id
   const personId = (key: LookPersonKey) => (key === 'author' ? ids.userId : LOOK_REVIEW_PEOPLE[key].id)
+  const explorerEdit: ExplorerEdit = new Map()
+
+  // trg_file_comment_notify_review (schema 514): every stored comment, the app's inserts and the
+  // scenes' addComment alike, notifies the people working on its open review.
+  db.onInsert('file_comment', (row) => notifyReviewComment(db, world, model, row, (n) => delivery.pending.push(n)))
 
   // Organization settings the review stage reads (absent = defaults: workflows on, hold, together).
   const org = findRow(db, 'organization', ids.orgId)
@@ -286,17 +294,12 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
     (a) => {
       // As 0512_comment_resolve.sql: a comment the caller cannot read is COMMENT_NOT_FOUND; then the
       // author, an admin, the review's requester or a not-withdrawn reviewer, or (outside a review)
-      // explorer edit, which every perf user has. Only the resolve columns change.
+      // explorer edit on the file's vault. Only the resolve columns change.
       const actor = world.user(db.actorId)
       const c = findRow(db, 'file_comment', String(a.p_comment_id ?? ''))
-      const f = c ? world.file(String(c.file_id)) : null
-      if (!actor || !c || !f || f.orgId !== actor.orgId || !world.canAccessVault(actor.id, f.vaultId)) {
-        throw new FakeRpcRefusal('Comment not found', '42501', 'COMMENT_NOT_FOUND')
-      }
-      const reviewId = (c.review_id as string | null) ?? null
-      if (c.user_id !== actor.id && !actor.admin && reviewId && !model.mayResolveIn(reviewId, actor.id)) {
-        throw new FakeRpcRefusal('You cannot resolve this comment', '42501', 'FORBIDDEN')
-      }
+      const access = commentResolveAccess(world, model, explorerEdit, actor, c)
+      if (access === 'not_found' || !c || !actor) throw new FakeRpcRefusal('Comment not found', '42501', 'COMMENT_NOT_FOUND')
+      if (access === 'forbidden') throw new FakeRpcRefusal('You cannot resolve this comment', '42501', 'FORBIDDEN')
       const resolved = a.p_resolved === true
       const changed = (c.is_resolved === true) !== resolved
       if (changed) {
@@ -307,6 +310,20 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
       return { id: c.id, file_id: c.file_id, is_resolved: c.is_resolved === true, resolved_by: c.resolved_by ?? null, resolved_at: c.resolved_at ?? null, changed }
     },
     { untyped: !db.schema.functions.has('file_comment_set_resolved') },
+  )
+  // Which comments the caller may resolve (schema 514): the same rule, one comment at a time.
+  register(
+    'file_comment_list_resolvable',
+    (a) => {
+      if (!Array.isArray(a.p_comment_ids)) throw new FakeRpcRefusal('A list of comments is required', '22023', 'BAD_ARGUMENTS')
+      const actor = world.user(db.actorId)
+      if (!actor?.orgId) return []
+      return a.p_comment_ids
+        .filter((id): id is string => typeof id === 'string')
+        .filter((id) => commentResolveAccess(world, model, explorerEdit, actor, findRow(db, 'file_comment', id)) === 'ok')
+        .sort()
+    },
+    { untyped: !db.schema.functions.has('file_comment_list_resolvable') },
   )
 
   // The reviewer picker's teams: a nested embedded select the typed fake does not shape.
@@ -413,6 +430,9 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
       for (const n of names) failing.add(n)
     },
     onFileState: null,
+    setExplorerEdit(key, vaults) {
+      explorerEdit.set(personId(key), vaults === 'all' ? 'all' : new Set(vaults))
+    },
     setVaultAccess(key, hasAccess) {
       if (hasAccess) lostVaultAccess.delete(personId(key))
       else lostVaultAccess.add(personId(key))
@@ -421,6 +441,7 @@ export async function installLookReviews(backend: PerfBackend, ids: LookReviewId
     reset() {
       model.reset()
       lostVaultAccess.clear()
+      explorerEdit.clear()
       delivery.pending = []
       db.removeRows('notification', [...db.rows('notification')])
       db.removeRows('file_comment', db.rows('file_comment').filter((c) => c.review_id != null))

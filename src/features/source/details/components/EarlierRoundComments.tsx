@@ -18,6 +18,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import type { FileAnnotation } from '@/types/database'
 
 import { CommentThread } from './CommentThread'
+import { useResolvableComments } from './useResolvableComments'
 import {
   canResolveThread,
   numberThreads,
@@ -32,7 +33,8 @@ interface EarlierRoundCommentsProps {
   reviewId: string
   itemId: string
   round: EarlierRound
-  resolveContext: ResolveContext
+  /** The viewer (the current round's context; this list asks about its own comments). */
+  resolveContext: Pick<ResolveContext, 'userId'>
   userNames?: ReadonlyMap<string, string>
   /** Show this thread on its round's version (the viewer switches rounds). */
   onOpen: (round: number, annotationId: string) => void
@@ -79,6 +81,11 @@ export function EarlierRoundComments({
   const counts = useMemo(() => threadCounts(threads ?? []), [threads])
   const numbers = useMemo(() => numberThreads(threads ?? []), [threads])
   const sorted = useMemo(() => sortThreads((threads ?? []).filter((a) => !a.parent_id)), [threads])
+  const resolvable = useResolvableComments(threads, resolveContext.userId)
+  const resolveCtx = useMemo<ResolveContext>(
+    () => ({ userId: resolveContext.userId, resolvable }),
+    [resolveContext.userId, resolvable],
+  )
 
   const setResolved = useCallback(
     async (id: string, resolved: boolean) => {
@@ -164,7 +171,7 @@ export function EarlierRoundComments({
                 number={numbers.get(ann.id)}
                 currentUserId={null}
                 readOnly
-                canResolve={canResolveThread(ann, resolveContext)}
+                canResolve={canResolveThread(ann, resolveCtx)}
                 resolvedByName={ann.resolved_by ? (userNames?.get(ann.resolved_by) ?? null) : null}
                 onClick={() => onOpen(round.round, ann.id)}
                 onReply={NOOP}

@@ -1,6 +1,8 @@
 /**
  * Live review notifications for the signed-in user. The review RPCs insert a `notifications` row
- * in the same transaction as each request, decision, round, completion or cancellation; this
+ * in the same transaction as each request, decision, round, completion or cancellation, and a
+ * review comment inserts one for its requester and reviewers (schema 514, at most one per review per
+ * hour each; Open goes to the comment's file); this
  * subscribes to the user's own rows, toasts review ones with an "Open" button that opens the
  * review (review UX audit F25), and bumps `reviewQueueRefreshTick` so the queue, the open review
  * and the badge reload at once instead of on the next poll.
@@ -21,6 +23,7 @@ import { usePDMStore } from '@/stores/pdmStore'
 import {
   coalesceNotifications,
   isReviewNotification,
+  reviewNotificationTarget,
   reviewToastType,
   type ReviewToastRow,
 } from '../lib/notifications'
@@ -53,13 +56,17 @@ export function useReviewNotifications(userId: string | null | undefined): void 
       }
       for (const row of plan.rows) {
         const text = row.message ? `${row.title}: ${row.message}` : row.title
-        const reviewId = row.entity_type === 'review' ? row.entity_id : null
+        const target = reviewNotificationTarget(row)
         addToast(
           reviewToastType(row.type),
           text || t('reviewQueue.notification.fallback'),
           undefined,
-          reviewId
-            ? { label: t('reviewQueue.notification.open'), onClick: () => openReview(reviewId) }
+          target
+            ? {
+                label: t('reviewQueue.notification.open'),
+                // A comment opens on its file; the comment list focuses its thread once loaded.
+                onClick: () => openReview(target.reviewId, target.itemId, target.commentId),
+              }
             : undefined,
         )
       }

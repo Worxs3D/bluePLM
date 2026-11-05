@@ -1,7 +1,8 @@
 /**
  * The ui-look review backend's state machine against the rules of 20-change-control.sql: modes,
  * per-reviewer decisions, comment rule, settle, resubmit rounds, cancel, withdrawals, the review
- * stage, and that the results map through the app's own mappers (reviewMapping.ts).
+ * stage, comment notifications and resolve access (schema 514), and that the results map through the
+ * app's own mappers (reviewMapping.ts).
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -179,5 +180,59 @@ describe('look review backend', () => {
     await ok('review_cancel', { p_review_id: id })
     expect(mapQueuePage(await ok('review_list_queue', { p_bucket: 'done' })).rows.map((r) => r.status)).toEqual(['cancelled'])
     expect(LOOK_REVIEW_FILE_IDS[DRAWING]).toBeTruthy()
+  })
+
+  // Schema 514, as 0514_review_comment_notify.sql.
+  it('notifies the requester and the other reviewers of a comment, once per review per hour', async () => {
+    const id = await requestHousing()
+    backend.db.removeRows('notification', [...backend.db.rows('notification')])
+    const d = await detail(id)
+    const itemId = item(d, DRAWING)
+    const first = reviews.addComment({ reviewId: id, itemId, fileName: DRAWING, user: 'sam', text: 'Bore has  no tolerance.' })
+    const comments = () => backend.db.rows('notification').filter((n) => n.type === 'review_comment')
+    expect(comments().map((n) => n.user_id).sort()).toEqual([FIXTURE_USER_ID, ALEX].sort())
+    expect(comments()[0]).toMatchObject({
+      entity_type: 'review',
+      entity_id: id,
+      from_user_id: SAM,
+      title: 'Sam Rivera commented on PMP-2001.SLDDRW',
+      message: 'Bore has no tolerance.',
+      action_url: `review/${id}/item/${itemId}/comment/${first}`,
+    })
+    reviews.addComment({ reviewId: id, itemId, fileName: DRAWING, user: 'sam', text: 'And another' })
+    expect(comments()).toHaveLength(2)
+    reviews.addComment({ reviewId: id, itemId, fileName: DRAWING, user: 'author', text: 'Fixed', parentId: first })
+    expect(comments().map((n) => n.user_id).sort()).toEqual([FIXTURE_USER_ID, ALEX, SAM].sort())
+    expect(reviews.takeUndelivered(SAM).filter((n) => n.type === 'review_comment')).toHaveLength(1)
+
+    await ok('review_cancel', { p_review_id: id })
+    backend.db.removeRows('notification', [...backend.db.rows('notification')])
+    reviews.addComment({ reviewId: id, itemId, fileName: DRAWING, user: 'sam', text: 'Too late' })
+    expect(comments()).toEqual([])
+  })
+
+  it('lists the comments a user may resolve, counting explorer edit on the comment’s vault only', async () => {
+    const id = await requestHousing()
+    const d = await detail(id)
+    const markup = reviews.addComment({ reviewId: id, itemId: item(d, DRAWING), fileName: DRAWING, user: 'sam', text: 'Markup' })
+    const plain = String(backend.db.seed('file_comment', { file_id: LOOK_REVIEW_FILE_IDS[DRAWING], user_id: SAM, comment: 'File note' }).id)
+    reviews.setActor(OLIVE)
+    expect(await ok('file_comment_list_resolvable', { p_comment_ids: [markup, plain] })).toEqual([plain])
+    reviews.setExplorerEdit('olive', ['another-vault'])
+    expect(await ok('file_comment_list_resolvable', { p_comment_ids: [markup, plain] })).toEqual([])
+    expect((await rpc('file_comment_set_resolved', { p_comment_id: plain, p_resolved: true })).error?.hint).toBe('FORBIDDEN')
+    reviews.setActor(FIXTURE_USER_ID)
+    expect(await ok('file_comment_list_resolvable', { p_comment_ids: [markup, plain] })).toEqual([markup, plain].sort())
+  })
+
+  it('counts the round’s owing and withdrawn reviewers on queue rows', async () => {
+    const id = await requestHousing([OLIVE])
+    reviews.setActor(FIXTURE_USER_ID)
+    const before = mapQueuePage(await ok('review_list_queue', { p_bucket: 'requested_by_me' })).rows.find((r) => r.id === id)
+    expect(before).toMatchObject({ reviewersOwing: 1, reviewersWithdrawn: 0 })
+    reviews.setVaultAccess('olive', false)
+    reviews.setActor(FIXTURE_USER_ID)
+    const after = mapQueuePage(await ok('review_list_queue', { p_bucket: 'requested_by_me' })).rows.find((r) => r.id === id)
+    expect(after).toMatchObject({ reviewersOwing: 0, reviewersWithdrawn: 1 })
   })
 })

@@ -25,7 +25,7 @@ export type ReviewNextMove =
   | { kind: 'you_decide'; owed: number; total: number }
   /** A workflow gate waiting on the viewer. */
   | { kind: 'gate'; from: string | null; to: string | null }
-  /** Open, and other reviewers still owe decisions. `people` is null when not known (queue rows). */
+  /** Open, and other reviewers still owe decisions. `people` is null when not known (a pre-514 queue row). */
   | { kind: 'waiting_on'; people: number | null; decided: number; total: number }
   /** The viewer requested it and reviewers asked for changes. `items` is null when not known. */
   | { kind: 'your_move_changes'; items: number | null }
@@ -72,10 +72,21 @@ export function nextMoveForRow(
   }
   const mine = !!userId && row.requestedBy?.id === userId
   switch (row.status) {
-    case 'open':
+    case 'open': {
       if (row.itemsOwedByMe > 0)
         return { kind: 'you_decide', owed: row.itemsOwedByMe, total: row.itemCount }
-      return { kind: 'waiting_on', people: null, decided: row.itemsDecided, total: row.itemCount }
+      // Schema 514 counts the round's reviewers; the same rule as nextMoveForDetail.
+      const undecided = Math.max(0, row.itemCount - row.itemsDecided)
+      if (undecided > 0 && row.reviewersOwing === 0 && (row.reviewersWithdrawn ?? 0) > 0) {
+        return { kind: 'nobody_left', items: undecided }
+      }
+      return {
+        kind: 'waiting_on',
+        people: row.reviewersOwing,
+        decided: row.itemsDecided,
+        total: row.itemCount,
+      }
+    }
     case 'changes_requested':
       return mine
         ? { kind: 'your_move_changes', items: null }

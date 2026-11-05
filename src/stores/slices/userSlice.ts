@@ -171,6 +171,7 @@ export const createUserSlice: StateCreator<
       activeReviewId: null,
       activeReviewItemId: null,
       activeGateReviewId: null,
+      pendingReviewCommentFocus: null,
       reviewQueueView: DEFAULT_REVIEW_QUEUE_VIEW,
       reviewAddConfirm: null,
     })

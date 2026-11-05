@@ -10,7 +10,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 
-import { Button } from '@/components/core/ui'
+import { Button, MetaLine } from '@/components/core/ui'
 import { relativeTime } from '@/features/source/reviews/lib/reviewDates'
 import { t } from '@/lib/i18n'
 import type { FileAnnotation } from '@/types/database'
@@ -108,15 +108,19 @@ function CommentBody({
         <span className="max-w-full truncate text-[13px] font-medium text-ui-fg">
           {displayName(annotation.user)}
         </span>
-        <span className="flex-shrink-0">{relativeTime(annotation.created_at)}</span>
-        {annotation.edited_at && (
-          <span className="flex-shrink-0 text-ui-fg-tertiary">· {t('markups.edited')}</span>
-        )}
-        {isRoot && annotation.page_number != null && (
-          <span className="flex-shrink-0">
-            · {t('markups.page', { page: annotation.page_number })}
-          </span>
-        )}
+        {/* One line of parts, so a wrapped line never starts with a dot. */}
+        <MetaLine
+          className="min-w-0"
+          parts={[
+            relativeTime(annotation.created_at),
+            annotation.edited_at && (
+              <span className="text-ui-fg-tertiary">{t('markups.edited')}</span>
+            ),
+            isRoot &&
+              annotation.page_number != null &&
+              t('markups.page', { page: annotation.page_number }),
+          ]}
+        />
       </div>
 
       {isEditing ? (

@@ -99,6 +99,8 @@ export interface NotificationRealtimeRow {
   message: string | null
   entity_type: string | null
   entity_id: string | null
+  /** Where in the entity it happened (a review comment's file and thread, schema 514). */
+  action_url?: string | null
   priority: string | null
   created_at: string | null
 }

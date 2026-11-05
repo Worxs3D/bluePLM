@@ -203,7 +203,6 @@ export function ItemPreview({
   )
 
   const fileName = displayFileName(item.file.fileName)
-  const participant = detail.me.isRequester || detail.me.isReviewer
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -324,12 +323,6 @@ export function ItemPreview({
                 onFocusThread={focus}
                 earlierRounds={earlierRounds(item, round)}
                 onOpenEarlier={openEarlier}
-                resolveContext={{
-                  reviewParticipant: participant,
-                  isAdmin: detail.me.isAdmin,
-                  canEditFiles: false,
-                  inReview: true,
-                }}
                 userNames={userNames}
                 showAddButton={false}
               />

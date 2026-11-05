@@ -170,6 +170,7 @@ export type { TeamReviewerRow } from './teams'
 export {
   getUserVaultAccess,
   getOrgVaultAccess,
+  getVaultGrants,
   grantVaultAccess,
   revokeVaultAccess,
   setUserVaultAccess,

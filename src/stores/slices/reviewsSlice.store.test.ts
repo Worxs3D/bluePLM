@@ -116,6 +116,23 @@ describe('reviews slice: drafts, navigation and queue view', () => {
     expect(store.reviewPackagePaneOpen).toBe(false)
   })
 
+  it('openReview with a comment leaves a focus that only that review and item take, once', () => {
+    store.openReview('rev-1', 'item-2', 'c-1')
+    expect(store.pendingReviewCommentFocus).toEqual({ reviewId: 'rev-1', itemId: 'item-2', commentId: 'c-1' })
+    expect(store.takePendingReviewCommentFocus('rev-2', 'item-2')).toBeNull()
+    expect(store.takePendingReviewCommentFocus('rev-1', 'item-9')).toBeNull()
+    expect(store.takePendingReviewCommentFocus('rev-1', 'item-2')).toBe('c-1')
+    expect(store.takePendingReviewCommentFocus('rev-1', 'item-2')).toBeNull()
+  })
+
+  it('takes a focus without an item on any item of its review, and a plain open drops it', () => {
+    store.openReview('rev-1', null, 'c-1')
+    expect(store.takePendingReviewCommentFocus('rev-1', 'any-item')).toBe('c-1')
+    store.openReview('rev-1', 'item-2', 'c-2')
+    store.openReview('rev-1', 'item-2')
+    expect(store.pendingReviewCommentFocus).toBeNull()
+  })
+
   it('an open review and an open gate clear each other', () => {
     store.setActiveReviewId('rev-1', 'item-1')
     store.setActiveGateReviewId('gate-1')

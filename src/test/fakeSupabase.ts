@@ -10,7 +10,8 @@
  * Realtime is explicit: `emitRealtime()` delivers a `postgres_changes` payload to every channel
  * subscribed to that table, which is how a test plays the echo of a write at the moment it wants.
  *
- * What it does not model: row-level security, triggers, embedded relation selects.
+ * What it does not model: row-level security, triggers (beyond `onInsert` listeners a caller
+ * registers), embedded relation selects.
  * Install it with `installFakeSupabase()` from `src/test/harness.ts`.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -773,6 +774,22 @@ export class FakeSupabase {
     return null
   }
 
+  private readonly insertListeners = new Map<string, Array<(row: Row) => void>>()
+
+  /**
+   * Run `listener` after each row stored in `table` (seeds included), as an AFTER INSERT trigger
+   * would. Returns a function that removes it.
+   */
+  onInsert(table: TableName, listener: (row: Row) => void): () => void {
+    const list = this.insertListeners.get(table) ?? []
+    list.push(listener)
+    this.insertListeners.set(table, list)
+    return () => {
+      const current = this.insertListeners.get(table) ?? []
+      this.insertListeners.set(table, current.filter((l) => l !== listener))
+    }
+  }
+
   insertRow(table: TableName, incoming: Row): { row: Row } | { error: FakeError } {
     const shape = this.schema.tables.get(table)!
     for (const key of Object.keys(incoming)) this.assertColumn(table, key)
@@ -793,6 +810,7 @@ export class FakeSupabase {
     const violation = this.uniqueViolation(table, row, null)
     if (violation) return { error: violation }
     this.rows(table).push(row)
+    for (const listener of this.insertListeners.get(table) ?? []) listener(row)
     return { row }
   }
 
@@ -849,6 +867,35 @@ export class FakeSupabase {
     this.rpcs.set(name, { handler, untyped: !!options?.untyped })
   }
 
+  private readonly heldRpcs = new Map<string, { gate: Promise<void>; release: () => void }>()
+
+  /**
+   * Hold every call of `name` open (before its handler runs) until `releaseRpc(name)`: a slow
+   * server, so a "submitting" or "sending" state can be looked at. Holding twice is one hold.
+   */
+  holdRpc(name: string): void {
+    if (this.heldRpcs.has(name)) return
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.heldRpcs.set(name, { gate, release })
+  }
+
+  /** Let held calls of `name` (or of every held RPC) run; later calls run at once. */
+  releaseRpc(name?: string): void {
+    for (const [held, { release }] of [...this.heldRpcs]) {
+      if (name !== undefined && held !== name) continue
+      this.heldRpcs.delete(held)
+      release()
+    }
+  }
+
+  /** The RPCs being held. */
+  heldRpcNames(): string[] {
+    return [...this.heldRpcs.keys()]
+  }
+
   private async callRpc(name: string, args: Record<string, unknown>): Promise<FakeResult<unknown>> {
     this.recordCall({ kind: 'rpc', name, op: 'call' })
     const rpc = this.rpcs.get(name)
@@ -870,6 +917,8 @@ export class FakeSupabase {
 
     // JSON-RPC drops undefined, which is how "omitted" reaches the SQL as DEFAULT NULL.
     const sent = JSON.parse(JSON.stringify(args)) as Record<string, unknown>
+    const held = this.heldRpcs.get(name)
+    if (held) await held.gate
     try {
       const data = rpc.handler(sent, this)
       return { data: data === undefined ? null : structuredClone(data), error: null }

@@ -109,6 +109,7 @@ export const createUISlice: StateCreator<
     if (prev === 'reviews' && resolvedView !== 'reviews') {
       patch.activeReviewId = null
       patch.activeReviewItemId = null
+      patch.pendingReviewCommentFocus = null
     }
     // An extension's right panel belongs to its workspace: switching away closes it,
     // and host.useRightPanelOpen() tells the extension.

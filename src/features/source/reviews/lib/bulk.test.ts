@@ -24,6 +24,8 @@ function row(id: string, extra: Partial<ReviewQueueRow> = {}): ReviewQueueRow {
     itemCount: 2,
     itemsDecided: 0,
     itemsOwedByMe: 0,
+    reviewersOwing: null,
+    reviewersWithdrawn: null,
     preview: null,
     gate: null,
     cursor: id,

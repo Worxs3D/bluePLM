@@ -800,6 +800,9 @@ export class LookReviewModel {
           item_count: this.items.filter((i) => i.reviewId === r.id).length,
           items_decided: this.roundItems.filter((x) => x.reviewId === r.id && x.roundNumber === r.currentRound && x.outcome !== 'pending').length,
           items_owed_by_me: owed,
+          // Schema 514: the round's reviewers who still owe it, and those withdrawn from it.
+          reviewers_owing: responsesOf(r).filter((x) => x.roundNumber === r.currentRound && x.status === 'pending' && !x.withdrawnAt).length,
+          reviewers_withdrawn: responsesOf(r).filter((x) => x.roundNumber === r.currentRound && !!x.withdrawnAt).length,
           preview: first && firstFile && firstVersion
             ? { file_id: firstFile.id, file_name: firstFile.fileName, extension: firstFile.extension, file_version_id: firstVersion.id, version: firstVersion.version, revision: firstVersion.revision }
             : null,
@@ -821,6 +824,7 @@ export class LookReviewModel {
             kind: 'gate', id: g.id, title: `${f.fileName} - ${g.gateName}`, status: 'open', priority: 'normal', due_date: null,
             overdue: false, mode: null, round: null, requested_by: this.userJson(g.requestedBy), requested_at: g.requestedAt,
             completed_at: null, team_id: null, item_count: 1, items_decided: 0, items_owed_by_me: 1,
+            reviewers_owing: null, reviewers_withdrawn: null,
             preview: { file_id: f.id, file_name: f.fileName, extension: f.extension, file_version_id: null, version: f.version, revision: f.revision },
             gate: {
               pending_review_id: g.id, file_id: f.id, file_name: f.fileName, file_path: f.filePath, gate_id: g.gateId, gate_name: g.gateName,
@@ -950,6 +954,14 @@ export class LookReviewModel {
     if (!r) return false
     const mine = this.responses.filter((x) => x.reviewId === r.id && x.reviewerId === userId)
     return userId === r.requestedBy || (mine.length > 0 && mine.every((x) => !x.withdrawnAt))
+  }
+
+  /** Who a comment in the review notifies (trg_file_comment_notify_review, schema 514): the requester and the current round's reviewers not withdrawn. */
+  commentAudience(reviewId: string): { orgId: string; open: boolean; priority: string; recipients: string[] } | null {
+    const r = this.reviews.find((x) => x.id === reviewId)
+    if (!r) return null
+    const reviewers = this.responses.filter((x) => x.reviewId === r.id && x.roundNumber === r.currentRound && !x.withdrawnAt).map((x) => x.reviewerId)
+    return { orgId: r.orgId, open: r.status === 'pending' || r.status === 'kicked_back', priority: r.priority, recipients: [r.requestedBy, ...reviewers] }
   }
 
   currentRound(reviewId: string): number | null {

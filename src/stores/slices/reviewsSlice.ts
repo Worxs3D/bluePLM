@@ -74,6 +74,12 @@ export interface ReviewsSlice {
   activeReviewItemId: string | null
   /** The workflow gate (`pending_reviews.id`) open in the Reviews view's main area. */
   activeGateReviewId: string | null
+  /**
+   * A comment thread to focus once the review's comments have loaded (a comment notification's
+   * Open, schema 514). Kept apart from `activeAnnotationId`, which the surfaces clear when they
+   * unmount; CommentSidebar applies it once and clears it (`takePendingReviewCommentFocus`).
+   */
+  pendingReviewCommentFocus: { reviewId: string; itemId: string | null; commentId: string } | null
   reviewQueueView: ReviewQueueView
   /** The add-to-open-review confirm on screen (`ReviewAddConfirmDialog`, mounted once in AppShell). */
   reviewAddConfirm: ReviewAddConfirm | null
@@ -98,8 +104,16 @@ export interface ReviewsSlice {
    * otherwise stay on screen as its fallback content.
    */
   closeReviewPackagePane: () => void
-  /** Open a review in the Reviews view: the one way to navigate to a review. */
-  openReview: (reviewId: string, itemId?: string | null) => void
+  /**
+   * Open a review in the Reviews view: the one way to navigate to a review. `commentId` asks the
+   * review's comment list to focus that thread once it has loaded.
+   */
+  openReview: (reviewId: string, itemId?: string | null, commentId?: string | null) => void
+  /**
+   * The pending comment focus for this review and item, cleared as it is returned; null when there
+   * is none for them. A pending focus for another review or item is left alone.
+   */
+  takePendingReviewCommentFocus: (reviewId: string, itemId: string) => string | null
   /** Clears the active gate. */
   setActiveReviewId: (reviewId: string | null, itemId?: string | null) => void
   setActiveReviewItemId: (itemId: string | null) => void
@@ -244,6 +258,7 @@ export const createReviewsSlice: StateCreator<
     activeReviewId: null,
     activeReviewItemId: null,
     activeGateReviewId: null,
+    pendingReviewCommentFocus: null,
     reviewQueueView: DEFAULT_REVIEW_QUEUE_VIEW,
     reviewAddConfirm: null,
     reviewQueueRefreshTick: 0,
@@ -283,15 +298,23 @@ export const createReviewsSlice: StateCreator<
       set({ reviewPackagePaneOpen: false })
       if (get().rightPanelVisible && rightPanelHasNoOtherContent(get())) get().toggleRightPanel()
     },
-    openReview: (reviewId, itemId = null) => {
+    openReview: (reviewId, itemId = null, commentId = null) => {
       // The review's own comment sidebar takes the right-hand slot; the draft is kept.
       set({
         activeReviewId: reviewId,
         activeReviewItemId: itemId,
         activeGateReviewId: null,
         reviewPackagePaneOpen: false,
+        pendingReviewCommentFocus: commentId ? { reviewId, itemId, commentId } : null,
       })
       if (get().activeView !== 'reviews') get().setActiveView('reviews')
+    },
+    takePendingReviewCommentFocus: (reviewId, itemId) => {
+      const pending = get().pendingReviewCommentFocus
+      if (!pending || pending.reviewId !== reviewId) return null
+      if (pending.itemId && pending.itemId !== itemId) return null
+      set({ pendingReviewCommentFocus: null })
+      return pending.commentId
     },
     setActiveReviewId: (activeReviewId, itemId = null) =>
       set((s) => ({

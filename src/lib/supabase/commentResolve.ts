@@ -76,3 +76,41 @@ export async function setCommentResolved(
   }
   return { result: toCommentResolveResult(data), error: null, code: null }
 }
+
+/** The optimistic id CommentSidebar gives a comment until the insert returns its row. */
+const UNSAVED_PREFIX = 'temp-'
+/** The server reads at most this many ids per call (`file_comment_list_resolvable`). */
+export const RESOLVABLE_BATCH = 2000
+
+/** Map the RPC's uuid[] result; exported for tests. */
+export function toResolvableIds(data: unknown): Set<string> {
+  const ids = new Set<string>()
+  if (Array.isArray(data)) for (const id of data) if (typeof id === 'string') ids.add(id)
+  return ids
+}
+
+/**
+ * Which of these comments the signed-in user may resolve or reopen, through
+ * `file_comment_list_resolvable()` (schema 514): exactly `file_comment_set_resolved`'s rule, so
+ * explorer edit counts only on the comment's own vault. Ids that are not saved comments yet (an
+ * optimistic temp id) are left out. Returns `{ ids: null, error }` when the server could not answer.
+ */
+export async function listResolvableComments(
+  commentIds: readonly string[],
+): Promise<{ ids: Set<string> | null; error: string | null }> {
+  const wanted = [...new Set(commentIds.filter((id) => !!id && !id.startsWith(UNSAVED_PREFIX)))]
+  const ids = new Set<string>()
+  if (wanted.length === 0) return { ids, error: null }
+  const c = getSupabaseClient() as unknown as SupabaseClient
+  for (let start = 0; start < wanted.length; start += RESOLVABLE_BATCH) {
+    const { data, error } = await c.rpc('file_comment_list_resolvable', {
+      p_comment_ids: wanted.slice(start, start + RESOLVABLE_BATCH),
+    })
+    if (error) {
+      log.warn('[Annotations]', 'file_comment_list_resolvable failed', { message: error.message, hint: error.hint })
+      return { ids: null, error: error.message }
+    }
+    for (const id of toResolvableIds(data)) ids.add(id)
+  }
+  return { ids, error: null }
+}

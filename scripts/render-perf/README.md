@@ -112,26 +112,38 @@ Scenes (`--list` prints all):
 
 - Flow start: `review-flow-start` (the folder, the empty pane in the right panel).
 - Pane: `review-pane-empty`, `-empty-lists`, `-empty-selection`, `-empty-error`, `-draft`,
-  `-draft-warnings`, `-draft-blocked`, `-error`, `-sent`, `-reviewer-search`; `review-menu`.
+  `-draft-warnings`, `-draft-blocked`, `-error`, `-sent`, `-submitting` (Request review held open),
+  `-reviewer-search`, `-reviewer-no-access` (Olive cannot see the vault: unavailable in the
+  search, and her team says so); `review-menu`.
 - Toggle: `toggle-explorer-tabs`, `toggle-explorer-no-tabs`, `toggle-reviews-none`,
   `toggle-reviews-review`, `toggle-reviews-review-builder`, `toggle-workflows`.
 - Queue: `reviews-overview`, `reviews-overview-empty`, `reviews-queue-awaiting`, `-requested`,
   `-teams`, `-done`, `-empty-awaiting-me`, `-empty-requested-by-me`, `-empty-my-teams`,
   `-empty-done`, `-error`, `-load-more`, `reviews-bulk`.
 - Detail: `review-detail-reviewer`, `-not-owed-decided`, `-not-owed-any`, `-not-owed-carried`,
-  `-not-owed-reviewer`, `-done`, `-activity`, `-author-kickback`, `-rejected`, `-round2`,
+  `-not-owed-reviewer`, `-sending` (an approval past its undo window, its RPC held open), `-done`, `-activity`, `-author-kickback`, `-rejected`, `-round2`,
   `-partial`, `-approved-hold`, `-approved-advance`, `-released`, `-cancelled`, `-nobody-left`,
   `-pdf-pending`, `-unsupported`, `-preview-error`, `-error`, `-not-found`; `review-resubmit`,
   `review-resubmit-missing-pdf`, `review-resubmit-no-newer`.
 - Comments: `review-comments-empty`, `-threads`, `-readonly-closed`, `-load-error`.
 - Other: `gate-detail`, `review-dialogs`, `review-notifications`.
+- Comments' server side (schema 514, `lookScenes/reviewComments.ts`, `lookReviewComments.ts`):
+  `review-comment-notified-author`, `-reviewer` (Sam's markup reaches the author and Alex; click
+  `button:has-text('Open')` to jump to the drawing), `-burst` ("4 review updates"), `-mixed` (three
+  toasts, Alex's same-review comment held back by the hourly rule); `file-comments-resolve-other-vault`
+  (Olive with explorer edit on another vault: no Resolve on Sam's comment) and `-this-vault`. The queue's
+  "Nobody left to decide" row is in `reviews-queue-requested`. `reviews.setExplorerEdit(key, vaults)`
+  limits a person's explorer edit to some vaults.
 
 Every scene in both themes: run it twice with `--theme dark` and `--theme light`.
 
 Helpers for `--eval`, on `__blueplmLook.review`: `checkIn('PMP-2001.SLDDRW')` checks in a new
 version with its PDF (`{ pdf: false }`: without), `reviews.renderPdf(name)` records a missing PDF
 (what Generate PDF does with SOLIDWORKS, which the boot does not have), `reviews.addComment({...})`,
-`reviews.fail(['review_list_queue'])` makes RPCs fail, `reviews.setVaultAccess('olive', false)`
+`reviews.fail(['review_list_queue'])` makes RPCs fail, `__blueplmLook.holdRpc('review_request')` keeps
+every call of an RPC open on the fake backend until `__blueplmLook.releaseRpc('review_request')` (or
+`releaseRpc()` for all; a scene's reset releases any hold), so a submitting or sending state stays on
+screen, `reviews.setVaultAccess('olive', false)`
 withdraws a reviewer, `reviews.rpc(name, args)` calls an RPC as the current actor, `reviews.model`
 is the state machine.
 

@@ -48,6 +48,21 @@ describe('nextMoveForRow', () => {
     expect(describeNextMove(move)).toBe('Waiting on reviewers · 3 of 8 decided')
   })
 
+  it('says nobody is left to decide when every reviewer who owed the round was withdrawn (schema 514)', () => {
+    const row = testRow({ itemsDecided: 1, itemCount: 3, reviewersOwing: 0, reviewersWithdrawn: 1 })
+    expect(nextMoveForRow(row, ME)).toEqual({ kind: 'nobody_left', items: 2 })
+    // Nothing undecided, or nobody withdrawn: it waits on reviewers as before.
+    expect(nextMoveForRow({ ...row, itemsDecided: 3 }, ME).kind).toBe('waiting_on')
+    expect(nextMoveForRow({ ...row, reviewersWithdrawn: 0 }, ME).kind).toBe('waiting_on')
+    // A server before 514 sends no counts.
+    expect(nextMoveForRow({ ...row, reviewersOwing: null, reviewersWithdrawn: null }, ME).kind).toBe('waiting_on')
+  })
+
+  it('counts the reviewers who still owe the round when the queue says so', () => {
+    const move = nextMoveForRow(testRow({ itemsDecided: 1, itemCount: 4, reviewersOwing: 2, reviewersWithdrawn: 1 }), ME)
+    expect(move).toEqual({ kind: 'waiting_on', people: 2, decided: 1, total: 4 })
+  })
+
   it("is the requester's move after changes are requested, and the author's for everyone else", () => {
     const mine = testRow({ status: 'changes_requested', requestedBy: MEUSER })
     expect(nextMoveForRow(mine, ME).kind).toBe('your_move_changes')

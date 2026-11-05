@@ -5,6 +5,7 @@ import { testItem, testRound } from '@/features/source/reviews/lib/testDetail'
 
 import {
   canResolveThread,
+  commentIds,
   earlierRounds,
   filterThreads,
   numberThreads,
@@ -86,57 +87,30 @@ describe('comment threads', () => {
 })
 
 describe('canResolveThread', () => {
-  const base: ResolveContext = {
-    userId: 'u-me',
-    sharedResolve: false,
-    reviewParticipant: true,
-    isAdmin: false,
-    canEditFiles: false,
-    inReview: true,
-  }
+  const base: ResolveContext = { userId: 'u-me', resolvable: null }
 
-  it('offers Resolve on my own comments only until the database allows more', () => {
+  it('offers Resolve on my own comments only until the database has answered', () => {
     expect(canResolveThread(thread('mine', 1, 1, { user_id: 'u-me' }), base)).toBe(true)
     expect(canResolveThread(thread('theirs', 1, 1), base)).toBe(false)
-    expect(canResolveThread(thread('theirs', 1, 1), { ...base, isAdmin: true })).toBe(false)
   })
 
-  it('lets review participants and admins resolve once it does', () => {
-    const shared = { ...base, sharedResolve: true }
-    expect(canResolveThread(thread('theirs', 1, 1), shared)).toBe(true)
-    expect(canResolveThread(thread('theirs', 1, 1), { ...shared, reviewParticipant: false })).toBe(
-      false,
-    )
-    expect(
-      canResolveThread(thread('theirs', 1, 1), {
-        ...shared,
-        reviewParticipant: false,
-        isAdmin: true,
-      }),
-    ).toBe(true)
-    expect(
-      canResolveThread(thread('theirs', 1, 1), {
-        ...shared,
-        inReview: false,
-        reviewParticipant: false,
-        canEditFiles: true,
-      }),
-    ).toBe(true)
-    expect(canResolveThread(thread('theirs', 1, 1), { ...shared, userId: null })).toBe(false)
+  it("offers it on someone else's comment exactly when file_comment_list_resolvable named it", () => {
+    const ctx = { ...base, resolvable: new Set(['theirs']) }
+    expect(canResolveThread(thread('theirs', 1, 1), ctx)).toBe(true)
+    // Explorer edit on another vault, or a review the viewer is not part of: not in the answer.
+    expect(canResolveThread(thread('other-vault', 1, 1), ctx)).toBe(false)
+    expect(canResolveThread(thread('theirs', 1, 1, { review_id: 'r1' }), ctx)).toBe(true)
+    expect(canResolveThread(thread('mine', 1, 1, { user_id: 'u-me' }), { ...base, resolvable: new Set() })).toBe(true)
   })
 
-  it('offers a review comment outside its review to its author and admins only', () => {
-    const outside = {
-      ...base,
-      sharedResolve: true,
-      inReview: false,
-      reviewParticipant: false,
-      canEditFiles: true,
-    }
-    const reviewComment = thread('theirs', 1, 1, { review_id: 'r1' })
-    expect(canResolveThread(reviewComment, outside)).toBe(false)
-    expect(canResolveThread(reviewComment, { ...outside, isAdmin: true })).toBe(true)
-    expect(canResolveThread({ ...reviewComment, user_id: 'u-me' }, outside)).toBe(true)
-    expect(canResolveThread(thread('theirs', 1, 1, { review_id: null }), outside)).toBe(true)
+  it('offers nothing signed out', () => {
+    expect(canResolveThread(thread('theirs', 1, 1), { userId: null, resolvable: new Set(['theirs']) })).toBe(false)
+  })
+})
+
+describe('commentIds', () => {
+  it('lists every thread and reply id, sorted', () => {
+    const root = thread('b', 1, 1, { replies: [thread('c', 1, 1, { parent_id: 'b' })] })
+    expect(commentIds([root, thread('a', 1, 2)])).toEqual(['a', 'b', 'c'])
   })
 })

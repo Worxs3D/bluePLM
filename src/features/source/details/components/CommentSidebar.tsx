@@ -6,7 +6,8 @@
  *   viewer to scroll to a thread when one is selected.
  * - "Comment" turns comment mode on (drag a box on the drawing); a box opens the input here.
  * - Resolve / Reopen go through `file_comment_set_resolved` (schema 512), so the author of a
- *   drawing can resolve a reviewer's comment; it is offered to whoever the database allows.
+ *   drawing can resolve a reviewer's comment; it is offered to exactly whoever the database allows
+ *   (`file_comment_list_resolvable`, schema 514: explorer edit counts on the comment's own vault).
  * - In a review's round 2 and later, earlier rounds' comments are listed under the current ones.
  *
  * CRUD is optimistic with a rollback on error.
@@ -33,6 +34,7 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 import { CommentThread } from './CommentThread'
 import { CommentInput } from './CommentInput'
 import { EarlierRoundComments } from './EarlierRoundComments'
+import { useResolvableComments } from './useResolvableComments'
 import {
   canResolveThread,
   filterThreads,
@@ -67,8 +69,6 @@ export interface CommentSidebarProps {
   earlierRounds?: EarlierRound[]
   /** Show an earlier round's thread on its version. */
   onOpenEarlier?: (round: number, annotationId: string) => void
-  /** Who may resolve others' comments here (the viewer's review role, admin, explorer edit). */
-  resolveContext?: Omit<ResolveContext, 'userId' | 'sharedResolve'>
   /** Names by user id, for "Resolved by". */
   userNames?: ReadonlyMap<string, string>
   /** Offer the "Comment" button here (default true); off where the viewer's toolbar has it. */
@@ -85,12 +85,6 @@ export function annotationScopeKey(
   return `${fileId}|${fileVersion ?? ''}|${scope}`
 }
 
-/**
- * The minimum schema of this release is 512, which has `file_comment_set_resolved`: resolving is
- * allowed beyond the comment's author, so Resolve is offered by role (commentThreads.ts).
- */
-const SHARED_RESOLVE = true
-
 const NO_EARLIER: EarlierRound[] = []
 
 export function CommentSidebar({
@@ -106,7 +100,6 @@ export function CommentSidebar({
   onFocusThread,
   earlierRounds = NO_EARLIER,
   onOpenEarlier,
-  resolveContext,
   userNames,
   showAddButton = true,
 }: CommentSidebarProps) {
@@ -132,8 +125,6 @@ export function CommentSidebar({
   const pendingAnnotation = usePDMStore((s) => s.pendingAnnotation)
   const user = usePDMStore((s) => s.user)
   const addToast = usePDMStore((s) => s.addToast)
-  const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
-  const canEditFiles = usePDMStore((s) => s.hasPermission('module:explorer', 'edit'))
 
   const setAnnotations = usePDMStore((s) => s.setAnnotations)
   const addAnnotation = usePDMStore((s) => s.addAnnotation)
@@ -158,16 +149,11 @@ export function CommentSidebar({
   const numbers = useMemo(() => numberThreads(annotations), [annotations])
   const shown = useMemo(() => filterThreads(annotations, filter), [annotations, filter])
 
+  // Resolve / Reopen shows exactly when file_comment_set_resolved would allow it (schema 514).
+  const resolvable = useResolvableComments(annotations, user?.id ?? null)
   const fullResolveContext = useMemo<ResolveContext>(
-    () => ({
-      userId: user?.id ?? null,
-      sharedResolve: SHARED_RESOLVE,
-      reviewParticipant: resolveContext?.reviewParticipant ?? false,
-      isAdmin: resolveContext?.isAdmin ?? isAdmin,
-      canEditFiles: resolveContext?.canEditFiles ?? canEditFiles,
-      inReview: resolveContext?.inReview ?? !!scope,
-    }),
-    [user?.id, resolveContext, isAdmin, canEditFiles, scope],
+    () => ({ userId: user?.id ?? null, resolvable }),
+    [user?.id, resolvable],
   )
 
   const reload = useCallback(async () => {
@@ -425,6 +411,18 @@ export function CommentSidebar({
     },
     [setActiveAnnotationId, onFocusThread],
   )
+
+  // A comment notification's Open (schema 514): focus its thread once this item's comments of the
+  // review have loaded. Taken from the store once; the surfaces clear activeAnnotationId as they
+  // unmount, so the target cannot ride on it.
+  const pendingFocus = usePDMStore((s) => s.pendingReviewCommentFocus)
+  useEffect(() => {
+    if (!scope || !pendingFocus || annotationsLoading || loadedScopeKey !== scopeKey) return
+    // Not here yet (the realtime reload of a comment that just arrived): wait for it.
+    if (!annotations.some((a) => a.id === pendingFocus.commentId)) return
+    const id = usePDMStore.getState().takePendingReviewCommentFocus(scope.reviewId, scope.itemId)
+    if (id) selectThread(id)
+  }, [scope, pendingFocus, annotationsLoading, loadedScopeKey, scopeKey, annotations, selectThread])
 
   const nameOf = useCallback(
     (userId: string | null): string | null => {

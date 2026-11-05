@@ -70,6 +70,9 @@ export const pt: TranslationDict = {
       teamMemberCount: 'Equipa · {{count}} pessoas',
       teamMemberCountOne: 'Equipa · 1 pessoa',
       teamRuleCount: 'Equipa · {{count}} por regras de revisão',
+      noVaultAccess: 'Não vê o cofre destes ficheiros',
+      noVaultAccessAdded: 'Não vê o cofre destes ficheiros. Remova para enviar.',
+      teamNoVaultAccess: '{{count}} não veem o cofre',
     },
     pickerTab: {
       people: 'Pessoas',

@@ -70,6 +70,9 @@ export const de: TranslationDict = {
       teamMemberCount: 'Team · {{count}} Personen',
       teamMemberCountOne: 'Team · 1 Person',
       teamRuleCount: 'Team · {{count}} nach Prüferregeln',
+      noVaultAccess: 'Sieht den Tresor dieser Dateien nicht',
+      noVaultAccessAdded: 'Sieht den Tresor dieser Dateien nicht. Zum Senden entfernen.',
+      teamNoVaultAccess: '{{count}} sehen den Tresor nicht',
     },
     pickerTab: {
       people: 'Personen',

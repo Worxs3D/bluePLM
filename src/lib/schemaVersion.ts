@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 513
+export const EXPECTED_SCHEMA_VERSION = 514
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -76,6 +76,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Resolving comments. file_comment_set_resolved() resolves or reopens a comment for its author, an administrator, the requester and reviewers of the review it was made in (not a withdrawn reviewer), or, outside a review, a member with explorer edit, on a file whose vault the caller can read. It writes only is_resolved, resolved_by and resolved_at; the comment update policy stays the author's.",
   513:
     "Supply orders. supply_order is a numbered order (quote or purchase) for a supplier row or a named supplier; supply_order_line pins a checked-in file version and configuration, optionally its drawing version, with a quantity and the output kinds to send, and snapshots the file's name, part number, description, revision and version. Orders are readable by members with the orders module; a line only with its vaults, and line_count counts every line. The supply_order_* functions are the only writers: lines change in draft only, and sending records the outputs that went out (or refuses MISSING_OUTPUTS). can_read_vault_object() reads a sent line's outputs; check_release_residue() covers both tables; server backups export them and supply_order_number_counter, which only goes up.",
+  514:
+    "Review comment notifications. A new comment or reply in an open review notifies its requester and current-round reviewers who are not withdrawn and can read the vault, never the commenter, at most once per recipient per review per hour (review_comment). file_comment_list_resolvable() returns the comments the caller may resolve, by file_comment_set_resolved()'s rule. review_list_queue() package rows add reviewers_owing and reviewers_withdrawn.",
 }
 
 export interface SchemaVersionInfo {

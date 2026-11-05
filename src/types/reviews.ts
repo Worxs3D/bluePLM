@@ -49,6 +49,8 @@ export type ReviewNotificationType =
   | 'review_completed'
   | 'review_cancelled'
   | 'review_overdue'
+  /** A comment or reply in an open review (schema 514; at most one per recipient per review per hour). */
+  | 'review_comment'
 
 /**
  * Error codes the review RPCs raise (PostgREST `hint`). `UNKNOWN` covers anything without one,
@@ -227,6 +229,13 @@ export interface ReviewQueueRow {
   itemCount: number
   itemsDecided: number
   itemsOwedByMe: number
+  /**
+   * Current-round reviewers who still owe a decision and are not withdrawn (schema 514); null on
+   * gate rows.
+   */
+  reviewersOwing: number | null
+  /** Current-round reviewers withdrawn from the review (schema 108, counted from 514); null on gate rows. */
+  reviewersWithdrawn: number | null
   preview: ReviewQueuePreview | null
   gate: GateReviewSummary | null
   /** Opaque sort key; the server orders by it. */

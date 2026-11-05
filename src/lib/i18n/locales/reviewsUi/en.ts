@@ -70,6 +70,9 @@ export const en: TranslationDict = {
       teamMemberCount: 'Team · {{count}} people',
       teamMemberCountOne: 'Team · 1 person',
       teamRuleCount: 'Team · {{count}} by reviewer rules',
+      noVaultAccess: 'Can’t see the vault these files are in',
+      noVaultAccessAdded: 'Can’t see the vault these files are in. Remove to send.',
+      teamNoVaultAccess: '{{count}} can’t see the vault',
     },
     pickerTab: {
       people: 'People',

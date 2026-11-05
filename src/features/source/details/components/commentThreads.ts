@@ -83,31 +83,31 @@ export function earlierRounds(item: ReviewItemDetail, shownRound: number): Earli
 export interface ResolveContext {
   userId: string | null
   /**
-   * The database lets the people below resolve others' comments (schema 512,
-   * `file_comment_set_resolved`). Without it only a comment's author can, so Resolve is offered on
-   * the viewer's own comments only and never fails.
+   * The comment ids the database says the viewer may resolve or reopen
+   * (`file_comment_list_resolvable`, schema 514, which applies `file_comment_set_resolved`'s rule:
+   * the author, an admin, a review's requester and never-withdrawn reviewers, explorer edit on the
+   * comment's own vault outside a review). Null while it loads or when it could not be read: then
+   * only the viewer's own comments offer Resolve, so a button never appears that the server refuses.
    */
-  sharedResolve: boolean
-  /** The comment belongs to a review the viewer requested or reviews. */
-  reviewParticipant: boolean
-  isAdmin: boolean
-  /** Outside a review: the viewer may edit files in the vault (`module:explorer edit`). */
-  canEditFiles: boolean
-  inReview: boolean
+  resolvable: ReadonlySet<string> | null
 }
 
-/**
- * Whether Resolve / Reopen is offered on a thread, mirroring `file_comment_set_resolved` (512):
- * the author and an admin always; in a review, its requester and reviewers; outside one, explorer
- * edit. A review comment seen outside its review (the file's own comments) is resolved by its
- * author or an admin only: the viewer's review roles are not known there, and explorer edit does
- * not cover review comments.
- */
+/** Whether Resolve / Reopen is offered on a thread: exactly when the server would allow it. */
 export function canResolveThread(thread: FileAnnotation, ctx: ResolveContext): boolean {
   if (!ctx.userId) return false
   if (thread.user_id === ctx.userId) return true
-  if (!ctx.sharedResolve) return false
-  if (ctx.isAdmin) return true
-  if (ctx.inReview) return ctx.reviewParticipant
-  return !thread.review_id && ctx.canEditFiles
+  return ctx.resolvable?.has(thread.id) ?? false
+}
+
+/** Every saved comment id of these threads, replies included: what to ask the server about. */
+export function commentIds(threads: readonly FileAnnotation[]): string[] {
+  const ids: string[] = []
+  const walk = (list: readonly FileAnnotation[]) => {
+    for (const a of list) {
+      ids.push(a.id)
+      if (a.replies?.length) walk(a.replies)
+    }
+  }
+  walk(threads)
+  return ids.sort()
 }

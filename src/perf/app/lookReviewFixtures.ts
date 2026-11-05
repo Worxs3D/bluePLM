@@ -305,4 +305,9 @@ export async function seedLookReviews(db: FakeSupabase, ids: LookReviewSeedIds):
     }
     for (const n of f.pdfVersions) await storeLookReviewPdf(db, ids.orgId, ids.userId, f, n)
   }
+  // Everyone in the organization reads the review vault, as the world's `canAccessVault` says:
+  // the reviewer picker reads these grants to show who cannot see a draft's files.
+  for (const u of db.rows('app_user').filter((row) => row.org_id === ids.orgId)) {
+    db.seed('vault_access', { vault_id: ids.vaultId, user_id: String(u.id) })
+  }
 }

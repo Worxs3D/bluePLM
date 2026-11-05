@@ -67,6 +67,9 @@ export const zhTW: TranslationDict = {
       teamMemberCount: '團隊 · {{count}} 人',
       teamMemberCountOne: '團隊 · 1 人',
       teamRuleCount: '團隊 · 依審閱規則 {{count}} 人',
+      noVaultAccess: '無法檢視這些檔案所在的保險庫',
+      noVaultAccessAdded: '無法檢視這些檔案所在的保險庫。移除後才能傳送。',
+      teamNoVaultAccess: '{{count}} 人無法檢視該保險庫',
     },
     pickerTab: {
       people: '人員',

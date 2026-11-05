@@ -10,6 +10,7 @@
  * review state with `request` / `decide` / `resubmit` (they call the model as the right person),
  * then call one of the `show*` helpers. Never set review state directly.
  */
+import { UNDO_WINDOW_MS } from '@/features/source/reviews/lib/pendingDecisions'
 import { t } from '@/lib/i18n'
 import type { usePDMStore } from '@/stores/pdmStore'
 import type { LocalFile } from '@/stores/types'
@@ -26,6 +27,7 @@ import {
   lookReviewPath,
   lookReviewVersionId,
 } from '../lookReviewFixtures'
+import { reviewCommentScenes } from './reviewComments'
 
 type Store = typeof usePDMStore
 type Decision = 'approved' | 'approved_with_comments' | 'changes_requested' | 'rejected'
@@ -223,12 +225,28 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     )
   }
 
+  // The reviewer picker reads `vault_access` rows (who can see a draft's files); the world's own
+  // `canAccessVault` is a set in the backend. Scenes change both together through this.
+  const LOOK_PEOPLE = ['author', 'sam', 'alex', 'olive'] as const
+  const reviewVaultId = () => String(db.rows('file').find((f) => f.id === fileId('PMP-2000.SLDDRW'))?.vault_id ?? '')
+  const grantVaultRow = (key: LookPersonKey, hasAccess: boolean) => {
+    const userId = reviews.personId(key)
+    const vaultId = reviewVaultId()
+    const rows = db.rows('vault_access').filter((r) => r.user_id === userId && r.vault_id === vaultId)
+    if (!hasAccess) db.removeRows('vault_access', rows)
+    else if (rows.length === 0) db.seed('vault_access', { vault_id: vaultId, user_id: userId })
+  }
+  const setVaultAccess = (key: LookPersonKey, hasAccess: boolean) => {
+    reviews.setVaultAccess(key, hasAccess)
+    grantVaultRow(key, hasAccess)
+  }
+
   /** The base world: open, overdue, kicked-back, approved, cancelled and orphaned reviews, and markups. */
   const seedBase = () => {
     // Olive loses the vault for a moment: her open review is left with nobody to decide (schema 108).
     ids.nobodyLeft = request('author', { files: [['PMP-2003.SLDDRW']], reviewers: ['olive'], title: 'Shaft seal drawing', due: 4 })
-    reviews.setVaultAccess('olive', false)
-    reviews.setVaultAccess('olive', true)
+    setVaultAccess('olive', false)
+    setVaultAccess('olive', true)
 
     ids.seal = request('author', { files: [['PMP-2003.SLDPRT']], reviewers: ['olive'], title: 'Seal carrier, first article' })
     decide('olive', ids.seal, [['PMP-2003.SLDPRT', 'approved_with_comments', 'Fine to release; deburr note added on the shop traveller.']])
@@ -263,8 +281,14 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
   // The review files as the vault load gave them, so every scene starts from the same rows (a scene
   // may check in a version or mark a local copy modified).
   const originalFiles = new Map<string, LocalFile>()
+  /** Files a scene added to the list (reviewComments.ts); the next reset drops them. */
+  const addedPaths = new Set<string>()
   const restoreFiles = () => {
     const reviewFileIds = new Set(Object.values(LOOK_REVIEW_FILE_IDS))
+    if (addedPaths.size > 0) {
+      store.setState((s) => ({ files: s.files.filter((f) => !addedPaths.has(f.path)), selectedFiles: [] }))
+      addedPaths.clear()
+    }
     const files = store.getState().files
     if (originalFiles.size === 0) {
       for (const f of files) if (f.pdmData?.id && reviewFileIds.has(f.pdmData.id)) originalFiles.set(f.path, f)
@@ -274,13 +298,25 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
   }
 
   const reset = async (base = true) => {
+    // A call an earlier scene held open (`holdRpc`) goes through before the world is rebuilt.
+    if (db.heldRpcNames().length > 0) {
+      db.releaseRpc()
+      await sleep(100)
+      // Its success toast belongs to the earlier scene.
+      store.setState({ toasts: [] })
+    }
     for (const key of Object.keys(ids)) delete ids[key]
     reviews.reset()
+    for (const key of LOOK_PEOPLE) grantVaultRow(key, true)
     await switchUser(reviews.personId('author'))
     restoreFiles()
     if (base) seedBase()
-    // The base world's notifications are history; only what a scene does next is announced.
+    // The base world's notifications are history; only what a scene does next is announced. Two
+    // hours old, so the base world's markups do not hold back a scene's comment notifications
+    // (one per review per hour, schema 514).
     for (const key of ['author', 'sam', 'alex', 'olive'] as const) reviews.takeUndelivered(reviews.personId(key))
+    const past = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    for (const n of db.rows('notification')) n.created_at = past
     // Drafts are per user and persisted: start every scene without one.
     store.setState({ reviewPackageDrafts: {}, activeReviewId: null, activeReviewItemId: null })
   }
@@ -445,7 +481,7 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     // Submit refused: Olive was named but cannot see the vault (REVIEWER_NO_VAULT_ACCESS).
     'review-pane-error': async () => {
       await reset()
-      reviews.setVaultAccess('olive', false)
+      setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft({ ...fullDraft, reviewers: ['sam', 'olive'], teams: [] })
       await clickButton(t('reviewBuilder.submit'))
@@ -453,10 +489,32 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     // Sent, with the Quality team's only member left out (no vault access).
     'review-pane-sent': async () => {
       await reset()
-      reviews.setVaultAccess('olive', false)
+      setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft(fullDraft)
       await clickButton(t('reviewBuilder.submit'))
+    },
+    // Request review pressed while the server is slow: the button busy, every field disabled.
+    'review-pane-submitting': async () => {
+      await reset()
+      showExplorer({ pane: true })
+      setDraft(fullDraft)
+      db.holdRpc('review_request')
+      await clickButton(t('reviewBuilder.submit'))
+    },
+    // Olive cannot see the files' vault: unavailable in the search, and her team says so.
+    'review-pane-reviewer-no-access': async () => {
+      await reset()
+      setVaultAccess('olive', false)
+      // The pane reads the directory and its vault grants when it opens: open it afresh.
+      store.getState().setReviewPackagePaneOpen(false)
+      store.setState({ rightPanelVisible: false })
+      await sleep(150)
+      showExplorer({ pane: true })
+      setDraft({ files: fullDraft.files, reviewers: ['sam'], teams: ['quality'] })
+      const input = await until(() => document.querySelector<HTMLInputElement>(`input[placeholder="${t('reviewBuilder.reviewers.search')}"]`))
+      input.focus()
+      await sleep(300)
     },
     // "Add to open review ▸ <title>" asks first, naming the versions (added by the pane work).
     'review-add-open-confirm': async () => {
@@ -474,7 +532,7 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
     },
     'review-pane-reviewer-search': async () => {
       await reset()
-      reviews.setVaultAccess('olive', false)
+      setVaultAccess('olive', false)
       showExplorer({ pane: true })
       setDraft({ files: fullDraft.files })
       const input = await until(() => document.querySelector<HTMLInputElement>(`input[placeholder="${t('reviewBuilder.reviewers.search')}"]`))
@@ -591,6 +649,16 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       await reset()
       await actAs('sam')
       await showReviews(ids.housing, 'PMP-2001.SLDDRW')
+    },
+    // Sam approved the drawing; its undo window is over and the server has not answered yet.
+    'review-detail-sending': async () => {
+      await reset()
+      await actAs('sam')
+      await showReviews(ids.housing, 'PMP-2001.SLDDRW')
+      db.holdRpc('review_item_respond')
+      const approve = await until(() => document.querySelector<HTMLButtonElement>('button[data-decision="approved"]'))
+      approve.click()
+      await sleep(UNDO_WINDOW_MS + 500)
     },
     'review-detail-not-owed-decided': async () => {
       await reset()
@@ -778,6 +846,8 @@ export function createReviewLook(store: Store, backend: PerfBackend, reviews: Lo
       showExplorer({ pane: false })
       await actAs('sam')
     },
+    // --- Comments' server side (schema 514): notifications, resolve access ---------------------------
+    ...reviewCommentScenes({ store, backend, reviews, ids, reset, actAs, showExplorer, showReviews, itemOf, decide, addedPaths }),
   }
 
   return { actAs, scenes, reviews, checkIn, ids }

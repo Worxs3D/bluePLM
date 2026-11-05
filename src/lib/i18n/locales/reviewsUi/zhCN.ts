@@ -67,6 +67,9 @@ export const zhCN: TranslationDict = {
       teamMemberCount: '团队 · {{count}} 人',
       teamMemberCountOne: '团队 · 1 人',
       teamRuleCount: '团队 · 按审阅规则 {{count}} 人',
+      noVaultAccess: '无法查看这些文件所在的保险库',
+      noVaultAccessAdded: '无法查看这些文件所在的保险库。移除后才能发送。',
+      teamNoVaultAccess: '{{count}} 人无法查看该保险库',
     },
     pickerTab: {
       people: '人员',

@@ -45,6 +45,13 @@ export interface LookControl {
   actAs(person: string): Promise<void>
   /** The app theme for the shots. */
   theme(mode: 'dark' | 'light'): void
+  /**
+   * Hold every call of an RPC open on the fake backend until `releaseRpc`, so a "submitting" or
+   * "sending" state stays on screen for a shot (`--eval "__blueplmLook.holdRpc('review_request')"`).
+   */
+  holdRpc(name: string): void
+  /** Let held calls run (one RPC, or every held one without a name). */
+  releaseRpc(name?: string): void
   /** Review scene helpers for `--eval` (lookScenes/review.ts): checkIn, ids, reviews (the backend). */
   review: ReviewLookApi | null
 }
@@ -480,6 +487,12 @@ export async function installLook(store: Store, backend: PerfBackend, reviews: L
     },
     theme(mode) {
       store.getState().setTheme(mode)
+    },
+    holdRpc(name) {
+      backend.db.holdRpc(name)
+    },
+    releaseRpc(name) {
+      backend.db.releaseRpc(name)
     },
     async scene(name) {
       const set = scenes[name]
