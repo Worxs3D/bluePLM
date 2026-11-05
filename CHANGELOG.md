@@ -4,10 +4,48 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
-## [Unreleased]
+## [5.13.0] - 2026-11-05
+
+Schema 515 (`0515_orders_followups.sql`). No API or SolidWorks service change.
+
+### Added
+
+- **Request missing outputs.** On BluePLM Web, or on a computer without SOLIDWORKS, an order's
+  missing PDFs and STEPs can be requested instead of generated. Any desktop with SOLIDWORKS that can
+  read the vault makes them in the background, one at a time and never alongside your own exports,
+  and the lines update when they are ready. A requested output shows "Requested" and can be
+  cancelled. Turn it off for one computer under Settings > Orders.
+- **Settings > Orders.** The order number prefix with a preview of the next number, the outputs a
+  new line starts with (part with a drawing, part without, drawing on its own), and the switch for
+  generating outputs others request on this computer.
+- **Orders on a file.** A new Orders tab in the file details shows every order that pins the file,
+  with the version it pins; click one to open it.
+- **Drag files onto an order.** Drop files from the file list or the tree onto a draft order in the
+  list or onto the open order. Hold the drag over the Orders icon to open the page.
+- **Choose drawing.** When several drawings show a part, pick the one that goes with the line, or
+  none.
+- **Open with references.** From a file's version history, open any checked-in version of a part,
+  assembly or drawing exactly as it was: its referenced files are staged at the versions it was
+  checked in with, read-only, and opened in SOLIDWORKS, so an old assembly opens with nothing
+  broken. Staged copies are reused and cleaned up automatically.
+- **References frozen.** A released version whose references are exact is marked "References
+  frozen". A version a release depends on can no longer be deleted, and releasing a file whose
+  references are only approximate (checked in before BluePLM recorded them) asks first.
+
+### Changed
+
+- **RFQs are now quote orders.** Existing RFQs are imported once as orders with the purpose
+  Quote, their lines pinned to each file's newest checked-in version; internal notes stay on the old
+  RFQ and are not exported. The RFQ screens, their local release-files folder and the RFQ settings
+  are gone. The Supplier Portal now shows your quote orders.
+- **Bigger exports.** An order's zip on the desktop streams straight to disk with ZIP64 (up to
+  50 GB). On the web, Save files to folder works in browsers that can pick a folder.
+- **Hidden lines name their vaults.** An order with lines in vaults you cannot see says which
+  vaults, so you know whom to ask.
 
 ### Fixed
 
+- Emptying the trash no longer logs "permanently deleted" for a file whose delete was refused.
 - **Check-in and check-out no longer wait behind background exports.** Making an open SOLIDWORKS
   document read-only ran at background priority on the service's one-command queue, so it waited
   for every PDF/STEP export and reference read an earlier check-in had queued. It now runs ahead
