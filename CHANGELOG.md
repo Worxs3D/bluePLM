@@ -6,6 +6,16 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Full-resolution CAD previews.** The Preview tab used to show only the small bitmap SOLIDWORKS
+  embeds in each file, blurry at any zoom. A drawing now shows its PDF of the version on disk (the
+  one check-in generates), sharp at every zoom, with the thumbnail shown until it has loaded. A part
+  or assembly gets a **3D** button that shows its stored STL or STEP export of that version; the
+  choice is remembered. An edited, new or older local copy, or a version with no export yet, keeps
+  the thumbnail, since only the thumbnail shows what is actually on disk. BluePLM Web, which had no
+  CAD preview at all, shows the same PDFs and 3D views.
+
 ### Fixed
 
 - **General tolerance tables with LINEAR and ANGLE columns are read.** A title block that gives

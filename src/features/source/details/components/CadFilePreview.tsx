@@ -7,6 +7,7 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { hasDesktop } from '@/lib/platform'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
+import { StoredCadPreview } from '@/features/source/outputs/preview/StoredCadPreview'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
 
 import { resolveCadPreviewVariant } from './cadPreviewVariant'
@@ -87,8 +88,12 @@ export function CadFilePreview({
     return <EmbeddedCadPreview file={file} onOpenExternal={openInEDrawings} />
   }
 
+  // The thumbnail and "no preview" views give way to a stored drawing PDF or 3D export of the
+  // version on disk; the eDrawings-only views keep what the user chose.
+  const storedOutputs = variant !== 'external' && variant !== 'missing-edrawings'
+
   return (
-    <div className="w-full h-full flex flex-col">
+    <StoredCadPreview file={file} enabled={storedOutputs} className="w-full h-full">
       {variant === 'external' ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <FileBox size={48} className="mb-4 text-plm-accent" />
@@ -189,7 +194,7 @@ export function CadFilePreview({
           <div className="text-lg font-medium">{t('source.details.noPreviewAvailable')}</div>
         </div>
       )}
-    </div>
+    </StoredCadPreview>
   )
 }
 

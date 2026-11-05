@@ -56,6 +56,7 @@ export const createSettingsSlice: StateCreator<
 > = (set, get) => ({
   // Initial state - Preview & Topbar
   cadPreviewMode: 'thumbnail',
+  modelPreview3d: false,
   topbarConfig: {
     showFps: false,
     showZoom: true,
@@ -161,6 +162,7 @@ export const createSettingsSlice: StateCreator<
 
   // Actions - Preview & Topbar
   setCadPreviewMode: (cadPreviewMode) => set({ cadPreviewMode }),
+  setModelPreview3d: (modelPreview3d) => set({ modelPreview3d }),
   setTopbarConfig: (config) => set((s) => ({ topbarConfig: { ...s.topbarConfig, ...config } })),
 
   // Actions - SolidWorks

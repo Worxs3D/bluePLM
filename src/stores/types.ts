@@ -758,6 +758,12 @@ export interface UISlice {
 export interface SettingsSlice {
   // State - Preview & Topbar
   cadPreviewMode: CadPreviewMode
+  /**
+   * The Preview tab shows a part or assembly in 3D from its stored STEP/STL export of the version
+   * on disk (instead of the embedded thumbnail). Off by default: tessellating holds the renderer
+   * thread, so it is the user's choice, kept across restarts.
+   */
+  modelPreview3d: boolean
   topbarConfig: {
     showFps: boolean
     showZoom: boolean
@@ -872,6 +878,7 @@ export interface SettingsSlice {
 
   // Actions - Preview & Topbar
   setCadPreviewMode: (mode: CadPreviewMode) => void
+  setModelPreview3d: (on: boolean) => void
   setTopbarConfig: (config: Partial<SettingsSlice['topbarConfig']>) => void
 
   // Actions - SolidWorks

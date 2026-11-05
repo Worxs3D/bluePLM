@@ -170,6 +170,13 @@ export const versionOutputStrings: Record<string, string> = {
   previewZoomOut: 'Zoom out',
   previewFitWidth: 'Fit to width',
   previewPreparing3d: 'Preparing the 3D view…',
+  // A CAD file's own Preview tab showing a stored output in place of the embedded thumbnail (5.12.x)
+  cadStoredLoadingPdf: 'Loading the full-resolution PDF…',
+  cadStoredLoading3d: 'Loading the 3D view…',
+  cadStored3d: '3D',
+  cadStored3dOnTitle: 'Showing the {{kind}} of version {{version}} in 3D. Click to show the thumbnail.',
+  cadStored3dOffTitle: 'Show the {{kind}} of version {{version}} in 3D',
+  cadStoredFailed: 'Could not load the stored {{kind}}; showing the thumbnail ({{error}}).',
   previewModelEmpty: 'The file has no geometry to show.',
   previewView_iso: 'Iso',
   previewView_front: 'Front',

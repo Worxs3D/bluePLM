@@ -24,7 +24,7 @@ export function EmbeddedCadPreview({ file, onOpenExternal }: EmbeddedCadPreviewP
       />
       {showSolidWorksDatacard && (
         <aside className="w-72 flex-shrink-0 min-h-0">
-          <SWDatacardPanel file={file} />
+          <SWDatacardPanel file={file} storedOutputs={false} />
         </aside>
       )}
     </div>

@@ -381,6 +381,7 @@ export const usePDMStore = create<PDMStoreState>()(
         onboardingComplete: state.onboardingComplete,
         logSharingEnabled: state.logSharingEnabled,
         cadPreviewMode: state.cadPreviewMode,
+        modelPreview3d: state.modelPreview3d,
         topbarConfig: state.topbarConfig,
         shortcutOverrides: state.shortcutOverrides,
         quickExportFolder: state.quickExportFolder,
@@ -519,6 +520,7 @@ export const usePDMStore = create<PDMStoreState>()(
           cadPreviewMode: isCadPreviewMode(persisted.cadPreviewMode)
             ? persisted.cadPreviewMode
             : 'thumbnail',
+          modelPreview3d: persisted.modelPreview3d === true,
           // Merge topbarConfig over defaults so newly added toggles (e.g. showSolidworks)
           // aren't left undefined for users with a pre-existing persisted config.
           topbarConfig: {
