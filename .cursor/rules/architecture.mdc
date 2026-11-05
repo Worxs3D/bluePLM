@@ -110,6 +110,28 @@ Is it feature-specific?
 4. Add to sidebar (if needed): see `src/stores/types.ts` → `SidebarView`
 5. Add slice (if state needed): see `zustand.mdc`
 
+Before adding a feature to core, decide whether it is an extension (below).
+
+## Core and extensions
+
+Core is the file vault and the platform: files, versions, check-in/out, file workflows, workflow approvals,
+comments, outputs, auth, orgs, teams, permissions, settings, terminal and the extension host. Any other
+feature an organization could do without is an extension.
+
+- **Official extensions** (Reviews, Inspection, Supply Chain, ...) live in this repository, ship with the
+  app and share its version, its numbered migrations, its tests and the ui-look harness. An org admin
+  installs or uninstalls them; the server enforces it. They do not get their own repositories. This is
+  the standard for built-in first-party extensions (VS Code's built-in extensions, IntelliJ's bundled
+  plugins and Grafana's core plugins all live in the host's repository). A separate repository would
+  split the single migration sequence, break the web build and tests, and need cross-repo version pins.
+- **Native packages** (`.bpx`) are for code that must not be in this public repository (private or
+  customer-specific features) or that releases on its own schedule. They live in their own repositories,
+  load from an org admin's install, and run on the desktop only.
+- An official extension keeps to its boundary so it could move out later: core reaches it only through
+  its manifest and contribution points, and it does not reach into another extension's internals.
+- "Module" means a sidebar workspace and its layout entry. Whether a feature exists for an org is decided
+  by its extension being installed, never by a module switch.
+
 ## Key Patterns
 
 ### Barrel Exports
