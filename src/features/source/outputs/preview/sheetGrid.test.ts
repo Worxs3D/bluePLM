@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import { newWorkbook, readWorkbook, writeWorkbook } from '@/lib/inspection/excel/workbook'
 
@@ -12,6 +12,12 @@ async function roundTrip(build: (ws: import('exceljs').Worksheet, wb: import('ex
   const back = await readWorkbook(await writeWorkbook(wb))
   return { wb: back, ws: back.getWorksheet('Report')! }
 }
+
+// exceljs loads lazily on first use; under a full-suite run that import alone can outlast the
+// first test's 5 s budget. Load it once here, so every test measures only its own work.
+beforeAll(async () => {
+  await readWorkbook(await writeWorkbook(await newWorkbook()))
+}, 60_000)
 
 describe('sheetToGrid', () => {
   it('lays out columns and rows in px and spans merges from their master', async () => {
