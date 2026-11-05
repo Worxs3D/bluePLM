@@ -10,6 +10,7 @@ import type { Command, DiscardParams, CommandResult, LocalFile } from '../types'
 import { getDiscardableFilesFromSelection, getFilesInFolder } from '../types'
 import { ProgressTracker } from '../executor'
 import { undoCheckout } from '../../supabase'
+import { notifyCheckoutEnd } from '../checkoutLifecycle'
 import { getDownloadUrl } from '../../storage'
 import { isRetryableError, getNetworkErrorMessage, getBackoffDelay, sleep } from '../../network'
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
@@ -498,10 +499,12 @@ export const discardCommand: Command<DiscardParams> = {
 
     // Count results and collect successfully discarded paths (before store update for logging)
     const discardedPaths: string[] = []
+    const discardedFiles: LocalFile[] = []
     for (let i = 0; i < results.length; i++) {
       const result = results[i]
       if (result.success) {
         succeeded++
+        discardedFiles.push(filesToDiscard[i])
         // Track every path this file could have held persisted pending metadata under,
         // for clearing below. Deduped once, after the loop.
         discardedPaths.push(...result.discardedPaths)
@@ -520,6 +523,9 @@ export const discardCommand: Command<DiscardParams> = {
         if (result.error) errors.push(result.error)
       }
     }
+
+    // Reports of the discarded checked-out copies go with them (workingCopyPin.ts).
+    notifyCheckoutEnd('discard', discardedFiles)
 
     // End discard step
     tracker.endStep(discardStepId, 'completed', {

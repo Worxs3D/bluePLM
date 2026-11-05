@@ -420,6 +420,8 @@ export function mapQueueRow(v: unknown): ReviewQueueRow {
     itemCount: num(o.item_count),
     itemsDecided: num(o.items_decided),
     itemsOwedByMe: num(o.items_owed_by_me),
+    reviewersOwing: numOrNull(o.reviewers_owing),
+    reviewersWithdrawn: numOrNull(o.reviewers_withdrawn),
     preview: mapPreview(o.preview),
     gate: mapGate(o.gate),
     cursor: str(o.cursor),

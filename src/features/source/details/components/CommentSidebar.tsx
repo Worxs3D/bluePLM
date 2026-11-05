@@ -1,21 +1,22 @@
 /**
- * CommentSidebar - Side panel rendering the comment list for PDF annotations.
+ * CommentSidebar - the comments on a drawing, beside the PDF (file preview and review detail).
  *
- * Responsibilities:
- *   - Fetches annotations from Supabase when the viewed file changes
- *   - Groups comments: active (unresolved) sorted by page/position, then resolved (collapsible)
- *   - Renders CommentThread for each top-level annotation
- *   - Renders CommentInput when user triggers a new annotation via PDF area selection
- *   - Handles CRUD operations: create, reply, edit, delete, resolve, unresolve
- *   - Sends notifications to relevant users on new comments
- *   - Subscribes to Supabase Realtime for live comment updates
- *   - Optimistic updates with rollback on error
+ * - Loads the comments of the file, version and review scope, and keeps them live through Realtime.
+ * - Numbers every thread (the pin drawn on the PDF), filters Open / Resolved / All, and asks the
+ *   viewer to scroll to a thread when one is selected.
+ * - "Comment" turns comment mode on (drag a box on the drawing); a box opens the input here.
+ * - Resolve / Reopen go through `file_comment_set_resolved` (schema 512), so the author of a
+ *   drawing can resolve a reviewer's comment; it is offered to exactly whoever the database allows
+ *   (`file_comment_list_resolvable`, schema 514: explorer edit counts on the comment's own vault).
+ * - In a review's round 2 and later, earlier rounds' comments are listed under the current ones.
  *
- * Layout: intended to sit to the right of PdfAnnotationViewer at ~30% width.
+ * CRUD is optimistic with a rollback on error.
  */
 
 import { useEffect, useCallback, useRef, useMemo, useState } from 'react'
-import { MessageSquare, Loader2, MessageCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { MessageSquarePlus } from 'lucide-react'
+
+import { Button, SegmentedControl } from '@/components/core/ui'
 import { usePDMStore } from '@/stores/pdmStore'
 import { log } from '@/lib/logger'
 import { t } from '@/lib/i18n'
@@ -26,28 +27,52 @@ import {
   createAnnotation,
   updateAnnotation,
   deleteAnnotation,
-  resolveAnnotation,
-  unresolveAnnotation,
 } from '@/lib/supabase/annotations'
+import { setCommentResolved } from '@/lib/supabase/commentResolve'
 import { getSupabaseClient } from '@/lib/supabase/client'
+
 import { CommentThread } from './CommentThread'
 import { CommentInput } from './CommentInput'
-
-// ============================================================================
-// Types
-// ============================================================================
+import { EarlierRoundComments } from './EarlierRoundComments'
+import { useResolvableComments } from './useResolvableComments'
+import {
+  canResolveThread,
+  filterThreads,
+  numberThreads,
+  threadCounts,
+  type CommentFilter,
+  type EarlierRound,
+  type ResolveContext,
+} from './commentThreads'
 
 export interface CommentSidebarProps {
   /** Supabase file ID (from pdmData) for the currently viewed file */
   fileId: string
-  /** Display name of the file (for notification messages) */
+  /** Display name of the file */
   fileName: string
   /** Current file version (for version-scoped comments) */
   fileVersion?: number
-  /** A review's markups: only this review round's comments on this item, and new ones linked to it */
+  /** A review's comments: only this review round's comments on this item, and new ones linked to it */
   review?: AnnotationReviewScope
   /** List the comments only (an earlier review round, or a closed review) */
   readOnly?: boolean
+  /** Why it is read-only, for the line at the top. */
+  readOnlyReason?: 'closed' | 'round' | null
+  /** Show the "Comments" title bar (the file preview); the review detail has its own tabs. */
+  showTitle?: boolean
+  /** Comment mode (the viewer's area select), shared with the viewer's toolbar. */
+  markupMode?: boolean
+  onMarkupModeChange?: (on: boolean) => void
+  /** Ask the viewer to scroll to a thread's box. */
+  onFocusThread?: (annotationId: string) => void
+  /** Earlier review rounds to list under the current one, newest first. */
+  earlierRounds?: EarlierRound[]
+  /** Show an earlier round's thread on its version. */
+  onOpenEarlier?: (round: number, annotationId: string) => void
+  /** Names by user id, for "Resolved by". */
+  userNames?: ReadonlyMap<string, string>
+  /** Offer the "Comment" button here (default true); off where the viewer's toolbar has it. */
+  showAddButton?: boolean
 }
 
 /** Which annotation set is loaded: file + version + review scope. */
@@ -60,25 +85,7 @@ export function annotationScopeKey(
   return `${fileId}|${fileVersion ?? ''}|${scope}`
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Sort annotations: by page number ascending, then by vertical position (y) ascending */
-function sortAnnotations(annotations: FileAnnotation[]): FileAnnotation[] {
-  return [...annotations].sort((a, b) => {
-    const pageA = a.page_number ?? 0
-    const pageB = b.page_number ?? 0
-    if (pageA !== pageB) return pageA - pageB
-    const yA = a.position?.y ?? 0
-    const yB = b.position?.y ?? 0
-    return yA - yB
-  })
-}
-
-// ============================================================================
-// Component
-// ============================================================================
+const NO_EARLIER: EarlierRound[] = []
 
 export function CommentSidebar({
   fileId,
@@ -86,6 +93,15 @@ export function CommentSidebar({
   fileVersion,
   review,
   readOnly = false,
+  readOnlyReason = null,
+  showTitle = true,
+  markupMode,
+  onMarkupModeChange,
+  onFocusThread,
+  earlierRounds = NO_EARLIER,
+  onOpenEarlier,
+  userNames,
+  showAddButton = true,
 }: CommentSidebarProps) {
   // Primitive parts of the review scope, so effects key on values rather than object identity.
   const reviewId = review?.reviewId
@@ -123,163 +139,126 @@ export function CommentSidebar({
   const setPendingAnnotation = usePDMStore((s) => s.setPendingAnnotation)
 
   // ── Local state ──────────────────────────────────────────────────────────
-  const [showResolved, setShowResolved] = useState(false)
+  const [filter, setFilter] = useState<CommentFilter>('open')
   const [isCreating, setIsCreating] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const threadListRef = useRef<HTMLDivElement>(null)
 
-  // ── Derived data ─────────────────────────────────────────────────────────
-  const { activeAnnotations, resolvedAnnotations, unresolvedCount, resolvedCount } = useMemo(() => {
-    const active = sortAnnotations(annotations.filter((a) => !a.resolved))
-    const resolved = sortAnnotations(annotations.filter((a) => a.resolved))
-    return {
-      activeAnnotations: active,
-      resolvedAnnotations: resolved,
-      unresolvedCount: active.length,
-      resolvedCount: resolved.length,
-    }
-  }, [annotations])
+  const counts = useMemo(() => threadCounts(annotations), [annotations])
+  const numbers = useMemo(() => numberThreads(annotations), [annotations])
+  const shown = useMemo(() => filterThreads(annotations, filter), [annotations, filter])
+
+  // Resolve / Reopen shows exactly when file_comment_set_resolved would allow it (schema 514).
+  const resolvable = useResolvableComments(annotations, user?.id ?? null)
+  const fullResolveContext = useMemo<ResolveContext>(
+    () => ({ userId: user?.id ?? null, resolvable }),
+    [user?.id, resolvable],
+  )
+
+  const reload = useCallback(async () => {
+    const result = await getFileAnnotations(fileId, fileVersion, scope)
+    if (!result.error) setAnnotations(result.annotations)
+    return result
+  }, [fileId, fileVersion, scope, setAnnotations])
 
   // ── Load annotations when the file, version or review scope changes ─────
-  // Keyed on all three: keying on the file alone kept v5's markups on screen when the same
+  // Keyed on all three: keying on the file alone kept v5's comments on screen when the same
   // drawing's v6 review opened next (audit H6).
   useEffect(() => {
     if (!fileId) return
-
-    // Skip if already loaded for this scope
-    if (loadedScopeKey === scopeKey) return
+    if (loadedScopeKey === scopeKey && attempt === 0) return
 
     let cancelled = false
-
     const load = async () => {
       setAnnotations([])
+      setLoadError(null)
       setAnnotationsLoading(true)
       const result = await getFileAnnotations(fileId, fileVersion, scope)
-
       if (cancelled) return
-
       if (result.error) {
         log.error('[CommentSidebar]', 'Failed to load annotations', { error: result.error, fileId })
-        addToast('error', t('markups.loadFailed', { message: result.error }))
+        setLoadError(result.error)
       }
-
       setAnnotations(result.annotations)
       setAnnotationScopeKey(scopeKey)
       setAnnotationsLoading(false)
     }
-
-    load()
+    void load()
     return () => {
       cancelled = true
     }
-  }, [
-    fileId,
-    fileVersion,
-    scope,
-    scopeKey,
-    loadedScopeKey,
-    setAnnotations,
-    setAnnotationScopeKey,
-    setAnnotationsLoading,
-    addToast,
-  ])
+    // `loadedScopeKey` is read to skip a reload of what is already shown, not as a trigger.
+  }, [fileId, fileVersion, scope, scopeKey, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Supabase Realtime subscription ──────────────────────────────────────
   useEffect(() => {
     if (!fileId) return
-
     let channel: ReturnType<ReturnType<typeof getSupabaseClient>['channel']> | null = null
-
     try {
       const client = getSupabaseClient()
       channel = client
         .channel(`file_comments:${scopeKey}`)
         .on(
           'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'file_comment',
-            filter: `file_id=eq.${fileId}`,
-          },
+          { event: '*', schema: 'public', table: 'file_comment', filter: `file_id=eq.${fileId}` },
           (payload) => {
             const eventType = payload.eventType
-
             if (eventType === 'INSERT') {
-              // Avoid duplicating own optimistic inserts
+              // Own inserts are already on screen (optimistic).
               const newRow = payload.new as Record<string, unknown>
               if (newRow.user_id === user?.id) return
-
-              // Reload to get full data with user join
-              getFileAnnotations(fileId, fileVersion, scope).then((result) => {
-                if (!result.error) {
-                  setAnnotations(result.annotations)
-                }
-              })
+              void reload()
             } else if (eventType === 'UPDATE') {
-              // Reload to get fresh data
-              getFileAnnotations(fileId, fileVersion, scope).then((result) => {
-                if (!result.error) {
-                  setAnnotations(result.annotations)
-                }
-              })
+              void reload()
             } else if (eventType === 'DELETE') {
-              const oldRow = payload.old as Record<string, unknown>
-              const deletedId = oldRow.id as string
-              if (deletedId) {
-                removeAnnotation(deletedId)
-              }
+              const deletedId = (payload.old as Record<string, unknown>).id
+              if (typeof deletedId === 'string') removeAnnotation(deletedId)
             }
           },
         )
         .subscribe()
     } catch (error) {
-      log.warn('[CommentSidebar]', 'Failed to set up realtime subscription', { error: error })
+      log.warn('[CommentSidebar]', 'Failed to set up realtime subscription', { error })
     }
-
     return () => {
-      if (channel) {
-        try {
-          const client = getSupabaseClient()
-          client.removeChannel(channel)
-        } catch {
-          // Ignore cleanup errors
-        }
+      if (!channel) return
+      try {
+        getSupabaseClient().removeChannel(channel)
+      } catch {
+        // Ignore cleanup errors
       }
     }
-  }, [fileId, fileVersion, scope, scopeKey, user?.id, setAnnotations, removeAnnotation])
+  }, [fileId, scopeKey, user?.id, reload, removeAnnotation])
 
-  // ── Scroll to active annotation thread ──────────────────────────────────
+  // ── Scroll the list to the thread selected on the drawing ────────────────
   useEffect(() => {
     if (!activeAnnotationId || !threadListRef.current) return
     const el = threadListRef.current.querySelector(`[data-annotation-id="${activeAnnotationId}"]`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [activeAnnotationId])
+    // A thread selected on the drawing that the filter hides: show it.
+    const ann = annotations.find((a) => a.id === activeAnnotationId)
+    if (ann && !ann.parent_id) {
+      if (filter === 'open' && ann.resolved) setFilter('all')
+      if (filter === 'resolved' && !ann.resolved) setFilter('all')
+    }
+  }, [activeAnnotationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── CRUD handlers ───────────────────────────────────────────────────────
 
-  /** Create a new top-level comment from the pending annotation area selection */
   const handleCreateComment = useCallback(
     async (text: string) => {
       if (!user?.id || !pendingAnnotation) return
-
       setIsCreating(true)
-
-      // Optimistic: create a temporary annotation
       const tempId = `temp-${Date.now()}`
+      const position = { ...pendingAnnotation.position }
       const optimistic: FileAnnotation = {
         id: tempId,
         file_id: fileId,
         user_id: user.id,
         comment: text,
         page_number: pendingAnnotation.pageNumber,
-        position: {
-          x: pendingAnnotation.position.x,
-          y: pendingAnnotation.position.y,
-          width: pendingAnnotation.position.width,
-          height: pendingAnnotation.position.height,
-          pageWidth: pendingAnnotation.position.pageWidth,
-          pageHeight: pendingAnnotation.position.pageHeight,
-        },
+        position,
         annotation_type: pendingAnnotation.annotationType,
         parent_id: null,
         resolved: false,
@@ -298,6 +277,7 @@ export function CommentSidebar({
       addAnnotation(optimistic)
       setShowCommentInput(false)
       setPendingAnnotation(null)
+      if (filter === 'resolved') setFilter('open')
 
       try {
         const result = await createAnnotation({
@@ -305,36 +285,22 @@ export function CommentSidebar({
           userId: user.id,
           comment: text,
           pageNumber: pendingAnnotation.pageNumber,
-          position: {
-            x: pendingAnnotation.position.x,
-            y: pendingAnnotation.position.y,
-            width: pendingAnnotation.position.width,
-            height: pendingAnnotation.position.height,
-            pageWidth: pendingAnnotation.position.pageWidth,
-            pageHeight: pendingAnnotation.position.pageHeight,
-          },
+          position,
           annotationType: pendingAnnotation.annotationType,
           fileVersion: fileVersion ?? null,
           review: scope ?? null,
         })
-
+        removeAnnotation(tempId)
         if (result.error || !result.annotation) {
-          // Rollback optimistic insert
-          removeAnnotation(tempId)
           addToast('error', t('markups.saveFailed', { message: result.error ?? '' }))
           return
         }
-
-        // Replace optimistic with real
-        removeAnnotation(tempId)
         addAnnotation(result.annotation)
         setActiveAnnotationId(result.annotation.id)
-
-        // Notification system removed
       } catch (error) {
         removeAnnotation(tempId)
         addToast('error', t('markups.saveFailed', { message: '' }))
-        log.error('[CommentSidebar]', 'Create annotation failed', { error: error })
+        log.error('[CommentSidebar]', 'Create annotation failed', { error })
       } finally {
         setIsCreating(false)
       }
@@ -345,6 +311,7 @@ export function CommentSidebar({
       fileId,
       fileVersion,
       scope,
+      filter,
       addAnnotation,
       removeAnnotation,
       setShowCommentInput,
@@ -354,11 +321,9 @@ export function CommentSidebar({
     ],
   )
 
-  /** Reply to an existing thread */
   const handleReply = useCallback(
     async (parentId: string, text: string) => {
       if (!user?.id) return
-
       const result = await createAnnotation({
         fileId,
         userId: user.id,
@@ -368,147 +333,179 @@ export function CommentSidebar({
         fileVersion: fileVersion ?? null,
         review: scope ?? null,
       })
-
       if (result.error || !result.annotation) {
         addToast('error', t('markups.replyFailed', { message: result.error ?? '' }))
         // Throw so the reply input stays open and the typed text is preserved
         throw new Error(result.error ?? 'Failed to save reply')
       }
-
-      // Reload to get the updated threaded structure
-      const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
-      if (!refreshed.error) {
-        setAnnotations(refreshed.annotations)
-      }
-
-      // Notification system removed
+      await reload()
     },
-    [user, fileId, fileVersion, scope, addToast, setAnnotations],
+    [user, fileId, fileVersion, scope, addToast, reload],
   )
 
-  /** Edit a comment's text */
   const handleEdit = useCallback(
     async (annotationId: string, newText: string) => {
-      // Optimistic update
       updateAnnotationInStore(annotationId, {
         comment: newText,
         edited_at: new Date().toISOString(),
       })
-
       const result = await updateAnnotation(annotationId, newText)
       if (result.error) {
         addToast('error', t('markups.editFailed', { message: result.error }))
-        // Reload to restore correct state
-        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
-        if (!refreshed.error) setAnnotations(refreshed.annotations)
+        await reload()
       }
     },
-    [fileId, fileVersion, scope, updateAnnotationInStore, addToast, setAnnotations],
+    [updateAnnotationInStore, addToast, reload],
   )
 
-  /** Delete a comment (with cascade on server side) */
   const handleDelete = useCallback(
     async (annotationId: string) => {
-      // Optimistic removal
       removeAnnotation(annotationId)
-
       const result = await deleteAnnotation(annotationId)
       if (result.error) {
         addToast('error', t('markups.deleteFailed', { message: result.error }))
-        // Reload to restore
-        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
-        if (!refreshed.error) setAnnotations(refreshed.annotations)
+        await reload()
       }
     },
-    [fileId, fileVersion, scope, removeAnnotation, addToast, setAnnotations],
+    [removeAnnotation, addToast, reload],
   )
 
-  /** Resolve a thread */
-  const handleResolve = useCallback(
-    async (annotationId: string) => {
-      if (!user?.id) return
-
+  const setResolved = useCallback(
+    async (annotationId: string, resolved: boolean) => {
       updateAnnotationInStore(annotationId, {
-        resolved: true,
-        resolved_by: user.id,
-        resolved_at: new Date().toISOString(),
+        resolved,
+        resolved_by: resolved ? (user?.id ?? null) : null,
+        resolved_at: resolved ? new Date().toISOString() : null,
       })
-
-      const result = await resolveAnnotation(annotationId, user.id)
-      if (result.error) {
-        addToast('error', t('markups.resolveFailed', { message: result.error }))
-        updateAnnotationInStore(annotationId, {
-          resolved: false,
-          resolved_by: null,
-          resolved_at: null,
-        })
+      const { result, error } = await setCommentResolved(annotationId, resolved)
+      if (error || !result) {
+        addToast(
+          'error',
+          t(resolved ? 'markups.resolveFailed' : 'markups.unresolveFailed', {
+            message: error ?? '',
+          }),
+        )
+        await reload()
+        return
       }
-    },
-    [user, updateAnnotationInStore, addToast],
-  )
-
-  /** Unresolve a thread */
-  const handleUnresolve = useCallback(
-    async (annotationId: string) => {
       updateAnnotationInStore(annotationId, {
-        resolved: false,
-        resolved_by: null,
-        resolved_at: null,
+        resolved: result.isResolved,
+        resolved_by: result.resolvedBy,
+        resolved_at: result.resolvedAt,
       })
-
-      const result = await unresolveAnnotation(annotationId)
-      if (result.error) {
-        addToast('error', t('markups.unresolveFailed', { message: result.error }))
-        // Reload fresh data
-        const refreshed = await getFileAnnotations(fileId, fileVersion, scope)
-        if (!refreshed.error) setAnnotations(refreshed.annotations)
-      }
     },
-    [fileId, fileVersion, scope, updateAnnotationInStore, addToast, setAnnotations],
+    [user?.id, updateAnnotationInStore, addToast, reload],
   )
+  const handleResolve = useCallback((id: string) => setResolved(id, true), [setResolved])
+  const handleUnresolve = useCallback((id: string) => setResolved(id, false), [setResolved])
 
-  /** Cancel the pending annotation input */
   const handleCancelCreate = useCallback(() => {
     setShowCommentInput(false)
     setPendingAnnotation(null)
   }, [setShowCommentInput, setPendingAnnotation])
 
+  const selectThread = useCallback(
+    (id: string) => {
+      setActiveAnnotationId(id)
+      onFocusThread?.(id)
+    },
+    [setActiveAnnotationId, onFocusThread],
+  )
+
+  // A comment notification's Open (schema 514): focus its thread once this item's comments of the
+  // review have loaded. Taken from the store once; the surfaces clear activeAnnotationId as they
+  // unmount, so the target cannot ride on it.
+  const pendingFocus = usePDMStore((s) => s.pendingReviewCommentFocus)
+  useEffect(() => {
+    if (!scope || !pendingFocus || annotationsLoading || loadedScopeKey !== scopeKey) return
+    // Not here yet (the realtime reload of a comment that just arrived): wait for it.
+    if (!annotations.some((a) => a.id === pendingFocus.commentId)) return
+    const id = usePDMStore.getState().takePendingReviewCommentFocus(scope.reviewId, scope.itemId)
+    if (id) selectThread(id)
+  }, [scope, pendingFocus, annotationsLoading, loadedScopeKey, scopeKey, annotations, selectThread])
+
+  const nameOf = useCallback(
+    (userId: string | null): string | null => {
+      if (!userId) return null
+      const fromMap = userNames?.get(userId)
+      if (fromMap) return fromMap
+      for (const a of annotations) {
+        if (a.user_id === userId && a.user) return a.user.full_name || a.user.email
+        for (const r of a.replies ?? [])
+          if (r.user_id === userId && r.user) return r.user.full_name || r.user.email
+      }
+      return null
+    },
+    [userNames, annotations],
+  )
+
   // ── Render ──────────────────────────────────────────────────────────────
+  const editable = !readOnly
+  const total = counts.open + counts.resolved
+  const modeOn = !!markupMode
+
+  const addButton = showAddButton && editable && onMarkupModeChange && (
+    <Button
+      size="sm"
+      variant={modeOn ? 'secondary' : 'ghost'}
+      aria-pressed={modeOn}
+      icon={<MessageSquarePlus size={14} className={modeOn ? 'text-ui-accent' : ''} />}
+      onClick={() => onMarkupModeChange(!modeOn)}
+      className={modeOn ? 'bg-ui-selected' : ''}
+    >
+      {t('markups.add')}
+    </Button>
+  )
 
   return (
-    <div className="flex flex-col h-full bg-plm-panel border-l border-plm-border">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-plm-border flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={14} className="text-plm-fg-muted" />
-          <span className="text-xs font-medium text-plm-fg">{t('markups.title')}</span>
-          {unresolvedCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-plm-accent/20 text-plm-accent text-[10px] font-semibold tabular-nums">
-              {unresolvedCount}
-            </span>
-          )}
+    <div className="flex h-full min-h-0 flex-col bg-ui-bg">
+      {showTitle && (
+        <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-ui-border pl-3 pr-2">
+          <h2 className="text-[14px] font-semibold text-ui-fg">{t('markups.title')}</h2>
+          {total > 0 && <span className="text-[13px] text-ui-fg-secondary">{total}</span>}
+          <div className="ml-auto">{addButton}</div>
         </div>
-      </div>
+      )}
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto min-h-0" ref={threadListRef}>
-        {/* Loading state */}
-        {annotationsLoading && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-plm-fg-muted" />
-            <span className="ml-2 text-xs text-plm-fg-muted">{t('markups.loading')}</span>
-          </div>
-        )}
+      {total > 0 && (
+        <div className="flex flex-shrink-0 items-center gap-2 px-3 py-2">
+          <SegmentedControl<CommentFilter>
+            size="sm"
+            aria-label={t('markups.filterLabel')}
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'open', label: t('markups.filter.open', { count: counts.open }) },
+              {
+                value: 'resolved',
+                label: t('markups.filter.resolved', { count: counts.resolved }),
+              },
+              { value: 'all', label: t('markups.filter.all') },
+            ]}
+          />
+          {!showTitle && addButton && <div className="ml-auto">{addButton}</div>}
+        </div>
+      )}
 
-        {/* New comment input (from PDF area selection) */}
-        {readOnly && (
-          <div className="px-3 py-1.5 text-[10px] text-plm-fg-muted border-b border-plm-border">
-            {t('markups.readOnly')}
-          </div>
-        )}
+      {readOnly && (
+        <p className="flex-shrink-0 px-3 pb-2 text-[12px] text-ui-fg-secondary">
+          {readOnlyReason === 'closed'
+            ? t('markups.readOnlyClosed')
+            : readOnlyReason === 'round'
+              ? t('markups.readOnlyRound')
+              : t('markups.readOnly')}
+        </p>
+      )}
+      {/* With no comments yet, the empty state below carries this hint. */}
+      {editable && onMarkupModeChange && !showCommentInput && total > 0 && (
+        <p className="flex-shrink-0 px-3 pb-2 text-[12px] text-ui-fg-tertiary">
+          {modeOn ? t('markups.hintOn') : t('markups.hintOff')}
+        </p>
+      )}
 
-        {showCommentInput && pendingAnnotation && !readOnly && (
-          <div className="px-3 py-2 border-b border-plm-border bg-plm-accent/5">
+      <div className="min-h-0 flex-1 overflow-y-auto" ref={threadListRef}>
+        {showCommentInput && pendingAnnotation && editable && (
+          <div className="border-y border-ui-divider bg-ui-field/40 px-3 py-2.5">
             <CommentInput
               pageNumber={pendingAnnotation.pageNumber}
               placeholder={t('markups.placeholder')}
@@ -519,28 +516,42 @@ export function CommentSidebar({
           </div>
         )}
 
-        {/* Empty state */}
-        {!annotationsLoading && annotations.length === 0 && !showCommentInput && (
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-            <MessageCircle size={32} className="text-plm-fg-muted/30 mb-3" />
-            <div className="text-xs text-plm-fg-muted mb-1">{t('markups.empty')}</div>
-            {!readOnly && (
-              <div className="text-[10px] text-plm-fg-muted/60">{t('markups.emptyHint')}</div>
-            )}
+        {annotationsLoading ? (
+          <p className="px-3 py-3 text-[13px] text-ui-fg-secondary">{t('markups.loading')}</p>
+        ) : loadError ? (
+          <div className="flex items-center gap-2 px-3 py-3 text-[13px]">
+            <span className="flex-1 text-ui-fg">{t('markups.loadError')}</span>
+            <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+              {t('markups.retry')}
+            </Button>
           </div>
-        )}
-
-        {/* Active (unresolved) threads */}
-        {!annotationsLoading && activeAnnotations.length > 0 && (
-          <div className="divide-y divide-plm-border/50">
-            {activeAnnotations.map((ann) => (
+        ) : total === 0 ? (
+          !showCommentInput && (
+            <div className="px-3 py-3">
+              <p className="text-[13px] text-ui-fg">{t('markups.empty')}</p>
+              {/* Only a drawing can take a markup: a part or assembly has no PDF to drag on. */}
+              {editable && onMarkupModeChange && (
+                <p className="mt-0.5 text-[13px] text-ui-fg-secondary">
+                  {modeOn ? t('markups.hintOn') : t('markups.hintOff')}
+                </p>
+              )}
+            </div>
+          )
+        ) : shown.length === 0 ? (
+          <p className="px-3 py-3 text-[13px] text-ui-fg-secondary">
+            {t(`markups.emptyFilter.${filter}`)}
+          </p>
+        ) : (
+          <div className="divide-y divide-ui-divider border-y border-ui-divider">
+            {shown.map((ann) => (
               <div key={ann.id} data-annotation-id={ann.id}>
                 <CommentThread
                   annotation={ann}
+                  number={numbers.get(ann.id)}
                   currentUserId={user?.id ?? null}
                   isActive={activeAnnotationId === ann.id}
                   isHovered={hoveredAnnotationId === ann.id}
-                  onClick={() => setActiveAnnotationId(ann.id)}
+                  onClick={() => selectThread(ann.id)}
                   onReply={handleReply}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
@@ -548,51 +559,29 @@ export function CommentSidebar({
                   onUnresolve={handleUnresolve}
                   onHoverChange={(hovered) => setHoveredAnnotationId(hovered ? ann.id : null)}
                   readOnly={readOnly}
+                  canResolve={canResolveThread(ann, fullResolveContext)}
+                  resolvedByName={nameOf(ann.resolved_by)}
                 />
               </div>
             ))}
           </div>
         )}
 
-        {/* Resolved threads (collapsible) */}
-        {!annotationsLoading && resolvedCount > 0 && (
-          <div className="border-t border-plm-border">
-            <button
-              onClick={() => setShowResolved((prev) => !prev)}
-              className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors"
-              aria-expanded={showResolved}
-              aria-label={t(showResolved ? 'markups.hideResolved' : 'markups.showResolved', {
-                count: resolvedCount,
-              })}
-            >
-              {showResolved ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <span>{t('markups.resolvedCount', { count: resolvedCount })}</span>
-            </button>
-
-            {showResolved && (
-              <div className="divide-y divide-plm-border/50">
-                {resolvedAnnotations.map((ann) => (
-                  <div key={ann.id} data-annotation-id={ann.id}>
-                    <CommentThread
-                      annotation={ann}
-                      currentUserId={user?.id ?? null}
-                      isActive={activeAnnotationId === ann.id}
-                      isHovered={hoveredAnnotationId === ann.id}
-                      onClick={() => setActiveAnnotationId(ann.id)}
-                      onReply={handleReply}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      onResolve={handleResolve}
-                      onUnresolve={handleUnresolve}
-                      onHoverChange={(hovered) => setHoveredAnnotationId(hovered ? ann.id : null)}
-                  readOnly={readOnly}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {scope &&
+          onOpenEarlier &&
+          earlierRounds.map((round, index) => (
+            <EarlierRoundComments
+              key={`${scope.itemId}:${round.round}`}
+              fileId={fileId}
+              reviewId={scope.reviewId}
+              itemId={scope.itemId}
+              round={round}
+              resolveContext={fullResolveContext}
+              userNames={userNames}
+              onOpen={onOpenEarlier}
+              defaultExpanded={index === 0}
+            />
+          ))}
       </div>
     </div>
   )

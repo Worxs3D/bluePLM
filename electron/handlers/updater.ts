@@ -4,6 +4,8 @@ import fs from 'fs'
 import path from 'path'
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater'
 
+import { flushReviewDecisionsBeforeQuit } from './reviewDecisionQuitIpc'
+
 // Module state
 let mainWindow: BrowserWindow | null = null
 let log: (message: string, data?: unknown) => void = console.log
@@ -87,7 +89,9 @@ function satisfiesMandatory(version: string): boolean {
 }
 
 function installNow(): void {
-  setImmediate(() => {
+  // The installer starts (Windows) or the app exits without `before-quit` (macOS) right below, so
+  // queued review decisions are sent first. Bounded, and at once when there are none.
+  void flushReviewDecisionsBeforeQuit().finally(() => setImmediate(() => {
     try {
       if (process.platform === 'darwin') {
         log('[Update] macOS: Using app.relaunch + app.exit for update installation')
@@ -106,7 +110,7 @@ function installNow(): void {
         app.quit()
       }
     }
-  })
+  }))
 }
 
 function startMandatoryCountdown(version: string): void {
@@ -511,6 +515,8 @@ export function registerUpdaterHandlers(
         return { success: false, error: 'Installer file not found' }
       }
 
+      // The installer will close this app: queued review decisions go out first.
+      await flushReviewDecisionsBeforeQuit()
       await shell.openPath(filePath)
 
       setTimeout(() => {

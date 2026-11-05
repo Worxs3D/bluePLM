@@ -58,6 +58,12 @@ const SuppliersView = lazy(() =>
 const SupplierPortalView = lazy(() =>
   import('@/features/supply-chain/portal').then((m) => ({ default: m.SupplierPortalView })),
 )
+const OrdersPane = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrdersPane })),
+)
+const OrderDetailView = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrderDetailView })),
+)
 const SettingsContent = lazy(() =>
   import('@/features/settings').then((m) => ({ default: m.SettingsContent })),
 )
@@ -145,7 +151,7 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
     if (!CORE_VIEW_IDS.has(view)) return <ExtensionNotLoaded />
 
     // Views that have both sidebar and main content
-    const mainContentViews: SidebarView[] = ['explorer', 'google-drive', 'settings']
+    const mainContentViews: SidebarView[] = ['explorer', 'google-drive', 'settings', 'orders']
 
     if (mainContentViews.includes(view)) {
       switch (view) {
@@ -164,6 +170,21 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
               <div className="flex-1 overflow-hidden">
                 <Suspense fallback={<ViewLoading />}>
                   <FilePane onRefresh={() => {}} />
+                </Suspense>
+              </div>
+            </div>
+          )
+        case 'orders':
+          return (
+            <div className="flex-1 flex overflow-hidden">
+              <div className="w-72 border-r border-ui-border overflow-auto bg-ui-nav">
+                <Suspense fallback={<ViewLoading />}>
+                  <OrdersPane />
+                </Suspense>
+              </div>
+              <div className="flex-1 flex overflow-hidden">
+                <Suspense fallback={<ViewLoading />}>
+                  <OrderDetailView />
                 </Suspense>
               </div>
             </div>

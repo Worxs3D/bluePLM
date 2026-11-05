@@ -49,6 +49,8 @@ export function NameCell({
   const checkoutHydrationState = usePDMStore((state) =>
     file.pdmData?.id ? state.checkoutHydration[file.pdmData.id]?.state : undefined,
   )
+  // Search results come from many folders and often share a name; hovering one shows where it lives.
+  const isSearching = usePDMStore((s) => !!s.searchQuery?.trim())
 
   // UI state from FilePaneContext
   const {
@@ -348,6 +350,7 @@ export function NameCell({
       />
       <span
         className={`truncate flex-1 transition-opacity duration-200 ${isNameDimmed ? 'opacity-50' : ''} ${cloudOnlyTextClass(file.diffStatus === 'cloud')}`}
+        title={isSearching ? file.relativePath : undefined}
       >
         {displayFilename}
       </span>

@@ -35,6 +35,7 @@
         "keptPositions",
         "missing",
         "placed",
+        "relaid",
         "removedPrevious",
         "saved",
         "unchanged"

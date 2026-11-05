@@ -1,60 +1,114 @@
 /**
- * Decide the current item: Approve, Approve with comments, Request changes, Reject. A comment is
- * required for every decision except Approve (decision 2). Keyboard: A, Shift+A, C, R decide by
- * default (the registry's `reviews.*` actions, rebindable); Ctrl+Enter sends a comment; Escape
- * closes it. J / K belong to the detail pane
- * (`useReviewItemKeys`), so they work for everyone viewing the review, not only reviewers.
+ * Decide the current file: Approve, Approve with comments, Request changes, Reject, and Approve
+ * remaining. A comment is required for every decision except Approve. Nothing is sent from here:
+ * the pane queues each decision in the undo window (`usePendingDecisions`), so a stray key never
+ * sends an irreversible decision (review UX audit F1).
+ *
+ * When the viewer cannot decide this file the buttons give way to one line saying why
+ * (`decisionBarState`), and when they owe nothing more, to "Next review" (F15).
+ *
+ * Keyboard (registry `reviews.*`, rebindable): A approves, Shift+A / C / R open the comment box,
+ * Ctrl+Enter sends a comment, Escape closes it. J / K belong to the detail pane.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { CheckCheck, CheckCircle2, Loader2, MessageSquareMore, Undo2, XCircle } from 'lucide-react'
 
+import { Button, TextArea } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
+import { useShortcutLabel, useShortcuts, type ShortcutHandler } from '@/lib/keybindings'
 import type { ReviewDecision } from '@/types/reviews'
 
-import { useShortcuts, type ShortcutHandler } from '@/lib/keybindings'
+import {
+  describeDecisionBarState,
+  prefilledDecisionComment,
+  type DecisionBarState,
+} from '../lib/decisionState'
+import { restoreApplies, type DecisionRestore } from '../lib/pendingDecisions'
+
+type Pending = ReviewDecision | 'approve_all'
+
+const COMMENTED: ReadonlySet<Pending> = new Set<Pending>([
+  'approved_with_comments',
+  'changes_requested',
+  'rejected',
+])
 
 interface DecisionBarProps {
-  /** The current item is owed by me in this round. */
-  canDecide: boolean
-  /** Items I still owe across the review. */
+  /** The file this bar decides: an undone decision reopens only on its own file. */
+  itemId: string
+  state: DecisionBarState
+  /** "bracket.slddrw · v5" */
+  context: string
+  /** "You decide 4 of 12" */
+  moveText: string | null
+  /** Files the viewer still owes across the review (after queued decisions). */
   owedCount: number
-  busy: boolean
+  /** The viewer's open comments on this file this round (prefills Request changes / Reject). */
+  myOpenComments: number
+  /** The viewer owes nothing more here and is a reviewer: offer the next review. */
+  done: { waiting: number; onNext: (() => void) | null; onBack: () => void } | null
+  restore: DecisionRestore | null
   onDecide: (decision: ReviewDecision, comment: string | null) => void
   onApproveAll: (comment: string | null) => void
 }
 
-const COMMENTED: ReviewDecision[] = ['approved_with_comments', 'changes_requested', 'rejected']
+/** Below this width the key hints go, so the four decisions stay on one line. */
+const COMPACT_BAR_PX = 520
+
+function KeyHint({ id }: { id: Parameters<typeof useShortcutLabel>[0] }) {
+  const label = useShortcutLabel(id)
+  return label ? (
+    <span className="text-[12px] font-normal opacity-60 group-data-[compact=true]/bar:hidden">
+      {label}
+    </span>
+  ) : null
+}
 
 export function DecisionBar({
-  canDecide,
+  itemId,
+  state,
+  context,
+  moveText,
   owedCount,
-  busy,
+  myOpenComments,
+  done,
+  restore,
   onDecide,
   onApproveAll,
 }: DecisionBarProps) {
-  const [pending, setPending] = useState<ReviewDecision | 'approve_all' | null>(null)
+  const [pending, setPending] = useState<Pending | null>(null)
   const [comment, setComment] = useState('')
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  const [compact, setCompact] = useState(false)
+  const canDecide = state.kind === 'decide'
 
-  // Escape drops an unsent decision.
   useEffect(() => {
-    if (!pending) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.key !== 'Escape') return
-      setPending(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [pending])
+    const el = barRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => setCompact(el.clientWidth < COMPACT_BAR_PX))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
-  // Decision shortcuts while the review is open (ignored while typing or under a dialog).
+  const open = (decision: Pending) => {
+    setPending(decision)
+    setComment(decision === 'approve_all' ? '' : prefilledDecisionComment(decision, myOpenComments))
+  }
+
+  // Undo brought a decision back to this file: reopen it with its comment.
+  useEffect(() => {
+    if (!restore || !restoreApplies(restore, itemId)) return
+    setPending(restore.decision)
+    setComment(restore.comment ?? '')
+  }, [restore, itemId])
+
   const decideBy =
     (decision: ReviewDecision): ShortcutHandler =>
     () => {
-      if (!canDecide || busy) return
+      if (!canDecide) return
       if (decision === 'approved') onDecide('approved', null)
-      else setPending(decision)
+      else open(decision)
     }
   useShortcuts(
     'reviews',
@@ -64,20 +118,20 @@ export function DecisionBar({
       'reviews.requestChanges': decideBy('changes_requested'),
       'reviews.reject': decideBy('rejected'),
     },
-    { blockedByModal: true },
+    { blockedByModal: true, enabled: canDecide && !pending },
   )
 
   useEffect(() => {
     if (pending) textRef.current?.focus()
   }, [pending])
 
-  // A new item resets an unsent decision.
+  // A file the viewer can no longer decide drops an unsent comment box.
   useEffect(() => {
-    if (!canDecide) setPending(null)
-  }, [canDecide])
+    if (!canDecide && pending !== 'approve_all') setPending(null)
+  }, [canDecide]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const needsComment = pending !== null && pending !== 'approve_all' && COMMENTED.includes(pending)
-  const sendDisabled = busy || (needsComment && !comment.trim())
+  const needsComment = pending !== null && COMMENTED.has(pending)
+  const sendDisabled = needsComment && !comment.trim()
 
   const send = () => {
     if (!pending || sendDisabled) return
@@ -88,110 +142,153 @@ export function DecisionBar({
     setComment('')
   }
 
-  const BUTTON = 'flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded disabled:opacity-50'
+  const reason = describeDecisionBarState(state)
 
   return (
-    <div className="border-t border-plm-border bg-plm-sidebar px-3 py-2 space-y-2 flex-shrink-0">
-      {pending && (
-        <div className="space-y-1">
-          <p className="text-[11px] text-plm-fg-muted">
-            {t(`reviewDetail.prompt.${pending}`)}
-          </p>
-          <textarea
-            ref={textRef}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault()
-                send()
-              } else if (e.key === 'Escape') {
-                setPending(null)
-              }
-            }}
-            rows={3}
-            placeholder={
-              needsComment ? t('reviewDetail.decision.commentRequired') : t('reviewDetail.decision.commentOptional')
-            }
-            className="w-full px-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent"
-          />
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={send}
-              disabled={sendDisabled}
-              className={`${BUTTON} bg-plm-accent text-white hover:bg-plm-accent/90`}
-            >
-              {busy && <Loader2 size={12} className="animate-spin" />}
-              {t('reviewDetail.decision.send')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPending(null)}
-              className={`${BUTTON} text-plm-fg-muted hover:bg-plm-highlight`}
-            >
-              {t('reviewQueue.cancel')}
-            </button>
-            <span className="ml-auto text-[10px] text-plm-fg-muted">{t('reviewDetail.decision.sendHint')}</span>
+    <div
+      ref={barRef}
+      data-compact={compact}
+      className="group/bar flex-shrink-0 space-y-2.5 border-t border-ui-border bg-ui-bg px-4 py-3 font-ui"
+    >
+      {done ? (
+        <div className="space-y-2">
+          {reason && state.kind !== 'sending' && (
+            <p className="text-[13px] text-ui-fg-secondary">
+              {context} · {reason}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="min-w-0 flex-1 text-[14px] text-ui-fg">
+              {t('reviewDetail.done.title')}
+              {!done.onNext && (
+                <span className="text-ui-fg-secondary"> {t('reviewDetail.done.nothing')}</span>
+              )}
+            </span>
+            {done.onNext && (
+              <Button variant="primary" onClick={done.onNext}>
+                {done.waiting > 0
+                  ? t('reviewDetail.done.next', { count: done.waiting })
+                  : t('reviewDetail.done.nextOne')}
+                <KeyHint id="reviews.nextReview" />
+              </Button>
+            )}
+            <Button variant="ghost" onClick={done.onBack}>
+              {t('reviewDetail.done.back')}
+            </Button>
           </div>
         </div>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-baseline gap-2 text-[13px]">
+            <span className="truncate font-medium text-ui-fg">{context}</span>
+            {moveText && <span className="flex-shrink-0 text-ui-fg-secondary">· {moveText}</span>}
+            {owedCount > 1 && canDecide && !pending && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="-my-1 ml-auto"
+                onClick={() => open('approve_all')}
+              >
+                {t('reviewDetail.decision.approveAll', { count: owedCount })}
+              </Button>
+            )}
+          </div>
+
+          {pending && (
+            <div className="space-y-1.5">
+              <label htmlFor="decision-comment" className="block text-[13px] text-ui-fg-secondary">
+                {pending === 'approve_all'
+                  ? t('reviewDetail.prompt.approve_all', { count: owedCount })
+                  : t(`reviewDetail.prompt.${pending}`)}
+              </label>
+              <TextArea
+                id="decision-comment"
+                ref={textRef}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault()
+                    send()
+                  } else if (e.key === 'Escape') {
+                    e.stopPropagation()
+                    setPending(null)
+                  }
+                }}
+                rows={3}
+                placeholder={
+                  needsComment
+                    ? t('reviewDetail.decision.commentRequired')
+                    : t('reviewDetail.decision.commentOptional')
+                }
+              />
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[12px] text-ui-fg-tertiary">
+                  {t('reviewDetail.decision.sendHint')}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
+                  {t('reviewQueue.cancel')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={pending === 'rejected' ? 'danger' : 'primary'}
+                  disabled={sendDisabled}
+                  onClick={send}
+                >
+                  {pending === 'approve_all'
+                    ? t('reviewDetail.decision.approveAllConfirm', { count: owedCount })
+                    : t(`reviewDetail.decision.${pending}`)}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!pending &&
+            (reason ? (
+              <p className="text-[13px] text-ui-fg-secondary">{reason}</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  aria-label={t('reviewDetail.decision.approved')}
+                  data-decision="approved"
+                  onClick={() => onDecide('approved', null)}
+                >
+                  {t('reviewDetail.decision.approved')}
+                  <KeyHint id="reviews.approve" />
+                </Button>
+                <Button
+                  size="sm"
+                  aria-label={t('reviewDetail.decision.approved_with_comments')}
+                  data-decision="approved_with_comments"
+                  onClick={() => open('approved_with_comments')}
+                >
+                  {t('reviewDetail.decision.approved_with_comments')}
+                </Button>
+                <Button
+                  size="sm"
+                  aria-label={t('reviewDetail.decision.changes_requested')}
+                  data-decision="changes_requested"
+                  onClick={() => open('changes_requested')}
+                >
+                  {t('reviewDetail.decision.changes_requested')}
+                  <KeyHint id="reviews.requestChanges" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger-subtle"
+                  aria-label={t('reviewDetail.decision.rejected')}
+                  data-decision="rejected"
+                  onClick={() => open('rejected')}
+                >
+                  {t('reviewDetail.decision.rejected')}
+                  <KeyHint id="reviews.reject" />
+                </Button>
+              </div>
+            ))}
+        </>
       )}
-
-      <div className="flex flex-wrap items-center gap-1">
-        <button
-          type="button"
-          disabled={!canDecide || busy}
-          onClick={() => onDecide('approved', null)}
-          className={`${BUTTON} bg-plm-success/15 text-plm-success hover:bg-plm-success/25`}
-          title={t('reviewDetail.decision.keyHint', { key: 'A' })}
-        >
-          <CheckCircle2 size={12} />
-          {t('reviewDetail.decision.approved')}
-        </button>
-        <button
-          type="button"
-          disabled={!canDecide || busy}
-          onClick={() => setPending('approved_with_comments')}
-          className={`${BUTTON} bg-plm-success/10 text-plm-success hover:bg-plm-success/20`}
-          title={t('reviewDetail.decision.keyHint', { key: 'Shift+A' })}
-        >
-          <MessageSquareMore size={12} />
-          {t('reviewDetail.decision.approved_with_comments')}
-        </button>
-        <button
-          type="button"
-          disabled={!canDecide || busy}
-          onClick={() => setPending('changes_requested')}
-          className={`${BUTTON} bg-plm-warning/15 text-plm-warning hover:bg-plm-warning/25`}
-          title={t('reviewDetail.decision.keyHint', { key: 'C' })}
-        >
-          <Undo2 size={12} />
-          {t('reviewDetail.decision.changes_requested')}
-        </button>
-        <button
-          type="button"
-          disabled={!canDecide || busy}
-          onClick={() => setPending('rejected')}
-          className={`${BUTTON} bg-plm-error/15 text-plm-error hover:bg-plm-error/25`}
-          title={t('reviewDetail.decision.keyHint', { key: 'R' })}
-        >
-          <XCircle size={12} />
-          {t('reviewDetail.decision.rejected')}
-        </button>
-
-        {owedCount > 1 && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setPending('approve_all')}
-            className={`${BUTTON} ml-auto bg-plm-success/10 text-plm-success hover:bg-plm-success/20`}
-          >
-            <CheckCheck size={12} />
-            {t('reviewDetail.decision.approveAll', { count: owedCount })}
-          </button>
-        )}
-      </div>
-      <p className="text-[10px] text-plm-fg-muted">{t('reviewDetail.decision.shortcuts')}</p>
     </div>
   )
 }

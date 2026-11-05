@@ -3,7 +3,7 @@ import { isInAdministratorsTeam } from '../isAdminUser'
 import { getSupabaseClient } from './client'
 import type { PermissionAction } from '../../types/permissions'
 import type { ModuleConfig as ModuleConfigType } from '../../types/modules'
-import { mergeModuleOrder } from '../../types/modules'
+import { mergeModuleLayout } from '../../types/modules'
 
 // ============================================
 // User Role Management
@@ -321,11 +321,13 @@ export async function loadImpersonatedUserContext(targetUserId: string): Promise
       moduleConfig = {
         enabledModules: moduleData.enabled_modules || {},
         enabledGroups: moduleData.enabled_groups || {},
-        moduleOrder: mergeModuleOrder(moduleData.module_order || []),
-        dividers: moduleData.dividers || [],
+        ...mergeModuleLayout({
+          moduleOrder: moduleData.module_order || [],
+          dividers: moduleData.dividers || [],
+          customGroups: moduleData.custom_groups || [],
+        }),
         moduleParents: moduleData.module_parents || {},
         moduleIconColors: moduleData.module_icon_colors || {},
-        customGroups: moduleData.custom_groups || [],
       } as ModuleConfigType
     }
   } catch {

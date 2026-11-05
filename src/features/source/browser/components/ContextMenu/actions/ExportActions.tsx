@@ -1,247 +1,228 @@
 /**
- * Export actions for SolidWorks files in context menu.
+ * Export entries for SolidWorks files in the context menu: one flyout per format
+ * (`generate.local.step` / `iges` / `stl` / `pdf` / `dxf` / `stepFromDrawing`) and
+ * `generate.local.exportOptions`. The format rows of one menu level share the flyout provider, so
+ * at most one destination flyout is open, as when they were one component.
  * The exports themselves run in `exports/solidworksExport.ts`, through the queue the export
  * shortcuts share (`exports/quickExport.ts`).
  */
-import { useState, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { Package, FileOutput, Download, Settings, FolderOpen, FolderDown, Zap } from 'lucide-react'
 import type { ActionComponentProps } from './types'
+import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useSolidWorksStatus } from '@/hooks/useSolidWorksStatus'
 import { useTranslation } from '@/lib/i18n'
+import { hasDesktop } from '@/lib/platform'
 import { isSolidWorksAlive } from '@/types/solidworks'
 import { ContextSubmenu } from '../components'
+import { useFlyout } from '../customizable/flyout'
+import type { EntryHookResult } from '../customizable/types'
 import { enqueueExport } from '../../../exports/quickExport'
 import type { ExportJobKind } from '../../../exports/exportQueue'
-import { filesForFormat, type ExportFormat } from '../../../exports/solidworksExport'
+import { filesForFormat } from '../../../exports/solidworksExport'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
 type SubmenuKey = ExportJobKind
 
-export function ExportActions({
+type ExportEntryId =
+  | 'generate.local.step'
+  | 'generate.local.iges'
+  | 'generate.local.stl'
+  | 'generate.local.pdf'
+  | 'generate.local.dxf'
+  | 'generate.local.stepFromDrawing'
+  | 'generate.local.exportOptions'
+
+interface FormatConfig {
+  kind: SubmenuKey
+  entryId: Exclude<ExportEntryId, 'generate.local.exportOptions'>
+  label: string
+  colorClass: string
+  Icon: typeof Package
+  drawings: boolean
+}
+
+// Format configurations for each export type
+const FORMATS: readonly FormatConfig[] = [
+  {
+    kind: 'step',
+    entryId: 'generate.local.step',
+    label: 'Export STEP',
+    colorClass: 'text-emerald-400',
+    Icon: Package,
+    drawings: false,
+  },
+  {
+    kind: 'iges',
+    entryId: 'generate.local.iges',
+    label: 'Export IGES',
+    colorClass: 'text-amber-400',
+    Icon: Package,
+    drawings: false,
+  },
+  {
+    kind: 'stl',
+    entryId: 'generate.local.stl',
+    label: 'Export STL',
+    colorClass: 'text-violet-400',
+    Icon: Package,
+    drawings: false,
+  },
+  {
+    kind: 'pdf',
+    entryId: 'generate.local.pdf',
+    label: 'Export PDF',
+    colorClass: 'text-red-400',
+    Icon: FileOutput,
+    drawings: true,
+  },
+  {
+    kind: 'dxf',
+    entryId: 'generate.local.dxf',
+    label: 'Export DXF',
+    colorClass: 'text-cyan-400',
+    Icon: Download,
+    drawings: true,
+  },
+  // Export STEP of the 3D model(s) referenced by selected drawings
+  {
+    kind: 'step-from-drawing',
+    entryId: 'generate.local.stepFromDrawing',
+    label: 'Export STEP (Model)',
+    colorClass: 'text-emerald-400',
+    Icon: Package,
+    drawings: true,
+  },
+]
+
+export function useExportEntries({
   contextFiles,
-  multiSelect: _multiSelect,
-  firstFile: _firstFile,
   onClose,
-}: ActionComponentProps) {
-  const { t } = useTranslation()
+}: ActionComponentProps): EntryHookResult<ExportEntryId> {
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
   // Treat an unconfirmed status as available so the submenu doesn't disappear
   // before the first poll lands, or while the service is busy with other work.
   const swServiceRunning = !swStatusChecked || isSolidWorksAlive(status)
-  const [exportSubmenu, setExportSubmenu] = useState<SubmenuKey | null>(null)
-  const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const quickExportFolder = usePDMStore((s) => s.quickExportFolder)
 
   // Group by type for display
   const drawingFiles = filesForFormat('pdf', contextFiles)
   const partAsmFiles = filesForFormat('step', contextFiles)
 
-  // Only show when service is running and we have exportable files
-  if ((drawingFiles.length === 0 && partAsmFiles.length === 0) || !swServiceRunning) {
-    return null
+  // Only show on the desktop, when the service is running and we have exportable files
+  const show =
+    hasDesktop() && (drawingFiles.length > 0 || partAsmFiles.length > 0) && swServiceRunning
+
+  const entries = {} as Record<ExportEntryId, ReactNode | null>
+  for (const format of FORMATS) {
+    const files = format.drawings ? drawingFiles : partAsmFiles
+    entries[format.entryId] =
+      show && files.length > 0 ? (
+        <ExportFormatEntry format={format} files={files} onClose={onClose} />
+      ) : null
   }
 
-  const hasDrawings = drawingFiles.length > 0
-  const hasPartsOrAsm = partAsmFiles.length > 0
+  // Export Options link
+  entries['generate.local.exportOptions'] = show ? (
+    <div
+      className="context-menu-item text-plm-fg-muted"
+      onClick={() => {
+        onClose()
+        window.dispatchEvent(new CustomEvent('navigate-settings-tab', { detail: 'export' }))
+      }}
+    >
+      <Settings size={14} />
+      Export Options...
+    </div>
+  ) : null
 
-  const handleMouseEnterExport = (format: SubmenuKey) => {
-    if (submenuTimeoutRef.current) {
-      clearTimeout(submenuTimeoutRef.current)
-    }
-    setExportSubmenu(format)
-  }
+  return { entries }
+}
 
-  const handleMouseLeaveExport = () => {
-    submenuTimeoutRef.current = setTimeout(() => {
-      setExportSubmenu(null)
-    }, 150)
-  }
+function ExportFormatEntry({
+  format,
+  files,
+  onClose,
+}: {
+  format: FormatConfig
+  files: LocalFile[]
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const flyout = useFlyout(format.entryId)
+  const quickExportFolder = usePDMStore((s) => s.quickExportFolder)
+  const { kind, label, colorClass, Icon } = format
+  const countLabel = files.length > 1 ? ` (${files.length})` : ''
 
-  const filesFor = (kind: SubmenuKey) =>
-    kind === 'pdf' || kind === 'dxf' || kind === 'step-from-drawing' ? drawingFiles : partAsmFiles
-
-  const handleExport = (kind: SubmenuKey, outputFolder?: string) => {
+  const handleExport = (outputFolder?: string) => {
     onClose()
-    enqueueExport({ kind, files: filesFor(kind), outputFolder })
+    enqueueExport({ kind, files, outputFolder })
   }
 
-  const handleExportTo = async (kind: SubmenuKey) => {
+  const handleExportTo = async () => {
     // Open folder picker dialog
     const result = await window.electronAPI?.selectFolder()
     if (result?.success && result.folderPath) {
-      handleExport(kind, result.folderPath)
+      handleExport(result.folderPath)
     }
   }
 
-  const renderDestinations = (kind: SubmenuKey, colorClass: string) => (
-    <ContextSubmenu
-      minWidth={140}
-      onMouseEnter={() => {
-        if (submenuTimeoutRef.current) {
-          clearTimeout(submenuTimeoutRef.current)
-        }
-        setExportSubmenu(kind)
-      }}
-      onMouseLeave={handleMouseLeaveExport}
-    >
-      <div
-        className="context-menu-item"
-        onClick={(e) => {
-          e.stopPropagation()
-          handleExport(kind)
-        }}
-      >
-        <FolderDown size={14} className={colorClass} />
-        Export Here
-      </div>
-      <div
-        className="context-menu-item"
-        onClick={(e) => {
-          e.stopPropagation()
-          handleExportTo(kind)
-        }}
-      >
-        <FolderOpen size={14} className="text-plm-fg-muted" />
-        Export To...
-      </div>
-      {quickExportFolder && (
-        <div
-          className="context-menu-item"
-          title={quickExportFolder}
-          onClick={(e) => {
-            e.stopPropagation()
-            handleExport(kind, quickExportFolder)
-          }}
-        >
-          <Zap size={14} className="text-plm-fg-muted" />
-          {t('contextMenu.quickExport.toFolder')}
-        </div>
-      )}
-    </ContextSubmenu>
-  )
-
-  // Format configurations for each export type with their file counts
-  const partFormats: Array<{
-    format: ExportFormat
-    label: string
-    colorClass: string
-    Icon: typeof Package
-    count: number
-  }> = [
-    {
-      format: 'step',
-      label: 'STEP',
-      colorClass: 'text-emerald-400',
-      Icon: Package,
-      count: partAsmFiles.length,
-    },
-    {
-      format: 'iges',
-      label: 'IGES',
-      colorClass: 'text-amber-400',
-      Icon: Package,
-      count: partAsmFiles.length,
-    },
-    {
-      format: 'stl',
-      label: 'STL',
-      colorClass: 'text-violet-400',
-      Icon: Package,
-      count: partAsmFiles.length,
-    },
-  ]
-
-  const drawingFormats: Array<{
-    format: ExportFormat
-    label: string
-    colorClass: string
-    Icon: typeof Package
-    count: number
-  }> = [
-    {
-      format: 'pdf',
-      label: 'PDF',
-      colorClass: 'text-red-400',
-      Icon: FileOutput,
-      count: drawingFiles.length,
-    },
-    {
-      format: 'dxf',
-      label: 'DXF',
-      colorClass: 'text-cyan-400',
-      Icon: Download,
-      count: drawingFiles.length,
-    },
-  ]
-
-  const renderExportSubmenu = (config: {
-    format: ExportFormat
-    label: string
-    colorClass: string
-    Icon: typeof Package
-    count: number
-  }) => {
-    const { format, label, colorClass, Icon, count } = config
-    const countLabel = count > 1 ? ` (${count})` : ''
-
-    return (
-      <div
-        key={format}
-        className="context-menu-item relative"
-        onMouseEnter={() => handleMouseEnterExport(format)}
-        onMouseLeave={handleMouseLeaveExport}
-        onClick={(e) => {
-          e.stopPropagation()
-          setExportSubmenu(exportSubmenu === format ? null : format)
-        }}
-      >
-        <Icon size={14} className={colorClass} />
-        Export {label}
-        {countLabel}
-        <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-        {/* Export destination submenu */}
-        {exportSubmenu === format && renderDestinations(format, colorClass)}
-      </div>
-    )
-  }
-
   return (
-    <>
-      {hasPartsOrAsm && partFormats.map(renderExportSubmenu)}
-
-      {hasDrawings && drawingFormats.map(renderExportSubmenu)}
-
-      {/* Export STEP of the 3D model(s) referenced by selected drawings */}
-      {hasDrawings && (
-        <div
-          key="step-from-drawing"
-          className="context-menu-item relative"
-          onMouseEnter={() => handleMouseEnterExport('step-from-drawing')}
-          onMouseLeave={handleMouseLeaveExport}
-          onClick={(e) => {
-            e.stopPropagation()
-            setExportSubmenu(exportSubmenu === 'step-from-drawing' ? null : 'step-from-drawing')
-          }}
+    <div
+      className="context-menu-item relative"
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
+      onClick={(e) => {
+        e.stopPropagation()
+        flyout.toggle()
+      }}
+    >
+      <Icon size={14} className={colorClass} />
+      {label}
+      {countLabel}
+      <SubmenuArrow />
+      {/* Export destination submenu */}
+      {flyout.isOpen && (
+        <ContextSubmenu
+          minWidth={140}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
         >
-          <Package size={14} className="text-emerald-400" />
-          Export STEP (Model){drawingFiles.length > 1 ? ` (${drawingFiles.length})` : ''}
-          <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-          {exportSubmenu === 'step-from-drawing' &&
-            renderDestinations('step-from-drawing', 'text-emerald-400')}
-        </div>
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExport()
+            }}
+          >
+            <FolderDown size={14} className={colorClass} />
+            Export Here
+          </div>
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExportTo()
+            }}
+          >
+            <FolderOpen size={14} className="text-plm-fg-muted" />
+            Export To...
+          </div>
+          {quickExportFolder && (
+            <div
+              className="context-menu-item"
+              title={quickExportFolder}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleExport(quickExportFolder)
+              }}
+            >
+              <Zap size={14} className="text-plm-fg-muted" />
+              {t('contextMenu.quickExport.toFolder')}
+            </div>
+          )}
+        </ContextSubmenu>
       )}
-
-      {/* Export Options link */}
-      <div
-        className="context-menu-item text-plm-fg-muted"
-        onClick={() => {
-          onClose()
-          window.dispatchEvent(new CustomEvent('navigate-settings-tab', { detail: 'export' }))
-        }}
-      >
-        <Settings size={14} />
-        Export Options...
-      </div>
-    </>
+    </div>
   )
 }

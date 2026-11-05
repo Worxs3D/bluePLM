@@ -59,6 +59,20 @@ export interface PerfElectronHooks {
   listenerCount(): number
   /** The kit's SolidWorks service fake, for the soak's service calls. */
   solidworks: ElectronAPI['solidworks']
+  /**
+   * Where `downloadUrl` gets bytes for a signed URL (the fake bucket). Set by the boot once the
+   * backend exists; review PDFs are downloaded into an in-memory cache folder through it.
+   */
+  setDownloadSource(source: (url: string) => Promise<Uint8Array | null>): void
+}
+
+/** The review PDF cache folder the fake main process reports (`review-package:get-pdf-cache-dir`). */
+const REVIEW_PDF_CACHE = 'C:\\BluePLM-perf\\review-pdf-cache'
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
 }
 
 export function createPerfElectron(
@@ -91,6 +105,22 @@ export function createPerfElectron(
   // The kit records every call for test assertions; over a long session that list is a leak.
   const trimKit = () => {
     if (kit.calls.length > 500) kit.calls.splice(0, kit.calls.length - 100)
+  }
+
+  // Review PDFs (src/lib/reviewPackage/pdf.ts): downloaded into a cache folder held in memory.
+  let downloadSource: ((url: string) => Promise<Uint8Array | null>) | null = null
+  const pdfCache = new Map<string, { bytes: Uint8Array; hash: string }>()
+  const inPdfCache = (path: string) => /^[\\/]/.test(path.slice(REVIEW_PDF_CACHE.length)) && path.toLowerCase().startsWith(REVIEW_PDF_CACHE.toLowerCase())
+  if (hooks) hooks.setDownloadSource = (source) => (downloadSource = source)
+  const reviewPackage: Record<string, unknown> = {
+    async getPdfCacheDir() {
+      return { success: true, path: REVIEW_PDF_CACHE }
+    },
+    async readCachedPdf(path: string) {
+      const cached = pdfCache.get(path.toLowerCase())
+      if (!cached) return { success: false, error: 'Not a cached review PDF' }
+      return { success: true, data: toBase64(cached.bytes), size: cached.bytes.length }
+    },
   }
 
   const hashByPath = new Map(vault.serverRows.map((row) => [row.file_path, row.content_hash ?? '']))
@@ -129,7 +159,31 @@ export function createPerfElectron(
     async consumeCrashNotice() {
       return null
     },
+    async downloadUrl(url: string, destPath: string, expectedHash?: string) {
+      if (!inPdfCache(destPath) || !downloadSource) {
+        misses.set('electron.downloadUrl', (misses.get('electron.downloadUrl') ?? 0) + 1)
+        return { success: false, error: 'downloadUrl: only review PDFs are modelled by the perf boot' }
+      }
+      const bytes = await downloadSource(url)
+      if (!bytes) return { success: false, error: 'Object not found' }
+      pdfCache.set(destPath.toLowerCase(), { bytes, hash: expectedHash ?? '' })
+      return { success: true, size: bytes.length, hash: expectedHash }
+    },
+    async hashFile(path: string) {
+      if (inPdfCache(path)) {
+        const cached = pdfCache.get(path.toLowerCase())
+        return cached ? { success: true, hash: cached.hash, size: cached.bytes.length } : { success: false, error: 'ENOENT' }
+      }
+      return kit.api.hashFile(path)
+    },
+    reviewPackage: new Proxy(reviewPackage, {
+      get(obj, prop) {
+        if (typeof prop === 'symbol') return undefined
+        return prop in obj ? obj[prop] : inert(`reviewPackage.${prop}`, misses)
+      },
+    }),
     async fileExists(path: string) {
+      if (inPdfCache(path)) return pdfCache.has(path.toLowerCase())
       const rel = path.slice(root.length + 1).replace(/\\/g, '/')
       return vault.localEntries.some((e) => e.relativePath === rel)
     },

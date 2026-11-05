@@ -1,32 +1,46 @@
 /**
- * "Resubmit with newer versions": pick a newer version for every item that was not approved, add
- * a note, and open the next round. Approved items carry forward and are not reviewed again.
+ * Resubmit: every file that was not approved goes back to the reviewers at a newer version, with a
+ * note on what changed (shown to reviewers in the round's Activity); approved files carry forward.
+ *
+ * No dead ends (review UX audit F6): each file shows what reviewers asked for (outcome and open
+ * comments); a file with no newer version offers Show in vault and Check out, and the submit says
+ * which file is missing; and the picked drawing versions' PDFs are checked, with "Generate PDFs"
+ * for the missing ones, so round 2 never opens on "PDF pending".
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
 
 import { Dialog } from '@/components/core/Dialog'
+import { Button, Callout, Select, StatusText, TextArea } from '@/components/core/ui'
+import { loadPdfStatus } from '@/features/source/reviewPackage'
+import { displayFileName } from '@/hooks/useFileDisplayName'
+import { executeCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
+import { hasDesktop } from '@/lib/platform'
 import { getFileVersions } from '@/lib/supabase'
 import { resubmitReview } from '@/lib/supabase/reviews'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { ReviewItemDetail } from '@/types/reviews'
 
 import { describeReviewError } from '../lib/reviewErrors'
+import { commentCountFor, type ItemCommentCount } from '../lib/reviewProgress'
 import {
-  defaultResubmitSelection,
   itemsNeedingNewVersion,
+  keepResubmitSelection,
   newerVersionOptions,
   planResubmit,
   type VersionOption,
 } from '../lib/resubmit'
+import { canCheckOutHere, checkOutFile, showFileInVault } from './itemActions'
+import { tCount } from '../lib/plural'
 
 interface ResubmitDialogProps {
   open: boolean
   reviewId: string
+  title: string
   items: ReviewItemDetail[]
+  counts: ReadonlyMap<string, ItemCommentCount>
   onClose: () => void
   onDone: () => void
 }
@@ -43,14 +57,27 @@ function toOption(raw: unknown): VersionOption | null {
   }
 }
 
-export function ResubmitDialog({ open, reviewId, items, onClose, onDone }: ResubmitDialogProps) {
+export function ResubmitDialog({
+  open,
+  reviewId,
+  title,
+  items,
+  counts,
+  onClose,
+  onDone,
+}: ResubmitDialogProps) {
   const addToast = usePDMStore((s) => s.addToast)
   const needing = useMemo(() => itemsNeedingNewVersion(items), [items])
+  const needingKey = needing.map((i) => `${i.id}:${i.fileId}:${i.version.version}`).join(',')
+  const carried = items.length - needing.length
   const [versionsByFile, setVersionsByFile] = useState<Record<string, VersionOption[]>>({})
   const [selection, setSelection] = useState<Record<string, string | null>>({})
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [missingPdf, setMissingPdf] = useState<string[] | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -60,7 +87,8 @@ export function ResubmitDialog({ open, reviewId, items, onClose, onDone }: Resub
       const entries = await Promise.all(
         Array.from(new Set(needing.map((i) => i.fileId))).map(async (fileId) => {
           const { versions, error } = await getFileVersions(fileId)
-          if (error) log.warn('[Reviews]', 'Loading versions for resubmit failed', { error, fileId })
+          if (error)
+            log.warn('[Reviews]', 'Loading versions for resubmit failed', { error, fileId })
           const options = ((versions ?? []) as unknown[])
             .map(toOption)
             .filter((v): v is VersionOption => v !== null)
@@ -70,15 +98,56 @@ export function ResubmitDialog({ open, reviewId, items, onClose, onDone }: Resub
       if (cancelled) return
       const byFile = Object.fromEntries(entries)
       setVersionsByFile(byFile)
-      setSelection(defaultResubmitSelection(needing, byFile))
+      // Seeded once per opening: a reload (the detail reloads often) keeps the author's picks.
+      setSelection((previous) => keepResubmitSelection(previous, needing, byFile))
       setLoading(false)
     })()
     return () => {
       cancelled = true
     }
-  }, [open, needing])
+    // Keyed on which items need a version, not on the array a detail reload replaces.
+  }, [open, needingKey, reloadTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A closed dialog forgets its picks: the next opening starts from the defaults.
+  useEffect(() => {
+    if (!open) setSelection({})
+  }, [open])
 
   const plan = planResubmit(items, selection)
+
+  // The picked versions' PDFs: reviewers must not open round 2 on "PDF pending".
+  const pickedKey = plan.payload.map((p) => p.fileVersionId).join(',')
+  useEffect(() => {
+    if (!open || loading) return
+    let cancelled = false
+    setMissingPdf(null)
+    void Promise.all(
+      plan.payload.map(async (p) => {
+        const item = items.find((i) => i.id === p.itemId)
+        const status = await loadPdfStatus({
+          fileVersionId: p.fileVersionId,
+          extension: item?.file.extension ?? null,
+        })
+        return status === 'missing' ? p.fileVersionId : null
+      }),
+    ).then((ids) => {
+      if (!cancelled) setMissingPdf(ids.filter((id): id is string => !!id))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, loading, pickedKey, reloadTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const generate = async () => {
+    if (!missingPdf?.length) return
+    setGenerating(true)
+    try {
+      await executeCommand('generate-review-pdfs', { fileVersionIds: missingPdf })
+    } finally {
+      setGenerating(false)
+      setReloadTick((n) => n + 1)
+    }
+  }
 
   const submit = async () => {
     if (!plan.ready) return
@@ -95,78 +164,164 @@ export function ResubmitDialog({ open, reviewId, items, onClose, onDone }: Resub
     }
   }
 
+  const missingNames = plan.missing.map((id) => displayFileName(items.find((i) => i.id === id)?.file.fileName ?? id))
+  // One file without a newer version says so on its own row; several get a summary too.
+  const blocker =
+    loading || missingNames.length < 2
+      ? null
+      : t('reviewDetail.resubmit.blockedMany', { count: missingNames.length })
+
   return (
-    <Dialog open={open} onClose={onClose} title={t('reviewDetail.resubmit.title')} className="max-w-lg">
-      <div className="space-y-3">
-        <p className="text-xs text-plm-fg-muted">{t('reviewDetail.resubmit.intro')}</p>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('reviewDetail.resubmit.title', { title })}
+      description={t('reviewDetail.resubmit.intro')}
+      className="!max-w-[640px]"
+      footer={
+        <>
+          <Button onClick={onClose}>{t('reviewQueue.cancel')}</Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={!plan.ready || loading}
+            onClick={() => void submit()}
+          >
+            {plan.payload.length > 1
+              ? t('reviewDetail.resubmit.submitCount', { count: plan.payload.length })
+              : t('reviewDetail.resubmit.submit')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {loading ? (
-          <div className="flex justify-center py-4">
-            <Loader2 size={16} className="animate-spin text-plm-fg-muted" />
-          </div>
+          <p className="text-[14px] text-ui-fg-secondary">{t('reviewQueue.loading')}</p>
         ) : (
-          <ul className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="max-h-80 divide-y divide-ui-divider overflow-y-auto">
             {needing.map((item) => {
               const options = newerVersionOptions(item, versionsByFile[item.fileId] ?? [])
+              const count = commentCountFor(counts, item.id)
               return (
-                <li key={item.id} className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-plm-fg">{item.file.fileName}</span>
-                    <span className="text-plm-fg-muted">
-                      {t('reviewDetail.resubmit.reviewed', { version: item.version.version })}
-                    </span>
-                  </div>
-                  {options.length === 0 ? (
-                    <p className="text-[11px] text-plm-warning">{t('reviewDetail.resubmit.noNewer')}</p>
-                  ) : (
-                    <select
-                      value={selection[item.id] ?? ''}
-                      onChange={(e) => setSelection((s) => ({ ...s, [item.id]: e.target.value || null }))}
-                      className="mt-1 w-full px-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded"
+                <div key={item.id} className="py-3">
+                  <div className="flex min-w-0 items-baseline gap-3">
+                    <span
+                      className="min-w-0 flex-1 truncate text-[14px] text-ui-fg"
+                      title={item.file.filePath}
                     >
-                      {options.map((o) => (
-                        <option key={o.fileVersionId} value={o.fileVersionId}>
-                          {o.revision
-                            ? t('reviewDetail.resubmit.optionRev', { version: o.version, revision: o.revision })
-                            : t('reviewDetail.resubmit.option', { version: o.version })}
-                        </option>
-                      ))}
-                    </select>
+                      {displayFileName(item.file.fileName)}
+                    </span>
+                    {options.length > 0 && (
+                      <Select
+                        value={selection[item.id] ?? ''}
+                        aria-label={displayFileName(item.file.fileName)}
+                        onChange={(e) =>
+                          setSelection((s) => ({ ...s, [item.id]: e.target.value || null }))
+                        }
+                      >
+                        {options.map((o) => (
+                          <option key={o.fileVersionId} value={o.fileVersionId}>
+                            {o.revision
+                              ? t('reviewDetail.resubmit.optionRev', {
+                                  version: o.version,
+                                  revision: o.revision,
+                                })
+                              : t('reviewDetail.resubmit.option', { version: o.version })}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-ui-fg-secondary">
+                    {t('reviewDetail.resubmit.reviewed', { version: item.version.version })} ·{' '}
+                    <span
+                      className={item.outcome === 'rejected' ? 'text-ui-danger' : 'text-ui-warning'}
+                    >
+                      {t(`reviewDetail.itemOutcome.${item.outcome}`)}
+                    </span>{' '}
+                    ·{' '}
+                    {count.open > 0
+                      ? count.open === 1
+                        ? t('reviewDetail.items.commentOne')
+                        : t('reviewDetail.items.comments', { count: count.open })
+                      : t('reviewDetail.resubmit.noComments')}
+                  </div>
+                  {options.length === 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <StatusText tone="warning" className="mr-auto">
+                        {t('reviewDetail.resubmit.noNewer')}
+                      </StatusText>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          onClose()
+                          showFileInVault(item.fileId)
+                        }}
+                      >
+                        {t('reviewDetail.items.showInVault')}
+                      </Button>
+                      {canCheckOutHere(item.fileId) && (
+                        <Button size="sm" onClick={() => void checkOutFile(item.fileId)}>
+                          {t('reviewDetail.items.checkOut')}
+                        </Button>
+                      )}
+                    </div>
                   )}
-                </li>
+                </div>
               )
             })}
-          </ul>
+          </div>
         )}
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          placeholder={t('reviewDetail.resubmit.note')}
-          className="w-full px-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent"
-        />
-        {plan.missing.length > 0 && !loading && (
-          <p className="text-[11px] text-plm-warning">
-            {t('reviewDetail.resubmit.missing', { count: plan.missing.length })}
+
+        {blocker && <Callout tone="warning">{blocker}</Callout>}
+
+        {carried > 0 && (
+          <p className="text-[13px] text-ui-fg-secondary">
+            {tCount('reviewDetail.resubmit.carried', carried)}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded text-plm-fg-muted hover:bg-plm-highlight"
+
+        {!loading && missingPdf === null && plan.payload.length > 0 && (
+          <p className="text-[13px] text-ui-fg-secondary">
+            {t('reviewDetail.resubmit.checkingPdfs')}
+          </p>
+        )}
+        {missingPdf && missingPdf.length > 0 && (
+          <Callout
+            tone="warning"
+            action={
+              // PDFs are made with SOLIDWORKS, which only the desktop app can drive.
+              hasDesktop() ? (
+                <Button size="sm" loading={generating} onClick={() => void generate()}>
+                  {t('reviewDetail.resubmit.generatePdfs')}
+                </Button>
+              ) : undefined
+            }
           >
-            {t('reviewQueue.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={!plan.ready || busy || loading}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-plm-accent text-white hover:bg-plm-accent/90 disabled:opacity-50"
-          >
-            {busy && <Loader2 size={12} className="animate-spin" />}
-            {t('reviewDetail.resubmit.submit')}
-          </button>
-        </div>
+            {tCount('reviewDetail.resubmit.missingPdfs', missingPdf.length)}
+          </Callout>
+        )}
+
+        <label className="block">
+          <span className="text-[14px] text-ui-fg">{t('reviewDetail.resubmit.note')}</span>
+          <TextArea
+            rows={3}
+            value={note}
+            className="mt-1.5"
+            placeholder={t('reviewDetail.resubmit.notePlaceholder')}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+          />
+          <span className="mt-1 block text-[12px] text-ui-fg-tertiary">
+            {t('reviewDetail.resubmit.sendHint')}
+          </span>
+        </label>
       </div>
     </Dialog>
   )

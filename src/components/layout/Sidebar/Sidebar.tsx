@@ -57,6 +57,9 @@ const SuppliersView = lazy(() =>
 const SupplierPortalView = lazy(() =>
   import('@/features/supply-chain/portal').then((m) => ({ default: m.SupplierPortalView })),
 )
+const OrdersPane = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrdersPane })),
+)
 const GoogleDriveView = lazy(() =>
   import('@/features/integrations/google-drive').then((m) => ({ default: m.GoogleDriveView })),
 )
@@ -280,6 +283,17 @@ export function Sidebar() {
           <ModuleDisabled moduleName={moduleName} />
         )
 
+      // ============================================
+      // SUPPLY CHAIN - ORDERS (the open order renders in MainContent)
+      // ============================================
+      case 'orders':
+        return isEnabled ? (
+          <Suspense fallback={<ViewLoading />}>
+            <OrdersPane />
+          </Suspense>
+        ) : (
+          <ModuleDisabled moduleName={moduleName} />
+        )
 
       // ============================================
       // INTEGRATIONS

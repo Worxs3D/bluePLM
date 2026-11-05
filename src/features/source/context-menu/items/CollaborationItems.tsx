@@ -1,11 +1,14 @@
-// src/features/source/context-menu/items/CollaborationItems.tsx
+/**
+ * The explorer tree's collaboration entries: `collab.requestCheckout`, `collab.notify`,
+ * `collab.watch`, `collab.shareLink` and `collab.addToEco`.
+ */
 import { ArrowDown, Users, Eye, EyeOff, Link, ClipboardList, Loader2 } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import type { DialogName } from '../types'
 import type { ToastType } from '@/stores/types'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface CollaborationItemsProps {
-  contextFiles: LocalFile[]
+export interface CollaborationEntriesProps {
   firstFile: LocalFile
   multiSelect: boolean
   isFolder: boolean
@@ -21,7 +24,14 @@ interface CollaborationItemsProps {
   addToast: (type: ToastType, message: string, duration?: number) => void
 }
 
-export function CollaborationItems({
+type CollaborationEntryId =
+  | 'collab.requestCheckout'
+  | 'collab.notify'
+  | 'collab.watch'
+  | 'collab.shareLink'
+  | 'collab.addToEco'
+
+export function useTreeCollaborationEntries({
   firstFile,
   multiSelect,
   isFolder,
@@ -35,31 +45,34 @@ export function CollaborationItems({
   openDialog,
   onClose,
   addToast,
-}: CollaborationItemsProps) {
+}: CollaborationEntriesProps): EntryHookResult<CollaborationEntryId> {
   const hasPdmData = firstFile.pdmData?.id
   const isCheckedOutByOther =
     firstFile.pdmData?.checked_out_by && firstFile.pdmData.checked_out_by !== userId
+  // One synced file (not a folder): Notify, Watch and Add to ECO
+  const oneSyncedFile = !multiSelect && !isFolder && anySynced && !!hasPdmData
 
-  return (
-    <>
-      {/* Request Checkout - for files checked out by others */}
-      {!multiSelect && !isFolder && anySynced && isCheckedOutByOther && (
-        <div className="context-menu-item" onClick={() => openDialog('checkoutRequest')}>
-          <ArrowDown size={14} className="text-plm-warning" />
-          Request Checkout
-        </div>
-      )}
+  return {
+    entries: {
+      // Request Checkout - for files checked out by others
+      'collab.requestCheckout':
+        !multiSelect && !isFolder && anySynced && isCheckedOutByOther ? (
+          <div className="context-menu-item" onClick={() => openDialog('checkoutRequest')}>
+            <ArrowDown size={14} className="text-plm-warning" />
+            Request Checkout
+          </div>
+        ) : null,
 
-      {/* Notify / Mention - for synced files */}
-      {!multiSelect && !isFolder && anySynced && hasPdmData && (
+      // Notify / Mention - for synced files
+      'collab.notify': oneSyncedFile ? (
         <div className="context-menu-item" onClick={() => openDialog('mention')}>
           <Users size={14} className="text-plm-fg-dim" />
           Notify Someone
         </div>
-      )}
+      ) : null,
 
-      {/* Watch/Unwatch - for synced files */}
-      {!multiSelect && !isFolder && anySynced && hasPdmData && (
+      // Watch/Unwatch - for synced files
+      'collab.watch': oneSyncedFile ? (
         <div
           className={`context-menu-item ${isTogglingWatch ? 'opacity-50' : ''}`}
           onClick={onToggleWatch}
@@ -73,37 +86,38 @@ export function CollaborationItems({
           )}
           {isWatching ? 'Stop Watching' : 'Watch File'}
         </div>
-      )}
+      ) : null,
 
-      {/* Copy Share Link - for synced files and folders */}
-      {!multiSelect && anySynced && (isFolder || hasPdmData) && (
-        <div
-          className={`context-menu-item ${isCreatingShareLink ? 'opacity-50' : ''}`}
-          onClick={() => {
-            if (isFolder) {
-              addToast('info', 'Folder sharing coming soon! For now, share individual files.')
-              onClose()
-            } else if (!isCreatingShareLink) {
-              onQuickShareLink()
-            }
-          }}
-        >
-          {isCreatingShareLink ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Link size={14} className="text-plm-accent" />
-          )}
-          Copy Share Link
-        </div>
-      )}
+      // Copy Share Link - for synced files and folders
+      'collab.shareLink':
+        !multiSelect && anySynced && (isFolder || hasPdmData) ? (
+          <div
+            className={`context-menu-item ${isCreatingShareLink ? 'opacity-50' : ''}`}
+            onClick={() => {
+              if (isFolder) {
+                addToast('info', 'Folder sharing coming soon! For now, share individual files.')
+                onClose()
+              } else if (!isCreatingShareLink) {
+                onQuickShareLink()
+              }
+            }}
+          >
+            {isCreatingShareLink ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Link size={14} className="text-plm-accent" />
+            )}
+            Copy Share Link
+          </div>
+        ) : null,
 
-      {/* Add to ECO - for synced files */}
-      {!multiSelect && !isFolder && anySynced && hasPdmData && (
+      // Add to ECO - for synced files
+      'collab.addToEco': oneSyncedFile ? (
         <div className="context-menu-item" onClick={() => openDialog('addToECO')}>
           <ClipboardList size={14} className="text-plm-fg-dim" />
           Add to ECO
         </div>
-      )}
-    </>
-  )
+      ) : null,
+    },
+  }
 }

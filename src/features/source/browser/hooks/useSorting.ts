@@ -8,6 +8,7 @@ import { getFolderChildren } from '../utils/folderIndex'
 import {
   filterValidFiles,
   filterBySearch,
+  searchPool,
   getSearchScore,
 } from '../utils/filtering'
 import { logExplorer } from '@/lib/userActionLogger'
@@ -45,7 +46,7 @@ export function useSorting({
   sortDirection,
   searchQuery,
   searchType = 'all',
-  searchScope = 'current-folder',
+  searchScope = 'all-folders',
   hideSolidworksTempFiles = false,
   hiddenFolderPaths,
   toggleSort,
@@ -87,15 +88,8 @@ export function useSorting({
       // picked a column to sort by, in which case sort the matches like the folder view.
       // When scope is 'current-folder', restrict the pool to the current folder (recursive)
       // before matching, so a scoped search does not leak across the whole vault.
-      const searchPool =
-        searchScope === 'current-folder' && currentPath
-          ? validFiles.filter((file) => {
-              const rel = file.relativePath.replace(/\\/g, '/')
-              const base = currentPath.replace(/\\/g, '/')
-              return rel === base || rel.startsWith(base + '/')
-            })
-          : validFiles
-      const searchResults = filterBySearch(searchPool, searchQuery!, searchType)
+      const pool = searchPool(validFiles, currentPath, searchScope)
+      const searchResults = filterBySearch(pool, searchQuery!, searchType)
       resultFiles = userSortedThisSearch
         ? sortFiles(searchResults, sortColumn, sortDirection, true)
         : sortByRelevance(searchResults, (file) => getSearchScore(file, searchQuery!))

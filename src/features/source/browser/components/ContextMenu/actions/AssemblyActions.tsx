@@ -1,14 +1,19 @@
 /**
- * Assembly actions for context menu
- * Provides "Insert into Assembly" option for SolidWorks parts/subassemblies
+ * Assembly entry for the context menu: `assembly.insert` ("Insert into Assembly") for SolidWorks
+ * parts/subassemblies. The open assemblies are read from SOLIDWORKS when the flyout opens.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Boxes } from 'lucide-react'
 import type { ActionComponentProps } from './types'
+import type { LocalFile } from '@/stores/pdmStore'
 import { ContextSubmenu } from '../components'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
+import { hasDesktop } from '@/lib/platform'
+import { useFlyout } from '../customizable/flyout'
+import type { EntryHookResult } from '../customizable/types'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
 interface OpenAssembly {
   filePath: string
@@ -19,30 +24,52 @@ interface OpenAssembly {
   activeConfiguration: string
 }
 
-export function AssemblyActions({ multiSelect, firstFile, onClose }: ActionComponentProps) {
-  const [showSubmenu, setShowSubmenu] = useState(false)
-  const [openAssemblies, setOpenAssemblies] = useState<OpenAssembly[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [isInserting, setIsInserting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const hasFetchedRef = useRef(false)
+/** Only for single SolidWorks parts/assemblies (multi-insert not yet supported). */
+function isSolidWorksInsertable(ext: string | undefined): boolean {
+  const lowerExt = ext?.toLowerCase()
+  return lowerExt === '.sldprt' || lowerExt === '.sldasm'
+}
 
-  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
+export function useAssemblyEntries({
+  multiSelect,
+  firstFile,
+  onClose,
+}: ActionComponentProps): EntryHookResult<'assembly.insert'> {
   const solidworksEnabled = usePDMStore((s) => s.solidworksIntegrationEnabled)
-
-  // Check if the file(s) are SolidWorks parts or assemblies that can be inserted
-  const isSolidWorksInsertable = useCallback((ext: string | undefined) => {
-    const lowerExt = ext?.toLowerCase()
-    return lowerExt === '.sldprt' || lowerExt === '.sldasm'
-  }, [])
 
   // Only show for single SolidWorks parts/assemblies (multi-insert not yet supported)
   const canInsert =
+    hasDesktop() &&
     !multiSelect &&
     isSolidWorksInsertable(firstFile.extension) &&
     firstFile.diffStatus !== 'cloud' &&
     solidworksEnabled
+
+  return {
+    entries: {
+      'assembly.insert': canInsert ? (
+        <InsertIntoAssemblyEntry firstFile={firstFile} onClose={onClose} />
+      ) : null,
+    },
+  }
+}
+
+function InsertIntoAssemblyEntry({
+  firstFile,
+  onClose,
+}: {
+  firstFile: LocalFile
+  onClose: () => void
+}) {
+  const flyout = useFlyout('assembly.insert')
+  const showSubmenu = flyout.isOpen
+  const [openAssemblies, setOpenAssemblies] = useState<OpenAssembly[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isInserting, setIsInserting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const hasFetchedRef = useRef(false)
+
+  const { addToast } = usePDMStore(useShallow((s) => ({ addToast: s.addToast })))
 
   // Reset state when submenu closes so re-opening can fetch fresh data
   useEffect(() => {
@@ -122,73 +149,52 @@ export function AssemblyActions({ multiSelect, firstFile, onClose }: ActionCompo
     }
   }
 
-  const handleMouseEnter = () => {
-    if (submenuTimeoutRef.current) {
-      clearTimeout(submenuTimeoutRef.current)
-    }
-    setShowSubmenu(true)
-  }
-
-  const handleMouseLeave = () => {
-    submenuTimeoutRef.current = setTimeout(() => {
-      setShowSubmenu(false)
-    }, 150)
-  }
-
-  // Don't render if not applicable
-  if (!canInsert) {
-    return null
-  }
-
   return (
-    <>
-      <div className="context-menu-separator" />
-      <div
-        className="context-menu-item relative"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onClick={(e) => {
-          e.stopPropagation()
-          setShowSubmenu(!showSubmenu)
-        }}
-      >
-        <Boxes size={14} className="text-plm-accent-primary" />
-        Insert into Assembly
-        <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-        {showSubmenu && (
-          <ContextSubmenu
-            minWidth={200}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          >
-            {isLoading ? (
-              <div className="context-menu-item disabled">
-                <span className="animate-pulse">Checking SolidWorks...</span>
+    <div
+      className="context-menu-item relative"
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
+      onClick={(e) => {
+        e.stopPropagation()
+        flyout.toggle()
+      }}
+    >
+      <Boxes size={14} className="text-plm-accent-primary" />
+      Insert into Assembly
+      <SubmenuArrow />
+      {showSubmenu && (
+        <ContextSubmenu
+          minWidth={200}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
+        >
+          {isLoading ? (
+            <div className="context-menu-item disabled">
+              <span className="animate-pulse">Checking SolidWorks...</span>
+            </div>
+          ) : error ? (
+            <div className="context-menu-item disabled text-plm-error">{error}</div>
+          ) : openAssemblies.length > 0 ? (
+            openAssemblies.map((assembly) => (
+              <div
+                key={assembly.filePath}
+                className="context-menu-item"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleInsert(assembly)
+                }}
+                title={assembly.filePath}
+              >
+                <Boxes size={14} className="text-plm-fg-muted" />
+                <span className="truncate">{assembly.fileName}</span>
+                {assembly.isDirty && <span className="text-xs text-plm-warning ml-auto">*</span>}
               </div>
-            ) : error ? (
-              <div className="context-menu-item disabled text-plm-error">{error}</div>
-            ) : openAssemblies.length > 0 ? (
-              openAssemblies.map((assembly) => (
-                <div
-                  key={assembly.filePath}
-                  className="context-menu-item"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleInsert(assembly)
-                  }}
-                  title={assembly.filePath}
-                >
-                  <Boxes size={14} className="text-plm-fg-muted" />
-                  <span className="truncate">{assembly.fileName}</span>
-                  {assembly.isDirty && <span className="text-xs text-plm-warning ml-auto">*</span>}
-                </div>
-              ))
-            ) : (
-              <div className="context-menu-item disabled">No assemblies open in SolidWorks</div>
-            )}
-          </ContextSubmenu>
-        )}
-      </div>
-    </>
+            ))
+          ) : (
+            <div className="context-menu-item disabled">No assemblies open in SolidWorks</div>
+          )}
+        </ContextSubmenu>
+      )}
+    </div>
   )
 }

@@ -206,6 +206,9 @@ const INTERACTIVE_ACTIONS = new Set([
   'setDocumentProperties',
   'getConfigurations',
   'getReferences',
+  // Check-in and check-out wait on it per open document. At bulk priority it queued FIFO behind
+  // every background export, retarget and reference read a previous check-in had queued.
+  'setDocumentReadOnly',
 ])
 
 /**

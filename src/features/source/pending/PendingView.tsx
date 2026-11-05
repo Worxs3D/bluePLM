@@ -38,6 +38,7 @@ import { isMachineOnline } from '@/lib/supabase'
 // Context menu for pending rows
 import { PendingContextMenu, type PendingRowType } from './PendingContextMenu'
 import { t } from '@/lib/i18n'
+import { revealFile } from '@/lib/navigation/revealFile'
 
 // TODO(decompose): Extract to pending/types.ts — OpenDocument, OpenDocumentWithChildren,
 // SelectedFile interfaces and sorting utilities (getTypePriority, sortOpenDocuments,
@@ -714,12 +715,7 @@ export function PendingView({ onRefresh }: PendingViewProps) {
   const {
     files,
     user,
-    setCurrentFolder,
-    toggleFolder,
-    expandedFolders,
     hideSolidworksTempFiles,
-    setSelectedFiles: setStoreSelectedFiles,
-    setPendingScrollToFile,
     expandedPendingSections,
     togglePendingSection,
     checkoutHydration,
@@ -727,12 +723,7 @@ export function PendingView({ onRefresh }: PendingViewProps) {
     useShallow((s) => ({
       files: s.files,
       user: s.user,
-      setCurrentFolder: s.setCurrentFolder,
-      toggleFolder: s.toggleFolder,
-      expandedFolders: s.expandedFolders,
       hideSolidworksTempFiles: s.hideSolidworksTempFiles,
-      setSelectedFiles: s.setSelectedFiles,
-      setPendingScrollToFile: s.setPendingScrollToFile,
       expandedPendingSections: s.expandedPendingSections,
       togglePendingSection: s.togglePendingSection,
       checkoutHydration: s.checkoutHydration,
@@ -1010,32 +1001,14 @@ export function PendingView({ onRefresh }: PendingViewProps) {
     (filePath: string, localFile?: LocalFile) => {
       // If we have a local file reference, use the existing navigation
       if (localFile) {
-        const parts = localFile.relativePath.split('/')
-        parts.pop()
-        const parentPath = parts.join('/')
-
-        if (parentPath) {
-          for (let i = 1; i <= parts.length; i++) {
-            const ancestorPath = parts.slice(0, i).join('/')
-            if (!expandedFolders.has(ancestorPath)) {
-              toggleFolder(ancestorPath)
-            }
-          }
-        }
-
-        // Update file pane location without switching sidebar view
-        setCurrentFolder(parentPath)
-        // Highlight/select the file in the file browser
-        setStoreSelectedFiles([localFile.path])
-        // Scroll the file list to bring the selected file into view
-        setPendingScrollToFile(localFile.path)
+        revealFile(localFile, { switchView: false })
         return
       }
 
       // Fallback: show in system explorer
       window.electronAPI?.showInExplorer(filePath)
     },
-    [expandedFolders, toggleFolder, setCurrentFolder, setStoreSelectedFiles, setPendingScrollToFile],
+    [],
   )
 
   // Toggle expand/collapse for assembly groups with on-demand reference loading
@@ -1242,30 +1215,8 @@ export function PendingView({ onRefresh }: PendingViewProps) {
     })
   }, [])
 
-  const navigateToFile = useCallback(
-    (file: LocalFile) => {
-      const parts = file.relativePath.split('/')
-      parts.pop()
-      const parentPath = parts.join('/')
-
-      if (parentPath) {
-        for (let i = 1; i <= parts.length; i++) {
-          const ancestorPath = parts.slice(0, i).join('/')
-          if (!expandedFolders.has(ancestorPath)) {
-            toggleFolder(ancestorPath)
-          }
-        }
-      }
-
-      // Update file pane location without switching sidebar view
-      setCurrentFolder(parentPath)
-      // Highlight the file in the file browser
-      setStoreSelectedFiles([file.path])
-      // Scroll the file list to bring the selected file into view
-      setPendingScrollToFile(file.path)
-    },
-    [expandedFolders, toggleFolder, setCurrentFolder, setStoreSelectedFiles, setPendingScrollToFile],
-  )
+  // Show the file in the file pane without switching the sidebar view.
+  const navigateToFile = useCallback((file: LocalFile) => revealFile(file, { switchView: false }), [])
 
   const selectAll = useCallback(() => {
     setSelectedFiles(new Set(myCheckedOutFiles.map((f) => f.path)))

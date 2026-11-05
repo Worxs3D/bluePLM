@@ -1,49 +1,32 @@
 /**
- * CommentInput - Textarea for entering comment text on an annotation.
+ * CommentInput - the text box for a new comment on the drawing, and the reply box inside a thread.
  *
- * Displayed when the user has selected an area on the PDF (via PdfAnnotationViewer)
- * and needs to type the comment body before saving. Also used as the reply input
- * inside CommentThread.
- *
- * Features:
- *   - Page number indicator showing which page the annotation is anchored to
- *   - Submit with Enter (Shift+Enter for newline) or explicit button
- *   - Cancel discards the pending annotation
- *   - Loading state while the comment is being persisted to Supabase
- *   - Accessible: auto-focuses the textarea, keyboard-navigable buttons
+ * Enter posts, Shift+Enter adds a line, Escape cancels (the hint under the box says so). A failed
+ * post keeps the typed text so it can be retried; the caller shows the error.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, X, Loader2, MapPin } from 'lucide-react'
+import { MapPin, X } from 'lucide-react'
 
-// ============================================================================
-// Types
-// ============================================================================
+import { Button, IconButton } from '@/components/core/ui'
+import { t } from '@/lib/i18n'
 
 export interface CommentInputProps {
-  /** Page number the annotation is anchored to (shown as indicator) */
+  /** Page number the comment is anchored to (shown above the box). */
   pageNumber?: number | null
-  /** Placeholder text for the textarea */
   placeholder?: string
-  /** Called when user submits the comment text */
   onSubmit: (text: string) => void | Promise<void>
-  /** Called when user cancels / dismisses the input */
   onCancel: () => void
-  /** Whether the component is in a loading/saving state */
   isLoading?: boolean
-  /** Auto-focus the textarea on mount (default: true) */
+  /** Focus the box on mount (default true). */
   autoFocus?: boolean
-  /** Compact mode for inline reply inputs */
+  /** The inline reply box: one line, no page indicator. */
   compact?: boolean
 }
 
-// ============================================================================
-// Component
-// ============================================================================
-
 export function CommentInput({
   pageNumber,
-  placeholder = 'Add a comment...',
+  placeholder,
   onSubmit,
   onCancel,
   isLoading = false,
@@ -53,14 +36,11 @@ export function CommentInput({
   const [text, setText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Auto-focus on mount
   useEffect(() => {
-    if (autoFocus && textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (autoFocus) textareaRef.current?.focus()
   }, [autoFocus])
 
-  // Auto-resize textarea to fit content
+  // Grow with the text, up to 200px.
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -83,9 +63,10 @@ export function CommentInput({
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        handleSubmit()
+        void handleSubmit()
       } else if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         onCancel()
       }
     },
@@ -95,53 +76,58 @@ export function CommentInput({
   const canSubmit = text.trim().length > 0 && !isLoading
 
   return (
-    <div
-      className={`flex flex-col gap-1.5 ${compact ? '' : 'border border-plm-border rounded-lg p-3 bg-plm-bg'}`}
-      role="form"
-      aria-label="Add comment"
-    >
-      {/* Page anchor indicator */}
+    <div className="flex flex-col gap-1.5" role="form" aria-label={t('markups.inputLabel')}>
       {pageNumber != null && !compact && (
-        <div className="flex items-center gap-1 text-xs text-plm-fg-muted">
-          <MapPin size={12} />
-          <span>Page {pageNumber}</span>
+        <div className="flex items-center gap-1 text-[12px] text-ui-fg-secondary">
+          <MapPin size={12} aria-hidden />
+          <span>{t('markups.page', { page: pageNumber })}</span>
         </div>
       )}
-
-      {/* Textarea */}
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={isLoading}
-        rows={compact ? 1 : 2}
-        className={`w-full resize-none bg-plm-panel border border-plm-border rounded px-2.5 py-1.5 text-sm text-plm-fg placeholder:text-plm-fg-muted/50 focus:outline-none focus:ring-1 focus:ring-plm-accent disabled:opacity-50 ${compact ? 'min-h-[32px]' : 'min-h-[56px]'}`}
-        aria-label="Comment text"
-      />
-
-      {/* Action buttons */}
-      <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
-          onClick={onCancel}
+      <div className="flex items-end gap-1.5">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder ?? t('markups.placeholder')}
           disabled={isLoading}
-          className="px-2 py-1 text-xs rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light transition-colors disabled:opacity-50"
-          aria-label="Cancel comment"
+          rows={compact ? 1 : 2}
+          aria-label={t('markups.inputText')}
+          className={`w-full resize-none rounded-lg border border-ui-field-border bg-ui-field px-2.5 py-1.5 text-[13px] leading-[1.45] text-ui-fg outline-none placeholder:text-ui-fg-secondary focus:border-ui-accent/70 focus:ring-2 focus:ring-ui-accent/25 disabled:opacity-50 ${
+            compact ? 'min-h-[32px]' : 'min-h-[56px]'
+          }`}
+        />
+        {compact && (
+          <IconButton
+            label={t('markups.inputCancel')}
+            icon={<X size={14} />}
+            onClick={onCancel}
+            disabled={isLoading}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <span
+          className="min-w-0 flex-1 truncate text-[12px] text-ui-fg-tertiary"
+          title={t('markups.inputHint')}
         >
-          {compact ? <X size={14} /> : 'Cancel'}
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
+          {t('markups.inputHint')}
+        </span>
+        {!compact && (
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={isLoading}>
+            {t('markups.cancel')}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => void handleSubmit()}
           disabled={!canSubmit}
-          className="flex items-center gap-1 px-2.5 py-1 text-xs rounded font-medium bg-plm-accent text-white hover:bg-plm-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label="Submit comment"
+          loading={isLoading}
+          aria-label={t('markups.inputSubmit')}
         >
-          {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-          {!compact && <span>{isLoading ? 'Saving...' : 'Comment'}</span>}
-        </button>
+          {compact ? t('markups.reply') : t('markups.post')}
+        </Button>
       </div>
     </div>
   )

@@ -14,7 +14,7 @@ const USED = [
   'generateStepCount', 'generatedCount', 'generatingCount', 'nameCopied', 'nameTaken', 'open',
   'openFailed', 'reason_unknown', 'regenerate', 'regenerating', 'rowApproximateTitle',
   'rowFailedTitle', 'rowGenerate', 'rowGenerateTitle', 'rowGenerating', 'rowOpenTitle', 'rowQueued',
-  'rowRegeneratingTitle', 'saveCopy', 'saveFailed', 'saveNext', 'saved', 'settingsAdminOnly',
+  'rowRegeneratingTitle', 'rowWaitingSameNameTitle', 'reason_SAME_NAME_OPEN_named', 'saveCopy', 'saveFailed', 'saveNext', 'saved', 'settingsAdminOnly',
   'settingsDescription', 'settingsNoPermission', 'settingsPdf', 'settingsPdfHint',
   'settingsSaveFailed', 'settingsSaved', 'settingsStep', 'settingsStepHint', 'settingsTitle',
 ]

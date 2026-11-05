@@ -2,6 +2,8 @@ import { StateCreator } from 'zustand'
 import { resetLoadFilesCoordination } from '@/hooks/loadFilesCoordination'
 import { isAdminUser } from '@/lib/isAdminUser'
 import { resetOutputQueue } from '@/lib/outputs/queueReset'
+import { resetViewedItems } from '@/lib/reviewViewedItems'
+import { DEFAULT_REVIEW_QUEUE_VIEW } from './reviewsSlice'
 
 import type { PDMStoreState, UserSlice, ImpersonatedUser } from '../types'
 import type { User, Organization } from '../../types/pdm'
@@ -43,7 +45,11 @@ export const createUserSlice: StateCreator<
   setAuthInitialized: (authInitialized) => set({ authInitialized }),
   setOrganization: (organization: Organization | null) => {
     // Another organization's output jobs must not run (or report) in this one.
-    if ((get().organization?.id ?? null) !== (organization?.id ?? null)) resetOutputQueue()
+    if ((get().organization?.id ?? null) !== (organization?.id ?? null)) {
+      resetOutputQueue()
+      // Orders are org-wide: another organization's list and open order must not show.
+      get().resetOrders()
+    }
     set({ organization, isConnecting: false })
   },
   setOfflineMode: (isOfflineMode) => set({ isOfflineMode }),
@@ -64,6 +70,7 @@ export const createUserSlice: StateCreator<
     state.clearStagedCheckins()
     state.clearMissingStorageFiles()
     state.clearPendingLargeUpload()
+    state.resetOrders()
 
     set({
       files: [],
@@ -132,6 +139,8 @@ export const createUserSlice: StateCreator<
   },
   resetSessionState: (options) => {
     get().resetFileSessionState()
+    // Which review files were opened belongs to this session's user.
+    resetViewedItems()
     const state = get()
     state.clearOrganizationData()
     state.clearOrganizationMetadata()
@@ -156,10 +165,15 @@ export const createUserSlice: StateCreator<
       deniedModules: [],
       apiServerUrl: null,
       orgColorSwatches: [],
-      // Drafts stay (they are keyed by user); what is open belongs to the session.
+      // Drafts stay (they are keyed by user and organization); what is open belongs to the session.
       reviewPackagePaneOpen: false,
+      reviewPackageLastSent: null,
       activeReviewId: null,
       activeReviewItemId: null,
+      activeGateReviewId: null,
+      pendingReviewCommentFocus: null,
+      reviewQueueView: DEFAULT_REVIEW_QUEUE_VIEW,
+      reviewAddConfirm: null,
     })
   },
   signOut: () => get().resetSessionState(),

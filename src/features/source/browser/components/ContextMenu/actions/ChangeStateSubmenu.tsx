@@ -30,6 +30,9 @@ import {
   readTargetState,
   requestForcedReleaseReason,
 } from '@/features/source/releases/forceRelease'
+import { confirmApproximateReleases } from '@/features/source/releases/approximateRelease'
+import { hasFreezableReferences } from '@/lib/versionOpen'
+import { SubmenuArrow } from '../components/SubmenuArrow'
 
 interface ChangeStateSubmenuProps {
   targetFile: LocalFile
@@ -146,9 +149,13 @@ export function ChangeStateSubmenu({
     )
     onRefresh(true)
     const target = await readTargetState(transition.to_state_id)
-    // Into a review stage: put the file in the review package so its reviewers can be chosen.
-    // The review's approval later moves it on (Settings > File Workflows).
-    if (target.isReviewStage) void addFilesToReviewPackage([targetFile])
+    // Into a review stage: put the file in the review draft; the toast's button opens the pane so
+    // its reviewers can be chosen. The review's approval later moves it on (Settings > File Workflows).
+    if (target.isReviewStage)
+      void addFilesToReviewPackage([targetFile], {
+        openPane: false,
+        actionLabel: t('reviewBuilder.toast.chooseReviewers'),
+      })
     // Released (schema 509): a released drawing gets its PDF and STEP, missing ones only.
     if (target.releasesVersion) queueReleasedDrawingOutputs([targetFile])
   }
@@ -160,6 +167,8 @@ export function ChangeStateSubmenu({
       fileName: targetFile.name,
       version: targetFile.pdmData?.version ?? null,
       count: 1,
+      // The dialog's other way out: send the drawing for review instead of forcing it.
+      onRequestReview: () => void addFilesToReviewPackage([targetFile]),
     })
     if (!reason) return
     const outcome = await forceTransition(targetFile, transition.transition_id, reason)
@@ -175,6 +184,17 @@ export function ChangeStateSubmenu({
 
     setExecuting(true)
     try {
+      // Releasing an assembly or drawing whose references are approximate would not freeze them
+      // (5.13.0): ask first. The warning opens in its own root, so the menu closes first.
+      if (hasFreezableReferences(targetFile.name)) {
+        const target = await readTargetState(transition.to_state_id)
+        if (target.releasesVersion) {
+          onClose()
+          setShowStateSubmenu(false)
+          if (!(await confirmApproximateReleases([targetFile]))) return
+        }
+      }
+
       const { data: result, error } = await executeTransition(fileId, transition.transition_id)
 
       if (error || !result) {
@@ -242,7 +262,7 @@ export function ChangeStateSubmenu({
     >
       <RefreshCw size={14} />
       Change State
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+      <SubmenuArrow />
 
       {showStateSubmenu && (
         <ContextSubmenu

@@ -19,7 +19,6 @@ Settings that affect your entire organization (admin access required):
 - **Company Profile** - Organization name and branding
 - **Serialization** - Part numbering schemes
 - **File Metadata** - Custom columns for file properties
-- **RFQ Settings** - Request for quote configuration
 - **Backups** - Backup and restore options
 - **Recovery Codes** - Database recovery codes
 

@@ -71,7 +71,9 @@ export function mapDecisionKey(
  * listen on the window, so without this a key pressed on a dialog's button would decide the item
  * behind it.
  */
-export function isModalOpen(doc: Document | null = typeof document === 'undefined' ? null : document): boolean {
+export function isModalOpen(
+  doc: Document | null = typeof document === 'undefined' ? null : document,
+): boolean {
   return !!doc?.querySelector('[data-native-preview-overlay="modal"]')
 }
 

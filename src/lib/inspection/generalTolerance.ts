@@ -8,6 +8,10 @@
  * - a grid of separate notes, a label note and a value note on one line (`.XX` | `±0.01`), which
  *   is how most sheet formats lay the block out in table cells.
  *
+ * Either layout may be a table with column headers (`LINEAR` | `ANGLE`) over per-decimal-place
+ * rows (`X. ±0.2` | `X. ±1`): an entry belongs to the column whose header it sits under, so an
+ * angle column gives per-decimal-place angle rules instead of being read as lengths.
+ *
  * Nothing is guessed. A label with no value (the stock SOLIDWORKS ANSI block ships
  * `TWO PLACE DECIMAL ±` with the value blank) is no rule, and a characteristic no rule covers keeps
  * a null tolerance.
@@ -44,6 +48,8 @@ export interface GeneralToleranceRules {
   fractional: ToleranceValue | null
   /** For angles, in degrees (`ANGULAR: MACH ±0.5°`). */
   angular: ToleranceValue | null
+  /** For angles, per number of decimal places, in degrees (an `ANGLE` column of `X.X ±0.5`). */
+  angularDecimal: DecimalPlaceRule[]
   /** `ISO 2768-mK`: linear class and, when given, the geometrical class (ISO 2768-2). */
   iso2768: { linear: Iso2768Class; geometric: Iso2768GeometricClass | null } | null
 }
@@ -53,7 +59,8 @@ export type GeneralToleranceBasis =
   | { kind: 'decimal'; places: number; tolerance: string }
   | { kind: 'linear'; tolerance: string }
   | { kind: 'fractional'; tolerance: string }
-  | { kind: 'angular'; tolerance: string }
+  /** `places` set: the angle rule for that number of decimal places. */
+  | { kind: 'angular'; tolerance: string; places?: number }
   | {
       kind: 'iso2768'
       cls: Iso2768Class
@@ -248,15 +255,160 @@ interface PartialRules {
   linear: ToleranceValue | null
   fractional: ToleranceValue | null
   angular: ToleranceValue | null
+  angularDecimal: Map<number, ToleranceValue>
   iso2768: GeneralToleranceRules['iso2768']
 }
 
 function emptyPartial(): PartialRules {
-  return { unit: null, decimal: new Map(), linear: null, fractional: null, angular: null, iso2768: null }
+  return {
+    unit: null,
+    decimal: new Map(),
+    linear: null,
+    fractional: null,
+    angular: null,
+    angularDecimal: new Map(),
+    iso2768: null,
+  }
 }
 
-/** Rules found in one logical line, added where `acc` has none yet. */
-function parseLine(line: string, acc: PartialRules): void {
+/** A decimal-place label in a line (`.XX`, `X.`, `TWO PLACE DECIMAL`) and the text after it. */
+interface PlaceEntry {
+  index: number
+  places: number
+  tail: string
+}
+
+function placeEntries(line: string): PlaceEntry[] {
+  const out: PlaceEntry[] = []
+  const collect = (re: RegExp, places: (m: RegExpExecArray) => number) => {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(line)) !== null) {
+      out.push({ index: m.index, places: places(m), tail: line.slice(m.index + m[0].length) })
+      if (m[0].length === 0) re.lastIndex++
+    }
+  }
+  // Worded: `TWO PLACE DECIMAL`, `3 PL DEC`, `ONE PLACE DECIMALS`.
+  collect(
+    /\b(ZERO|ONE|TWO|THREE|FOUR|[0-4])[\s-]*(?:PLACES?|PL\.?)(?:\s+DECIMALS?|\s+DEC\.?)?/g,
+    (m) => PLACE_WORDS[m[1]],
+  )
+  // Notation: `.XX`, `X.XX`, `0.00`, `.000`, and `X` / `X.` (whole numbers). A label is a rule
+  // only where a ± value follows it (`lengthValueAt` / `angleValueAt`).
+  collect(/(?<![A-Z0-9.,])(?:[X0]?[.,](X{1,4}|0{1,4})|X[.,]?)(?![A-Z0-9.,])/g, (m) =>
+    m[1] ? m[1].length : 0,
+  )
+  return out.sort((a, b) => a.index - b.index)
+}
+
+/** One logical line, with the horizontal position of each of its characters. */
+interface Row {
+  text: string
+  /** Position of character `i`: sheet metres for joined notes, the character column in one note. */
+  xAt: (i: number) => number
+}
+
+type ColumnKind = 'linear' | 'angular'
+interface Column {
+  kind: ColumnKind
+  x: number
+}
+
+const HEADER_FRAGMENT =
+  /^[\s:]*(?:(?:LINEAR|LENGTHS?|ANGULAR|ANGLES?|ANG\.)(?:\s+(?:DIMENSIONS?|TOLERANCES?))?[\s:]*)+$/
+const HEADER_WORD = /LINEAR|LENGTHS?|ANGULAR|ANGLES?|ANG\./g
+
+/**
+ * Column headers of a tolerance table (`LINEAR` | `ANGLE`): a line with no ± in which at least one
+ * fragment is made only of header words. Null when the line is not a header.
+ */
+function columnHeader(row: Row): Column[] | null {
+  if (row.text.includes('±')) return null
+  const columns: Column[] = []
+  let offset = 0
+  for (const fragment of row.text.split(FRAGMENT_SEPARATOR)) {
+    if (HEADER_FRAGMENT.test(fragment)) {
+      HEADER_WORD.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = HEADER_WORD.exec(fragment)) !== null) {
+        columns.push({ kind: m[0].startsWith('L') ? 'linear' : 'angular', x: row.xAt(offset + m.index) })
+      }
+    }
+    offset += fragment.length + FRAGMENT_SEPARATOR.length
+  }
+  return columns.length > 0 ? columns.sort((a, b) => a.x - b.x) : null
+}
+
+/**
+ * The column of each entry: the header nearest its position. When that puts two entries under one
+ * header while the row has exactly one entry per column, the row is read left to right instead.
+ */
+function assignColumns(entries: readonly PlaceEntry[], row: Row, columns: readonly Column[]): ColumnKind[] {
+  const nearest = entries.map((e) => {
+    const x = row.xAt(e.index)
+    let best = 0
+    columns.forEach((c, i) => {
+      if (Math.abs(c.x - x) < Math.abs(columns[best].x - x)) best = i
+    })
+    return best
+  })
+  if (new Set(nearest).size !== nearest.length && entries.length === columns.length) {
+    return columns.map((c) => c.kind)
+  }
+  return nearest.map((i) => columns[i].kind)
+}
+
+function addDecimal(acc: PartialRules, places: number, tail: string): void {
+  if (acc.decimal.has(places)) return
+  const value = lengthValueAt(tail, false)
+  if (value && plausibleLinear(value.value, acc.unit)) acc.decimal.set(places, value)
+}
+
+function addAngularDecimal(acc: PartialRules, places: number, tail: string): void {
+  if (acc.angularDecimal.has(places)) return
+  const value = angleValueAt(tail)
+  if (value && plausibleAngle(value.value)) acc.angularDecimal.set(places, value)
+}
+
+/** Lines between a column header and its first row before the header no longer applies. */
+const HEADER_GAP_LINES = 1
+
+/**
+ * Rules in lines read top to bottom. After a column header, each decimal-place entry goes to the
+ * column it sits under, until a line with no entry follows the table's rows.
+ */
+function parseRows(rows: readonly Row[], acc: PartialRules): void {
+  let columns: Column[] | null = null
+  let rowsSeen = 0
+  let gap = 0
+  for (const row of rows) {
+    const header = columnHeader(row)
+    if (header) {
+      columns = header
+      rowsSeen = 0
+      gap = 0
+      continue
+    }
+    const entries = columns ? placeEntries(row.text) : []
+    if (!columns || entries.length === 0) {
+      if (columns && (rowsSeen > 0 || ++gap > HEADER_GAP_LINES)) columns = null
+      parseLine(row.text, acc)
+      continue
+    }
+    rowsSeen++
+    const kinds = assignColumns(entries, row, columns)
+    entries.forEach((e, i) => {
+      if (kinds[i] === 'angular') addAngularDecimal(acc, e.places, e.tail)
+      else addDecimal(acc, e.places, e.tail)
+    })
+    parseLine(row.text, acc, false)
+  }
+}
+
+/**
+ * Rules found in one logical line, added where `acc` has none yet. `places` false leaves the
+ * decimal-place entries to the caller (a table row).
+ */
+function parseLine(line: string, acc: PartialRules, places = true): void {
   const unit = /\b(?:DIMENSIONS?|UNITS?)\s*(?:ARE\s+)?(?:IN|:)\s*(INCH(?:ES)?|IN\b|MILLIMET(?:ER|RE)S?|MM\b)/.exec(line)
   if (unit && acc.unit === null) acc.unit = unit[1].startsWith('M') ? 'mm' : 'in'
 
@@ -277,21 +429,7 @@ function parseLine(line: string, acc: PartialRules): void {
     }
   }
 
-  const addDecimal = (places: number, tail: string) => {
-    if (acc.decimal.has(places)) return
-    const value = lengthValueAt(tail, false)
-    if (value && plausibleLinear(value.value, acc.unit)) acc.decimal.set(places, value)
-  }
-
-  // Worded: `TWO PLACE DECIMAL`, `3 PL DEC`, `ONE PLACE DECIMALS`.
-  each(
-    /\b(ZERO|ONE|TWO|THREE|FOUR|[0-4])[\s-]*(?:PLACES?|PL\.?)(?:\s+DECIMALS?|\s+DEC\.?)?/g,
-    (m, tail) => addDecimal(PLACE_WORDS[m[1]], tail),
-  )
-  // Notation: `.XX`, `X.XX`, `0.00`, `.000`, and `X` (whole numbers) only when ± follows.
-  each(/(?<![A-Z0-9.,])(?:[X0]?[.,](X{1,4}|0{1,4})|X)(?![A-Z0-9.,])/g, (m, tail) =>
-    addDecimal(m[1] ? m[1].length : 0, tail),
-  )
+  if (places) for (const e of placeEntries(line)) addDecimal(acc, e.places, e.tail)
 
   if (acc.fractional === null) {
     each(/\bFRACTIONS?(?:AL)?S?\b/g, (_m, tail) => {
@@ -342,6 +480,11 @@ interface PlacedLine {
  * `FRAGMENT_SEPARATOR`, which a value cannot be read across.
  */
 export function spatialLines(notes: readonly ExtractedSheetNote[]): string[] {
+  return spatialRows(notes).map((r) => r.text)
+}
+
+/** `spatialLines`, keeping where each character sits on the sheet (for table columns). */
+function spatialRows(notes: readonly ExtractedSheetNote[]): Row[] {
   const placed: PlacedLine[] = []
   for (const note of notes) {
     const height = note.height && note.height > 0 ? note.height : DEFAULT_TEXT_HEIGHT_M
@@ -351,11 +494,12 @@ export function spatialLines(notes: readonly ExtractedSheetNote[]): string[] {
     })
   }
   placed.sort((a, b) => b.y - a.y || a.x - b.x)
-  const lines: string[] = []
+  const lines: Row[] = []
   let group: PlacedLine[] = []
   const flush = () => {
     group.sort((a, b) => a.x - b.x)
     let text = ''
+    const segments: { start: number; x: number; charWidth: number }[] = []
     group.forEach((l, i) => {
       if (i > 0) {
         const prev = group[i - 1]
@@ -363,9 +507,19 @@ export function spatialLines(notes: readonly ExtractedSheetNote[]): string[] {
         const touching = l.x - prevEnd <= JOIN_GAP_HEIGHTS * Math.max(prev.height, l.height)
         text += touching ? ' ' : ` ${FRAGMENT_SEPARATOR} `
       }
+      segments.push({ start: text.length, x: l.x, charWidth: l.height * CHAR_WIDTH_RATIO })
       text += l.text
     })
-    if (group.length > 0) lines.push(text)
+    if (group.length > 0) {
+      lines.push({
+        text,
+        xAt: (i) => {
+          let s = segments[0]
+          for (const seg of segments) if (seg.start <= i) s = seg
+          return s.x + (i - s.start) * s.charWidth
+        },
+      })
+    }
     group = []
   }
   for (const line of placed) {
@@ -388,15 +542,27 @@ export function parseGeneralTolerances(
   if (!notes || notes.length === 0) return null
   const acc = emptyPartial()
   for (const note of notes) {
-    for (const line of normalizeNoteText(note.text).split(/\r?\n|\r/)) parseLine(line, acc)
+    const lines = normalizeNoteText(note.text).split(/\r?\n|\r/)
+    parseRows(
+      lines.map((text) => ({ text, xAt: (i: number) => i })),
+      acc,
+    )
   }
   const normalized = notes.map((n) => ({ ...n, text: normalizeNoteText(n.text) }))
-  for (const line of spatialLines(normalized)) parseLine(line, acc)
+  parseRows(spatialRows(normalized), acc)
 
-  const decimal = [...acc.decimal.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([places, tolerance]) => ({ places, tolerance }))
-  if (decimal.length === 0 && !acc.linear && !acc.fractional && !acc.angular && !acc.iso2768) {
+  const sorted = (m: Map<number, ToleranceValue>): DecimalPlaceRule[] =>
+    [...m.entries()].sort(([a], [b]) => a - b).map(([places, tolerance]) => ({ places, tolerance }))
+  const decimal = sorted(acc.decimal)
+  const angularDecimal = sorted(acc.angularDecimal)
+  if (
+    decimal.length === 0 &&
+    angularDecimal.length === 0 &&
+    !acc.linear &&
+    !acc.fractional &&
+    !acc.angular &&
+    !acc.iso2768
+  ) {
     return null
   }
   return {
@@ -405,6 +571,7 @@ export function parseGeneralTolerances(
     linear: acc.linear,
     fractional: acc.fractional,
     angular: acc.angular,
+    angularDecimal,
     iso2768: acc.iso2768,
   }
 }
@@ -528,7 +695,8 @@ function build(
  *
  * Order: a fraction takes the fractional rule; a decimal takes the rule for its number of decimal
  * places, then the all-values rule, then ISO 2768-1. Decimal and all-values rules apply only when
- * the block states no unit or the value's own unit. Angles take the angular rule only.
+ * the block states no unit or the value's own unit. Angles take the angle rule for their number of
+ * decimal places, then the one angular rule.
  */
 export function generalToleranceFor(
   c: ExtractedCharacteristic,
@@ -542,16 +710,20 @@ export function generalToleranceFor(
   if (!nominal || nominal.value <= 0) return null
 
   if (isAngular(c, nominal)) {
-    if (!rules.angular) return null
+    const byPlaces = rules.angularDecimal.find((r) => r.places === nominal.places)
+    const tolerance = byPlaces?.tolerance ?? rules.angular
+    if (!tolerance) return null
     const suffix = /°/.test(c.nominal) ? '°' : ''
-    const places = Math.max(nominal.places ?? 0, rules.angular.places ?? 2)
-    const value = rules.angular.value
+    const places = Math.max(nominal.places ?? 0, tolerance.places ?? 2)
+    const value = tolerance.value
     return {
       plus: `+${value.toFixed(places)}${suffix}`,
       minus: `-${value.toFixed(places)}${suffix}`,
       upper: `${(nominal.value + value).toFixed(places)}${suffix}`,
       lower: `${(nominal.value - value).toFixed(places)}${suffix}`,
-      basis: { kind: 'angular', tolerance: rules.angular.text },
+      basis: byPlaces
+        ? { kind: 'angular', tolerance: tolerance.text, places: byPlaces.places }
+        : { kind: 'angular', tolerance: tolerance.text },
     }
   }
 

@@ -5,6 +5,7 @@ import { usePDMStore, LocalFile } from '@/stores/pdmStore'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { canHaveConfigurations } from '@/lib/solidworks/configurationSupport'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
+import { StoredCadPreview } from '@/features/source/outputs/preview/StoredCadPreview'
 import {
   FileBox,
   Layers,
@@ -64,8 +65,15 @@ function useSolidWorksService() {
   return { status, checkStatus }
 }
 
-// Main preview panel for SolidWorks files
-export function SWDatacardPanel({ file }: { file: LocalFile }) {
+// Main preview panel for SolidWorks files. `storedOutputs` (default on) lets a checked-in version's
+// drawing PDF or 3D export replace the low-resolution embedded thumbnail (StoredCadPreview).
+export function SWDatacardPanel({
+  file,
+  storedOutputs = true,
+}: {
+  file: LocalFile
+  storedOutputs?: boolean
+}) {
   const [refreshToken, setRefreshToken] = useState(0)
   const [previewZoom, setPreviewZoom] = useState(100)
   const [activeConfigName, setActiveConfigName] = useState<string | undefined>(undefined)
@@ -223,88 +231,96 @@ export function SWDatacardPanel({ file }: { file: LocalFile }) {
 
   return (
     <div className="sw-preview-panel h-full flex flex-col">
-      {/* Preview area - takes full height */}
-      <div className="flex-1 relative rounded-lg overflow-hidden bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50">
-        {/* Scrollable, safe-centered preview content. Ctrl+wheel zooms, plain wheel/scrollbars pan. */}
-        <div
-          ref={scrollRef}
-          className="absolute inset-0 overflow-auto p-4 [display:grid] [place-items:safe_center]"
-        >
-          {preview ? (
-            <img
-              src={preview}
-              alt={file.name}
-              decoding="async"
-              onError={onPreviewError}
-              onLoad={(e) =>
-                setNaturalSize({
-                  w: e.currentTarget.naturalWidth,
-                  h: e.currentTarget.naturalHeight,
-                })
-              }
-              style={
-                displaySize
-                  ? {
-                      width: displaySize.w,
-                      height: displaySize.h,
-                      maxWidth: 'none',
-                      maxHeight: 'none',
-                      filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))',
-                    }
-                  : {
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      objectFit: 'contain',
-                      filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))',
-                    }
-              }
-              draggable={false}
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-3 text-plm-fg-muted">
-              <SWFileIcon fileType={fileType} size={64} />
-              <span className="text-sm">No preview available</span>
-            </div>
-          )}
-        </div>
+      {/* Preview area - takes full height. A stored full-resolution output, when there is one of
+          the version on disk, is drawn over it; the thumbnail stays mounted underneath. */}
+      <StoredCadPreview
+        file={file}
+        configuration={activeConfigName}
+        enabled={storedOutputs}
+        className="flex-1"
+      >
+        <div className="flex-1 relative rounded-lg overflow-hidden bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50">
+          {/* Scrollable, safe-centered preview content. Ctrl+wheel zooms, plain wheel/scrollbars pan. */}
+          <div
+            ref={scrollRef}
+            className="absolute inset-0 overflow-auto p-4 [display:grid] [place-items:safe_center]"
+          >
+            {preview ? (
+              <img
+                src={preview}
+                alt={file.name}
+                decoding="async"
+                onError={onPreviewError}
+                onLoad={(e) =>
+                  setNaturalSize({
+                    w: e.currentTarget.naturalWidth,
+                    h: e.currentTarget.naturalHeight,
+                  })
+                }
+                style={
+                  displaySize
+                    ? {
+                        width: displaySize.w,
+                        height: displaySize.h,
+                        maxWidth: 'none',
+                        maxHeight: 'none',
+                        filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))',
+                      }
+                    : {
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                        objectFit: 'contain',
+                        filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))',
+                      }
+                }
+                draggable={false}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-plm-fg-muted">
+                <SWFileIcon fileType={fileType} size={64} />
+                <span className="text-sm">No preview available</span>
+              </div>
+            )}
+          </div>
 
-        {/* Zoom controls - bottom */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
+          {/* Zoom controls - bottom */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
+            <button
+              onClick={() =>
+                setPreviewZoom((prev) => Math.max(MIN_PREVIEW_ZOOM, prev - BUTTON_ZOOM_STEP))
+              }
+              className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <span className="text-xs text-plm-fg-muted w-10 text-center">{previewZoom}%</span>
+            <button
+              onClick={() =>
+                setPreviewZoom((prev) => Math.min(MAX_PREVIEW_ZOOM, prev + BUTTON_ZOOM_STEP))
+              }
+              className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors"
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              onClick={() => setPreviewZoom(100)}
+              className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors border-l border-white/20 ml-1 pl-2"
+              title="Reset zoom"
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+
+          {/* Refresh button - top right */}
           <button
-            onClick={() =>
-              setPreviewZoom((prev) => Math.max(MIN_PREVIEW_ZOOM, prev - BUTTON_ZOOM_STEP))
-            }
-            className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors"
+            onClick={refreshPreview}
+            className="absolute top-3 right-3 p-1.5 bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded text-plm-fg-muted hover:text-white transition-all"
+            title="Refresh preview"
           >
-            <ZoomOut size={16} />
-          </button>
-          <span className="text-xs text-plm-fg-muted w-10 text-center">{previewZoom}%</span>
-          <button
-            onClick={() =>
-              setPreviewZoom((prev) => Math.min(MAX_PREVIEW_ZOOM, prev + BUTTON_ZOOM_STEP))
-            }
-            className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors"
-          >
-            <ZoomIn size={16} />
-          </button>
-          <button
-            onClick={() => setPreviewZoom(100)}
-            className="p-1 hover:text-cyan-400 text-plm-fg-muted transition-colors border-l border-white/20 ml-1 pl-2"
-            title="Reset zoom"
-          >
-            <RotateCcw size={14} />
+            <RefreshCw size={14} />
           </button>
         </div>
-
-        {/* Refresh button - top right */}
-        <button
-          onClick={refreshPreview}
-          className="absolute top-3 right-3 p-1.5 bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded text-plm-fg-muted hover:text-white transition-all"
-          title="Refresh preview"
-        >
-          <RefreshCw size={14} />
-        </button>
-      </div>
+      </StoredCadPreview>
 
       {/* Action button */}
       <div className="flex-shrink-0 pt-3">
@@ -319,4 +335,3 @@ export function SWDatacardPanel({ file }: { file: LocalFile }) {
     </div>
   )
 }
-

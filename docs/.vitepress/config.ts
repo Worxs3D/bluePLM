@@ -28,6 +28,7 @@ export default defineConfig({
           { text: 'Overview', link: '/settings/' },
           { text: 'Account', link: '/settings/account' },
           { text: 'Organization', link: '/settings/organization' },
+          { text: 'Inspection Templates', link: '/settings/inspection-templates' },
           { text: 'Integrations', link: '/settings/integrations' },
         ]
       },

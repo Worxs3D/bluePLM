@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { log } from '@/lib/logger'
-import { getDrawingPdf, getVersionDependencyClosure } from '@/lib/supabase/reviews'
+import { getVersionDependencyClosure } from '@/lib/supabase/reviews'
 import type { ReviewPackageDraftItem } from '@/types/reviewPackageDraft'
 
-import { itemPreviewKind, summarizeClosure, type DependencySummary } from '../lib/itemInfo'
+import { summarizeClosure, type DependencySummary } from '../lib/itemInfo'
+import { loadPdfStatus, type PdfStatus } from '../lib/pdfStatus'
 
-export type PdfStatus = 'ready' | 'missing' | 'not_needed' | 'unknown'
+export type { PdfStatus } from '../lib/pdfStatus'
 
 export interface PackageItemInfo {
   dependencies: DependencySummary | null
@@ -22,16 +23,6 @@ export interface PackageItemInfo {
 
 /** Lookups run a few at a time so a 200-item package does not fire 400 requests at once. */
 const LOOKUP_CONCURRENCY = 4
-
-async function loadPdfStatus(item: ReviewPackageDraftItem): Promise<PdfStatus> {
-  if (itemPreviewKind(item.extension) !== 'drawing') return 'not_needed'
-  try {
-    return (await getDrawingPdf(item.fileVersionId)) ? 'ready' : 'missing'
-  } catch (error) {
-    log.warn('[ReviewPackage]', 'PDF status lookup failed', { error, fileVersionId: item.fileVersionId })
-    return 'unknown'
-  }
-}
 
 async function loadInfo(item: ReviewPackageDraftItem): Promise<PackageItemInfo> {
   const pdf = await loadPdfStatus(item)

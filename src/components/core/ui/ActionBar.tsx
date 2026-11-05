@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, Loader2, MoreHorizontal } from 'lucide-react'
+import { Loader2, MoreHorizontal } from 'lucide-react'
 
 import { useHostWindow } from '@/hooks/useHostWindow'
+
+import { MenuItem, MenuPanel } from './Menu'
 
 export interface ToolbarAction {
   id: string
@@ -144,31 +146,23 @@ export function ActionBar({
             <MoreHorizontal size={15} />
           </button>
           {menuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-lg border border-plm-border bg-plm-bg-light py-1 shadow-xl"
-            >
+            <MenuPanel className="right-0 top-full mt-1">
               {overflow.map((a) => (
-                <button
+                <MenuItem
                   key={a.id}
-                  type="button"
-                  role="menuitem"
-                  disabled={a.disabled || a.loading}
+                  label={a.label}
+                  icon={a.icon}
+                  disabled={a.disabled}
+                  loading={a.loading}
+                  checked={a.pressed}
                   title={a.title}
-                  onClick={() => {
+                  onSelect={() => {
                     setMenuOpen(false)
                     a.onClick()
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ui-fg hover:bg-ui-hover disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <span className="flex w-4 justify-center text-ui-fg-secondary">
-                    {a.loading ? <Loader2 size={13} className="animate-spin" /> : a.icon}
-                  </span>
-                  <span className="flex-1">{a.label}</span>
-                  {a.pressed && <Check size={13} className="text-ui-accent" />}
-                </button>
+                />
               ))}
-            </div>
+            </MenuPanel>
           )}
         </div>
       )}

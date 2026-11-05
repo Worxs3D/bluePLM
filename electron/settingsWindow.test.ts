@@ -5,7 +5,12 @@ vi.mock('electron', () => ({ BrowserWindow: class {}, screen: {} }))
 import { readFileSync } from 'fs'
 import path from 'path'
 
-import { isSettingsWindowRequest, restorableBounds, SETTINGS_WINDOW_FRAME } from './settingsWindow'
+import {
+  isSettingsWindowRequest,
+  restorableBounds,
+  SETTINGS_WINDOW_FRAME,
+  TITLE_BAR_HEIGHT,
+} from './settingsWindow'
 
 const PRIMARY = { x: 0, y: 0, width: 1920, height: 1040 }
 const RIGHT = { x: 1920, y: 0, width: 2560, height: 1400 }
@@ -17,6 +22,14 @@ describe('isSettingsWindowRequest', () => {
       'utf-8',
     )
     expect(renderer).toContain(`SETTINGS_WINDOW_FRAME = '${SETTINGS_WINDOW_FRAME}'`)
+  })
+
+  it('draws the window controls as tall as the title bar the renderer draws', () => {
+    const renderer = readFileSync(
+      path.resolve(__dirname, '../src/features/settings/components/settingsWindowLayout.ts'),
+      'utf-8',
+    )
+    expect(renderer).toContain(`SETTINGS_TITLE_BAR_HEIGHT = ${TITLE_BAR_HEIGHT}`)
   })
 
   it('lets only the empty settings page through', () => {

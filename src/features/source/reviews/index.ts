@@ -7,4 +7,6 @@
 
 export { ReviewsDashboard } from './ReviewsDashboard'
 export { ReviewDetailPane } from './detail/ReviewDetailPane'
+export { ReviewsMain } from './ReviewsMain'
+export { useReviewSummary } from './hooks/useReviewSummary'
 export { useReviewNotifications } from './hooks/useReviewNotifications'

@@ -1,104 +1,120 @@
 /**
- * One package review in the queue: title, first file at its pinned version, chips and progress.
- * Clicking opens it in the main area.
+ * One row of the review queue, package or workflow gate: title (gates: "Gate · file"), due date on
+ * the right, and one line saying whose move it is (`describeNextMove`), who asked and when. The
+ * row is an option of the queue's listbox; its checkbox sits outside the activating element.
  */
 
-import { memo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import { Package } from 'lucide-react'
+import { memo, type KeyboardEvent } from 'react'
+import { ShieldCheck } from 'lucide-react'
 
+import { ListRow, MetaLine } from '@/components/core/ui'
+import { displayFileName } from '@/hooks/useFileDisplayName'
 import { t } from '@/lib/i18n'
-import type { ReviewQueueRow } from '@/types/reviews'
+import type { ReviewQueueBucket, ReviewQueueRow } from '@/types/reviews'
 
-import { queueRowChips } from '../lib/queueChips'
-import { DueDateChip, PriorityChip, StatusChip } from './QueueChips'
+import {
+  isReviewOpen,
+  nextMoveForRow,
+  describeNextMove,
+  nextMoveTone,
+  displayName,
+} from '../lib/reviewState'
+import { relativeTime } from '../lib/reviewDates'
+import { DueText } from './DueText'
+
+export const TONE_CLASS: Record<ReturnType<typeof nextMoveTone>, string> = {
+  strong: 'text-ui-fg',
+  neutral: 'text-ui-fg-secondary',
+  warning: 'text-ui-warning',
+  danger: 'text-ui-danger',
+  success: 'text-ui-success',
+}
 
 interface QueueRowProps {
   row: ReviewQueueRow
-  today: string
+  bucket: ReviewQueueBucket
+  userId: string | null
+  /** Open in the main area. */
   active: boolean
-  selected: boolean
-  onOpen: (id: string) => void
-  onToggleSelected: (id: string) => void
+  checked: boolean
+  /** Show every checkbox (something is selected). */
+  checkboxesVisible: boolean
+  optionId: string
+  focusable: boolean
+  onOpen: (row: ReviewQueueRow) => void
+  onToggleChecked: (id: string) => void
+  onFocusRow: () => void
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }
 
 export const QueueRow = memo(function QueueRow({
   row,
-  today,
+  bucket,
+  userId,
   active,
-  selected,
+  checked,
+  checkboxesVisible,
+  optionId,
+  focusable,
   onOpen,
-  onToggleSelected,
+  onToggleChecked,
+  onFocusRow,
+  onKeyDown,
 }: QueueRowProps) {
-  const chips = queueRowChips(row, today)
-  const requester = row.requestedBy?.fullName || row.requestedBy?.email
+  const move = nextMoveForRow(row, userId, bucket)
+  const requester = displayName(row.requestedBy)
+  const open = isReviewOpen(row.status) || row.kind === 'gate'
+  const mine = !!userId && row.requestedBy?.id === userId
+  const title = row.kind === 'gate' && row.gate ? displayFileName(row.gate.fileName) : row.title
+
+  const parts: React.ReactNode[] = [
+    <span key="move" className={TONE_CLASS[nextMoveTone(move)]}>
+      {describeNextMove(move)}
+    </span>,
+  ]
+  if (row.kind === 'gate' && row.gate?.gateName)
+    parts.push(<span key="gate">{row.gate.gateName}</span>)
+  if (requester && !mine && row.kind === 'package') parts.push(<span key="who">{requester}</span>)
+  if (open && row.priority === 'urgent')
+    parts.push(
+      <span key="prio" className="text-ui-danger">
+        {t('reviewQueue.priority.urgent')}
+      </span>,
+    )
+  if (open && row.priority === 'high')
+    parts.push(
+      <span key="prio" className="text-ui-warning">
+        {t('reviewQueue.priority.high')}
+      </span>,
+    )
+
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(row.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onOpen(row.id)
-      }}
-      className={`rounded-md border p-2 cursor-pointer text-left transition-colors ${
-        active
-          ? 'border-plm-accent bg-plm-accent/10'
-          : 'border-plm-border bg-plm-bg-light hover:border-plm-border-light'
-      }`}
-    >
-      <div className="flex items-center gap-1.5">
-        <input
-          type="checkbox"
-          checked={selected}
-          onClick={(e) => e.stopPropagation()}
-          onChange={() => onToggleSelected(row.id)}
-          className="w-3 h-3"
-          aria-label={t('reviewQueue.select')}
-        />
-        <Package size={12} className="text-plm-accent flex-shrink-0" />
-        <span className="text-xs font-medium text-plm-fg truncate">{row.title}</span>
-        {row.itemsOwedByMe > 0 && (
-          <span className="ml-auto px-1.5 rounded-full bg-plm-accent/20 text-plm-accent text-[10px] font-semibold tabular-nums">
-            {row.itemsOwedByMe}
-          </span>
-        )}
-      </div>
-
-      {row.preview && (
-        <p className="mt-0.5 text-[10px] text-plm-fg-muted truncate">
-          {row.preview.fileName}
-          {row.preview.version != null && ` · v${row.preview.version}`}
-          {row.preview.revision && ` · ${t('reviewQueue.rev', { revision: row.preview.revision })}`}
-          {row.itemCount > 1 && ` ${t('reviewQueue.moreItems', { count: row.itemCount - 1 })}`}
-        </p>
-      )}
-
-      <div className="mt-1 flex flex-wrap items-center gap-1">
-        <StatusChip status={row.status} />
-        {chips.priority && <PriorityChip priority={chips.priority} />}
-        {chips.due && row.dueDate && <DueDateChip chip={chips.due} dueDate={row.dueDate} />}
-        {chips.progress && (
-          <span className="text-[10px] text-plm-fg-muted tabular-nums">
-            {t('reviewQueue.progress', {
-              decided: chips.progress.decided,
-              total: chips.progress.total,
-            })}
-          </span>
-        )}
-        {row.round != null && row.round > 1 && (
-          <span className="text-[10px] text-plm-fg-muted">
-            {t('reviewQueue.round', { round: row.round })}
-          </span>
-        )}
-      </div>
-
-      {(requester || row.requestedAt) && (
-        <p className="mt-0.5 text-[10px] text-plm-fg-muted/80 truncate">
-          {requester && t('reviewQueue.requestedBy', { name: requester })}
-          {row.requestedAt &&
-            ` · ${formatDistanceToNow(new Date(row.requestedAt), { addSuffix: true })}`}
-        </p>
-      )}
+    <div onFocus={onFocusRow}>
+      <ListRow
+        role="option"
+        id={optionId}
+        tabIndex={focusable ? 0 : -1}
+        selected={active}
+        onActivate={() => onOpen(row)}
+        onKeyDown={onKeyDown}
+        hint={
+          row.kind === 'gate'
+            ? row.gate?.filePath
+            : row.requestedAt
+              ? `${row.preview?.fileName ? displayFileName(row.preview.fileName) : row.title} · ${relativeTime(row.requestedAt)}`
+              : row.preview?.fileName && displayFileName(row.preview.fileName)
+        }
+        leading={row.kind === 'gate' ? <ShieldCheck size={14} /> : undefined}
+        title={title}
+        trailing={open ? <DueText dueDate={row.dueDate} overdue={row.overdue} /> : undefined}
+        secondary={<MetaLine parts={parts} />}
+        checkbox={{
+          checked,
+          onChange: () => onToggleChecked(row.id),
+          label: t('reviewQueue.select', { title }),
+          visible: checkboxesVisible,
+        }}
+      />
     </div>
   )
 })

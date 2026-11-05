@@ -805,7 +805,11 @@ export function TrashView() {
           `Permanently deleted ${result.deleted} file${result.deleted > 1 ? 's' : ''}`,
         )
       } else if (result.deleted > 0) {
-        addToast('warning', `Deleted ${result.deleted}/${total} files (${result.failed} failed)`)
+        // The first refusal says why (for example a version a released assembly still uses).
+        addToast(
+          'warning',
+          `Deleted ${result.deleted}/${total} files (${result.failed} failed). ${result.errors[0] ?? ''}`.trim(),
+        )
       } else {
         addToast('error', result.errors[0] || 'Failed to delete files')
       }

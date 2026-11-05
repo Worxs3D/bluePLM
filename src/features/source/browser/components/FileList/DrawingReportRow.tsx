@@ -7,8 +7,12 @@ import { formatDateTime } from '@/lib/utils/date'
 import { formatFileSize } from '@/lib/utils/format'
 import { log } from '@/lib/logger'
 import { usePDMStore, type LocalFile } from '@/stores/pdmStore'
-import { isChildSelected } from '@/features/source/outputs/preview/childPreviewModel'
-import { selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
+import {
+  activeChildTargets,
+  isChildSelected,
+  type ChildPreviewTarget,
+} from '@/features/source/outputs/preview/childPreviewModel'
+import { childClickMode, clickChildRow, selectChildRow } from '@/features/source/outputs/preview/selectChildRow'
 import type { InspectionReport, InspectionReportStatus } from '@/types/inspectionReports'
 
 import {
@@ -19,6 +23,7 @@ import {
   ParentMetadataText,
 } from './ChildRowParts'
 import { isParentMetadataColumn, outdatedReportVersion, reportHeads } from './childRowStatus'
+import { ChildSelectionMenu } from './ChildSelectionMenu'
 import { showReportInInspectionTab } from './showReportInInspectionTab'
 import { statusKey, statusTone } from '@/features/integrations/solidworks/inspection/reports/reportModel'
 import {
@@ -58,6 +63,8 @@ interface DrawingReportRowProps {
    * workbook, and the menu has Accept / Reject and Save returned workbook.
    */
   variant?: 'generated' | 'received'
+  /** The selectable child rows under a file, in list order (Shift-click ranges). */
+  childOrder: (filePath: string) => readonly ChildPreviewTarget[]
 }
 
 function errorText(err: unknown): string {
@@ -102,9 +109,10 @@ export const DrawingReportRow = memo(function DrawingReportRow({
   rowHeight,
   visibleColumns,
   variant = 'generated',
+  childOrder,
 }: DrawingReportRowProps) {
   const received = variant === 'received'
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; many?: readonly ChildPreviewTarget[] } | null>(null)
   const dialogs = useReportDialogs()
   const selected = usePDMStore((s) => isChildSelected(s.childSelection, s.selectedFiles, `report:${report.id}`))
   const siblings = usePDMStore((s) => (file.pdmData?.id ? s.drawingInspectionReports.get(file.pdmData.id) : undefined))
@@ -141,6 +149,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
         received && report.returnedAt
           ? t('source.inspection.rptReturnedOn', { date: formatDateTime(report.returnedAt) })
           : null,
+        report.workingCopy ? t('source.inspection.rptWorkingCopyTitle', { version: versionNumber ?? '' }) : null,
         reportTypeName(report),
         reportTypeDetail(report, () => null),
         report.title || report.templateName,
@@ -158,7 +167,7 @@ export const DrawingReportRow = memo(function DrawingReportRow({
         style={{ height: rowHeight }}
         onClick={(e) => {
           e.stopPropagation()
-          if (target && e.detail < 2) selectChildRow(target)
+          if (target && e.detail < 2) clickChildRow(target, childClickMode(e), () => childOrder(file.path))
         }}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -168,6 +177,13 @@ export const DrawingReportRow = memo(function DrawingReportRow({
         onContextMenu={(e) => {
           e.preventDefault()
           e.stopPropagation()
+          // A right-click inside a selection of several keeps it and offers what applies to all.
+          const s = usePDMStore.getState()
+          const many = selected ? activeChildTargets(s.childSelection, s.selectedFiles) : []
+          if (many.length > 1) {
+            setMenu({ x: e.clientX, y: e.clientY, many })
+            return
+          }
           if (target) selectChildRow(target, { reveal: false })
           setMenu({ x: e.clientX, y: e.clientY })
         }}
@@ -203,6 +219,11 @@ export const DrawingReportRow = memo(function DrawingReportRow({
                 // Type and status go after the name only when their columns are hidden.
                 after={
                   <>
+                    {report.workingCopy && (
+                      <ChildChip title={t('source.inspection.rptWorkingCopyTitle', { version: versionNumber ?? '' })}>
+                        {t('source.inspection.rptWorkingCopyBadge')}
+                      </ChildChip>
+                    )}
                     {results && <ChildChip title={results}>{results}</ChildChip>}
                     {!showsType && typeChip}
                     {!showsState && statusBadge}
@@ -225,7 +246,10 @@ export const DrawingReportRow = memo(function DrawingReportRow({
           </td>
         ))}
       </tr>
-      {menu && (
+      {menu?.many && (
+        <ChildSelectionMenu file={file} targets={menu.many} position={menu} onClose={() => setMenu(null)} />
+      )}
+      {menu && !menu.many && (
         <ReportMenu
           file={file}
           report={report}

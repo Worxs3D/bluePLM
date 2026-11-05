@@ -1,166 +1,80 @@
 /**
- * CommentThread - Renders a top-level annotation with its threaded replies.
+ * CommentThread - one comment on the drawing with its replies.
  *
- * Each thread root shows:
- *   - User avatar (or initials fallback), name, relative timestamp
- *   - Comment text
- *   - Page number badge
- *   - Resolved status (checkmark + "Resolved by X")
- *   - Action bar: Reply, Edit (own), Delete (own), Resolve/Unresolve
- *
- * Replies are nested below the root with a left border for visual threading.
- * The reply input appears inline when "Reply" is clicked.
- *
- * Uses date-fns `formatDistanceToNow` for human-friendly timestamps.
+ * The root shows its pin number (the same number drawn on the PDF), who wrote it, when, and the
+ * page; then the text and a line of actions: Reply, Resolve or Reopen (for whoever may), and Edit /
+ * Delete on the viewer's own comments. Replies sit under it, indented. Clicking the thread asks
+ * the viewer to scroll to its box.
  */
 
 import { useState, useCallback, useMemo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import {
-  MessageSquare,
-  Pencil,
-  Trash2,
-  CheckCircle2,
-  Circle,
-  CornerDownRight,
-  Loader2,
-  MapPin,
-} from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
+
+import { Button, MetaLine } from '@/components/core/ui'
+import { relativeTime } from '@/features/source/reviews/lib/reviewDates'
 import { t } from '@/lib/i18n'
 import type { FileAnnotation } from '@/types/database'
+
 import { CommentInput } from './CommentInput'
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface CommentThreadProps {
-  /** The top-level annotation (with nested `replies`) */
+  /** The top-level comment (with nested `replies`). */
   annotation: FileAnnotation
-  /** ID of the currently logged-in user (for edit/delete gating) */
+  /** The signed-in user (edit and delete their own). */
   currentUserId: string | null
-  /** Whether this thread is the "active" / highlighted one */
+  /** Its pin number on the drawing. */
+  number?: number
   isActive?: boolean
-  /** Whether the PDF box or this comment is being hovered (bidirectional) */
+  /** The PDF box or this thread is hovered (both ways). */
   isHovered?: boolean
-  /** Called when the user clicks the thread (to scroll PDF to its position) */
   onClick?: () => void
-  /** Called when user submits a reply */
   onReply: (parentId: string, text: string) => Promise<void>
-  /** Called when user edits a comment */
   onEdit: (annotationId: string, newText: string) => Promise<void>
-  /** Called when user deletes a comment (after confirmation) */
   onDelete: (annotationId: string) => Promise<void>
-  /** Called when user resolves a thread */
   onResolve: (annotationId: string) => Promise<void>
-  /** Called when user unresolves a thread */
   onUnresolve: (annotationId: string) => Promise<void>
-  /** Called when mouse enters/leaves this thread (for bidirectional hover) */
   onHoverChange?: (isHovered: boolean) => void
-  /** Show the thread only: no reply, edit, delete or resolve (an earlier review round) */
+  /** No reply, edit or delete (an earlier round, or a closed review). */
   readOnly?: boolean
+  /** Resolve / Reopen is offered (canResolveThread); independent of `readOnly`. */
+  canResolve?: boolean
+  /** The name of whoever resolved it, when known. */
+  resolvedByName?: string | null
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Get display name from annotation user data */
-function getDisplayName(user?: FileAnnotation['user']): string {
+function displayName(user?: FileAnnotation['user']): string {
   if (!user) return t('markups.unknownUser')
   return user.full_name || user.email || t('markups.unknownUser')
 }
 
-/** Get initials from a display name (for avatar fallback) */
-function getInitials(name: string): string {
-  return name
-    .split(/[\s@]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-}
+const ACTION =
+  'rounded px-1 -mx-1 text-[12px] text-ui-fg-secondary hover:text-ui-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50 disabled:opacity-50'
 
-/** Format a timestamp as relative distance (e.g. "2 hours ago") */
-function formatTimestamp(dateStr: string): string {
-  try {
-    return formatDistanceToNow(new Date(dateStr), { addSuffix: true })
-  } catch {
-    return dateStr
-  }
-}
-
-// ============================================================================
-// Avatar Sub-component
-// ============================================================================
-
-function UserAvatar({ user, size = 24 }: { user?: FileAnnotation['user']; size?: number }) {
-  const name = getDisplayName(user)
-  const initials = getInitials(name)
-
-  if (user?.avatar_url) {
-    return (
-      <img
-        src={user.avatar_url}
-        alt={name}
-        className="rounded-full flex-shrink-0 object-cover"
-        style={{ width: size, height: size }}
-        onError={(e) => {
-          ;(e.target as HTMLImageElement).style.display = 'none'
-        }}
-      />
-    )
-  }
-
-  return (
-    <div
-      className="rounded-full flex-shrink-0 bg-plm-accent/20 text-plm-accent flex items-center justify-center text-[10px] font-semibold select-none"
-      style={{ width: size, height: size }}
-      aria-hidden="true"
-    >
-      {initials}
-    </div>
-  )
-}
-
-// ============================================================================
-// Single Comment Bubble
-// ============================================================================
-
-interface CommentBubbleProps {
-  annotation: FileAnnotation
-  currentUserId: string | null
-  isRoot: boolean
-  onReply?: () => void
-  onEdit: (annotationId: string, newText: string) => Promise<void>
-  onDelete: (annotationId: string) => Promise<void>
-  onResolve?: (annotationId: string) => Promise<void>
-  onUnresolve?: (annotationId: string) => Promise<void>
-}
-
-function CommentBubble({
+function CommentBody({
   annotation,
   currentUserId,
   isRoot,
-  onReply,
+  header,
+  actions,
   onEdit,
   onDelete,
-  onResolve,
-  onUnresolve,
-}: CommentBubbleProps) {
+}: {
+  annotation: FileAnnotation
+  currentUserId: string | null
+  isRoot: boolean
+  header?: React.ReactNode
+  actions?: React.ReactNode
+  onEdit: (annotationId: string, newText: string) => Promise<void>
+  onDelete: (annotationId: string) => Promise<void>
+}) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(annotation.comment)
   const [isSaving, setIsSaving] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isResolving, setIsResolving] = useState(false)
+  const own = currentUserId != null && annotation.user_id === currentUserId
 
-  const isOwnComment = currentUserId != null && annotation.user_id === currentUserId
-  const displayName = getDisplayName(annotation.user)
-  const timestamp = formatTimestamp(annotation.created_at)
-  const isResolved = annotation.resolved
-
-  const handleSaveEdit = useCallback(async () => {
+  const save = useCallback(async () => {
     const trimmed = editText.trim()
     if (!trimmed || trimmed === annotation.comment) {
       setIsEditing(false)
@@ -176,66 +90,50 @@ function CommentBubble({
     }
   }, [editText, annotation.id, annotation.comment, onEdit])
 
-  const handleDelete = useCallback(async () => {
+  const remove = useCallback(async () => {
     setIsDeleting(true)
     try {
       await onDelete(annotation.id)
     } finally {
       setIsDeleting(false)
-      setShowDeleteConfirm(false)
+      setConfirmDelete(false)
     }
   }, [annotation.id, onDelete])
 
-  const handleResolveToggle = useCallback(async () => {
-    setIsResolving(true)
-    try {
-      if (isResolved) {
-        await onUnresolve?.(annotation.id)
-      } else {
-        await onResolve?.(annotation.id)
-      }
-    } finally {
-      setIsResolving(false)
-    }
-  }, [annotation.id, isResolved, onResolve, onUnresolve])
-
   return (
-    <div className={`group ${isResolved && isRoot ? 'opacity-60' : ''}`}>
-      {/* Header: avatar + name + timestamp */}
-      <div className="flex items-center gap-2 mb-1">
-        <UserAvatar user={annotation.user} size={isRoot ? 24 : 20} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-plm-fg truncate">{displayName}</span>
-            <span className="text-[10px] text-plm-fg-muted flex-shrink-0">{timestamp}</span>
-            {annotation.edited_at && (
-              <span className="text-[10px] text-plm-fg-muted/60 italic flex-shrink-0">
-                {t('markups.edited')}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Resolved badge (root only) */}
-        {isRoot && isResolved && (
-          <div className="flex items-center gap-1 text-[10px] text-plm-success flex-shrink-0">
-            <CheckCircle2 size={12} />
-            <span>{t('markups.resolved')}</span>
-          </div>
-        )}
+    <div className="group/comment min-w-0">
+      {/* A narrow column wraps the time and page under the name instead of cutting the name. */}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px] text-ui-fg-secondary">
+        {header}
+        <span className="max-w-full truncate text-[13px] font-medium text-ui-fg">
+          {displayName(annotation.user)}
+        </span>
+        {/* One line of parts, so a wrapped line never starts with a dot. */}
+        <MetaLine
+          className="min-w-0"
+          parts={[
+            relativeTime(annotation.created_at),
+            annotation.edited_at && (
+              <span className="text-ui-fg-tertiary">{t('markups.edited')}</span>
+            ),
+            isRoot &&
+              annotation.page_number != null &&
+              t('markups.page', { page: annotation.page_number }),
+          ]}
+        />
       </div>
 
-      {/* Comment body or edit mode */}
       {isEditing ? (
-        <div className="ml-8">
+        <div className="mt-1" onClick={(e) => e.stopPropagation()}>
           <textarea
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                handleSaveEdit()
+                void save()
               } else if (e.key === 'Escape') {
+                e.stopPropagation()
                 setIsEditing(false)
                 setEditText(annotation.comment)
               }
@@ -243,128 +141,89 @@ function CommentBubble({
             disabled={isSaving}
             autoFocus
             rows={2}
-            className="w-full resize-none bg-plm-panel border border-plm-border rounded px-2 py-1.5 text-xs text-plm-fg focus:outline-none focus:ring-1 focus:ring-plm-accent disabled:opacity-50"
+            className="w-full resize-none rounded-lg border border-ui-field-border bg-ui-field px-2.5 py-1.5 text-[13px] text-ui-fg outline-none focus:border-ui-accent/70 focus:ring-2 focus:ring-ui-accent/25 disabled:opacity-50"
           />
-          <div className="flex gap-1 mt-1">
-            <button
-              onClick={handleSaveEdit}
-              disabled={isSaving || editText.trim().length === 0}
-              className="px-2 py-0.5 text-[10px] rounded bg-plm-accent text-white hover:bg-plm-accent/90 disabled:opacity-40"
-            >
-              {isSaving ? t('markups.saving') : t('markups.save')}
-            </button>
-            <button
+          <div className="mt-1 flex justify-end gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={isSaving}
               onClick={() => {
                 setIsEditing(false)
                 setEditText(annotation.comment)
               }}
-              disabled={isSaving}
-              className="px-2 py-0.5 text-[10px] rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light"
             >
               {t('markups.cancel')}
-            </button>
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              loading={isSaving}
+              disabled={editText.trim().length === 0}
+              onClick={() => void save()}
+            >
+              {t('markups.save')}
+            </Button>
           </div>
         </div>
       ) : (
         <div
-          className={`ml-8 text-xs text-plm-fg whitespace-pre-wrap break-words ${isResolved && isRoot ? 'line-through' : ''}`}
+          className={`mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-[1.45] ${
+            isRoot && annotation.resolved ? 'text-ui-fg-secondary' : 'text-ui-fg'
+          }`}
         >
           {annotation.comment}
         </div>
       )}
 
-      {/* Page indicator (root only) */}
-      {isRoot && annotation.page_number != null && (
-        <div className="ml-8 mt-1 flex items-center gap-1 text-[10px] text-plm-fg-muted">
-          <MapPin size={10} />
-          <span>{t('markups.page', { page: annotation.page_number })}</span>
-        </div>
-      )}
-
-      {/* Delete confirmation */}
-      {showDeleteConfirm && (
-        <div className="ml-8 mt-1.5 flex items-center gap-2 p-2 bg-plm-error/10 border border-plm-error/30 rounded text-xs">
-          <span className="text-plm-fg">{t('markups.deleteConfirm')}</span>
-          <button
-            onClick={handleDelete}
+      {confirmDelete && (
+        <div
+          className="mt-1.5 flex items-center gap-2 text-[13px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="flex-1 text-ui-fg">{t('markups.deleteConfirm')}</span>
+          <Button
+            size="sm"
+            variant="ghost"
             disabled={isDeleting}
-            className="px-2 py-0.5 rounded bg-plm-error text-white text-[10px] hover:bg-plm-error/90 disabled:opacity-50"
-          >
-            {isDeleting ? <Loader2 size={10} className="animate-spin" /> : t('markups.delete')}
-          </button>
-          <button
-            onClick={() => setShowDeleteConfirm(false)}
-            disabled={isDeleting}
-            className="px-2 py-0.5 rounded text-plm-fg-muted hover:text-plm-fg text-[10px]"
+            onClick={() => setConfirmDelete(false)}
           >
             {t('markups.cancel')}
-          </button>
+          </Button>
+          <Button size="sm" variant="danger" loading={isDeleting} onClick={() => void remove()}>
+            {t('markups.delete')}
+          </Button>
         </div>
       )}
 
-      {/* Actions */}
-      {!isEditing && !showDeleteConfirm && (
-        <div className="ml-8 mt-1 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Reply (root only) */}
-          {isRoot && onReply && (
-            <button
-              onClick={onReply}
-              className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-accent transition-colors"
-              aria-label={t('markups.replyAria')}
-            >
-              <CornerDownRight size={10} />
-              {t('markups.reply')}
-            </button>
-          )}
-
-          {/* Edit (own comments) */}
-          {isOwnComment && (
-            <button
-              onClick={() => {
-                setEditText(annotation.comment)
-                setIsEditing(true)
-              }}
-              className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-accent transition-colors"
-              aria-label={t('markups.editAria')}
-            >
-              <Pencil size={10} />
-              {t('markups.edit')}
-            </button>
-          )}
-
-          {/* Delete (own comments) */}
-          {isOwnComment && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-0.5 text-[10px] text-plm-fg-muted hover:text-plm-error transition-colors"
-              aria-label={t('markups.deleteAria')}
-            >
-              <Trash2 size={10} />
-              {t('markups.delete')}
-            </button>
-          )}
-
-          {/* Resolve / Unresolve (root only) */}
-          {isRoot && onResolve && onUnresolve && (
-            <button
-              onClick={handleResolveToggle}
-              disabled={isResolving}
-              className={`flex items-center gap-0.5 text-[10px] transition-colors disabled:opacity-50 ${
-                isResolved
-                  ? 'text-plm-success hover:text-plm-fg-muted'
-                  : 'text-plm-fg-muted hover:text-plm-success'
-              }`}
-              aria-label={isResolved ? t('markups.unresolveAria') : t('markups.resolveAria')}
-            >
-              {isResolving ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : isResolved ? (
-                <Circle size={10} />
-              ) : (
-                <CheckCircle2 size={10} />
-              )}
-              {isResolved ? t('markups.unresolve') : t('markups.resolve')}
-            </button>
+      {!isEditing && !confirmDelete && (actions || own) && (
+        <div
+          className="mt-1 flex flex-wrap items-center gap-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions}
+          {own && (
+            <span className="flex items-center gap-3 opacity-0 transition-opacity focus-within:opacity-100 group-hover/comment:opacity-100">
+              <button
+                type="button"
+                className={ACTION}
+                aria-label={t('markups.editAria')}
+                onClick={() => {
+                  setEditText(annotation.comment)
+                  setIsEditing(true)
+                }}
+              >
+                {t('markups.edit')}
+              </button>
+              <button
+                type="button"
+                className={`${ACTION} hover:text-ui-danger`}
+                aria-label={t('markups.deleteAria')}
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t('markups.delete')}
+              </button>
+            </span>
           )}
         </div>
       )}
@@ -372,13 +231,24 @@ function CommentBubble({
   )
 }
 
-// ============================================================================
-// Main Component
-// ============================================================================
+/** The pin number as a small filled circle, matching the box on the PDF. */
+export function ThreadNumber({ number, resolved }: { number: number; resolved: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center self-center rounded-full px-1 text-[11px] font-semibold tabular-nums text-white ${
+        resolved ? 'bg-ui-fg-tertiary' : 'bg-ui-accent'
+      }`}
+    >
+      {number}
+    </span>
+  )
+}
 
 export function CommentThread({
   annotation,
   currentUserId,
+  number,
   isActive = false,
   isHovered = false,
   onClick,
@@ -389,13 +259,16 @@ export function CommentThread({
   onUnresolve,
   onHoverChange,
   readOnly = false,
+  canResolve = false,
+  resolvedByName,
 }: CommentThreadProps) {
   const [showReplyInput, setShowReplyInput] = useState(false)
   const [isReplying, setIsReplying] = useState(false)
-
+  const [isResolving, setIsResolving] = useState(false)
   const replies = useMemo(() => annotation.replies ?? [], [annotation.replies])
+  const resolved = annotation.resolved
 
-  const handleReplySubmit = useCallback(
+  const submitReply = useCallback(
     async (text: string) => {
       setIsReplying(true)
       try {
@@ -408,54 +281,95 @@ export function CommentThread({
     [annotation.id, onReply],
   )
 
-  const borderClass = isActive
-    ? 'bg-plm-accent/10 border border-plm-accent/30'
-    : isHovered
-      ? 'bg-plm-accent/5 border border-plm-accent/20'
-      : 'hover:bg-plm-bg-light border border-transparent'
+  const toggleResolved = useCallback(async () => {
+    setIsResolving(true)
+    try {
+      if (resolved) await onUnresolve(annotation.id)
+      else await onResolve(annotation.id)
+    } finally {
+      setIsResolving(false)
+    }
+  }, [annotation.id, resolved, onResolve, onUnresolve])
+
+  const editorId = readOnly ? null : currentUserId
+  const rootActions = (
+    <>
+      {/* Who resolved it, then what can be done: one line under the comment. */}
+      {resolved && (
+        <span className="inline-flex items-center gap-1 text-[12px] text-ui-success">
+          <Check size={12} aria-hidden />
+          {resolvedByName
+            ? t('markups.resolvedBy', { name: resolvedByName })
+            : t('markups.resolved')}
+        </span>
+      )}
+      {!readOnly && (
+        <button
+          type="button"
+          className={ACTION}
+          aria-label={t('markups.replyAria')}
+          onClick={() => setShowReplyInput((v) => !v)}
+        >
+          {t('markups.reply')}
+        </button>
+      )}
+      {canResolve && (
+        <button
+          type="button"
+          className={ACTION}
+          disabled={isResolving}
+          aria-label={resolved ? t('markups.unresolveAria') : t('markups.resolveAria')}
+          onClick={() => void toggleResolved()}
+        >
+          {isResolving && <Loader2 size={11} className="mr-1 inline animate-spin" />}
+          {resolved ? t('markups.unresolve') : t('markups.resolve')}
+        </button>
+      )}
+    </>
+  )
 
   return (
     <div
-      className={`px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${borderClass}`}
+      className={`cursor-pointer px-3 py-2.5 outline-none transition-colors focus-visible:bg-ui-hover ${
+        isActive ? 'bg-ui-selected' : isHovered ? 'bg-ui-hover' : 'hover:bg-ui-hover'
+      }`}
       onClick={onClick}
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
       role="button"
       tabIndex={0}
+      aria-pressed={isActive}
       onKeyDown={(e) => {
-        // Only activate the thread when the wrapper itself is focused. Without this
-        // guard, Space/Enter typed in the nested reply or edit textareas bubble up
-        // here and get preventDefault()'d — which blocks spaces from being inserted.
+        // Only the thread itself: Space and Enter typed in a nested box must reach the box.
         if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick?.()
         }
       }}
-      aria-label={t(annotation.resolved ? 'markups.commentByResolved' : 'markups.commentBy', {
-        name: getDisplayName(annotation.user),
+      aria-label={t(resolved ? 'markups.commentByResolved' : 'markups.commentBy', {
+        name: displayName(annotation.user),
       })}
     >
-      {/* Root comment */}
-      <CommentBubble
+      <CommentBody
         annotation={annotation}
-        currentUserId={readOnly ? null : currentUserId}
+        currentUserId={editorId}
         isRoot
-        onReply={readOnly ? undefined : () => setShowReplyInput((prev) => !prev)}
+        header={
+          number !== undefined ? <ThreadNumber number={number} resolved={resolved} /> : undefined
+        }
+        actions={rootActions}
         onEdit={onEdit}
         onDelete={onDelete}
-        onResolve={readOnly ? undefined : onResolve}
-        onUnresolve={readOnly ? undefined : onUnresolve}
       />
 
-      {/* Replies */}
       {replies.length > 0 && (
-        <div className="ml-4 mt-2 pl-3 border-l-2 border-plm-border space-y-2.5">
+        <div className="mt-2 space-y-2 border-l border-ui-divider pl-3">
           {replies.map((reply) => (
-            <CommentBubble
+            <CommentBody
               key={reply.id}
               annotation={reply}
-              currentUserId={readOnly ? null : currentUserId}
+              currentUserId={editorId}
               isRoot={false}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -464,25 +378,14 @@ export function CommentThread({
         </div>
       )}
 
-      {/* Reply count summary */}
-      {replies.length > 0 && !showReplyInput && (
-        <div className="ml-8 mt-1.5 text-[10px] text-plm-fg-muted">
-          <MessageSquare size={10} className="inline mr-1" />
-          {replies.length === 1
-            ? t('markups.replyCountOne')
-            : t('markups.replyCount', { count: replies.length })}
-        </div>
-      )}
-
-      {/* Inline reply input */}
       {showReplyInput && !readOnly && (
         <div
-          className="ml-4 mt-2 pl-3 border-l-2 border-plm-accent/40"
+          className="mt-2 border-l border-ui-accent/50 pl-3"
           onClick={(e) => e.stopPropagation()}
         >
           <CommentInput
             placeholder={t('markups.replyPlaceholder')}
-            onSubmit={handleReplySubmit}
+            onSubmit={submitReply}
             onCancel={() => setShowReplyInput(false)}
             isLoading={isReplying}
             compact

@@ -25,6 +25,7 @@ module.exports = {
         'ui': {
           'bg': uiColor('bg'),
           'nav': uiColor('nav'),
+          'scrim': uiColor('scrim'),
           'field': uiColor('field'),
           'search': uiColor('search'),
           'field-border': uiColor('field-border'),

@@ -239,18 +239,21 @@ export function ApiSettings() {
             .eq('id', organization.id)
             .single()
 
-          if (fetchError) {
+          // Merge with current database settings only (local state may be stale, and writing it
+          // back would undo another key's change), so a failed read stops the write.
+          if (fetchError || !currentOrg) {
             log.error('[API]', 'Failed to fetch current settings', { error: fetchError })
+            throw fetchError ?? new Error('Organization settings not found')
           }
+          const newSettings = { ...(currentOrg.settings ?? {}), api_url: url }
 
-          // Merge with current database settings (not local state which may be stale)
-          const currentSettings = currentOrg?.settings || organization.settings || {}
-          const newSettings = { ...currentSettings, api_url: url }
-
-          const { error } = await db
+          const { data: written, error: writeError } = await db
             .from('organization')
             .update({ settings: newSettings })
             .eq('id', organization.id)
+            .select('settings')
+            .single()
+          const error = writeError ?? (written ? null : { message: 'no permission' })
 
           if (error) {
             log.error('[API]', 'Failed to save API URL to org', { error })

@@ -1,19 +1,23 @@
 /**
- * Context menu action components
+ * Context menu entry hooks: each returns the elements of the entries it owns (null where an
+ * entry does not apply) and the dialogs they open (`EntryHookResult`).
  */
-export { OpenActions } from './OpenActions'
-export { AssemblyActions } from './AssemblyActions'
-export { BulkAssemblyActions } from './BulkAssemblyActions'
-export { DuplicateActions } from './DuplicateActions'
-export { FileSystemActions } from './FileSystemActions'
-export { FolderVisibilityActions } from './FolderVisibilityActions'
-export { ClipboardActions } from './ClipboardActions'
-export { SyncActions } from './SyncActions'
-export { CheckoutActions } from './CheckoutActions'
-export { CollaborationActions } from './CollaborationActions'
-export { DeleteActions } from './DeleteActions'
-export { ExportActions } from './ExportActions'
-export { ExportMetadataTableActions } from './ExportMetadataTableActions'
+export { useOpenEntries } from './OpenActions'
+export { useAssemblyEntries } from './AssemblyActions'
+export { useBulkAssemblyEntries } from './BulkAssemblyActions'
+export { useDuplicateEntries } from './DuplicateActions'
+export { useFileSystemEntries } from './FileSystemActions'
+export { useFolderVisibilityEntries } from './FolderVisibilityActions'
+export { useClipboardEntries } from './ClipboardActions'
+export { useSyncEntries } from './SyncActions'
+export { useCheckoutEntries } from './CheckoutActions'
+export { useCollaborationEntries } from './CollaborationActions'
+export { useDeleteEntries } from './DeleteActions'
+export { useExportEntries } from './ExportActions'
+export { useExportTableEntries } from './ExportMetadataTableActions'
+export { useGenerateEntries, GenerateSubmenu } from './GenerateSubmenu'
+export { useGenerateOutputEntries } from './GenerateOutputActions'
+export { useReviewsEntries } from './ReviewsEntry'
 export { MetadataActions } from './MetadataActions'
 
 // Hooks and utilities

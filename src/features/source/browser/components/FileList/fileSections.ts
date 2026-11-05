@@ -4,8 +4,7 @@
  *
  * - Part or assembly: Configurations, Drawings (drawings that show it), Used in (assemblies that
  *   reference it; read when the section is first opened), Exports (STEP/IGES/STL, then Generate…).
- * - Drawing: its models (named by what they are: Part, Parts, Assembly, Assemblies, Parts &
- *   assemblies), Exports (PDF, DXF, STEP, then Generate…), Inspection reports, Received inspections.
+ * - Drawing: its models (Parent, or Parents for more than one), Exports (PDF, DXF, STEP, then Generate…), Inspection reports, Received inspections.
  *
  * Every section is open by default except Used in. A user's flip is kept per file path and section
  * in session state (`fileSectionToggles`). A section with nothing in it is not shown, except
@@ -39,24 +38,8 @@ export function fileSectionExpanded(
   return CLOSED_BY_DEFAULT.has(section) ? flipped : !flipped
 }
 
-/** What a drawing's models are, for the section's name. */
-export type ParentModelsKind = 'part' | 'parts' | 'assembly' | 'assemblies' | 'mixed'
-
-export function parentModelsKind(items: ReadonlyArray<Pick<DrawingRefItem, 'file_type' | 'file_path'>>): ParentModelsKind {
-  let parts = 0
-  let assemblies = 0
-  for (const item of items) {
-    const isAssembly = item.file_type === 'assembly' || /\.sldasm$/i.test(item.file_path)
-    if (isAssembly) assemblies++
-    else parts++
-  }
-  if (parts > 0 && assemblies > 0) return 'mixed'
-  if (assemblies > 0) return assemblies === 1 ? 'assembly' : 'assemblies'
-  return parts === 1 ? 'part' : 'parts'
-}
-
-/** The `source.outputs.*` key of a section's name. */
-export function fileSectionLabelKey(section: FileSectionId, parents?: ParentModelsKind): string {
+/** The `source.outputs.*` key of a section's name; `count` makes Parent singular for one model. */
+export function fileSectionLabelKey(section: FileSectionId, count?: number | null): string {
   switch (section) {
     case 'configurations':
       return 'source.outputs.sectionConfigurations'
@@ -71,18 +54,7 @@ export function fileSectionLabelKey(section: FileSectionId, parents?: ParentMode
     case 'received':
       return 'source.outputs.sectionReceived'
     case 'parents':
-      switch (parents ?? 'parts') {
-        case 'part':
-          return 'source.outputs.sectionPart'
-        case 'parts':
-          return 'source.outputs.sectionParts'
-        case 'assembly':
-          return 'source.outputs.sectionAssembly'
-        case 'assemblies':
-          return 'source.outputs.sectionAssemblies'
-        case 'mixed':
-          return 'source.outputs.sectionPartsAndAssemblies'
-      }
+      return count === 1 ? 'source.outputs.sectionParent' : 'source.outputs.sectionParents'
   }
 }
 

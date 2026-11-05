@@ -1,5 +1,7 @@
 /**
- * Checkout/checkin actions for context menu
+ * Checkout entries for the context menu: `checkout.checkOut`, `checkout.checkIn`,
+ * `checkout.discard`, `checkout.forceRelease`, `checkout.changeState` (a flyout) and
+ * `checkout.syncMetadata`.
  */
 import React, { useState } from 'react'
 import { ArrowDown, ArrowUp, Loader2, RefreshCw, Undo2, Unlock } from 'lucide-react'
@@ -18,22 +20,33 @@ import { ChangeStateSubmenu } from './ChangeStateSubmenu'
 import { isFileWriteInFlight } from '@/lib/metadata/writeInFlight'
 import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
 import { hasDesktop } from '@/lib/platform'
+import { useFlyout } from '../customizable/flyout'
+import type { EntryHookResult } from '../customizable/types'
+import { SubmenuArrow } from '../components/SubmenuArrow'
+import { confirmApproximateReleases } from '@/features/source/releases/approximateRelease'
 
-interface CheckoutActionsProps extends RefreshableActionProps {
+export interface CheckoutEntriesProps extends RefreshableActionProps {
   counts: SelectionCounts
   state: SelectionState
   syncedFilesInSelection: LocalFile[]
   handleCheckoutFolder: (folder: LocalFile) => void
   handleCheckinFolder: (folder: LocalFile) => void
   handleBulkStateChange: (files: LocalFile[], newState: string) => void
-  showStateSubmenu: boolean
-  setShowStateSubmenu: (show: boolean) => void
+  /** The Change State flyout's close timer (the shape `ChangeStateSubmenu` takes). */
   stateSubmenuTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>
   /** Keys of the metadata writes currently running - blocks operations on the files they touch */
   savingConfigsToSW?: ReadonlySet<string>
 }
 
-export function CheckoutActions({
+type CheckoutEntryId =
+  | 'checkout.checkOut'
+  | 'checkout.checkIn'
+  | 'checkout.discard'
+  | 'checkout.forceRelease'
+  | 'checkout.changeState'
+  | 'checkout.syncMetadata'
+
+export function useCheckoutEntries({
   contextFiles,
   multiSelect,
   firstFile,
@@ -45,20 +58,19 @@ export function CheckoutActions({
   handleCheckoutFolder,
   handleCheckinFolder,
   handleBulkStateChange,
-  showStateSubmenu,
-  setShowStateSubmenu,
   stateSubmenuTimeoutRef,
   savingConfigsToSW,
-}: CheckoutActionsProps) {
-  const { user, getEffectiveRole, hasPermission, addToast, solidworksIntegrationEnabled } = usePDMStore(
-    useShallow((s) => ({
-      user: s.user,
-      getEffectiveRole: s.getEffectiveRole,
-      hasPermission: s.hasPermission,
-      addToast: s.addToast,
-      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
-    })),
-  )
+}: CheckoutEntriesProps): EntryHookResult<CheckoutEntryId> {
+  const { user, getEffectiveRole, hasPermission, addToast, solidworksIntegrationEnabled } =
+    usePDMStore(
+      useShallow((s) => ({
+        user: s.user,
+        getEffectiveRole: s.getEffectiveRole,
+        hasPermission: s.hasPermission,
+        addToast: s.addToast,
+        solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
+      })),
+    )
   const { status, hasChecked: swStatusChecked } = useSolidWorksStatus()
   const [isSyncing, setIsSyncing] = useState(false)
   const heldFile = syncedFilesInSelection.length === 1 ? syncedFilesInSelection[0] : null
@@ -129,10 +141,17 @@ export function CheckoutActions({
     ? `Requires ${getPermissionRequirement('force-release')}`
     : ''
 
-  return (
-    <>
-      {/* Check Out - for synced files or folders */}
-      {!desktop ? null : state.allFolders && !multiSelect ? (
+  const syncMetadataFiles = syncMetadataEligibleFiles(
+    contextFiles,
+    multiSelect,
+    firstFile,
+    user,
+    desktop && solidworksIntegrationEnabled,
+  )
+
+  return {
+    entries: {
+      'checkout.checkOut': !desktop ? null : state.allFolders && !multiSelect ? (
         <div
           className={`context-menu-item ${checkoutDisabled ? 'disabled' : ''}`}
           onClick={() => {
@@ -192,268 +211,279 @@ export function CheckoutActions({
             </span>
           )}
         </div>
-      )}
-
-      {/* Check In - only for synced files */}
-      {desktop &&
-        state.anySynced &&
-        (state.allFolders && !multiSelect ? (
+      ),
+      'checkout.checkIn':
+        desktop && state.anySynced ? (
+          state.allFolders && !multiSelect ? (
+            <div
+              className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+              onClick={() => {
+                if (!canCheckin.allowed) {
+                  addToast('error', canCheckin.reason || getPermissionRequirement('checkin'))
+                  return
+                }
+                if (counts.checkinableCount === 0) return
+                if (isAnySaving(contextFiles)) {
+                  addToast('warning', 'Please wait - file metadata is being saved')
+                  return
+                }
+                handleCheckinFolder(firstFile)
+                onClose()
+              }}
+              title={checkinReason}
+            >
+              <ArrowUp
+                size={14}
+                className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
+              />
+              Check In {counts.checkinableCount > 0 ? `${counts.checkinableCount} files` : ''}
+              {!canCheckin.allowed && (
+                <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+              )}
+              {canCheckin.allowed && counts.checkinableCount === 0 && (
+                <span className="text-xs text-plm-fg-muted ml-auto">(none checked out)</span>
+              )}
+            </div>
+          ) : (
+            <div
+              className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+              onClick={() => {
+                if (!canCheckin.allowed) {
+                  addToast('error', canCheckin.reason || getPermissionRequirement('checkin'))
+                  return
+                }
+                if (state.allCheckedIn || counts.checkinableCount === 0 || !user) return
+                if (isAnySaving(contextFiles)) {
+                  addToast('warning', 'Please wait - file metadata is being saved')
+                  return
+                }
+                onClose()
+                executeCommand('checkin', { files: contextFiles }, { onRefresh })
+              }}
+              title={checkinReason}
+            >
+              <ArrowUp
+                size={14}
+                className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
+              />
+              Check In {multiSelect ? countLabel : ''}
+              {!canCheckin.allowed && (
+                <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+              )}
+              {canCheckin.allowed && state.allCheckedIn && (
+                <span className="text-xs text-plm-fg-muted ml-auto">(already in)</span>
+              )}
+              {canCheckin.allowed && !state.allCheckedIn && state.allCheckedOutByOthers && (
+                <span className="text-xs text-plm-fg-muted ml-auto">(by others)</span>
+              )}
+            </div>
+          )
+        ) : null,
+      'checkout.discard':
+        desktop && counts.checkinableCount > 0 ? (
           <div
-            className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+            className={`context-menu-item ${discardDisabled ? 'disabled' : 'text-plm-warning'}`}
             onClick={() => {
-              if (!canCheckin.allowed) {
-                addToast('error', canCheckin.reason || getPermissionRequirement('checkin'))
+              if (!canDiscard.allowed) {
+                addToast('error', canDiscard.reason || getPermissionRequirement('discard'))
                 return
               }
-              if (counts.checkinableCount === 0) return
               if (isAnySaving(contextFiles)) {
                 addToast('warning', 'Please wait - file metadata is being saved')
                 return
               }
-              handleCheckinFolder(firstFile)
               onClose()
+              executeCommand('discard', { files: contextFiles }, { onRefresh })
             }}
-            title={checkinReason}
+            title={
+              discardDisabled ? discardReason : 'Discard local changes and revert to server version'
+            }
           >
-            <ArrowUp
-              size={14}
-              className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
-            />
-            Check In {counts.checkinableCount > 0 ? `${counts.checkinableCount} files` : ''}
-            {!canCheckin.allowed && (
+            <Undo2 size={14} />
+            Discard Checkout {counts.checkinableCount > 1 ? `(${counts.checkinableCount})` : ''}
+            {!canDiscard.allowed && (
               <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
             )}
-            {canCheckin.allowed && counts.checkinableCount === 0 && (
-              <span className="text-xs text-plm-fg-muted ml-auto">(none checked out)</span>
-            )}
           </div>
-        ) : (
+        ) : null,
+      'checkout.forceRelease':
+        isAdmin && counts.checkedOutByOthersCount > 0 ? (
           <div
-            className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+            className={`context-menu-item ${forceReleaseDisabled ? 'disabled' : 'text-plm-error'}`}
             onClick={() => {
-              if (!canCheckin.allowed) {
-                addToast('error', canCheckin.reason || getPermissionRequirement('checkin'))
-                return
-              }
-              if (state.allCheckedIn || counts.checkinableCount === 0 || !user) return
-              if (isAnySaving(contextFiles)) {
-                addToast('warning', 'Please wait - file metadata is being saved')
+              if (!canForceRelease.allowed) {
+                addToast(
+                  'error',
+                  canForceRelease.reason || getPermissionRequirement('force-release'),
+                )
                 return
               }
               onClose()
-              executeCommand('checkin', { files: contextFiles }, { onRefresh })
+              executeCommand('force-release', { files: contextFiles }, { onRefresh })
             }}
-            title={checkinReason}
+            title={
+              forceReleaseDisabled
+                ? forceReleaseReason
+                : "Admin: Immediately release checkout. User's unsaved changes will be orphaned."
+            }
           >
-            <ArrowUp
-              size={14}
-              className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
-            />
-            Check In {multiSelect ? countLabel : ''}
-            {!canCheckin.allowed && (
+            <Unlock size={14} />
+            Force Release{' '}
+            {counts.checkedOutByOthersCount > 1 ? `(${counts.checkedOutByOthersCount})` : ''}
+            {!canForceRelease.allowed && (
               <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
             )}
-            {canCheckin.allowed && state.allCheckedIn && (
-              <span className="text-xs text-plm-fg-muted ml-auto">(already in)</span>
-            )}
-            {canCheckin.allowed && !state.allCheckedIn && state.allCheckedOutByOthers && (
-              <span className="text-xs text-plm-fg-muted ml-auto">(by others)</span>
-            )}
           </div>
-        ))}
-
-      {/* Discard Checkout - for files checked out by current user */}
-      {desktop && counts.checkinableCount > 0 && (
-        <div
-          className={`context-menu-item ${discardDisabled ? 'disabled' : 'text-plm-warning'}`}
-          onClick={() => {
-            if (!canDiscard.allowed) {
-              addToast('error', canDiscard.reason || getPermissionRequirement('discard'))
-              return
-            }
-            if (isAnySaving(contextFiles)) {
-              addToast('warning', 'Please wait - file metadata is being saved')
-              return
-            }
-            onClose()
-            executeCommand('discard', { files: contextFiles }, { onRefresh })
-          }}
-          title={
-            discardDisabled ? discardReason : 'Discard local changes and revert to server version'
-          }
-        >
-          <Undo2 size={14} />
-          Discard Checkout {counts.checkinableCount > 1 ? `(${counts.checkinableCount})` : ''}
-          {!canDiscard.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Admin: Force Release - for files checked out by others */}
-      {isAdmin && counts.checkedOutByOthersCount > 0 && (
-        <div
-          className={`context-menu-item ${forceReleaseDisabled ? 'disabled' : 'text-plm-error'}`}
-          onClick={() => {
-            if (!canForceRelease.allowed) {
-              addToast('error', canForceRelease.reason || getPermissionRequirement('force-release'))
-              return
-            }
-            onClose()
-            executeCommand('force-release', { files: contextFiles }, { onRefresh })
-          }}
-          title={
-            forceReleaseDisabled
-              ? forceReleaseReason
-              : "Admin: Immediately release checkout. User's unsaved changes will be orphaned."
-          }
-        >
-          <Unlock size={14} />
-          Force Release{' '}
-          {counts.checkedOutByOthersCount > 1 ? `(${counts.checkedOutByOthersCount})` : ''}
-          {!canForceRelease.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Change State - single file uses the workflow engine's available transitions */}
-      {workflowsOn && syncedFilesInSelection.length === 1 && (
-        <ChangeStateSubmenu
+        ) : null,
+      // Change State - single file uses the workflow engine's available transitions; a
+      // multi-select falls back to the legacy bulk state change
+      'checkout.changeState': !workflowsOn ? null : syncedFilesInSelection.length === 1 ? (
+        <ChangeStateEntry
           targetFile={syncedFilesInSelection[0]}
           onClose={onClose}
           onRefresh={onRefresh}
-          showStateSubmenu={showStateSubmenu}
-          setShowStateSubmenu={setShowStateSubmenu}
           stateSubmenuTimeoutRef={stateSubmenuTimeoutRef}
         />
-      )}
+      ) : syncedFilesInSelection.length > 1 ? (
+        <BulkChangeStateEntry
+          syncedFilesInSelection={syncedFilesInSelection}
+          onClose={onClose}
+          handleBulkStateChange={handleBulkStateChange}
+        />
+      ) : null,
+      // Sync SolidWorks Metadata - for SW files that are local-only OR checked out
+      'checkout.syncMetadata': syncMetadataFiles ? (
+        <SyncMetadataItem
+          eligibleFiles={syncMetadataFiles}
+          onClose={onClose}
+          onRefresh={onRefresh}
+          swServiceRunning={isSolidWorksUsable(status)}
+          swStatusChecked={swStatusChecked}
+          isSyncing={isSyncing}
+          setIsSyncing={setIsSyncing}
+        />
+      ) : null,
+    },
+  }
+}
 
-      {/* Change State - multi-select falls back to the legacy bulk state change */}
-      {workflowsOn && syncedFilesInSelection.length > 1 && (
-        <div
-          className="context-menu-item relative"
-          onMouseEnter={() => {
-            if (stateSubmenuTimeoutRef.current) {
-              clearTimeout(stateSubmenuTimeoutRef.current)
-            }
-            setShowStateSubmenu(true)
-          }}
-          onMouseLeave={() => {
-            stateSubmenuTimeoutRef.current = setTimeout(() => {
-              setShowStateSubmenu(false)
-            }, 150)
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            setShowStateSubmenu(!showStateSubmenu)
-          }}
-        >
-          <RefreshCw size={14} />
-          Change State
-          <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
-          {/* State Submenu */}
-          {showStateSubmenu && (
-            <ContextSubmenu
-              minWidth={160}
-              onMouseEnter={() => {
-                if (stateSubmenuTimeoutRef.current) {
-                  clearTimeout(stateSubmenuTimeoutRef.current)
-                }
-                setShowStateSubmenu(true)
-              }}
-              onMouseLeave={() => {
-                stateSubmenuTimeoutRef.current = setTimeout(() => {
-                  setShowStateSubmenu(false)
-                }, 150)
-              }}
-            >
-              {(['wip', 'in_review', 'released', 'obsolete'] as const).map((stateOption) => {
-                const stateColors: Record<string, string> = {
-                  wip: 'var(--plm-wip)',
-                  in_review: 'var(--plm-in-review)',
-                  released: 'var(--plm-released)',
-                  obsolete: 'var(--plm-obsolete)',
-                }
-                const stateLabels: Record<string, string> = {
-                  wip: 'Work in Progress',
-                  in_review: 'In Review',
-                  released: 'Released',
-                  obsolete: 'Obsolete',
-                }
-                return (
-                  <div
-                    key={stateOption}
-                    className="context-menu-item"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onClose()
-                      setShowStateSubmenu(false)
-                      handleBulkStateChange(syncedFilesInSelection, stateOption)
-                    }}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: stateColors[stateOption] }}
-                    />
-                    {stateLabels[stateOption]}
-                  </div>
-                )
-              })}
-            </ContextSubmenu>
-          )}
-        </div>
-      )}
-
-      {/* Sync SolidWorks Metadata - for SW files that are local-only OR checked out */}
-      <SyncMetadataItem
-        contextFiles={contextFiles}
-        multiSelect={multiSelect}
-        firstFile={firstFile}
-        onClose={onClose}
-        onRefresh={onRefresh}
-        user={user}
-        solidworksIntegrationEnabled={desktop && solidworksIntegrationEnabled}
-        swServiceRunning={isSolidWorksUsable(status)}
-        swStatusChecked={swStatusChecked}
-        isSyncing={isSyncing}
-        setIsSyncing={setIsSyncing}
-      />
-    </>
+/** Change State for one file: the workflow engine's transitions, in `ChangeStateSubmenu`. */
+function ChangeStateEntry({
+  targetFile,
+  onClose,
+  onRefresh,
+  stateSubmenuTimeoutRef,
+}: {
+  targetFile: LocalFile
+  onClose: () => void
+  onRefresh: (silent?: boolean) => void
+  stateSubmenuTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>
+}) {
+  const flyout = useFlyout('checkout.changeState')
+  return (
+    <ChangeStateSubmenu
+      targetFile={targetFile}
+      onClose={onClose}
+      onRefresh={onRefresh}
+      showStateSubmenu={flyout.isOpen}
+      setShowStateSubmenu={flyout.setOpen}
+      stateSubmenuTimeoutRef={stateSubmenuTimeoutRef}
+    />
   )
 }
 
+/** Change State for several files: the legacy bulk state change. */
+function BulkChangeStateEntry({
+  syncedFilesInSelection,
+  onClose,
+  handleBulkStateChange,
+}: {
+  syncedFilesInSelection: LocalFile[]
+  onClose: () => void
+  handleBulkStateChange: (files: LocalFile[], newState: string) => void
+}) {
+  const flyout = useFlyout('checkout.changeState')
+  return (
+    <div
+      className="context-menu-item relative"
+      onMouseEnter={flyout.onMouseEnter}
+      onMouseLeave={flyout.onMouseLeave}
+      onClick={(e) => {
+        e.stopPropagation()
+        flyout.toggle()
+      }}
+    >
+      <RefreshCw size={14} />
+      Change State
+      <SubmenuArrow />
+      {/* State Submenu */}
+      {flyout.isOpen && (
+        <ContextSubmenu
+          minWidth={160}
+          onMouseEnter={flyout.onMouseEnter}
+          onMouseLeave={flyout.onMouseLeave}
+        >
+          {(['wip', 'in_review', 'released', 'obsolete'] as const).map((stateOption) => {
+            const stateColors: Record<string, string> = {
+              wip: 'var(--plm-wip)',
+              in_review: 'var(--plm-in-review)',
+              released: 'var(--plm-released)',
+              obsolete: 'var(--plm-obsolete)',
+            }
+            const stateLabels: Record<string, string> = {
+              wip: 'Work in Progress',
+              in_review: 'In Review',
+              released: 'Released',
+              obsolete: 'Obsolete',
+            }
+            return (
+              <div
+                key={stateOption}
+                className="context-menu-item"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onClose()
+                  flyout.setOpen(false)
+                  // A release of assemblies or drawings whose references are approximate would not
+                  // freeze them (5.13.0): ask first.
+                  if (stateOption !== 'released') {
+                    handleBulkStateChange(syncedFilesInSelection, stateOption)
+                    return
+                  }
+                  void confirmApproximateReleases(syncedFilesInSelection).then((go) => {
+                    if (go) handleBulkStateChange(syncedFilesInSelection, stateOption)
+                  })
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: stateColors[stateOption] }}
+                />
+                {stateLabels[stateOption]}
+              </div>
+            )
+          })}
+        </ContextSubmenu>
+      )}
+    </div>
+  )
+}
+
+const SW_EXTENSIONS = ['.sldprt', '.sldasm', '.slddrw']
+
 /**
- * Sync Metadata menu item - shows for SW files that are:
+ * The files Sync Metadata acts on, or null when it does not show: SW files that are
  * - Local only (not synced to cloud yet), OR
  * - Checked out by current user
  */
-function SyncMetadataItem({
-  contextFiles,
-  multiSelect,
-  firstFile,
-  onClose,
-  onRefresh,
-  user,
-  solidworksIntegrationEnabled,
-  swServiceRunning,
-  swStatusChecked,
-  isSyncing,
-  setIsSyncing,
-}: {
-  contextFiles: LocalFile[]
-  multiSelect: boolean
-  firstFile: LocalFile
-  onClose: () => void
-  onRefresh: (silent?: boolean) => void
-  user: { id: string } | null
-  solidworksIntegrationEnabled: boolean
-  swServiceRunning: boolean
-  swStatusChecked: boolean
-  isSyncing: boolean
-  setIsSyncing: (v: boolean) => void
-}) {
-  const swExtensions = ['.sldprt', '.sldasm', '.slddrw']
+function syncMetadataEligibleFiles(
+  contextFiles: LocalFile[],
+  multiSelect: boolean,
+  firstFile: LocalFile,
+  user: { id: string } | null,
+  solidworksIntegrationEnabled: boolean,
+): LocalFile[] | null {
+  const swExtensions = SW_EXTENSIONS
   const ext = firstFile.extension?.toLowerCase() || ''
   const isSolidWorksFile = swExtensions.includes(ext)
 
@@ -489,10 +519,27 @@ function SyncMetadataItem({
     return isLocalOnly || isCheckedOutByMe
   })
 
-  if (eligibleFiles.length === 0) {
-    return null
-  }
+  return eligibleFiles.length === 0 ? null : eligibleFiles
+}
 
+/** Sync Metadata menu item, for the files `syncMetadataEligibleFiles` found. */
+function SyncMetadataItem({
+  eligibleFiles,
+  onClose,
+  onRefresh,
+  swServiceRunning,
+  swStatusChecked,
+  isSyncing,
+  setIsSyncing,
+}: {
+  eligibleFiles: LocalFile[]
+  onClose: () => void
+  onRefresh: (silent?: boolean) => void
+  swServiceRunning: boolean
+  swStatusChecked: boolean
+  isSyncing: boolean
+  setIsSyncing: (v: boolean) => void
+}) {
   const handleSyncMetadata = async () => {
     if (!swServiceRunning || isSyncing) return
 

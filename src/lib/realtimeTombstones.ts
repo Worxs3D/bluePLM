@@ -13,7 +13,10 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
-/** The tables 0502 writes tombstones for (the DO block in 0502_security_hardening.sql). */
+/**
+ * The tables tombstones are written for: the DO block in 0502_security_hardening.sql, plus
+ * `supply_order` (0513, an order delete).
+ */
 export const TOMBSTONE_TABLES = [
   'file',
   'folder',
@@ -26,6 +29,7 @@ export const TOMBSTONE_TABLES = [
   'org_installed_extension',
   'solidworks_license',
   'solidworks_license_assignment',
+  'supply_order',
 ] as const
 
 export type TombstoneTable = (typeof TOMBSTONE_TABLES)[number]

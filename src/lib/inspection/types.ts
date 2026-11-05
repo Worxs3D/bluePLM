@@ -122,6 +122,11 @@ export interface AppliedInspectionBalloons {
   kept?: number
   /** Nothing deleted, inserted or changed on the layer, so the drawing was not saved (1.29.0). */
   unchanged?: boolean
+  /**
+   * Kept balloons still where a pre-1.30.0 service put them (never moved by hand), moved to the
+   * laid-out position (service 1.30.0). Not counted in `kept`.
+   */
+  relaid?: number
   saved: boolean
 }
 

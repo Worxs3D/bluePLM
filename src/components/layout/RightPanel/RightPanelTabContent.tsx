@@ -14,6 +14,7 @@ import {
   type ChildPreviewTarget,
 } from '@/features/source/outputs/preview/childPreviewModel'
 import { VendorsTab } from '@/features/source/details/VendorsTab'
+import { FileOrdersTab } from '@/features/orders/FileOrdersTab'
 import { FileBox, Layers, File, Loader2, FilePen } from 'lucide-react'
 
 // Component to load OS icon for files
@@ -211,6 +212,8 @@ export function RightPanelTabContent({
       return <WhereUsedTab file={file} onNavigate={onNavigate} />
     case 'vendors':
       return <VendorsTab file={file} />
+    case 'orders':
+      return file.isDirectory ? null : <FileOrdersTab file={file} />
     case 'inspection':
       return ext === '.slddrw' ? <InspectionTab file={file} /> : null
     default:

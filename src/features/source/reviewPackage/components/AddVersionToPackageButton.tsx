@@ -1,11 +1,13 @@
 /**
- * "Add this version to review package" on one row of version history. Pins exactly that
- * `file_versions` row, so an older version can be sent for review on purpose.
+ * "Add to draft" on one row of version history. Pins exactly that `file_versions` row, so an
+ * older version can be sent for review on purpose. When the draft already holds the file at
+ * another version the button says "Use in draft" and swaps it.
  */
 
-import { PackagePlus } from 'lucide-react'
-
+import { Button } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
+import { usePDMStore } from '@/stores/pdmStore'
+import { selectReviewPackageDraft } from '@/stores/slices/reviewsSlice'
 import type { LocalFile } from '@/stores/types'
 
 import { addVersionToReviewPackage, type VersionRowForPackage } from '../addToPackage'
@@ -21,15 +23,27 @@ export function AddVersionToPackageButton({
   version,
   latestVersion,
 }: AddVersionToPackageButtonProps) {
+  const fileId = file.pdmData?.id
+  const inDraft = usePDMStore((s) =>
+    fileId ? (selectReviewPackageDraft(s).items.find((i) => i.fileId === fileId)?.version ?? null) : null,
+  )
+  if (inDraft === version.version) {
+    return <span className="px-2 text-[12px] text-ui-fg-secondary">{t('reviewBuilder.inDraft')}</span>
+  }
+  const swap = inDraft !== null
   return (
-    <button
-      type="button"
+    <Button
+      size="sm"
+      variant="ghost"
+      className="!h-6 !px-2 !text-[12px]"
       onClick={() => addVersionToReviewPackage(file, version, latestVersion)}
-      className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded bg-plm-accent/15 text-plm-accent hover:bg-plm-accent/25 transition-colors"
-      title={t('reviewBuilder.addVersion', { version: version.version })}
+      title={
+        swap
+          ? t('reviewBuilder.useVersion', { version: version.version, current: inDraft })
+          : t('reviewBuilder.addVersion', { version: version.version })
+      }
     >
-      <PackagePlus size={10} />
-      {t('reviewBuilder.addVersionShort')}
-    </button>
+      {swap ? t('reviewBuilder.useVersionShort') : t('reviewBuilder.addVersionShort')}
+    </Button>
   )
 }

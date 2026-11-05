@@ -40,6 +40,10 @@ interface InspectionTemplateRow {
   default_for?: string[] | null
   layout: Json
   archived_at: string | null
+  /** Schema 511. */
+  source_file_id?: string | null
+  source_path?: string | null
+  source_version?: number | null
   created_by: string | null
   created_at: string
   updated_by: string | null
@@ -47,7 +51,7 @@ interface InspectionTemplateRow {
 }
 
 const TEMPLATE_COLUMNS =
-  'id, org_id, name, description, storage_hash, file_size, original_filename, revision, is_default, report_types, default_for, layout, archived_at, created_by, created_at, updated_by, updated_at'
+  'id, org_id, name, description, storage_hash, file_size, original_filename, revision, is_default, report_types, default_for, layout, archived_at, source_file_id, source_path, source_version, created_by, created_at, updated_by, updated_at'
 
 function db(): SupabaseClient {
   return getSupabaseClient() as unknown as SupabaseClient
@@ -72,6 +76,9 @@ export function toInspectionTemplate(row: InspectionTemplateRow): InspectionTemp
     defaultFor: reportTypeList(row.default_for),
     layout: row.layout,
     archivedAt: row.archived_at,
+    sourceFileId: row.source_file_id ?? null,
+    sourcePath: row.source_path ?? null,
+    sourceVersion: row.source_version ?? null,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedBy: row.updated_by,
@@ -194,4 +201,41 @@ export async function deleteInspectionTemplate(id: string): Promise<void> {
   if (error) throw new Error(error.message)
   if (!data || data.length === 0)
     throw new Error('Template not found, or only an administrator can delete it')
+}
+
+/** What `inspection_template_sync_folder()` did (schema 511). */
+export interface TemplateFolderSyncResult {
+  /** A folder is set (its vault may have been deleted since). */
+  configured: boolean
+  /** `NOT_CONFIGURED`, `VAULT_NOT_FOUND` or `NO_VAULT_ACCESS` (nothing changed); null after a sync. */
+  skipped: 'NOT_CONFIGURED' | 'VAULT_NOT_FOUND' | 'NO_VAULT_ACCESS' | null
+  created: number
+  updated: number
+  restored: number
+  archived: number
+}
+
+/** True when a sync changed the library. */
+export function templateFolderSyncChanged(result: TemplateFolderSyncResult): boolean {
+  return result.created + result.updated + result.restored + result.archived > 0
+}
+
+/**
+ * Bring the organization's templates in step with its templates folder
+ * (`organization.settings.inspection_reports.templates_folder`): every checked-in .xlsx in the
+ * folder is a template at its latest version; one that left the folder is archived. Any member may
+ * run it; it changes workbooks only for a caller who can read the folder's vault.
+ */
+export async function syncInspectionTemplateFolder(): Promise<TemplateFolderSyncResult> {
+  const { data, error } = await db().rpc('inspection_template_sync_folder')
+  if (error) throw new Error(error.message)
+  const r = (data ?? {}) as Partial<TemplateFolderSyncResult>
+  return {
+    configured: r.configured === true,
+    skipped: r.skipped ?? null,
+    created: Number(r.created ?? 0),
+    updated: Number(r.updated ?? 0),
+    restored: Number(r.restored ?? 0),
+    archived: Number(r.archived ?? 0),
+  }
 }

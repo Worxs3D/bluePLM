@@ -245,6 +245,8 @@ export interface FileAnnotation {
   resolved_by: string | null
   resolved_at: string | null
   file_version: number | null
+  /** The review the comment was made in (schema 107); null for a comment on the file itself. */
+  review_id?: string | null
   edited_at: string | null
   created_at: string
   // Joined fields

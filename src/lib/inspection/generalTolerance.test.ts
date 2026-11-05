@@ -46,6 +46,7 @@ function rules(over: Partial<GeneralToleranceRules> = {}): GeneralToleranceRules
     linear: null,
     fractional: null,
     angular: null,
+    angularDecimal: [],
     iso2768: null,
     ...over,
   }
@@ -228,6 +229,113 @@ describe('parseGeneralTolerances: separate label and value notes', () => {
 
   it('does not join notes a line apart', () => {
     expect(parseGeneralTolerances([note('X.XX', 0.3, 0.05), note('±0.1', 0.34, 0.045)])).toBeNull()
+  })
+})
+
+describe('parseGeneralTolerances: LINEAR / ANGLE columns per decimal place', () => {
+  const places = (r: GeneralToleranceRules | null, kind: 'decimal' | 'angularDecimal') =>
+    r?.[kind].map((d) => [d.places, d.tolerance.value])
+  const LINEAR = [
+    [0, 0.2],
+    [1, 0.1],
+    [2, 0.05],
+  ]
+  const ANGLE = [
+    [0, 1],
+    [1, 0.5],
+    [2, 0.1],
+  ]
+
+  it('reads the block as one note, columns aligned with spaces', () => {
+    const text = [
+      'TOLERANCES SPECIFIED',
+      'PER DECIMAL PLACE',
+      'LINEAR      ANGLE',
+      'X. ±0.2     X. ±1',
+      'X.X ±0.1    X.X ±0.5',
+      'X.XX ±0.05  X.XX ±0.1',
+      'PROPRIETARY AND CONFIDENTIAL',
+    ].join('\n')
+    const r = parseGeneralTolerances([note(text)])
+    expect(places(r, 'decimal')).toEqual(LINEAR)
+    expect(places(r, 'angularDecimal')).toEqual(ANGLE)
+    expect(r?.angular).toBeNull()
+  })
+
+  it('reads the block as a grid of cells, labels and values in separate notes', () => {
+    const rows = [
+      ['X.', '±0.2', 'X.', '±1'],
+      ['X.X', '±0.1', 'X.X', '±0.5'],
+      ['X.XX', '±0.05', 'X.XX', '±0.1'],
+    ]
+    const notes = [
+      note('TOLERANCES SPECIFIED PER DECIMAL PLACE', 0.3, 0.06),
+      note('ANGLE', 0.33, 0.055),
+      note('LINEAR', 0.3, 0.055),
+      ...rows.flatMap(([l1, v1, l2, v2], i) => [
+        note(l2, 0.33, 0.05 - i * 0.004),
+        note(v2, 0.34, 0.05 - i * 0.004),
+        note(l1, 0.3, 0.05 - i * 0.004),
+        note(v1, 0.31, 0.05 - i * 0.004),
+      ]),
+      note('DRAWN', 0.4, 0.05),
+    ]
+    const r = parseGeneralTolerances(notes)
+    expect(places(r, 'decimal')).toEqual(LINEAR)
+    expect(places(r, 'angularDecimal')).toEqual(ANGLE)
+  })
+
+  it('keeps an ANGLE column note listed first out of the linear rules', () => {
+    const r = parseGeneralTolerances([
+      note('ANGLE\nX. ±1\nX.X ±0.5\nX.XX ±0.1', 0.33, 0.055),
+      note('LINEAR\nX. ±0.2\nX.X ±0.1\nX.XX ±0.05', 0.3, 0.055),
+    ])
+    expect(places(r, 'decimal')).toEqual(LINEAR)
+    expect(places(r, 'angularDecimal')).toEqual(ANGLE)
+  })
+
+  it('puts a row with one entry under the header it sits beneath', () => {
+    const text = ['LINEAR      ANGLE', 'X.X ±0.1    X.X ±0.5', 'X.XXX ±0.01', '            X.XX ±0.25'].join('\n')
+    const r = parseGeneralTolerances([note(text)])
+    expect(places(r, 'decimal')).toEqual([
+      [1, 0.1],
+      [3, 0.01],
+    ])
+    expect(places(r, 'angularDecimal')).toEqual([
+      [1, 0.5],
+      [2, 0.25],
+    ])
+  })
+
+  it('reads `X.` as whole numbers outside a table too', () => {
+    expect(places(parseGeneralTolerances([note('X. ±0.5\nX.X ±0.2')]), 'decimal')).toEqual([
+      [0, 0.5],
+      [1, 0.2],
+    ])
+  })
+
+  it('gives each value the rule for its column and number of decimal places', () => {
+    const text = ['LINEAR      ANGLE', 'X. ±0.2     X. ±1', 'X.X ±0.1    X.X ±0.5'].join('\n')
+    const r = parseGeneralTolerances([note(text)])
+    expect(generalToleranceFor(char({ nominal: '25' }), r, 'mm')).toMatchObject({
+      plus: '+0.2',
+      upper: '25.2',
+      lower: '24.8',
+      basis: { kind: 'decimal', places: 0 },
+    })
+    const angle = (nominal: string) => char({ nominal, unit: '°', subType: 'Angular' })
+    expect(generalToleranceFor(angle('90°'), r, 'mm')).toMatchObject({
+      plus: '+1°',
+      upper: '91°',
+      lower: '89°',
+      basis: { kind: 'angular', places: 0, tolerance: '1°' },
+    })
+    expect(generalToleranceFor(angle('30.5°'), r, 'mm')).toMatchObject({
+      plus: '+0.5°',
+      basis: { kind: 'angular', places: 1 },
+    })
+    // No 2-place angle rule and no single angular rule: untoleranced, never a linear rule.
+    expect(generalToleranceFor(angle('30.25°'), r, 'mm')).toBeNull()
   })
 })
 

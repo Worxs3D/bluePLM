@@ -25,8 +25,12 @@ import {
   Layers,
   Box,
 } from 'lucide-react'
+import { flushPendingReviewDecisions } from '@/lib/reviewDecisionFlush'
 import { usePDMStore } from '@/stores/pdmStore'
-import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
+import {
+  rightPaneLabelKey,
+  rightPaneShown as rightPaneShownSelector,
+} from '@/stores/slices/reviewsSlice'
 import { useShallow } from 'zustand/react/shallow'
 import { CommandSearch } from '@/features/search/command-search'
 import { UserProfileModal } from '@/features/settings/account'
@@ -38,6 +42,7 @@ import { OnlineUsersIndicator } from '@/components/shared/OnlineUsers'
 import { SolidWorksStatusIndicator } from '@/components/shared/SolidWorksStatusIndicator'
 import { getMachineId } from '@/lib/backup'
 import { log } from '@/lib/logger'
+import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
 import { BluePlmLogo } from '@/components/shared/BluePlmLogo'
 import { signupErrorText } from '@/lib/auth/signupRefusal'
@@ -107,11 +112,6 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     toggleSidebar,
     detailsPanelVisible,
     toggleDetailsPanel,
-    rightPanelVisible,
-    toggleRightPanel,
-    activeView,
-    reviewCommentsVisible,
-    toggleReviewComments,
     topbarConfig,
     setTopbarConfig,
     tabsEnabled,
@@ -133,11 +133,6 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
       toggleSidebar: s.toggleSidebar,
       detailsPanelVisible: s.detailsPanelVisible,
       toggleDetailsPanel: s.toggleDetailsPanel,
-      rightPanelVisible: s.rightPanelVisible,
-      toggleRightPanel: s.toggleRightPanel,
-      activeView: s.activeView,
-      reviewCommentsVisible: s.reviewCommentsVisible,
-      toggleReviewComments: s.toggleReviewComments,
       topbarConfig: s.topbarConfig,
       setTopbarConfig: s.setTopbarConfig,
       tabsEnabled: s.tabsEnabled,
@@ -146,12 +141,16 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
     })),
   )
 
-  // In the Reviews view the right pane is the comment sidebar beside the drawing,
-  // which has its own visibility flag; everywhere else it is the right panel. The
-  // review package pane sits in the right panel and goes first while it is showing.
-  const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
-  const rightPaneIsReviewComments = activeView === 'reviews' && !reviewPackagePaneShown
-  const rightPaneShown = rightPaneIsReviewComments ? reviewCommentsVisible : rightPanelVisible
+  // One right-hand slot per view, one toggle for it (`rightPaneContent` in reviewsSlice): the
+  // file tabs, a view's own panel, an open review's comment sidebar, or the review pane, which
+  // fills the slot when nothing else would. The tooltip names what it shows or hides.
+  const { rightPaneShown, rightPaneLabel, toggleRightPane } = usePDMStore(
+    useShallow((s) => ({
+      rightPaneShown: rightPaneShownSelector(s),
+      rightPaneLabel: rightPaneLabelKey(s),
+      toggleRightPane: s.toggleRightPane,
+    })),
+  )
 
   // Filter vaults based on impersonated user's access
   const effectiveVaultIds = getEffectiveVaultIds()
@@ -415,6 +414,8 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
   const handleSignOut = async () => {
     logAuth('Sign out clicked')
     log.info('[MenuBar]', 'Sign out clicked')
+    // Queued review decisions go out while this user is still signed in.
+    await flushPendingReviewDecisions()
     const { error } = await getBackend().auth.signOut()
     if (error) {
       log.error('[MenuBar]', 'Sign out error', { error: error.message })
@@ -679,7 +680,11 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                       ? 'text-plm-fg hover:bg-plm-bg-lighter'
                       : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
                   }`}
-                  title={`${sidebarVisible ? 'Hide' : 'Show'} Left Sidebar (Ctrl+B)`}
+                  title={t(sidebarVisible ? 'app.panelToggle.hideSidebar' : 'app.panelToggle.showSidebar')}
+                  aria-label={t(
+                    sidebarVisible ? 'app.panelToggle.hideSidebar' : 'app.panelToggle.showSidebar',
+                  )}
+                  aria-pressed={sidebarVisible}
                 >
                   <PanelLeft size={16} />
                 </button>
@@ -690,18 +695,26 @@ export function MenuBar({ minimal = false }: MenuBarProps) {
                       ? 'text-plm-fg hover:bg-plm-bg-lighter'
                       : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
                   }`}
-                  title={`${detailsPanelVisible ? 'Hide' : 'Show'} Bottom Panel (Ctrl+P)`}
+                  title={t(
+                    detailsPanelVisible ? 'app.panelToggle.hideBottom' : 'app.panelToggle.showBottom',
+                  )}
+                  aria-label={t(
+                    detailsPanelVisible ? 'app.panelToggle.hideBottom' : 'app.panelToggle.showBottom',
+                  )}
+                  aria-pressed={detailsPanelVisible}
                 >
                   <PanelBottom size={16} />
                 </button>
                 <button
-                  onClick={rightPaneIsReviewComments ? toggleReviewComments : toggleRightPanel}
+                  onClick={toggleRightPane}
                   className={`p-1.5 rounded transition-colors ${
                     rightPaneShown
                       ? 'text-plm-fg hover:bg-plm-bg-lighter'
                       : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-lighter'
                   }`}
-                  title={`${rightPaneShown ? 'Hide' : 'Show'} Right Sidebar`}
+                  title={t(rightPaneLabel)}
+                  aria-label={t(rightPaneLabel)}
+                  aria-pressed={rightPaneShown}
                 >
                   <PanelRight size={16} />
                 </button>

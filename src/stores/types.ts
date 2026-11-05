@@ -11,6 +11,7 @@ import type {
 } from '../types/nativeExtensions'
 import type { SettingsTab } from '../types/settings'
 import type { ShortcutOverrides } from '../lib/keybindings/bindings'
+import type { ContextMenuPrefsByOrg, UserContextMenuPrefs } from '../lib/contextMenu/types'
 import type {
   WorkflowTemplate,
   WorkflowState,
@@ -28,6 +29,7 @@ import type { DbUpgradeSlice } from './slices/dbUpgradeSlice'
 import type { ReviewsSlice } from './slices/reviewsSlice'
 import type { InspectionReportsSlice } from './slices/inspectionReportsSlice'
 import type { OutputsSlice } from './slices/outputsSlice'
+import type { OrdersSlice } from './slices/ordersSlice'
 import type { NewAnnotationData } from '../features/source/details/components/PdfAnnotationViewer'
 import type { FileAnnotation, ECO, Supplier } from '../types/database'
 import type { SolidWorksServiceStatus } from '../types/solidworks'
@@ -64,6 +66,8 @@ export type CoreSidebarView =
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
+  // Supply Chain - Orders
+  | 'orders'
   // Integrations
   | 'google-drive'
   // System
@@ -86,6 +90,7 @@ export type DetailsPanelTab =
   | 'whereused'
   | 'datacard'
   | 'vendors'
+  | 'orders'
   | 'inspection'
 export type PanelPosition = 'bottom' | 'right'
 export type ToastType = 'error' | 'success' | 'info' | 'warning' | 'progress' | 'update'
@@ -621,8 +626,8 @@ export interface UISlice {
 
   // Settings navigation
   /**
-   * Settings is open: its own window on the desktop, a floating panel on the web. Never a
-   * sidebar view.
+   * Settings is open: a modal over the app, or (desktop, after its pop-out button) a window of
+   * its own. Never a sidebar view.
    */
   settingsOpen: boolean
   /** Counts `openSettings` calls, so an open settings window comes to the front when asked again. */
@@ -753,6 +758,12 @@ export interface UISlice {
 export interface SettingsSlice {
   // State - Preview & Topbar
   cadPreviewMode: CadPreviewMode
+  /**
+   * The Preview tab shows a part or assembly in 3D from its stored STEP/STL export of the version
+   * on disk (instead of the embedded thumbnail). Off by default: tessellating holds the renderer
+   * thread, so it is the user's choice, kept across restarts.
+   */
+  modelPreview3d: boolean
   topbarConfig: {
     showFps: boolean
     showZoom: boolean
@@ -799,6 +810,11 @@ export interface SettingsSlice {
   shortcutOverrides: ShortcutOverrides
   /** Where the export shortcuts write on this computer; null exports next to each source file */
   quickExportFolder: string | null
+  /**
+   * The right-click menu layout this person chose, per organization (`orgKey`), on this computer.
+   * Sanitized on load; read through `useContextMenuLayout` / `effectiveLayout`.
+   */
+  contextMenuPrefs: ContextMenuPrefsByOrg
 
   // State - Tree Filtering
   hideCloudOnlyFolders: boolean // Hide folders containing only cloud (non-downloaded) files
@@ -862,6 +878,7 @@ export interface SettingsSlice {
 
   // Actions - Preview & Topbar
   setCadPreviewMode: (mode: CadPreviewMode) => void
+  setModelPreview3d: (on: boolean) => void
   setTopbarConfig: (config: Partial<SettingsSlice['topbarConfig']>) => void
 
   // Actions - SolidWorks
@@ -895,6 +912,8 @@ export interface SettingsSlice {
   /** Replaces every override (import). */
   replaceShortcutOverrides: (overrides: ShortcutOverrides) => void
   setQuickExportFolder: (folder: string | null) => void
+  /** Sets one organization's right-click menu prefs (`orgKey`); null removes them. */
+  setContextMenuPrefs: (orgKey: string, prefs: UserContextMenuPrefs | null) => void
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (enabled: boolean) => void
@@ -2092,6 +2111,7 @@ export type PDMStoreState = ToastsSlice &
   ReviewsSlice &
   InspectionReportsSlice &
   OutputsSlice &
+  OrdersSlice &
   DbUpgradeSlice
 
 // ============================================================================

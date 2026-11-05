@@ -1,4 +1,9 @@
-// src/features/source/context-menu/items/PDMItems.tsx
+/**
+ * The explorer tree's PDM entries: `sync.download`, `sync.getLatest`,
+ * `assembly.downloadReferenced`, `sync.firstCheckIn`, `checkout.checkOut`, `checkout.checkIn`,
+ * `checkout.discard`, `checkout.matchGhost`, `checkout.syncMetadata` and
+ * `collab.extractReferences`. BluePLM Web has no local vault, so there only Download applies.
+ */
 import { ArrowDown, ArrowUp, Undo2, RefreshCw, Network, FileSearch, Package2 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { hasDesktop } from '@/lib/platform'
@@ -16,8 +21,9 @@ import { checkOperationPermission, getPermissionRequirement } from '@/lib/permis
 import { getCheckoutOwnerLabel } from '@/lib/checkout/checkoutDisplay'
 import { SW_EXTENSIONS, ASSEMBLY_EXTENSIONS } from '../constants'
 import type { DialogName } from '../types'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface PDMItemsProps {
+export interface PDMEntriesProps {
   files: LocalFile[]
   contextFiles: LocalFile[]
   syncedFilesInSelection: LocalFile[]
@@ -44,7 +50,19 @@ interface PDMItemsProps {
   onRefresh: (silent?: boolean) => void
 }
 
-export function PDMItems({
+type PDMEntryId =
+  | 'sync.download'
+  | 'sync.getLatest'
+  | 'assembly.downloadReferenced'
+  | 'sync.firstCheckIn'
+  | 'checkout.checkOut'
+  | 'checkout.checkIn'
+  | 'checkout.discard'
+  | 'checkout.matchGhost'
+  | 'checkout.syncMetadata'
+  | 'collab.extractReferences'
+
+export function useTreePDMEntries({
   files,
   contextFiles,
   syncedFilesInSelection,
@@ -69,7 +87,7 @@ export function PDMItems({
   setMatchGhostCandidates,
   onClose,
   onRefresh,
-}: PDMItemsProps) {
+}: PDMEntriesProps): EntryHookResult<PDMEntryId> {
   const { hasPermission, addToast } = usePDMStore(
     useShallow((s) => ({
       hasPermission: s.hasPermission,
@@ -293,208 +311,217 @@ export function PDMItems({
   ) : null
 
   // BluePLM Web has no local vault: Download (a browser download) is the only PDM entry there.
-  if (!hasDesktop()) return downloadItem
+  const desktop = hasDesktop()
 
-  return (
-    <>
-      {downloadItem}
+  return {
+    entries: {
+      'sync.download': downloadItem,
 
-      {/* Get Latest - for outdated files (never mixed with cloud-only Download above) */}
-      {anyOutdated && (
+      // Get Latest - for outdated files (never mixed with cloud-only Download above)
+      'sync.getLatest':
+        desktop && anyOutdated ? (
+          <div
+            className={`context-menu-item ${!canGetLatest.allowed ? 'disabled' : ''}`}
+            onClick={handleGetLatest}
+            title={
+              !canGetLatest.allowed ? `Requires ${getPermissionRequirement('get-latest')}` : ''
+            }
+          >
+            <RefreshCw
+              size={14}
+              className={canGetLatest.allowed ? 'text-purple-400' : 'text-plm-fg-muted'}
+            />
+            {t('fileOps.getLatest', 'Get Latest')}{' '}
+            {outdatedFilesInSelection.length > 0 ? `(${outdatedFilesInSelection.length})` : ''}
+            {!canGetLatest.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
+
+      // Download Referenced Files - for single assembly files
+      'assembly.downloadReferenced':
+        desktop && isSingleAssembly ? (
+          <div
+            className={`context-menu-item ${!canDownload.allowed ? 'disabled' : ''}`}
+            onClick={handleDownloadReferencedFiles}
+            title={
+              !canDownload.allowed
+                ? `Requires ${getPermissionRequirement('download')}`
+                : 'Download this assembly and all its referenced parts, sub-assemblies, and drawings'
+            }
+          >
+            <Package2
+              size={14}
+              className={canDownload.allowed ? 'text-plm-success' : 'text-plm-fg-muted'}
+            />
+            Download Referenced Files
+            {!canDownload.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
+
+      // First Check In - for unsynced files
+      'sync.firstCheckIn':
+        desktop && anyUnsynced && !allCloudOnly ? (
+          <div
+            className={`context-menu-item ${syncDisabled ? 'disabled' : ''}`}
+            onClick={handleFirstCheckin}
+            title={syncReason}
+          >
+            <ArrowUp size={14} className={syncDisabled ? 'text-plm-fg-muted' : 'text-plm-info'} />
+            First Check In{' '}
+            {unsyncedFilesInSelection.length > 0
+              ? `${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}`
+              : countLabel}
+            {!canSync.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
+
+      // Check Out (always offered on the desktop; disabled with a reason when it cannot run)
+      'checkout.checkOut': desktop ? (
         <div
-          className={`context-menu-item ${!canGetLatest.allowed ? 'disabled' : ''}`}
-          onClick={handleGetLatest}
-          title={
-            !canGetLatest.allowed ? `Requires ${getPermissionRequirement('get-latest')}` : ''
-          }
-        >
-          <RefreshCw
-            size={14}
-            className={canGetLatest.allowed ? 'text-purple-400' : 'text-plm-fg-muted'}
-          />
-          {t('fileOps.getLatest', 'Get Latest')}{' '}
-          {outdatedFilesInSelection.length > 0 ? `(${outdatedFilesInSelection.length})` : ''}
-          {!canGetLatest.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Download Referenced Files - for single assembly files */}
-      {isSingleAssembly && (
-        <div
-          className={`context-menu-item ${!canDownload.allowed ? 'disabled' : ''}`}
-          onClick={handleDownloadReferencedFiles}
-          title={
-            !canDownload.allowed
-              ? `Requires ${getPermissionRequirement('download')}`
-              : 'Download this assembly and all its referenced parts, sub-assemblies, and drawings'
-          }
-        >
-          <Package2
-            size={14}
-            className={canDownload.allowed ? 'text-plm-success' : 'text-plm-fg-muted'}
-          />
-          Download Referenced Files
-          {!canDownload.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      <div className="context-menu-separator" />
-
-      {/* First Check In - for unsynced files */}
-      {anyUnsynced && !allCloudOnly && (
-        <div
-          className={`context-menu-item ${syncDisabled ? 'disabled' : ''}`}
-          onClick={handleFirstCheckin}
-          title={syncReason}
-        >
-          <ArrowUp size={14} className={syncDisabled ? 'text-plm-fg-muted' : 'text-plm-info'} />
-          First Check In{' '}
-          {unsyncedFilesInSelection.length > 0
-            ? `${unsyncedFilesInSelection.length} file${unsyncedFilesInSelection.length !== 1 ? 's' : ''}`
-            : countLabel}
-          {!canSync.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-
-      {/* Check Out */}
-      <div
-        className={`context-menu-item ${checkoutDisabled ? 'disabled' : ''}`}
-        onClick={() => {
-          if (checkoutDisabled) return
-          handleCheckout()
-        }}
-        title={checkoutReason}
-      >
-        <ArrowDown
-          size={14}
-          className={checkoutDisabled ? 'text-plm-fg-muted' : 'text-plm-warning'}
-        />
-        Check Out{' '}
-        {allFolders && !multiSelect && checkoutableCount > 0
-          ? `${checkoutableCount} files`
-          : countLabel}
-        {!canCheckout.allowed && (
-          <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-        )}
-        {canCheckout.allowed && !anySynced && (
-          <span className="text-xs text-plm-fg-muted ml-auto">(download first)</span>
-        )}
-        {canCheckout.allowed && anySynced && allCheckedOut && (
-          <span className="text-xs text-plm-fg-muted ml-auto">
-            {allCheckedOutByOthers ? '(by others)' : '(already out)'}
-          </span>
-        )}
-      </div>
-
-      {/* Check In - only for synced files that exist locally (not 'deleted') */}
-      {anySynced && (
-        <div
-          className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+          className={`context-menu-item ${checkoutDisabled ? 'disabled' : ''}`}
           onClick={() => {
-            if (checkinDisabled) return
-            handleCheckin()
+            if (checkoutDisabled) return
+            handleCheckout()
           }}
-          title={checkinReason}
+          title={checkoutReason}
         >
-          <ArrowUp
+          <ArrowDown
             size={14}
-            className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
+            className={checkoutDisabled ? 'text-plm-fg-muted' : 'text-plm-warning'}
           />
-          Check In{' '}
-          {allFolders && !multiSelect && checkinableCount > 0
-            ? `${checkinableCount} files`
+          Check Out{' '}
+          {allFolders && !multiSelect && checkoutableCount > 0
+            ? `${checkoutableCount} files`
             : countLabel}
-          {!canCheckin.allowed && (
+          {!canCheckout.allowed && (
             <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
           )}
-          {canCheckin.allowed && allCheckedIn && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(already in)</span>
+          {canCheckout.allowed && !anySynced && (
+            <span className="text-xs text-plm-fg-muted ml-auto">(download first)</span>
           )}
-          {canCheckin.allowed && !allCheckedIn && allCheckedOutByOthers && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(by others)</span>
+          {canCheckout.allowed && anySynced && allCheckedOut && (
+            <span className="text-xs text-plm-fg-muted ml-auto">
+              {allCheckedOutByOthers ? '(by others)' : '(already out)'}
+            </span>
           )}
         </div>
-      )}
+      ) : null,
 
-      {/* Discard Checkout - for files checked out by current user */}
-      {discardableCount > 0 && (
-        <div
-          className={`context-menu-item ${discardDisabled ? '' : 'text-plm-warning'} ${discardDisabled ? 'disabled' : ''}`}
-          onClick={handleDiscardCheckout}
-          title={
-            discardDisabled ? discardReason : 'Discard local changes and revert to server version'
-          }
-        >
-          <Undo2 size={14} />
-          Discard Checkout {discardableCount > 1 ? `(${discardableCount})` : ''}
-          {!canDiscard.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
+      // Check In - only for synced files that exist locally (not 'deleted')
+      'checkout.checkIn':
+        desktop && anySynced ? (
+          <div
+            className={`context-menu-item ${checkinDisabled ? 'disabled' : ''}`}
+            onClick={() => {
+              if (checkinDisabled) return
+              handleCheckin()
+            }}
+            title={checkinReason}
+          >
+            <ArrowUp
+              size={14}
+              className={checkinDisabled ? 'text-plm-fg-muted' : 'text-plm-success'}
+            />
+            Check In{' '}
+            {allFolders && !multiSelect && checkinableCount > 0
+              ? `${checkinableCount} files`
+              : countLabel}
+            {!canCheckin.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+            {canCheckin.allowed && allCheckedIn && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(already in)</span>
+            )}
+            {canCheckin.allowed && !allCheckedIn && allCheckedOutByOthers && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(by others)</span>
+            )}
+          </div>
+        ) : null,
 
-      {/* Match Ghost File - for single ghost file (deleted, checked out by me) */}
-      {singleGhostFile && (
-        <div
-          className="context-menu-item text-plm-info"
-          onClick={handleMatchGhostFile}
-          title="Match this missing server file to a renamed local file"
-        >
-          <FileSearch size={14} />
-          Match to Local File...
-        </div>
-      )}
+      // Discard Checkout - for files checked out by current user
+      'checkout.discard':
+        desktop && discardableCount > 0 ? (
+          <div
+            className={`context-menu-item ${discardDisabled ? '' : 'text-plm-warning'} ${discardDisabled ? 'disabled' : ''}`}
+            onClick={handleDiscardCheckout}
+            title={
+              discardDisabled ? discardReason : 'Discard local changes and revert to server version'
+            }
+          >
+            <Undo2 size={14} />
+            Discard Checkout {discardableCount > 1 ? `(${discardableCount})` : ''}
+            {!canDiscard.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
 
-      {/* Sync Metadata - for SW files checked out by current user */}
-      {checkedOutSwFiles.length > 0 && (
-        <div
-          className={`context-menu-item ${!canSyncMetadata.allowed ? 'disabled' : ''}`}
-          onClick={handleSyncMetadata}
-          title={
-            !canSyncMetadata.allowed
-              ? `Requires ${getPermissionRequirement('sync-metadata')}`
-              : 'Sync metadata between BluePLM and SolidWorks files'
-          }
-        >
-          <RefreshCw
-            size={14}
-            className={canSyncMetadata.allowed ? 'text-plm-accent' : 'text-plm-fg-muted'}
-          />
-          Sync Metadata {checkedOutSwFiles.length > 1 ? `(${checkedOutSwFiles.length} files)` : ''}
-          {!canSyncMetadata.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
+      // Match Ghost File - for single ghost file (deleted, checked out by me)
+      'checkout.matchGhost':
+        desktop && singleGhostFile ? (
+          <div
+            className="context-menu-item text-plm-info"
+            onClick={handleMatchGhostFile}
+            title="Match this missing server file to a renamed local file"
+          >
+            <FileSearch size={14} />
+            Match to Local File...
+          </div>
+        ) : null,
 
-      {/* Extract Assembly References - for synced assembly files */}
-      {syncedAssemblyFiles.length > 0 && (
-        <div
-          className={`context-menu-item ${!canExtractRefs.allowed ? 'disabled' : ''}`}
-          onClick={handleExtractReferences}
-          title={
-            !canExtractRefs.allowed
-              ? `Requires ${getPermissionRequirement('extract-references')}`
-              : 'Extract and store assembly component references to enable Contains/Where-Used queries'
-          }
-        >
-          <Network
-            size={14}
-            className={canExtractRefs.allowed ? 'text-plm-accent' : 'text-plm-fg-muted'}
-          />
-          Extract References{' '}
-          {syncedAssemblyFiles.length > 1 ? `(${syncedAssemblyFiles.length} assemblies)` : ''}
-          {!canExtractRefs.allowed && (
-            <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
-          )}
-        </div>
-      )}
-    </>
-  )
+      // Sync Metadata - for SW files checked out by current user
+      'checkout.syncMetadata':
+        desktop && checkedOutSwFiles.length > 0 ? (
+          <div
+            className={`context-menu-item ${!canSyncMetadata.allowed ? 'disabled' : ''}`}
+            onClick={handleSyncMetadata}
+            title={
+              !canSyncMetadata.allowed
+                ? `Requires ${getPermissionRequirement('sync-metadata')}`
+                : 'Sync metadata between BluePLM and SolidWorks files'
+            }
+          >
+            <RefreshCw
+              size={14}
+              className={canSyncMetadata.allowed ? 'text-plm-accent' : 'text-plm-fg-muted'}
+            />
+            Sync Metadata{' '}
+            {checkedOutSwFiles.length > 1 ? `(${checkedOutSwFiles.length} files)` : ''}
+            {!canSyncMetadata.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
+
+      // Extract Assembly References - for synced assembly files
+      'collab.extractReferences':
+        desktop && syncedAssemblyFiles.length > 0 ? (
+          <div
+            className={`context-menu-item ${!canExtractRefs.allowed ? 'disabled' : ''}`}
+            onClick={handleExtractReferences}
+            title={
+              !canExtractRefs.allowed
+                ? `Requires ${getPermissionRequirement('extract-references')}`
+                : 'Extract and store assembly component references to enable Contains/Where-Used queries'
+            }
+          >
+            <Network
+              size={14}
+              className={canExtractRefs.allowed ? 'text-plm-accent' : 'text-plm-fg-muted'}
+            />
+            Extract References{' '}
+            {syncedAssemblyFiles.length > 1 ? `(${syncedAssemblyFiles.length} assemblies)` : ''}
+            {!canExtractRefs.allowed && (
+              <span className="text-xs text-plm-fg-muted ml-auto">(no permission)</span>
+            )}
+          </div>
+        ) : null,
+    },
+  }
 }

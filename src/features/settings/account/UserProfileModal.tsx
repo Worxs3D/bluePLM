@@ -70,9 +70,10 @@ interface ECORecord {
   created_at: string
 }
 
-interface RFQRecord {
+/** An order this user created (`supply_order`); RFQs became quote orders in 5.13.0. */
+interface OrderRecord {
   id: string
-  rfq_number: string
+  order_number: string
   title: string | null
   status: string
   created_at: string
@@ -185,7 +186,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [actionFilter, setActionFilter] = useState<string | null>(null)
   const [userECOs, setUserECOs] = useState<ECORecord[]>([])
-  const [userRFQs, setUserRFQs] = useState<RFQRecord[]>([])
+  const [userOrders, setUserOrders] = useState<OrderRecord[]>([])
   const [totalContributions, setTotalContributions] = useState(0)
 
   const dateGrid = useMemo(() => generateDateGrid(), [])
@@ -300,17 +301,17 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
           setUserECOs(ecos)
         }
 
-        // Load RFQs
-        const { data: rfqs, error: rfqError } = await client
-          .from('rfq')
-          .select('id, rfq_number, title, status, created_at')
+        // Load orders (quote and purchase)
+        const { data: orders, error: orderError } = await client
+          .from('supply_order')
+          .select('id, order_number, title, status, created_at')
           .eq('org_id', organization.id)
           .eq('created_by', userId)
           .order('created_at', { ascending: false })
           .limit(5)
 
-        if (!rfqError && rfqs) {
-          setUserRFQs(rfqs)
+        if (!orderError && orders) {
+          setUserOrders(orders as OrderRecord[])
         }
       } catch (error) {
         log.error('[UserProfile]', 'Error loading user profile', { error: error })
@@ -747,7 +748,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                 )}
               </div>
 
-              {/* ECOs and RFQs side by side */}
+              {/* ECOs and orders side by side */}
               <div className="grid grid-cols-2 gap-4">
                 {/* ECOs */}
                 <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
@@ -784,34 +785,36 @@ export function UserProfileModal({ userId, onClose }: UserProfileModalProps) {
                   )}
                 </div>
 
-                {/* RFQs */}
+                {/* Orders */}
                 <div className="bg-ui-bg rounded-lg border border-ui-divider p-4">
                   <h3 className="text-[13px] font-medium text-ui-fg mb-3 flex items-center gap-2">
                     <ShoppingCart size={16} className="text-violet-400" />
-                    RFQs
+                    {t('orders.listLabel')}
                   </h3>
 
-                  {userRFQs.length === 0 ? (
-                    <div className="text-center py-4 text-ui-fg-secondary text-[13px]">No RFQs</div>
+                  {userOrders.length === 0 ? (
+                    <div className="text-center py-4 text-ui-fg-secondary text-[13px]">
+                      {t('orders.emptyTitle')}
+                    </div>
                   ) : (
                     <div className="space-y-2">
-                      {userRFQs.map((rfq) => (
+                      {userOrders.map((order) => (
                         <div
-                          key={rfq.id}
+                          key={order.id}
                           className="flex items-center gap-2 p-2 bg-ui-field rounded-lg"
                         >
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium text-ui-fg truncate">
-                              {rfq.rfq_number}
+                              {order.order_number}
                             </div>
                             <div className="text-[12px] text-ui-fg truncate">
-                              {rfq.title || formatDate(rfq.created_at)}
+                              {order.title || formatDate(order.created_at)}
                             </div>
                           </div>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[12px] ${getStatusColor(rfq.status)}`}
+                            className={`px-1.5 py-0.5 rounded text-[12px] ${getStatusColor(order.status)}`}
                           >
-                            {rfq.status.replace('_', ' ')}
+                            {t(`orders.status_${order.status}`)}
                           </span>
                         </div>
                       ))}

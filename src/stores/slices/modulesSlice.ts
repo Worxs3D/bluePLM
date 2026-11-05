@@ -7,9 +7,31 @@ import {
   MODULE_GROUPS,
   isModuleVisible,
   extractFromCombinedList,
-  mergeModuleOrder,
+  mergeModuleLayout,
+  type CustomGroup,
+  type SectionDivider,
 } from '../../types/modules'
 import { supabase } from '../../lib/supabase'
+
+/**
+ * The order, dividers and group headers of a saved org or team sidebar, with modules shipped
+ * since it was saved put back in their sections (`mergeModuleLayout`). No saved order: the app's.
+ */
+function savedModuleLayout(
+  saved: {
+    module_order?: ModuleId[] | null
+    dividers?: SectionDivider[] | null
+    custom_groups?: CustomGroup[] | null
+  },
+  appDefaults: ModuleConfig,
+): Pick<ModuleConfig, 'moduleOrder' | 'dividers' | 'customGroups'> {
+  const dividers = saved.dividers || appDefaults.dividers
+  const customGroups = saved.custom_groups || appDefaults.customGroups
+  if (!saved.module_order) {
+    return { moduleOrder: appDefaults.moduleOrder, dividers, customGroups }
+  }
+  return mergeModuleLayout({ moduleOrder: saved.module_order, dividers, customGroups })
+}
 
 export const createModulesSlice: StateCreator<
   PDMStoreState,
@@ -242,16 +264,12 @@ export const createModulesSlice: StateCreator<
         const moduleConfig: ModuleConfig = {
           enabledModules: { ...appDefaults.enabledModules, ...(defaults.enabled_modules || {}) },
           enabledGroups: { ...appDefaults.enabledGroups, ...(defaults.enabled_groups || {}) },
-          moduleOrder: defaults.module_order
-            ? mergeModuleOrder(defaults.module_order)
-            : appDefaults.moduleOrder,
-          dividers: defaults.dividers || appDefaults.dividers,
+          ...savedModuleLayout(defaults, appDefaults),
           moduleParents: { ...appDefaults.moduleParents, ...(defaults.module_parents || {}) },
           moduleIconColors: {
             ...appDefaults.moduleIconColors,
             ...(defaults.module_icon_colors || {}),
           },
-          customGroups: defaults.custom_groups || appDefaults.customGroups,
         }
         // Update config and track sync time
         set({ moduleConfig, moduleConfigLastSyncedAt: Date.now() })
@@ -341,13 +359,9 @@ export const createModulesSlice: StateCreator<
         const defaults: OrgModuleDefaults = {
           enabledModules: { ...appDefaults.enabledModules, ...(data.enabled_modules || {}) },
           enabledGroups: { ...appDefaults.enabledGroups, ...(data.enabled_groups || {}) },
-          moduleOrder: data.module_order
-            ? mergeModuleOrder(data.module_order)
-            : appDefaults.moduleOrder,
-          dividers: data.dividers || appDefaults.dividers,
+          ...savedModuleLayout(data, appDefaults),
           moduleParents: { ...appDefaults.moduleParents, ...(data.module_parents || {}) },
           moduleIconColors: { ...appDefaults.moduleIconColors, ...(data.module_icon_colors || {}) },
-          customGroups: data.custom_groups || appDefaults.customGroups,
         }
         return { success: true, defaults }
       }
@@ -413,13 +427,9 @@ export const createModulesSlice: StateCreator<
         const defaults: OrgModuleDefaults = {
           enabledModules: { ...appDefaults.enabledModules, ...(data.enabled_modules || {}) },
           enabledGroups: { ...appDefaults.enabledGroups, ...(data.enabled_groups || {}) },
-          moduleOrder: data.module_order
-            ? mergeModuleOrder(data.module_order)
-            : appDefaults.moduleOrder,
-          dividers: data.dividers || appDefaults.dividers,
+          ...savedModuleLayout(data, appDefaults),
           moduleParents: { ...appDefaults.moduleParents, ...(data.module_parents || {}) },
           moduleIconColors: { ...appDefaults.moduleIconColors, ...(data.module_icon_colors || {}) },
-          customGroups: data.custom_groups || appDefaults.customGroups,
         }
         return { success: true, defaults }
       }

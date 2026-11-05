@@ -88,13 +88,14 @@ import {
   unregisterArchiveHandlers,
   type ArchiveHandlerDependencies,
 } from './archive'
-import { registerRfqHandlers, unregisterRfqHandlers } from './rfq'
 import { registerReviewPackageHandlers, unregisterReviewPackageHandlers } from './reviewPackage'
 import {
   registerInspectionReportHandlers,
   unregisterInspectionReportHandlers,
 } from './inspectionReports'
 import { registerVersionOutputHandlers, unregisterVersionOutputHandlers } from './versionOutputs'
+import { registerVersionOpenHandlers, unregisterVersionOpenHandlers } from './versionOpen'
+import { registerOrderHandlers, unregisterOrderHandlers } from './orders'
 import {
   initThumbnailStore,
   registerThumbnailProtocol,
@@ -261,10 +262,11 @@ export function registerAllHandlers(mainWindow: BrowserWindow, deps: AllHandlerD
   registerExtensionHandlers(mainWindow, extensionHandlerDeps)
   registerDeepLinkHandlers(mainWindow, deepLinkHandlerDeps)
   registerArchiveHandlers(mainWindow, archiveHandlerDeps)
-  registerRfqHandlers(mainWindow, { log, logError })
   registerReviewPackageHandlers({ log, logError })
   registerInspectionReportHandlers(mainWindow, { log, logError })
   registerVersionOutputHandlers({ log, logError })
+  registerVersionOpenHandlers({ log, logError })
+  registerOrderHandlers({ log, logError })
   registerDbMigrationsHandlers(mainWindow, { log, logError })
 
   // Thumbnails are served over a custom scheme rather than IPC, so they are set
@@ -304,10 +306,11 @@ export function unregisterAllHandlers(): void {
   unregisterExtensionHandlers()
   unregisterDeepLinkHandlers()
   unregisterArchiveHandlers()
-  unregisterRfqHandlers()
   unregisterReviewPackageHandlers()
   unregisterInspectionReportHandlers()
   unregisterVersionOutputHandlers()
+  unregisterVersionOpenHandlers()
+  unregisterOrderHandlers()
   unregisterThumbnailProtocol()
   unregisterThumbnailIpcHandlers()
 }

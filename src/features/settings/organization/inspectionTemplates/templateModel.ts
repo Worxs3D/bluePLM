@@ -118,3 +118,28 @@ export function tokenReference(): TokenReferenceGroup[] {
     },
   ]
 }
+
+/**
+ * A templates folder path as the organization stores it (`organization.settings.inspection_reports
+ * .templates_folder.path`): relative to the vault root, forward slashes, no leading or trailing
+ * slash. Null for an empty path or one that is not inside the vault (`..`, a drive or a UNC path).
+ */
+export function normalizeFolderPath(input: string): string | null {
+  const raw = input.trim()
+  if (/^[a-z]:/i.test(raw) || /^[\\/]{2}/.test(raw)) return null
+  const parts = raw.replace(/\\/g, '/').split('/').map((p) => p.trim()).filter((p) => p !== '' && p !== '.')
+  if (parts.length === 0 || parts.some((p) => p === '..')) return null
+  return parts.join('/')
+}
+
+/**
+ * A folder picked on disk as a path relative to the vault's local root, or null when it is not
+ * inside it (or is the root itself). Case-insensitive, as Windows paths are.
+ */
+export function folderRelativeToVault(vaultRoot: string, picked: string): string | null {
+  const root = vaultRoot.replace(/\\/g, '/').replace(/\/+$/, '')
+  const folder = picked.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (root === '' || folder.length <= root.length + 1) return null
+  if (folder.slice(0, root.length + 1).toLowerCase() !== `${root.toLowerCase()}/`) return null
+  return normalizeFolderPath(folder.slice(root.length + 1))
+}

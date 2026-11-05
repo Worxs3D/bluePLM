@@ -33,6 +33,8 @@ import type { PendingMetadataEdit } from '@/stores/types'
 import { WhereUsedTab, SWPropertiesTab } from '@/features/integrations/solidworks'
 import { InspectionTab } from '@/features/integrations/solidworks'
 import { VendorsTab } from './VendorsTab'
+import { FileOrdersTab } from '@/features/orders/FileOrdersTab'
+import { useOrdersAvailable } from '@/features/orders/hooks/useOrdersAvailable'
 import { CadFilePreview } from './components/CadFilePreview'
 import { hasDesktop } from '@/lib/platform'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
@@ -183,6 +185,7 @@ export function DetailsPanel() {
   const selectedFileObjects = getSelectedFileObjects()
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
   const isFolder = file?.isDirectory || false
+  const ordersAvailable = useOrdersAvailable()
   const checkoutDisplay = deriveCheckoutDisplay(
     file,
     user,
@@ -659,6 +662,10 @@ export function DetailsPanel() {
   // Inspection tables are drawing-only
   const isDrawingFile = !!file && file.extension?.toLowerCase() === '.slddrw'
 
+  // The orders whose lines pin this file (5.13.0), where the Orders module is available.
+  const ordersTab: { id: DetailsPanelTab; label: string }[] =
+    ordersAvailable && !isFolder ? [{ id: 'orders', label: t('source.details.popoutTabOrders') }] : []
+
   // For SolidWorks files, use Preview tab (metadata is edited inline in the file tree)
   const allTabs: { id: DetailsPanelTab; label: string }[] =
     isSolidWorksFile && !isFolder
@@ -666,6 +673,7 @@ export function DetailsPanel() {
           { id: 'preview', label: 'Preview' },
           { id: 'whereused', label: 'Where Used' },
           { id: 'vendors', label: 'Vendors' },
+          ...ordersTab,
           ...(isDrawingFile ? [{ id: 'inspection' as const, label: 'Inspection' }] : []),
         ]
       : [
@@ -673,6 +681,7 @@ export function DetailsPanel() {
           { id: 'properties', label: 'Properties' },
           { id: 'whereused', label: 'Where Used' },
           { id: 'vendors', label: 'Vendors' },
+          ...ordersTab,
         ]
 
   // Filter out tabs that are in the right panel, then sort by custom order
@@ -1097,6 +1106,8 @@ export function DetailsPanel() {
               {detailsPanelTab === 'whereused' && <WhereUsedTab file={file} />}
 
               {detailsPanelTab === 'vendors' && <VendorsTab file={file} />}
+
+              {detailsPanelTab === 'orders' && ordersAvailable && !isFolder && <FileOrdersTab file={file} />}
 
               {detailsPanelTab === 'inspection' && isDrawingFile && <InspectionTab file={file} />}
             </>

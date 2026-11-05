@@ -324,29 +324,30 @@ function ToastItem({ toast, onClose }: { toast: ToastMessage; onClose: () => voi
     update: <ArrowDownToLine size={16} />,
   }
 
+  // The settings look (.cursor/rules/ui-style.mdc): a quiet floating card, the state in the icon.
   const colors: Record<ToastType, string> = {
-    error: 'bg-red-900 border-red-700 text-red-100',
-    success: 'bg-green-900 border-green-700 text-green-100',
-    info: 'bg-blue-900 border-blue-700 text-blue-100',
-    warning: 'bg-yellow-900 border-yellow-700 text-yellow-100',
-    progress: 'bg-plm-panel border-plm-border text-plm-fg',
-    update: 'bg-plm-panel border-plm-accent/50 text-plm-fg',
+    error: 'bg-ui-bg border-ui-border text-ui-fg',
+    success: 'bg-ui-bg border-ui-border text-ui-fg',
+    info: 'bg-ui-bg border-ui-border text-ui-fg',
+    warning: 'bg-ui-bg border-ui-border text-ui-fg',
+    progress: 'bg-ui-bg border-ui-border text-ui-fg',
+    update: 'bg-ui-bg border-ui-border text-ui-fg',
   }
 
   const iconColors: Record<ToastType, string> = {
-    error: 'text-red-400',
-    success: 'text-green-400',
-    info: 'text-blue-400',
-    warning: 'text-yellow-400',
-    progress: 'text-plm-accent',
-    update: 'text-plm-accent',
+    error: 'text-ui-danger',
+    success: 'text-ui-success',
+    info: 'text-ui-accent',
+    warning: 'text-ui-warning',
+    progress: 'text-ui-accent',
+    update: 'text-ui-accent',
   }
 
   return (
     <div
       onClick={handleClose}
       className={`
-        flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg cursor-pointer
+        flex items-start gap-3 px-4 py-3 rounded-xl border shadow-xl cursor-pointer font-ui
         ${colors[toast.type]}
         ${isExiting ? 'animate-slide-out' : 'animate-slide-in'}
         hover:opacity-90 transition-opacity
@@ -354,7 +355,7 @@ function ToastItem({ toast, onClose }: { toast: ToastMessage; onClose: () => voi
       title="Click to dismiss"
     >
       <span className={`flex-shrink-0 mt-0.5 ${iconColors[toast.type]}`}>{icons[toast.type]}</span>
-      <p className="flex-1 text-sm leading-relaxed">{toast.message}</p>
+      <p className="flex-1 text-[14px] leading-[1.4]">{toast.message}</p>
       <div className="flex items-center gap-1 flex-shrink-0">
         {toast.action && (
           <button
@@ -364,7 +365,7 @@ function ToastItem({ toast, onClose }: { toast: ToastMessage; onClose: () => voi
               toast.action?.onClick()
               handleClose()
             }}
-            className="px-2 py-0.5 rounded border border-current/40 text-xs font-medium hover:bg-white/10"
+            className="-my-0.5 rounded-lg px-2 py-0.5 text-[13px] font-medium text-ui-accent transition-colors duration-100 hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-accent/50"
           >
             {toast.action.label}
           </button>

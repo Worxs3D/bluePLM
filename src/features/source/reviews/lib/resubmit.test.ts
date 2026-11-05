@@ -5,12 +5,18 @@ import type { ReviewItemDetail, ReviewItemOutcome } from '@/types/reviews'
 import {
   defaultResubmitSelection,
   itemsNeedingNewVersion,
+  keepResubmitSelection,
   newerVersionOptions,
   planResubmit,
   type VersionOption,
 } from './resubmit'
 
-function item(id: string, fileId: string, version: number, outcome: ReviewItemOutcome): ReviewItemDetail {
+function item(
+  id: string,
+  fileId: string,
+  version: number,
+  outcome: ReviewItemOutcome,
+): ReviewItemDetail {
   return {
     id,
     fileId,
@@ -44,7 +50,12 @@ function item(id: string, fileId: string, version: number, outcome: ReviewItemOu
 }
 
 function versions(fileId: string, ...nums: number[]): VersionOption[] {
-  return nums.map((n) => ({ fileVersionId: `${fileId}-v${n}`, version: n, revision: null, createdAt: null }))
+  return nums.map((n) => ({
+    fileVersionId: `${fileId}-v${n}`,
+    version: n,
+    revision: null,
+    createdAt: null,
+  }))
 }
 
 const items = [
@@ -59,7 +70,9 @@ describe('resubmit selection', () => {
   })
 
   it('offers only newer versions, newest first', () => {
-    expect(newerVersionOptions(items[1], versions('f2', 4, 5, 6, 7)).map((v) => v.version)).toEqual([7, 6])
+    expect(newerVersionOptions(items[1], versions('f2', 4, 5, 6, 7)).map((v) => v.version)).toEqual(
+      [7, 6],
+    )
   })
 
   it('defaults to the newest newer version, or nothing when there is none', () => {
@@ -68,6 +81,20 @@ describe('resubmit selection', () => {
       f3: versions('f3', 1, 2),
     })
     expect(selection).toEqual({ i2: 'f2-v7', i3: null })
+  })
+
+  it('keeps the author’s picks when the versions load again', () => {
+    const byFile = { f2: versions('f2', 5, 6, 7), f3: versions('f3', 2, 3) }
+    // The author chose v6 over the default v7; a reload keeps it.
+    expect(keepResubmitSelection({ i2: 'f2-v6', i3: null }, items, byFile)).toEqual({
+      i2: 'f2-v6',
+      i3: 'f3-v3',
+    })
+    // A pick that is no longer offered (or the reviewed version) falls back to the default.
+    expect(keepResubmitSelection({ i2: 'f2-v5', i3: 'gone' }, items, byFile)).toEqual({
+      i2: 'f2-v7',
+      i3: 'f3-v3',
+    })
   })
 
   it('is ready only when every item needing changes has a newer version', () => {

@@ -1203,7 +1203,10 @@ export function FilePane({ onRefresh, onRefreshFolder }: FilePaneProps) {
     // Ad-hoc peer review: files that moved into "in_review" without workflow
     // gates have no reviewers yet, so put them in the review package pane.
     if (newState === 'in_review' && succeeded > 0 && awaitingReview === 0) {
-      void addFilesToReviewPackage(syncedFiles)
+      void addFilesToReviewPackage(syncedFiles, {
+        openPane: false,
+        actionLabel: t('reviewBuilder.toast.chooseReviewers'),
+      })
     }
   }
 

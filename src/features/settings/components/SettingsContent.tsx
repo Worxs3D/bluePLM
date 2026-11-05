@@ -27,6 +27,14 @@ const PreferencesSettings = lazy(() =>
 const KeybindingsSettings = lazy(() =>
   import('../account/KeybindingsSettings').then((m) => ({ default: m.KeybindingsSettings })),
 )
+const ContextMenuSettings = lazy(() =>
+  import('../account/contextMenu/ContextMenuSettings').then((m) => ({ default: m.ContextMenuSettings })),
+)
+const ContextMenuTemplatesSettings = lazy(() =>
+  import('../organization/contextMenuTemplates/ContextMenuTemplatesSettings').then((m) => ({
+    default: m.ContextMenuTemplatesSettings,
+  })),
+)
 const ModulesSettings = lazy(() =>
   import('../organization/ModulesSettings').then((m) => ({ default: m.ModulesSettings })),
 )
@@ -55,8 +63,8 @@ const SerializationSettings = lazy(() =>
 const ExportSettings = lazy(() =>
   import('../system/ExportSettings').then((m) => ({ default: m.ExportSettings })),
 )
-const RFQSettings = lazy(() =>
-  import('../system/RFQSettings').then((m) => ({ default: m.RFQSettings })),
+const OrdersSettings = lazy(() =>
+  import('../organization/OrdersSettings').then((m) => ({ default: m.OrdersSettings })),
 )
 const FileWorkflowsSettings = lazy(() =>
   import('../organization/FileWorkflowsSettings').then((m) => ({
@@ -175,6 +183,9 @@ function useRevealSearchedSetting(activeTab: SettingsTab) {
 
 export function SettingsContent({ activeTab }: SettingsContentProps) {
   const searchQuery = usePDMStore((s) => s.settingsSearchQuery)
+  // Pages that hold an organization's state in their own (drafts, selection) start over on an
+  // organization switch or once the organization has loaded.
+  const orgKey = usePDMStore((s) => s.organization?.id ?? 'no-org')
   const containerRef = useRevealSearchedSetting(activeTab)
 
   // Each page opens at its top, not at the previous page's scroll position.
@@ -196,6 +207,10 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SessionsSettings />
       case 'keybindings':
         return <KeybindingsSettings />
+      case 'context-menu':
+        return <ContextMenuSettings key={orgKey} />
+      case 'context-menu-templates':
+        return <ContextMenuTemplatesSettings key={orgKey} />
       case 'modules':
         return <ModulesSettings />
       case 'vaults':
@@ -212,8 +227,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SerializationSettings />
       case 'export':
         return <ExportSettings />
-      case 'rfq':
-        return <RFQSettings />
+      case 'orders':
+        return <OrdersSettings key={orgKey} />
       case 'metadata-columns':
         return <MetadataColumnsSettings />
       case 'file-workflows':

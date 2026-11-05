@@ -129,7 +129,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => ipcRenderer.invoke('app:get-platform'),
   getTitleBarOverlayRect: (): Promise<TitleBarOverlayRect> =>
     ipcRenderer.invoke('app:get-titlebar-overlay-rect'),
-  setTitleBarOverlay: (options: { color: string; symbolColor: string }) =>
+  setTitleBarOverlay: (options: { color: string; symbolColor: string; target?: 'settings' }) =>
     ipcRenderer.invoke('app:set-titlebar-overlay', options),
   getZoomFactor: () => ipcRenderer.invoke('app:get-zoom-factor'),
   setZoomFactor: (factor: number) => ipcRenderer.invoke('app:set-zoom-factor', factor),
@@ -312,6 +312,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   close: () => ipcRenderer.send('window:close'),
 
+  // Queued review decisions are sent before the app quits (electron/handlers/reviewDecisionQuit.ts)
+  reviewDecisions: {
+    setPending: (pending: boolean) => ipcRenderer.send('review-decisions:pending', pending === true),
+    onFlushRequest: (callback: (requestId: string) => void) => {
+      const handler = (_: unknown, requestId: string) => callback(requestId)
+      ipcRenderer.on('review-decisions:flush', handler)
+      return () => ipcRenderer.removeListener('review-decisions:flush', handler)
+    },
+    flushDone: (requestId: string) => ipcRenderer.send('review-decisions:flush-done', requestId),
+  },
+
   // Working directory
   selectWorkingDir: () => ipcRenderer.invoke('working-dir:select'),
   setWorkingDir: (path: string) => ipcRenderer.invoke('working-dir:set', path),
@@ -397,10 +408,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     utf8Content: string,
     filters?: Array<{ name: string; extensions: string[] }>,
   ) => ipcRenderer.invoke('dialog:save-text-file', defaultName, utf8Content, filters),
-
-  // PDF generation
-  generatePdfFromHtml: (htmlContent: string, outputPath: string) =>
-    ipcRenderer.invoke('pdf:generate-from-html', htmlContent, outputPath),
 
   // eDrawings preview
   checkEDrawingsInstalled: () => ipcRenderer.invoke('edrawings:check-installed'),
@@ -607,30 +614,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('solidworks:check-license-registry', serialNumber),
   },
 
-  // RFQ Release Files API
-  rfq: {
-    getOutputDir: (rfqId: string, rfqNumber?: string) =>
-      ipcRenderer.invoke('rfq:get-output-dir', rfqId, rfqNumber),
-    exportReleaseFile: (options: {
-      rfqId: string
-      rfqNumber?: string
-      sourceFilePath: string
-      exportType: 'step' | 'pdf' | 'dxf' | 'iges'
-      partNumber?: string
-      revision?: string
-      configuration?: string
-    }) => ipcRenderer.invoke('rfq:export-release-file', options),
-    createZip: (options: {
-      rfqId: string
-      rfqNumber: string
-      files: Array<{ path: string; name: string }>
-      rfqPdfPath?: string
-      outputPath?: string
-    }) => ipcRenderer.invoke('rfq:create-zip', options),
-    openFolder: (rfqId: string, rfqNumber?: string) =>
-      ipcRenderer.invoke('rfq:open-folder', rfqId, rfqNumber),
-  },
-
   // Review packages: staging folders for PDF renders and the bounded review PDF cache
   reviewPackage: {
     createStagingDir: () => ipcRenderer.invoke('review-package:create-staging-dir'),
@@ -656,6 +639,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
   versionOutputs: {
     open: (url: string, fileName: string, expectedHash: string) =>
       ipcRenderer.invoke('version-outputs:open', url, fileName, expectedHash),
+  },
+
+  // Open with its references (src/lib/versionOpen): the per-version cache under userData
+  versionOpen: {
+    prepareEntry: (fileVersionId: string) => ipcRenderer.invoke('version-open:prepare-entry', fileVersionId),
+    beginRestage: (entryPath: string) => ipcRenderer.invoke('version-open:begin-restage', entryPath),
+    writeMarker: (entryPath: string, content: string) =>
+      ipcRenderer.invoke('version-open:write-marker', entryPath, content),
+    openRoot: (filePath: string) => ipcRenderer.invoke('version-open:open-root', filePath),
+  },
+
+  // Orders (src/lib/orders): export an order's files as a zip or into a new folder
+  orders: {
+    export: (request: {
+      mode: 'zip' | 'folder'
+      name: string
+      files: Array<{ path: string; url: string; sha256: string; size: number }>
+      texts: Array<{ path: string; content: string }>
+    }) => ipcRenderer.invoke('orders:export', request),
+    onExportProgress: (
+      callback: (progress: { phase: 'downloading' | 'writing'; completed: number; total: number }) => void,
+    ) => {
+      const handler = (
+        _: unknown,
+        progress: { phase: 'downloading' | 'writing'; completed: number; total: number },
+      ) => callback(progress)
+      ipcRenderer.on('orders:export-progress', handler)
+      return () => ipcRenderer.removeListener('orders:export-progress', handler)
+    },
   },
 
   // Archive (ZIP) operations
@@ -961,6 +973,8 @@ declare global {
       setTitleBarOverlay: (options: {
         color: string
         symbolColor: string
+        /** 'settings': the settings window's controls instead of the calling window's. */
+        target?: 'settings'
       }) => Promise<{ success: boolean; error?: string }>
       getPathForFile: (file: File) => string
       reloadApp: () => Promise<{ success: boolean; error?: string }>
@@ -1385,6 +1399,7 @@ declare global {
             keptPositions: number
             kept?: number
             unchanged?: boolean
+            relaid?: number
             saved: boolean
           }
           error?: string

@@ -1,311 +1,179 @@
-import { useState, useEffect } from 'react'
-import {
-  Globe,
-  FileText,
-  MessageSquare,
-  ClipboardCheck,
-  Package,
-  Truck,
-  Clock,
-  CheckCircle2,
-  Plus,
-  Building2,
-  ChevronRight,
-  Loader2,
-  Send,
-  TrendingUp,
-  DollarSign,
-} from 'lucide-react'
-import { log } from '@/lib/logger'
-import { supabase } from '@/lib/supabase'
-import { usePDMStore } from '@/stores/pdmStore'
+/**
+ * The Supplier Portal sidebar: the organization's quote orders (drafts, awaiting a quote,
+ * quoted), the newest of them, and links to Orders and the supplier database. RFQs became quote
+ * orders in 5.13.0 (schema 515 imported them), so this reads the store's order list
+ * (`loadOrders` → `listOrders`, kept fresh by realtime) and opens an order in the Orders view.
+ * Without the Orders module there is nothing to show, and the portal says so.
+ */
+
+import { useEffect, useMemo, useState } from 'react'
+import { Building2, Globe, Plus, RefreshCw, ShoppingCart } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
-import { RFQView } from '../rfq'
-import type { RFQ, RFQStatus } from '@/types/rfq'
-import { getRFQStatusInfo } from '@/types/rfq'
 
-// Supabase v2 type inference incomplete for dynamically added tables
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any // TODO: type this
+import { Button, EmptyState, ListRow, RowGroup, StatusText } from '@/components/core/ui'
+import {
+  createAndOpenOrder,
+  shortDate,
+  showOrder,
+  STATUS_TONE,
+  useOrdersAvailable,
+} from '@/features/orders'
+import { useTranslation } from '@/lib/i18n'
+import { usePDMStore } from '@/stores/pdmStore'
 
-interface PortalStats {
-  activeRFQs: number
-  pendingQuotes: number
-  completedRFQs: number
-  totalSpent: number
-}
+import { quoteSummary } from './quoteSummary'
 
 export function SupplierPortalView() {
-  const { organization, setActiveView } = usePDMStore(
+  const { t, language } = useTranslation()
+  const available = useOrdersAvailable()
+  const { orders, ordersLoaded, ordersError, loadOrders, setActiveView } = usePDMStore(
     useShallow((s) => ({
-      organization: s.organization,
+      orders: s.orders,
+      ordersLoaded: s.ordersLoaded,
+      ordersError: s.ordersError,
+      loadOrders: s.loadOrders,
       setActiveView: s.setActiveView,
     })),
   )
-  const [view, setView] = useState<'dashboard' | 'rfqs'>('dashboard')
-  const [showNewRFQDialog, setShowNewRFQDialog] = useState(false)
-  const [recentRFQs, setRecentRFQs] = useState<RFQ[]>([])
-  const [stats, setStats] = useState<PortalStats>({
-    activeRFQs: 0,
-    pendingQuotes: 0,
-    completedRFQs: 0,
-    totalSpent: 0,
-  })
-  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
 
-  // Load dashboard data
   useEffect(() => {
-    if (!organization?.id) return
+    if (available && !ordersLoaded) void loadOrders()
+  }, [available, ordersLoaded, loadOrders])
 
-    const loadDashboard = async () => {
-      setLoading(true)
-      try {
-        // Load recent RFQs
-        const { data: rfqs, error: rfqError } = await db
-          .from('rfq')
-          .select(
-            `
-            *,
-            items:rfq_item(count),
-            suppliers:rfq_supplier(count)
-          `,
-          )
-          .eq('org_id', organization.id)
-          .order('created_at', { ascending: false })
-          .limit(5)
+  const summary = useMemo(() => quoteSummary(orders), [orders])
 
-        if (rfqError) throw rfqError
-        setRecentRFQs((rfqs as RFQ[]) || [])
-
-        // Calculate stats
-        const { data: allRfqs } = await db
-          .from('rfq')
-          .select('status')
-          .eq('org_id', organization.id)
-
-        if (allRfqs) {
-          const rfqList = allRfqs as { status: RFQStatus }[]
-          const activeStatuses: RFQStatus[] = [
-            'draft',
-            'pending_files',
-            'generating',
-            'ready',
-            'sent',
-            'awaiting_quote',
-          ]
-          const pendingStatuses: RFQStatus[] = ['awaiting_quote', 'sent']
-          const completedStatuses: RFQStatus[] = ['completed', 'awarded']
-
-          setStats({
-            activeRFQs: rfqList.filter((r) => activeStatuses.includes(r.status)).length,
-            pendingQuotes: rfqList.filter((r) => pendingStatuses.includes(r.status)).length,
-            completedRFQs: rfqList.filter((r) => completedStatuses.includes(r.status)).length,
-            totalSpent: 0, // Would need to sum from awarded RFQs with quotes
-          })
-        }
-      } catch (error) {
-        log.error('[SupplierPortal]', 'Failed to load dashboard', { error: error })
-      } finally {
-        setLoading(false)
-      }
+  const newQuote = async () => {
+    setCreating(true)
+    try {
+      // A toast says why when it fails; on success the order opens in the Orders view.
+      await createAndOpenOrder(t('supplierPortal.newQuoteTitle'), 'quote')
+    } finally {
+      setCreating(false)
     }
-
-    loadDashboard()
-  }, [organization?.id])
-
-  // If viewing RFQs, show the full RFQ view
-  if (view === 'rfqs') {
-    return (
-      <div className="flex flex-col h-full">
-        {/* Mini header to get back */}
-        <div className="px-3 py-2 border-b border-plm-border bg-plm-bg">
-          <button
-            onClick={() => setView('dashboard')}
-            className="text-xs text-plm-fg-muted hover:text-plm-fg flex items-center gap-1"
-          >
-            <ChevronRight size={12} className="rotate-180" />
-            Back to Portal
-          </button>
-        </div>
-        <RFQView
-          initialShowNewDialog={showNewRFQDialog}
-          onDialogClose={() => setShowNewRFQDialog(false)}
-        />
-      </div>
-    )
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-48">
-        <Loader2 className="animate-spin text-plm-accent" size={24} />
-      </div>
-    )
-  }
+  const stats: Array<[string, number]> = [
+    [t('supplierPortal.statDraft'), summary.draft],
+    [t('supplierPortal.statSent'), summary.sent],
+    [t('supplierPortal.statReceived'), summary.received],
+  ]
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header with portal branding */}
-      <div className="p-4 border-b border-plm-border">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-plm-accent to-blue-600 flex items-center justify-center">
-            <Globe size={16} className="text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-plm-fg">Supplier Portal</div>
-            <div className="text-[10px] text-plm-fg-muted">Manage RFQs & sourcing</div>
+    <div className="flex h-full min-w-0 flex-col font-ui">
+      <div className="flex-shrink-0 space-y-2.5 border-b border-ui-border px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <Globe size={16} className="flex-shrink-0 text-ui-accent" aria-hidden />
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-medium text-ui-fg">
+              {t('sidebar.supplierPortal')}
+            </div>
+            <div className="truncate text-[13px] text-ui-fg-secondary">
+              {t('supplierPortal.subtitle')}
+            </div>
           </div>
         </div>
-
-        {/* Quick action buttons */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => {
-              setShowNewRFQDialog(true)
-              setView('rfqs')
-            }}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-plm-accent hover:bg-plm-accent/90 text-white rounded text-xs font-medium transition-colors"
+        {available && (
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Plus size={14} />}
+            loading={creating}
+            onClick={() => void newQuote()}
           >
-            <Plus size={14} />
-            New RFQ
-          </button>
-          <button className="flex items-center justify-center gap-1.5 px-3 py-2 bg-plm-highlight hover:bg-plm-highlight/80 text-plm-fg rounded text-xs font-medium transition-colors">
-            <MessageSquare size={14} />
-            Messages
-          </button>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-3 border-b border-plm-border">
-        <div className="p-3 text-center border-r border-plm-border">
-          <div className="text-lg font-semibold text-plm-fg">{stats.activeRFQs}</div>
-          <div className="text-[10px] text-plm-fg-muted">Active RFQs</div>
-        </div>
-        <div className="p-3 text-center border-r border-plm-border">
-          <div className="text-lg font-semibold text-plm-warning">{stats.pendingQuotes}</div>
-          <div className="text-[10px] text-plm-fg-muted">Pending</div>
-        </div>
-        <div className="p-3 text-center">
-          <div className="text-lg font-semibold text-plm-success">{stats.completedRFQs}</div>
-          <div className="text-[10px] text-plm-fg-muted">Completed</div>
-        </div>
-      </div>
-
-      {/* Recent RFQs */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-3 text-[10px] font-medium text-plm-fg-muted uppercase tracking-wider flex items-center justify-between">
-          <span>Recent RFQs</span>
-          <button
-            onClick={() => setView('rfqs')}
-            className="text-plm-accent hover:underline normal-case"
-          >
-            View All
-          </button>
-        </div>
-
-        {recentRFQs.length === 0 ? (
-          <div className="text-center py-8 text-plm-fg-muted">
-            <FileText size={32} className="mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No RFQs yet</p>
-            <button
-              onClick={() => setView('rfqs')}
-              className="mt-2 text-xs text-plm-accent hover:underline"
-            >
-              Create your first RFQ
-            </button>
-          </div>
-        ) : (
-          recentRFQs.map((rfq) => {
-            const statusInfo = getRFQStatusInfo(rfq.status)
-            return (
-              <div
-                key={rfq.id}
-                onClick={() => setView('rfqs')}
-                className="p-3 border-b border-plm-border hover:bg-plm-highlight/50 cursor-pointer transition-colors group"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-plm-accent">{rfq.rfq_number}</span>
-                      <ChevronRight
-                        size={12}
-                        className="text-plm-fg-muted opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
-                    </div>
-                    <div className="text-sm font-medium text-plm-fg mt-0.5">{rfq.title}</div>
-                  </div>
-                  <span
-                    className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded ${statusInfo.color} ${statusInfo.bgColor}`}
-                  >
-                    {rfq.status === 'generating' && <Loader2 size={10} className="animate-spin" />}
-                    {rfq.status === 'awaiting_quote' && <Clock size={10} />}
-                    {rfq.status === 'quoted' && <CheckCircle2 size={10} />}
-                    {rfq.status === 'ready' && <Send size={10} />}
-                    {statusInfo.label}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4 text-[11px] text-plm-fg-muted">
-                  {rfq.due_date && (
-                    <span className="flex items-center gap-1">
-                      <Clock size={10} />
-                      Due {new Date(rfq.due_date).toLocaleDateString()}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1">
-                    <Package size={10} />
-                    {(rfq as any).items?.[0]?.count || 0} items // TODO: type this
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Building2 size={10} />
-                    {(rfq as any).suppliers?.[0]?.count || 0} suppliers // TODO: type this
-                  </span>
-                </div>
-              </div>
-            )
-          })
+            {t('supplierPortal.newQuote')}
+          </Button>
         )}
       </div>
 
-      {/* Quick links */}
-      <div className="p-3 border-t border-plm-border bg-plm-bg">
-        <div className="text-[10px] font-medium text-plm-fg-muted uppercase tracking-wider mb-2">
-          Quick Links
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setActiveView('supplier-database')}
-            className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors"
-          >
-            <Building2 size={14} />
-            Suppliers
-          </button>
-          <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
-            <ClipboardCheck size={14} />
-            Quality Reports
-          </button>
-          <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
-            <Truck size={14} />
-            Shipments
-          </button>
-          <button className="flex items-center gap-2 p-2 bg-plm-highlight/50 hover:bg-plm-highlight rounded text-xs text-plm-fg-muted hover:text-plm-fg transition-colors">
-            <TrendingUp size={14} />
-            Analytics
-          </button>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!available ? (
+          <EmptyState
+            className="px-4 py-4"
+            title={t('supplierPortal.unavailableTitle')}
+            description={t('supplierPortal.unavailableBody')}
+          />
+        ) : ordersError && !ordersLoaded ? (
+          <EmptyState
+            className="px-4 py-4"
+            title={t('orders.loadFailedTitle')}
+            description={t('orders.loadFailedBody')}
+            actions={
+              <Button size="sm" icon={<RefreshCw size={14} />} onClick={() => void loadOrders()}>
+                {t('orders.retry')}
+              </Button>
+            }
+          />
+        ) : !ordersLoaded ? (
+          <div className="px-4 py-4">
+            <StatusText tone="neutral">{t('orders.loading')}</StatusText>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 border-b border-ui-border">
+              {stats.map(([label, value]) => (
+                <div key={label} className="px-2 py-2.5 text-center">
+                  <div className="text-[16px] font-medium tabular-nums text-ui-fg">{value}</div>
+                  <div className="truncate text-[12px] text-ui-fg-secondary" title={label}>
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-3 pb-1 pt-2.5 text-[12px] font-medium text-ui-fg-secondary">
+              {t('supplierPortal.recentTitle')}
+            </div>
+            {summary.recent.length === 0 ? (
+              <EmptyState
+                className="px-4 py-4"
+                title={t('supplierPortal.emptyTitle')}
+                description={t('supplierPortal.emptyBody')}
+              />
+            ) : (
+              <RowGroup>
+                {summary.recent.map((order) => {
+                  const date = shortDate(order.sentAt ?? order.createdAt, language)
+                  const meta = [order.orderNumber, order.supplierName].filter(Boolean).join(' · ')
+                  return (
+                    <ListRow
+                      key={order.id}
+                      title={order.title}
+                      hint={`${order.orderNumber} ${order.title}`}
+                      onActivate={() => showOrder(order.id)}
+                      trailing={date ? <span className="tabular-nums">{date}</span> : undefined}
+                      secondary={
+                        <span className="flex min-w-0 items-center gap-2">
+                          <StatusText tone={STATUS_TONE[order.status]} className="flex-shrink-0">
+                            {t(`orders.status_${order.status}`)}
+                          </StatusText>
+                          <span className="min-w-0 truncate" title={meta}>
+                            {meta}
+                          </span>
+                        </span>
+                      }
+                    />
+                  )
+                })}
+              </RowGroup>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Insights section */}
-      <div className="p-3 border-t border-plm-border bg-gradient-to-r from-plm-accent/10 to-transparent">
-        <div className="flex items-center gap-2 text-xs">
-          <DollarSign size={14} className="text-plm-accent" />
-          <span className="text-plm-fg-muted">
-            {stats.pendingQuotes > 0
-              ? `${stats.pendingQuotes} RFQ${stats.pendingQuotes !== 1 ? 's' : ''} waiting for quotes`
-              : 'All quotes received'}
-          </span>
-        </div>
+      <div className="flex flex-shrink-0 flex-wrap gap-2 border-t border-ui-border px-3 py-2.5">
+        {available && (
+          <Button size="sm" icon={<ShoppingCart size={14} />} onClick={() => setActiveView('orders')}>
+            {t('supplierPortal.openOrders')}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          icon={<Building2 size={14} />}
+          onClick={() => setActiveView('supplier-database')}
+        >
+          {t('supplierPortal.suppliers')}
+        </Button>
       </div>
     </div>
   )

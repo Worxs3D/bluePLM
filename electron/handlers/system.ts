@@ -1,6 +1,7 @@
 // System handlers for Electron main process
 import { app, ipcMain, BrowserWindow, clipboard } from 'electron'
 import { installNavigationGuard, openExternalSafely } from '../navigationGuard'
+import { setSettingsWindowOverlay } from '../settingsWindow'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -231,7 +232,11 @@ export function registerSystemHandlers(
 
   ipcMain.handle(
     'app:set-titlebar-overlay',
-    (event, options: { color: string; symbolColor: string }) => {
+    (event, options: { color: string; symbolColor: string; target?: 'settings' }) => {
+      // The settings window is rendered by the main window, so it asks through the main window.
+      if (options.target === 'settings') {
+        return setSettingsWindowOverlay({ color: options.color, symbolColor: options.symbolColor })
+      }
       const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
       if (!win) return { success: false }
       try {

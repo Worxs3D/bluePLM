@@ -1,44 +1,37 @@
 /**
- * File context menu component
- * Composes action components for a clean, maintainable structure
+ * The file list's right-click menu.
  *
- * Menu Structure:
- * - Primary actions (always visible): Open, Download, Check In/Out
- * - Generate (On server / Local), then Reviews
- * - Grouped submenus: File Actions, Edit
- * - Delete actions (always visible)
- * - Expandable "More Actions": Collaboration (where used, properties, refresh metadata, reviews, etc.)
- *   Only shown when total items exceed threshold (otherwise items shown inline)
+ * Each entry hook (`actions/*`) says which of its entries apply to the selection and draws them;
+ * `CustomizableMenu` lays them out from the person's layout (own, organization template or the
+ * app default, `useContextMenuLayout`). The hooks all run on every render, so availability is
+ * just "the hook returned an element", and the dialogs they open (overlays) are rendered beside
+ * the menu, never inside it, so moving or hiding an entry cannot unmount one.
  */
-import React, { useState, useMemo } from 'react'
-import { Clipboard, FolderOpen } from 'lucide-react'
+import { useOrdersEntries } from '@/features/orders/contextMenu/OrdersEntry'
+import React from 'react'
 import type { LocalFile } from '@/stores/pdmStore'
-import { useShallow } from 'zustand/react/shallow'
 import { usePDMStore } from '@/stores/pdmStore'
 
-// Import action components
 import {
-  OpenActions,
-  AssemblyActions,
-  BulkAssemblyActions,
-  DuplicateActions,
-  FileSystemActions,
-  FolderVisibilityActions,
-  ClipboardActions,
-  SyncActions,
-  CheckoutActions,
-  CollaborationActions,
-  DeleteActions,
+  useOpenEntries,
+  useAssemblyEntries,
+  useBulkAssemblyEntries,
+  useDuplicateEntries,
+  useFileSystemEntries,
+  useFolderVisibilityEntries,
+  useClipboardEntries,
+  useSyncEntries,
+  useCheckoutEntries,
+  useCollaborationEntries,
+  useDeleteEntries,
+  useGenerateEntries,
+  useReviewsEntries,
   useContextMenuSelectionState,
 } from './actions'
-import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
-import { ContextMenuGroup, ExpandableSection } from './components'
+import { useVaultTransferEntries } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
 import { NativePreviewContextMenuBackdrop } from './NativePreviewContextMenuBackdrop'
-import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
-import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
-import { hasDesktop } from '@/lib/platform'
-import { GenerateSubmenu } from './actions/GenerateSubmenu'
-import { shouldShowExpandableSection, countCollaborationActions } from './utils'
+import { CustomizableMenu } from './customizable/CustomizableMenu'
+import type { ListMenuEntryId } from './customizable/listEntries'
 
 export interface FileContextMenuProps {
   // Core menu data (required)
@@ -159,29 +152,13 @@ export function FileContextMenu({
   setDeleteLocalCheckoutConfirm,
   undoStack,
   handleUndo,
-  showIgnoreSubmenu,
   setShowIgnoreSubmenu,
-  showStateSubmenu,
   setShowStateSubmenu,
   ignoreSubmenuTimeoutRef,
   stateSubmenuTimeoutRef,
   savingConfigsToSW,
 }: FileContextMenuProps) {
-  // Get user and other values from store
-  const { user, files, getEffectiveRole, solidworksIntegrationEnabled, organization } = usePDMStore(
-    useShallow((s) => ({
-      user: s.user,
-      organization: s.organization,
-      files: s.files,
-      getEffectiveRole: s.getEffectiveRole,
-      solidworksIntegrationEnabled: s.solidworksIntegrationEnabled,
-    })),
-  )
-
-  // State for expandable section
-  const [isExpanded, setIsExpanded] = useState(false)
-  // BluePLM Web: no local vault and no SOLIDWORKS, so the entries that need them are left out.
-  const desktop = hasDesktop()
+  const user = usePDMStore((s) => s.user)
 
   // Get context files
   const contextFiles = getContextMenuFiles()
@@ -193,46 +170,6 @@ export function FileContextMenu({
       contextFiles,
       userId: user?.id,
     })
-
-  // Compute whether to show expandable "More Actions" section
-  // Only show when total menu items exceed threshold, otherwise show all items inline
-  const menuCountProps = useMemo(
-    () => ({
-      contextFiles,
-      multiSelect,
-      firstFile,
-      counts,
-      state,
-      userId: user?.id,
-      isAdmin: getEffectiveRole() === 'admin',
-      solidworksEnabled: desktop && solidworksIntegrationEnabled,
-      workflowsEnabled: fileWorkflowsEnabled(organization),
-      allFiles: files,
-    }),
-    [
-      contextFiles,
-      multiSelect,
-      firstFile,
-      counts,
-      state,
-      user?.id,
-      getEffectiveRole,
-      solidworksIntegrationEnabled,
-      desktop,
-      organization,
-      files,
-    ],
-  )
-
-  const showExpandable = useMemo(
-    () => shouldShowExpandableSection(menuCountProps),
-    [menuCountProps],
-  )
-
-  const collaborationItemCount = useMemo(
-    () => countCollaborationActions(menuCountProps),
-    [menuCountProps],
-  )
 
   // Close menu and clear submenus
   const handleCloseMenu = () => {
@@ -247,8 +184,93 @@ export function FileContextMenu({
     }
   }
 
-  // Check if we have items for the File Actions submenu (always true - Copy Name works for all files)
-  const hasFileSystemActions = true
+  const base = { contextFiles, multiSelect, firstFile, onClose }
+  const open = useOpenEntries({ ...base, navigateToFolder, isSearching, onGoToFolder })
+  const assembly = useAssemblyEntries(base)
+  const duplicate = useDuplicateEntries(base)
+  const bulkAssembly = useBulkAssemblyEntries(base)
+  const sync = useSyncEntries({ ...base, onRefresh, counts, state, unsyncedFilesInSelection })
+  const checkout = useCheckoutEntries({
+    ...base,
+    onRefresh,
+    counts,
+    state,
+    syncedFilesInSelection,
+    handleCheckoutFolder,
+    handleCheckinFolder,
+    handleBulkStateChange,
+    stateSubmenuTimeoutRef,
+    savingConfigsToSW,
+  })
+  const generate = useGenerateEntries(base)
+  const reviews = useReviewsEntries(base)
+  const orders = useOrdersEntries(base)
+  const fileSystem = useFileSystemEntries({ ...base, platform, startRenaming, userId: user?.id })
+  const folderVisibility = useFolderVisibilityEntries(base)
+  const clipboard = useClipboardEntries({ ...base, handleCopy, handleCut, handlePaste })
+  const vaultTransfer = useVaultTransferEntries(contextFiles, handleCloseMenu)
+  const deletion = useDeleteEntries({
+    ...base,
+    onRefresh,
+    counts,
+    state,
+    setCustomConfirm,
+    setDeleteLocalCheckoutConfirm,
+    undoStack,
+    handleUndo,
+  })
+  const collaboration = useCollaborationEntries({
+    ...base,
+    onRefresh,
+    state,
+    setDetailsPanelTab,
+    setDetailsPanelVisible,
+    handleOpenCheckoutRequestModal,
+    handleOpenMentionModal,
+    handleOpenECOModal,
+    watchingFiles,
+    isTogglingWatch,
+    handleToggleWatch,
+    isCreatingShareLink,
+    handleQuickShareLink,
+  })
+
+  const hooks = [
+    open,
+    assembly,
+    duplicate,
+    bulkAssembly,
+    sync,
+    checkout,
+    generate,
+    reviews,
+    orders,
+    fileSystem,
+    folderVisibility,
+    clipboard,
+    vaultTransfer,
+    deletion,
+    collaboration,
+  ]
+
+  // Every id the file list offers (`LIST_MENU_ENTRY_IDS`): the compiler holds the hooks to it.
+  const entries: Record<ListMenuEntryId, React.ReactNode | null> = {
+    ...open.entries,
+    ...assembly.entries,
+    ...duplicate.entries,
+    ...bulkAssembly.entries,
+    ...sync.entries,
+    ...checkout.entries,
+    ...generate.entries,
+    ...reviews.entries,
+    ...orders.entries,
+    ...fileSystem.entries,
+    ...folderVisibility.entries,
+    ...clipboard.entries,
+    ...vaultTransfer.entries,
+    ...deletion.entries,
+    ...collaboration.entries,
+  }
 
   return (
     <>
@@ -264,196 +286,18 @@ export function FileContextMenu({
           top: contextMenuAdjustedPos?.y ?? contextMenu.y,
         }}
       >
-        {/* ===== PRIMARY ACTIONS (always visible) ===== */}
-
-        {/* Open actions (open file, open folder, open all) */}
-        <OpenActions
-          contextFiles={contextFiles}
-          multiSelect={multiSelect}
-          firstFile={firstFile}
-          onClose={onClose}
-          navigateToFolder={navigateToFolder}
-          isSearching={isSearching}
-          onGoToFolder={onGoToFolder}
+        {/* Keyed by the click, so each opening starts with "More actions" and every flyout closed */}
+        <CustomizableMenu
+          key={`${contextMenu.x},${contextMenu.y},${contextMenu.file.path}`}
+          entries={entries}
+          onClose={handleCloseMenu}
         />
-
-        {desktop && (
-          <>
-            {/* Assembly actions (insert into open SolidWorks assembly) */}
-            <AssemblyActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-            />
-
-            {/* Duplicate a part together with its drawing, remapping the drawing's reference */}
-            <DuplicateActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-            />
-
-            {/* Bulk assembly actions (download/checkout/checkin all related files) */}
-            <BulkAssemblyActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-            />
-          </>
-        )}
-
-        {/* Sync actions (download, ignore, first check in) */}
-        <SyncActions
-          contextFiles={contextFiles}
-          multiSelect={multiSelect}
-          firstFile={firstFile}
-          onClose={onClose}
-          onRefresh={onRefresh}
-          counts={counts}
-          state={state}
-          unsyncedFilesInSelection={unsyncedFilesInSelection}
-          showIgnoreSubmenu={showIgnoreSubmenu}
-          setShowIgnoreSubmenu={setShowIgnoreSubmenu}
-          ignoreSubmenuTimeoutRef={ignoreSubmenuTimeoutRef}
-        />
-
-        {/* Checkout actions (checkout, checkin, discard, force release, change state) */}
-        <CheckoutActions
-          contextFiles={contextFiles}
-          multiSelect={multiSelect}
-          firstFile={firstFile}
-          onClose={onClose}
-          onRefresh={onRefresh}
-          counts={counts}
-          state={state}
-          syncedFilesInSelection={syncedFilesInSelection}
-          handleCheckoutFolder={handleCheckoutFolder}
-          handleCheckinFolder={handleCheckinFolder}
-          handleBulkStateChange={handleBulkStateChange}
-          showStateSubmenu={showStateSubmenu}
-          setShowStateSubmenu={setShowStateSubmenu}
-          stateSubmenuTimeoutRef={stateSubmenuTimeoutRef}
-          savingConfigsToSW={savingConfigsToSW}
-        />
-
-        {/* Generate submenu (On server: recorded outputs and inspection reports; Local: exports) */}
-        <GenerateSubmenu contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
-
-        {/* Reviews submenu (new review, add to / remove from a review, view reviews) */}
-        <ReviewsSubmenu contextFiles={contextFiles} onClose={onClose} />
-
-        {/* ===== GROUPED SUBMENUS ===== */}
-        <div className="context-menu-separator" />
-
-        {/* File Actions submenu (show in explorer, copy path, pin, rename) */}
-        <ContextMenuGroup label="File Actions" icon={FolderOpen} hasItems={hasFileSystemActions}>
-          <FileSystemActions
-            contextFiles={contextFiles}
-            multiSelect={multiSelect}
-            firstFile={firstFile}
-            onClose={onClose}
-            platform={platform}
-            startRenaming={startRenaming}
-            userId={user?.id}
-          />
-          <FolderVisibilityActions
-            contextFiles={contextFiles}
-            multiSelect={multiSelect}
-            firstFile={firstFile}
-            onClose={onClose}
-          />
-        </ContextMenuGroup>
-
-        {/* Edit submenu (copy, cut, paste) and Copy / Move to another connected vault (hidden
-            when there is none to go to): both move files on disk, so desktop only */}
-        {desktop && (
-          <>
-            <ContextMenuGroup label="Edit" icon={Clipboard}>
-              <ClipboardActions
-                contextFiles={contextFiles}
-                multiSelect={multiSelect}
-                firstFile={firstFile}
-                onClose={onClose}
-                handleCopy={handleCopy}
-                handleCut={handleCut}
-                handlePaste={handlePaste}
-              />
-            </ContextMenuGroup>
-
-            <VaultTransferMenuItems contextFiles={contextFiles} onClose={handleCloseMenu} />
-          </>
-        )}
-
-        {/* ===== DELETE ACTIONS (always visible) ===== */}
-        <DeleteActions
-          contextFiles={contextFiles}
-          multiSelect={multiSelect}
-          firstFile={firstFile}
-          onClose={onClose}
-          onRefresh={onRefresh}
-          counts={counts}
-          state={state}
-          setCustomConfirm={setCustomConfirm}
-          setDeleteLocalCheckoutConfirm={setDeleteLocalCheckoutConfirm}
-          undoStack={undoStack}
-          handleUndo={handleUndo}
-        />
-
-        {/* ===== COLLABORATION ACTIONS ===== */}
-        {/* Show in expandable section only when total items exceed threshold */}
-        {showExpandable ? (
-          <ExpandableSection
-            expanded={isExpanded}
-            onToggle={() => setIsExpanded(!isExpanded)}
-            hiddenCount={isExpanded ? undefined : collaborationItemCount}
-          >
-            <CollaborationActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-              onRefresh={onRefresh}
-              state={state}
-              setDetailsPanelTab={setDetailsPanelTab}
-              setDetailsPanelVisible={setDetailsPanelVisible}
-              handleOpenCheckoutRequestModal={handleOpenCheckoutRequestModal}
-              handleOpenMentionModal={handleOpenMentionModal}
-              handleOpenECOModal={handleOpenECOModal}
-              watchingFiles={watchingFiles}
-              isTogglingWatch={isTogglingWatch}
-              handleToggleWatch={handleToggleWatch}
-              isCreatingShareLink={isCreatingShareLink}
-              handleQuickShareLink={handleQuickShareLink}
-            />
-          </ExpandableSection>
-        ) : (
-          /* Show collaboration actions inline when few total items */
-          <>
-            <div className="context-menu-separator" />
-            <CollaborationActions
-              contextFiles={contextFiles}
-              multiSelect={multiSelect}
-              firstFile={firstFile}
-              onClose={onClose}
-              onRefresh={onRefresh}
-              state={state}
-              setDetailsPanelTab={setDetailsPanelTab}
-              setDetailsPanelVisible={setDetailsPanelVisible}
-              handleOpenCheckoutRequestModal={handleOpenCheckoutRequestModal}
-              handleOpenMentionModal={handleOpenMentionModal}
-              handleOpenECOModal={handleOpenECOModal}
-              watchingFiles={watchingFiles}
-              isTogglingWatch={isTogglingWatch}
-              handleToggleWatch={handleToggleWatch}
-              isCreatingShareLink={isCreatingShareLink}
-              handleQuickShareLink={handleQuickShareLink}
-            />
-          </>
-        )}
       </div>
+
+      {/* Dialogs the entries open, beside the menu */}
+      {hooks.map((hook, index) => (
+        <React.Fragment key={index}>{hook.overlays}</React.Fragment>
+      ))}
     </>
   )
 }

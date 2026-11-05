@@ -7,6 +7,7 @@ import { SettingsGroup, SettingsPage, SettingsSection } from '@/features/setting
 import { getMachineId } from '@/lib/backup'
 import { getBackend } from '@/lib/backend'
 import { log } from '@/lib/logger'
+import { flushPendingReviewDecisions } from '@/lib/reviewDecisionFlush'
 import { endRemoteSession, getSupabaseClient } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 
@@ -85,6 +86,8 @@ export function SessionsSettings() {
   }, [user])
 
   const handleSignOut = async () => {
+    // Queued review decisions go out while this user is still signed in.
+    await flushPendingReviewDecisions()
     await getBackend().auth.signOut()
     setUser(null)
     setOrganization(null)

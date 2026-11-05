@@ -1,73 +1,77 @@
-// src/features/source/context-menu/items/ClipboardItems.tsx
+/**
+ * The explorer tree's clipboard entries: `edit.copy`, `edit.cut` and `edit.paste`, each offered
+ * when the tree passed its handler. They move files on disk, so not on BluePLM Web.
+ */
 import { Copy, Scissors, ClipboardPaste } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
+import { hasDesktop } from '@/lib/platform'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface ClipboardItemsProps {
-  contextFiles: LocalFile[]
+export interface ClipboardEntriesProps {
   clipboard: { files: LocalFile[]; operation: 'copy' | 'cut' } | null | undefined
-  userId: string | undefined
   onCopy?: () => void
   onCut?: () => void
   onPaste?: () => void
   onClose: () => void
 }
 
-export function ClipboardItems({
+export function useTreeClipboardEntries({
   clipboard,
   onCopy,
   onCut,
   onPaste,
   onClose,
-}: ClipboardItemsProps) {
-  if (!onCopy && !onCut && !onPaste) return null
+}: ClipboardEntriesProps): EntryHookResult<'edit.copy' | 'edit.cut' | 'edit.paste'> {
+  const desktop = hasDesktop()
 
-  return (
-    <>
-      <div className="context-menu-separator" />
-
-      {onCopy && (
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            onCopy()
-            onClose()
-          }}
-        >
-          <Copy size={14} />
-          Copy
-          <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+C</span>
-        </div>
-      )}
-
-      {onCut && (
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            onCut()
-            onClose()
-          }}
-        >
-          <Scissors size={14} />
-          Cut
-          <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+X</span>
-        </div>
-      )}
-
-      {onPaste && (
-        <div
-          className={`context-menu-item ${!clipboard ? 'disabled' : ''}`}
-          onClick={() => {
-            if (clipboard) {
-              onPaste()
+  return {
+    entries: {
+      'edit.copy':
+        desktop && onCopy ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              onCopy()
               onClose()
-            }
-          }}
-        >
-          <ClipboardPaste size={14} />
-          Paste
-          <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+V</span>
-        </div>
-      )}
-    </>
-  )
+            }}
+          >
+            <Copy size={14} />
+            Copy
+            <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+C</span>
+          </div>
+        ) : null,
+
+      'edit.cut':
+        desktop && onCut ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              onCut()
+              onClose()
+            }}
+          >
+            <Scissors size={14} />
+            Cut
+            <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+X</span>
+          </div>
+        ) : null,
+
+      'edit.paste':
+        desktop && onPaste ? (
+          <div
+            className={`context-menu-item ${!clipboard ? 'disabled' : ''}`}
+            onClick={() => {
+              if (clipboard) {
+                onPaste()
+                onClose()
+              }
+            }}
+          >
+            <ClipboardPaste size={14} />
+            Paste
+            <span className="text-xs text-plm-fg-muted ml-auto">Ctrl+V</span>
+          </div>
+        ) : null,
+    },
+  }
 }

@@ -1,0 +1,95 @@
+---
+description: One look for the whole app, the Settings look. Every screen is built from the ui-* tokens and the core/ui primitives
+alwaysApply: true
+---
+
+# UI style: the Settings look, everywhere
+
+The Settings screens are the reference for how BluePLM looks: quiet, typographic, flat, and Claude-like.
+Every new or reworked screen (panes, views, dialogs, menus, toasts) looks the same way and is built
+from the same parts. Set by the user on 2026-11-04 ("really good standardized UI design for
+aesthetics ... reflect the beautiful UI style of the settings").
+
+## Build from the primitives
+
+Import from `@/components/core/ui`. Never hand-roll a control that a primitive already provides.
+
+| Need | Use |
+|---|---|
+| Page or pane body | `Page` (sections 40px apart; `gap="tight"` 24px in panes) |
+| A titled part | `Section` (`title`, `description`, `actions`; `density="compact"` in narrow panes) |
+| Rows with hairlines between | `RowGroup` holding `Row` (setting: label + sentence left, control right) or `ListRow` (selectable two-line item) |
+| Side pane title bar | `PaneHeader` (44px, title, count, IconButtons, hairline below) |
+| Buttons | `Button` (`primary` once per view, `secondary` for the rest, `ghost` in toolbars, `danger` / `danger-subtle` for destructive), `IconButton` for icon-only, `OverflowMenu` for "more" |
+| Toolbars | `ActionBar` |
+| Inputs | `TextInput`, `TextArea`, `Select`, `Switch`, `SegmentedControl` (the shared `FIELD_CLASS` look) |
+| States in words | `StatusText` (tone + 12px glyph, never colour alone). `Badge` only for a count or a label that must stand out (Admin, Overdue) |
+| Messages in a page | `Callout` |
+| Empty, error, signed-out | `EmptyState` (a line, a sentence, buttons; no illustration) |
+| Menus | `MenuPanel` + `MenuItem` |
+
+If a screen needs a part that does not exist yet, add it to `src/components/core/ui/`, with its JSDoc,
+once. Never style it locally in a feature. Settings re-exports these under its own names, so the two
+can never drift.
+
+## Tokens
+
+- **Colour: `ui-*` only** (`bg-ui-bg`, `bg-ui-nav`, `bg-ui-field`, `bg-ui-hover`, `bg-ui-selected`,
+  `border-ui-border`, `divide-ui-divider`, `text-ui-fg`, `text-ui-fg-secondary`, `text-ui-fg-tertiary`,
+  `ui-accent`, `ui-danger`, `ui-success`, `ui-warning`).
+  - They are CSS variables in `src/index.css` with dark and light values, so a screen built on them
+    themes itself.
+  - Never a raw hex or a Tailwind palette colour (`gray-700`, `blue-500`).
+  - Do not use the legacy `plm-*` tokens in new UI. Replace them when reworking a screen.
+- **Type:** `font-ui` (system UI stack) with these sizes:
+  - 16px semibold: section and dialog titles
+  - 14px: body, row labels and list titles
+  - 13px: secondary lines, descriptions in panes and table cells
+  - 12px: badges, keycaps and tiny meta
+
+  Use weight 400 / 500 / 600, nothing heavier. Line heights: 20px for single lines, 1.4 for prose.
+  Use `tabular-nums` for numbers that line up.
+- **Hierarchy from type size and grey level, not boxes.**
+  - No cards around sections, and no fills behind groups. Use hairlines (`divide-ui-divider`)
+    between rows and `border-ui-border` between regions.
+  - A shadow only on floating layers (menus, dialogs, popovers).
+- **Spacing:** sections 40px apart (24px in panes); row padding 16px (10px compact). Pages have a 16px
+  gutter (`px-4`) and a readable max width for forms. Side navigation is 256px on `bg-ui-nav`.
+- **Shape:**
+  - `rounded-lg` (8px) on buttons, fields, menu items and rounded list rows
+  - `rounded-xl` on dialogs and floating windows
+  - `rounded-md` on badges and keycaps
+- **Icons:** lucide.
+  - 14px in buttons, 16px in rows and toolbars, 18px with `strokeWidth={1.6}` in navigation.
+  - Icons are `text-ui-fg-secondary` unless they carry state.
+  - Every icon-only button has a `title` and an `aria-label`.
+- **Motion:** 100ms colour transitions (`transition-colors duration-100`) and `animate-dialog-in` for
+  dialogs. Nothing bounces.
+- **Focus:** `focus-visible:ring-2 focus-visible:ring-ui-accent/50`, as the primitives already do.
+  Keyboard reachable everywhere.
+
+## Writing on screen
+
+- Sentence case everywhere ("Export order", not "Export Order"). Buttons are verbs.
+- One primary action per view.
+- Say what happened and what to do next. Never a raw error code or stack.
+- Counts and states read as words: "3 files", "Missing STEP", "Sent 2 Nov".
+- All text goes through `t()` (see CLAUDE.md).
+
+## Layout patterns
+
+- **Full-page module view** (Orders, Reviews, Settings): a list in a side pane (`PaneHeader` +
+  search + `RowGroup` of `ListRow`), and the selection in the main area as a `Page` of `Section`s.
+- **Tables:** 13px cells, a 12px `text-ui-fg-tertiary` header row and hairline row dividers. Row
+  hover is `bg-ui-hover`, selection `bg-ui-selected`. No zebra stripes, no vertical rules.
+  Right-align numbers. Row actions appear on hover (as `ListRow` does).
+- **Dialogs:** `Dialog` / `ConfirmDialog` from `@/components/core/Dialog`, with a 16px title, a 14px
+  sentence and buttons bottom-right (secondary Cancel, then primary). A destructive confirm uses
+  `danger`.
+- **Narrow and wide:** every pane works from 280px up. Text truncates with a `title`; nothing
+  overflows horizontally.
+
+## Checking it
+
+Render it as `.cursor/rules/ui-look.mdc` says, then compare the screen side by side with a Settings
+scene (`settings-*`). If it does not look like it belongs next to Settings, it is not done.

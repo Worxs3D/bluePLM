@@ -125,7 +125,9 @@ describe('store, folder index and realtime performance gate', () => {
     store.subscribe(() => {
       storeSets += 1
     })
-  })
+    // Setup only: importing the whole store graph is not measured, and on a shard shared with
+    // the PGlite migration tests it can take longer than the 10 s default hook timeout.
+  }, 60_000)
 
   afterAll(() => {
     vi.useRealTimers()

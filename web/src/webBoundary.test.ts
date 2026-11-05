@@ -171,7 +171,7 @@ describe('BluePLM Web module boundary', () => {
   })
 
   it('renders no inline <style> element, which style-src without unsafe-inline blocks', () => {
-    // Components only: a .ts module may build a standalone HTML document (rfqPdfDocument.ts).
+    // Components only: a .ts module may build a standalone HTML document.
     const components = [...graph.files].filter((file) => file.endsWith('.tsx'))
     const inlineStyle: Array<[string, RegExp]> = [[join2('<sty', 'le> in JSX'), new RegExp(join2('<sty', 'le[\\s>]'))]]
     expect(findBanned(components, inlineStyle)).toEqual([])

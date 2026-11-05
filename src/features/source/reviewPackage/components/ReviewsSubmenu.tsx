@@ -2,24 +2,16 @@
  * The "Reviews" submenu for a file or a multi-selection, in the primary section of both context-menu
  * systems (file list and explorer tree) so they cannot drift apart:
  *
- *   Reviews ▸ New review…
- *             Add to review ▸      the unsent package being built, then open reviews you requested
- *             Remove from review ▸ the unsent package and open reviews holding one of the files
- *             View reviews
+ *   Reviews ▸ Start a review / Add to draft   the one unsent review; opens the pane
+ *             Add to open review ▸            open reviews that take files (asks first)
+ *             Remove from ▸                   the draft and open reviews holding the files
+ *             Show reviews of this file
  *
  * Open reviews are looked up when the submenu opens (`listOpenReviewsForFiles`), never cached.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import {
-  ClipboardCheck,
-  ListChecks,
-  Loader2,
-  MinusCircle,
-  PackagePlus,
-  PlusCircle,
-  Send,
-} from 'lucide-react'
+import { ClipboardCheck, ListChecks, Loader2, MinusCircle, PlusCircle, Search, Send } from 'lucide-react'
 
 import { ContextSubmenu } from '@/features/source/browser/components/ContextMenu/components'
 import { t } from '@/lib/i18n'
@@ -31,13 +23,14 @@ import type { LocalFile } from '@/stores/types'
 import type { OpenReviewForFiles } from '@/types/reviews'
 
 import {
-  addFilesToOpenReview,
   addFilesToReviewPackage,
   removeFilesFromOpenReview,
   removeFilesFromReviewPackage,
+  requestAddToOpenReview,
 } from '../addToPackage'
 import { reviewableFiles } from '../lib/localCopy'
-import { reviewMenuTargets } from '../lib/reviewMenuTargets'
+import { reviewMenuTargets, showReviewsTarget } from '../lib/reviewMenuTargets'
+import { SubmenuArrow } from '@/features/source/browser/components/ContextMenu/components/SubmenuArrow'
 
 interface ReviewsSubmenuProps {
   contextFiles: LocalFile[]
@@ -71,9 +64,20 @@ function useHover(setOpen: (fn: (o: Open) => Open) => void, level: Exclude<Open,
   }
 }
 
+/** The first menu entry: "Start a review" with no draft, "Add to draft" with one. */
+export function draftEntryLabel(draftItems: number, count: number): string {
+  if (draftItems === 0) {
+    return count > 1
+      ? t('contextMenu.review.startReviewMany', { count })
+      : t('contextMenu.review.startReview')
+  }
+  return count > 1
+    ? t('contextMenu.review.addToDraftMany', { count })
+    : t('contextMenu.review.addToDraft')
+}
+
 export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
   const draft = usePDMStore(selectReviewPackageDraft)
-  const setActiveView = usePDMStore((s) => s.setActiveView)
   const [open, setOpen] = useState<Open>('none')
   const [reviews, setReviews] = useState<OpenReviewForFiles[] | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -110,9 +114,27 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
 
   const targets = reviewMenuTargets(fileIds, draft.items, reviews ?? [])
   const count = reviewable.length
+  const allInDraft = draft.items.length > 0 && !targets.addToDraft
   const run = (action: () => Promise<void>) => {
     onClose()
     void action()
+  }
+
+  const showReviews = () => {
+    onClose()
+    const s = usePDMStore.getState()
+    const target = showReviewsTarget(fileIds, loadFailed ? null : reviews)
+    if (target.kind === 'review') {
+      s.openReview(target.reviewId)
+      return
+    }
+    s.setReviewQueueView({
+      bucket: target.bucket,
+      teamId: null,
+      search: reviewable.length === 1 ? reviewable[0].name : '',
+    })
+    s.setActiveReviewId(null)
+    s.setActiveView('reviews')
   }
 
   const loadingRow = (
@@ -136,48 +158,36 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
         setOpen((o) => (o === 'none' ? 'root' : 'none'))
       }}
     >
-      <ClipboardCheck size={14} className="text-plm-accent" />
+      <ClipboardCheck size={14} className="text-plm-fg-dim" />
       {t('contextMenu.review.reviews')}
-      <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+      <SubmenuArrow />
 
       {rootOpen && (
-        <ContextSubmenu minWidth={200} {...rootHover}>
+        <ContextSubmenu minWidth={220} {...rootHover}>
+          {/* Files already all in the draft: the entry just shows it. */}
           <div
             className="context-menu-item"
             onClick={(e) => {
               e.stopPropagation()
+              if (allInDraft) {
+                onClose()
+                usePDMStore.getState().setReviewPackagePaneOpen(true)
+                return
+              }
               run(() => addFilesToReviewPackage(reviewable))
             }}
           >
-            <Send size={14} className="text-plm-accent" />
-            {count > 1
-              ? t('contextMenu.review.newReviewMany', { count })
-              : t('contextMenu.review.newReview')}
+            <Send size={14} className="text-plm-fg-dim" />
+            {allInDraft ? t('contextMenu.review.showDraft') : draftEntryLabel(draft.items.length, count)}
           </div>
 
-          {/* Add to review ▸ */}
-          <div
-            className="context-menu-item relative"
-            {...addHover}
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* Add to open review ▸ */}
+          <div className="context-menu-item relative" {...addHover} onClick={(e) => e.stopPropagation()}>
             <PlusCircle size={14} className="text-plm-fg-dim" />
-            {t('contextMenu.review.addTo')}
-            <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+            {t('contextMenu.review.addToOpen')}
+            <SubmenuArrow />
             {open === 'add' && (
               <ContextSubmenu minWidth={220} {...addHover}>
-                {targets.addToDraft && (
-                  <div
-                    className="context-menu-item"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      run(() => addFilesToReviewPackage(reviewable, { openPane: false }))
-                    }}
-                  >
-                    <PackagePlus size={14} className="text-plm-fg-dim" />
-                    {t('contextMenu.review.draft', { count: draft.items.length })}
-                  </div>
-                )}
                 {loadFailed
                   ? failedRow
                   : reviews === null
@@ -189,34 +199,27 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
                           title={t('contextMenu.review.reviewHint', { count: review.itemCount })}
                           onClick={(e) => {
                             e.stopPropagation()
-                            run(() => addFilesToOpenReview(reviewable, review))
+                            run(() => requestAddToOpenReview(reviewable, review))
                           }}
                         >
                           <ListChecks size={14} className="text-plm-fg-dim" />
                           <span className="truncate max-w-[260px]">{review.title}</span>
                         </div>
                       ))}
-                {!targets.addToDraft &&
-                  reviews !== null &&
-                  !loadFailed &&
-                  targets.addTo.length === 0 && (
-                    <div className="context-menu-item disabled text-plm-fg-muted">
-                      {t('contextMenu.review.noneToAdd')}
-                    </div>
-                  )}
+                {reviews !== null && !loadFailed && targets.addTo.length === 0 && (
+                  <div className="context-menu-item disabled text-plm-fg-muted">
+                    {t('contextMenu.review.noneToAdd')}
+                  </div>
+                )}
               </ContextSubmenu>
             )}
           </div>
 
-          {/* Remove from review ▸ */}
-          <div
-            className="context-menu-item relative"
-            {...removeHover}
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* Remove from ▸ */}
+          <div className="context-menu-item relative" {...removeHover} onClick={(e) => e.stopPropagation()}>
             <MinusCircle size={14} className="text-plm-fg-dim" />
             {t('contextMenu.review.removeFrom')}
-            <span className="text-xs text-plm-fg-muted ml-auto">▶</span>
+            <SubmenuArrow />
             {open === 'remove' && (
               <ContextSubmenu minWidth={220} {...removeHover}>
                 {targets.removeFromDraft > 0 && (
@@ -228,7 +231,7 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
                       removeFilesFromReviewPackage(fileIds)
                     }}
                   >
-                    <PackagePlus size={14} className="text-plm-fg-dim" />
+                    <Send size={14} className="text-plm-fg-dim" />
                     {t('contextMenu.review.draft', { count: draft.items.length })}
                   </div>
                 )}
@@ -267,12 +270,11 @@ export function ReviewsSubmenu({ contextFiles, onClose }: ReviewsSubmenuProps) {
             className="context-menu-item"
             onClick={(e) => {
               e.stopPropagation()
-              onClose()
-              setActiveView('reviews')
+              showReviews()
             }}
           >
-            <ListChecks size={14} className="text-plm-fg-dim" />
-            {t('contextMenu.review.view')}
+            <Search size={14} className="text-plm-fg-dim" />
+            {count > 1 ? t('contextMenu.review.showReviewsMany') : t('contextMenu.review.showReviews')}
           </div>
         </ContextSubmenu>
       )}

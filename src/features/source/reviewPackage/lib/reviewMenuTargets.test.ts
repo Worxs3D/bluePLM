@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { OpenReviewForFiles } from '@/types/reviews'
 
-import { reviewMenuTargets } from './reviewMenuTargets'
+import { reviewMenuTargets, showReviewsTarget } from './reviewMenuTargets'
 
 function review(id: string, patch: Partial<OpenReviewForFiles> = {}): OpenReviewForFiles {
   return {
@@ -57,5 +57,28 @@ describe('reviewMenuTargets', () => {
       ],
     )
     expect(t.removeFrom.map((r) => r.reviewId)).toEqual(['one-of-three', 'awaiting-resubmit'])
+  })
+})
+
+describe('showReviewsTarget', () => {
+  it('opens the one open review that holds the file', () => {
+    expect(showReviewsTarget(['a'], [review('r1', { containedFileIds: ['a'] }), review('r2')])).toEqual({
+      kind: 'review',
+      reviewId: 'r1',
+    })
+  })
+
+  it('goes to the queue bucket holding the files when several reviews hold them', () => {
+    const mine = review('r1', { containedFileIds: ['a'] })
+    const theirs = review('r2', { containedFileIds: ['a'], requestedByMe: false })
+    expect(showReviewsTarget(['a'], [mine, theirs])).toEqual({ kind: 'queue', bucket: 'requested_by_me' })
+    expect(showReviewsTarget(['a'], [theirs, { ...theirs, reviewId: 'r3' }])).toEqual({
+      kind: 'queue',
+      bucket: 'awaiting_me',
+    })
+  })
+
+  it('goes to the queue when nothing was loaded', () => {
+    expect(showReviewsTarget(['a'], null)).toEqual({ kind: 'queue', bucket: 'awaiting_me' })
   })
 })

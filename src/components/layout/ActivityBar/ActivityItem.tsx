@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePDMStore, type SidebarView } from '@/stores/pdmStore'
 import { logNavigation } from '@/lib/userActionLogger'
+import { PDM_FILES_DATA_TYPE } from '@/lib/fileOperations/types'
 import type { ModuleDefinition, ModuleId } from '@/types/modules'
 import { CascadingSidebar } from './CascadingSidebar'
 
@@ -15,6 +16,14 @@ export const SidebarRectContext = createContext<DOMRect | null>(null)
 // Standardized hover timing constants (in ms)
 export const HOVER_OPEN_DELAY = 80 // Quick open, but prevents accidental triggers
 export const HOVER_CLOSE_DELAY = 200 // Consistent close delay across all components
+
+/**
+ * Views that take files dragged from the file list or the tree (Orders: onto an order). Holding
+ * such a drag over their item opens the view, so the drop target comes into sight mid-drag.
+ */
+const FILE_DROP_VIEWS: ReadonlySet<string> = new Set(['orders'])
+/** How long a file drag rests on the item before the view opens. */
+export const DRAG_OPEN_DELAY = 500
 
 export interface ActivityItemProps {
   icon: React.ReactNode
@@ -56,6 +65,13 @@ export function ActivityItem({
   const isActive = (view === 'settings' ? settingsOpen : activeView === view) && !isComingSoon
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const dragOpenRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const takesFileDrops = FILE_DROP_VIEWS.has(view) && !isComingSoon
+  const cancelDragOpen = () => {
+    if (dragOpenRef.current) clearTimeout(dragOpenRef.current)
+    dragOpenRef.current = null
+  }
+  useEffect(() => cancelDragOpen, [])
 
   // Show chevron in collapsed mode only (not in hover mode) - not for coming soon items
   const showCollapsedChevron =
@@ -134,6 +150,27 @@ export function ActivityItem({
         }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onDragEnter={
+          takesFileDrops
+            ? (e) => {
+                if (!e.dataTransfer.types.includes(PDM_FILES_DATA_TYPE) || dragOpenRef.current) return
+                dragOpenRef.current = setTimeout(() => {
+                  dragOpenRef.current = null
+                  setActiveView(view)
+                }, DRAG_OPEN_DELAY)
+              }
+            : undefined
+        }
+        onDragLeave={
+          takesFileDrops
+            ? (e) => {
+                // Moving onto the icon inside the button is not leaving it.
+                if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return
+                cancelDragOpen()
+              }
+            : undefined
+        }
+        onDrop={takesFileDrops ? cancelDragOpen : undefined}
         className={`relative h-11 w-full flex items-center gap-3 px-[9px] rounded-lg transition-colors ${
           isComingSoon
             ? 'opacity-40 cursor-not-allowed'

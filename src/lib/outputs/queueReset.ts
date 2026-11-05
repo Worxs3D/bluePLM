@@ -1,14 +1,21 @@
 /**
  * The session boundary of the output queue (`autoQueue.ts`). Kept free of imports so the store's
  * sign-out and organization-change paths can call it without importing the queue (and through it
- * the store itself).
+ * the store itself). The output request worker (`requests.ts`) is deliberately not registered
+ * here: its lifetime is the realtime effect's (see `startOutputRequestWorker`).
  */
 
-let reset: (() => void) | null = null
+const resets = new Set<() => void>()
 
-/** Called by the app's queue when it is created. */
-export function registerOutputQueueReset(fn: () => void): void {
-  reset = fn
+/**
+ * Called by the app's queue when it is created. Every registration runs once, at the next
+ * `resetOutputQueue`. Returns a function that withdraws it.
+ */
+export function registerOutputQueueReset(fn: () => void): () => void {
+  resets.add(fn)
+  return () => {
+    resets.delete(fn)
+  }
 }
 
 /**
@@ -16,7 +23,7 @@ export function registerOutputQueueReset(fn: () => void): void {
  * result of a job already running is ignored. The next job queued starts a fresh queue.
  */
 export function resetOutputQueue(): void {
-  const fn = reset
-  reset = null
-  fn?.()
+  const fns = [...resets]
+  resets.clear()
+  for (const fn of fns) fn()
 }
