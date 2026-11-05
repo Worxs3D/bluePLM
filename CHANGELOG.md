@@ -6,6 +6,10 @@ All notable changes to BluePLM will be documented in this file.
 
 ## [Unreleased]
 
+## [5.14.0] - 2026-11-05
+
+SolidWorks service 1.30.0. No schema or API change (schema 515, as 5.13.0).
+
 ### Added
 
 - **Full-resolution CAD previews.** The Preview tab used to show only the small bitmap SOLIDWORKS
