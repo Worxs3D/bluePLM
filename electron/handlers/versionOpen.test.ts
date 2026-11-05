@@ -7,8 +7,16 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
 let userData = ''
 
+const openedPaths: string[] = []
+
 vi.mock('electron', () => ({
   app: { getPath: () => userData },
+  shell: {
+    openPath: async (p: string) => {
+      openedPaths.push(p)
+      return ''
+    },
+  },
   ipcMain: {
     handle: (channel: string, fn: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, fn),
     removeHandler: (channel: string) => handlers.delete(channel),
@@ -20,6 +28,7 @@ const {
   MARKER_NAME,
   entryKey,
   isCacheEntry,
+  isOpenableCacheFile,
   planPrune,
   pruneCache,
   registerVersionOpenHandlers,
@@ -56,6 +65,25 @@ describe('isCacheEntry', () => {
     expect(isCacheEntry(path.join(root, 'v0f8e4c2a1b3d', '..', '..', 'v0f8e4c2a1b3d'), root)).toBe(false)
     expect(isCacheEntry('relative/v0f8e4c2a1b3d', root)).toBe(false)
     expect(isCacheEntry(undefined, root)).toBe(false)
+  })
+})
+
+describe('isOpenableCacheFile', () => {
+  const root = path.resolve('/cache-root')
+  const entry = path.join(root, 'v0f8e4c2a1b3d')
+  it('accepts only a SOLIDWORKS document inside an entry', () => {
+    expect(isOpenableCacheFile(path.join(entry, 'Top', 'Frame.SLDASM'), root)).toBe(true)
+    expect(isOpenableCacheFile(path.join(entry, 'a.sldprt'), root)).toBe(true)
+    expect(isOpenableCacheFile(path.join(entry, 'a.SLDDRW'), root)).toBe(true)
+    expect(isOpenableCacheFile(path.join(entry, 'x.exe'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.join(entry, 'x.sldasm.exe'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.join(entry, 'x.bat'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.join(root, 'a.sldasm'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.join(root, 'other', 'a.sldasm'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.join(entry, '..', '..', 'a.sldasm'), root)).toBe(false)
+    expect(isOpenableCacheFile(path.resolve('/elsewhere/v0f8e4c2a1b3d/a.sldasm'), root)).toBe(false)
+    expect(isOpenableCacheFile('relative/a.sldasm', root)).toBe(false)
+    expect(isOpenableCacheFile(undefined, root)).toBe(false)
   })
 })
 
@@ -139,6 +167,23 @@ describe('version cache on disk', () => {
     expect(fs.existsSync(path.join(prepared.path, MARKER_NAME))).toBe(false)
     fs.writeFileSync(file, 'y')
     expect(fs.readFileSync(file, 'utf8')).toBe('y')
+  })
+
+  it('open-root opens a staged SOLIDWORKS file and refuses anything else', async () => {
+    const prepared = await invoke<{ path: string }>('version-open:prepare-entry', ID)
+    const asm = path.join(prepared.path, 'Top', 'Frame.SLDASM')
+    const exe = path.join(prepared.path, 'Top', 'x.exe')
+    fs.mkdirSync(path.dirname(asm), { recursive: true })
+    fs.writeFileSync(asm, 'a')
+    fs.writeFileSync(exe, 'MZ')
+
+    await expect(invoke('version-open:open-root', exe)).resolves.toMatchObject({ success: false })
+    await expect(invoke('version-open:open-root', path.join(prepared.path, 'Top', 'Gone.sldasm'))).resolves.toMatchObject({
+      success: false,
+    })
+    expect(openedPaths).toEqual([])
+    await expect(invoke('version-open:open-root', asm)).resolves.toEqual({ success: true })
+    expect(openedPaths).toEqual([path.resolve(asm)])
   })
 
   it('pruneCache removes old read-only entries and keeps recent ones', async () => {

@@ -12,6 +12,7 @@
 
 import { log } from '@/lib/logger'
 import { ensureVersionOutput, queueOutputs, type PlannedOutputJob } from '@/lib/outputs'
+import { holdGeneration } from '@/lib/outputs/generationLock'
 import { requestOutputs } from '@/lib/outputs/requestsApi'
 import { hasDesktop } from '@/lib/platform'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -87,6 +88,17 @@ function waitForJobs(keys: readonly string[]): Promise<void> {
 
 /** Generate by version id, one at a time (the queue takes the saved configuration by number only). */
 async function runDirectJobs(jobs: readonly MissingOutputJob[], orgId: string | null): Promise<void> {
+  if (jobs.length === 0) return
+  // The user's jobs come first: the request worker claims nothing until the last one is done.
+  const end = holdGeneration()
+  try {
+    await runDirectJobsHeld(jobs, orgId)
+  } finally {
+    end()
+  }
+}
+
+async function runDirectJobsHeld(jobs: readonly MissingOutputJob[], orgId: string | null): Promise<void> {
   for (const job of jobs) {
     if ((usePDMStore.getState().organization?.id ?? null) !== orgId) return
     const key = outputJobKey(job.fileId, job.kind, job.configuration)

@@ -13,9 +13,11 @@
 //      same moment, first all blocked behind one transaction holding the organization's counter row
 //      (so they really contend), then freely in parallel. The numbers must be unique and gap-free,
 //      and the counter must equal the highest.
-//   2. Output requests (version_output_request_claim, schema 515): several workers claim at once,
-//      each claim held open for a moment so the transactions overlap. No request may be claimed
-//      twice, and every one must be claimed.
+//   2. Output requests (version_output_request_claim, schema 515): several workers claim at once
+//      (some one at a time, some several), touching each claim, each claim held open for a moment so
+//      the transactions overlap. No request may be claimed twice, and every one must be claimed. Then
+//      every worker hands one of its claims back (version_output_request_release) and all claim
+//      again at once: each released request is claimed exactly once more, on its second attempt.
 //
 // Exit 0 = every check passed, 1 = a check failed, 2 = could not connect or apply.
 import { randomUUID } from 'node:crypto'
@@ -33,7 +35,8 @@ const APPLY = process.argv.includes('--apply-migrations')
 const WORKERS = 8
 const ORDERS_PER_WORKER = 20
 const REQUEST_FILES = 20 // x 3 kinds = 60 requests
-const CLAIM_LIMIT = 4
+// Even workers claim several at a time, odd ones one at a time (as the desktop worker does).
+const claimLimit = (i) => (i % 2 === 0 ? 4 : 1)
 
 const failures = []
 function check(ok, what) {
@@ -183,7 +186,8 @@ async function raceClaims(owner, workers, ids) {
     workers.map(async (w, i) => {
       for (;;) {
         await w.query('BEGIN')
-        const got = (await w.query('SELECT id FROM version_output_request_claim($1)', [CLAIM_LIMIT])).rows
+        const got = (await w.query('SELECT id FROM version_output_request_claim($1)', [claimLimit(i)])).rows
+        for (const r of got) await w.query('SELECT version_output_request_touch($1)', [r.id])
         await w.query('SELECT pg_sleep(0.05)')
         await w.query('COMMIT')
         for (const r of got) claimedBy.set(r.id, [...(claimedBy.get(r.id) ?? []), i])
@@ -204,6 +208,36 @@ async function raceClaims(owner, workers, ids) {
     )
   ).rows
   check(state.length === 1 && state[0].status === 'claimed' && state[0].n === items.length, `all requests are claimed (${JSON.stringify(state)})`)
+
+  // Each worker that holds a claim hands one back, then everyone claims again at once.
+  const released = []
+  await Promise.all(
+    workers.map(async (w, i) => {
+      const mine = [...claimedBy.entries()].find(([, by]) => by[0] === i)
+      if (!mine) return
+      const r = (await w.query('SELECT version_output_request_release($1) AS r', [mine[0]])).rows[0].r
+      if (r.changed) released.push(mine[0])
+    }),
+  )
+  check(released.length > 0, `${released.length} claims handed back`)
+  const reclaimed = new Map()
+  await Promise.all(
+    workers.map(async (w, i) => {
+      for (;;) {
+        await w.query('BEGIN')
+        const got = (await w.query('SELECT id, attempts FROM version_output_request_claim($1)', [claimLimit(i)])).rows
+        await w.query('SELECT pg_sleep(0.05)')
+        await w.query('COMMIT')
+        for (const r of got) reclaimed.set(r.id, [...(reclaimed.get(r.id) ?? []), r.attempts])
+        if (got.length === 0) break
+      }
+    }),
+  )
+  check(
+    reclaimed.size === released.length && released.every((id) => reclaimed.get(id)?.length === 1),
+    `every handed-back request claimed exactly once more (${reclaimed.size} of ${released.length})`,
+  )
+  check([...reclaimed.values()].every((a) => a.length === 1 && a[0] === 2), 'each re-claim is the second attempt')
 }
 
 /**

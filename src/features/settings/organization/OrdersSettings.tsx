@@ -26,9 +26,10 @@ import { hasDesktop } from '@/lib/platform'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { OrderOutputKind } from '@/types/orders'
-import type { OrderOrgSettings, OrgSettings } from '@/types/pdm'
+import type { OrderOrgSettings } from '@/types/pdm'
 
 import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
+import { saveOrderOrgSettings } from './ordersSettingsSave'
 
 /** The settings search labels (`settingsCatalog`) are these English strings; keep them equal. */
 const CLASS_LABEL_KEY: Record<OrderLineClass, string> = {
@@ -77,30 +78,29 @@ export function OrdersSettings() {
     if (!organization || !isAdmin) return
     setSaving(true)
     try {
-      // Read the current settings first so a concurrent change to another key is not overwritten.
-      const { data: fresh } = await supabase
-        .from('organization')
-        .select('settings')
-        .eq('id', organization.id)
-        .single()
-      const base = (fresh?.settings ?? organization.settings ?? {}) as OrgSettings
-      const orderBase: OrderOrgSettings =
-        typeof base.orders === 'object' && base.orders !== null ? base.orders : {}
-      const merged: OrderOrgSettings = {
-        ...orderBase,
-        ...patch,
-        ...(patch.default_kinds ? { default_kinds: { ...orderBase.default_kinds, ...patch.default_kinds } } : {}),
+      // Re-read first so a concurrent change to another key is not overwritten; a failed read
+      // aborts the save (ordersSettingsSave.ts).
+      const result = await saveOrderOrgSettings(patch, {
+        read: () => supabase.from('organization').select('settings').eq('id', organization.id).single(),
+        write: (settings) =>
+          supabase
+            .from('organization')
+            .update({ settings: settings as never })
+            .eq('id', organization.id)
+            .select('settings')
+            .single(),
+      })
+      if (!result.ok) {
+        log.error('[OrdersSettings]', 'Saving the Orders settings failed', { reason: result.reason, message: result.message })
+        addToast(
+          'error',
+          result.reason === 'no_row'
+            ? t('orders.settingsNoPermission')
+            : t('orders.settingsSaveFailed', { error: result.message }),
+        )
+        return
       }
-      const settings: OrgSettings = { ...base, orders: merged }
-      const { data, error } = await supabase
-        .from('organization')
-        .update({ settings: settings as never })
-        .eq('id', organization.id)
-        .select('settings')
-        .single()
-      if (error) throw error
-      if (!data) throw new Error(t('orders.settingsNoPermission'))
-      setOrganization({ ...organization, settings })
+      setOrganization({ ...organization, settings: result.settings })
       setDraft(null)
       addToast('success', t('orders.settingsSaved'))
     } catch (error) {

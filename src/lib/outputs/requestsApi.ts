@@ -28,8 +28,11 @@ import {
 } from '@/types/outputRequests'
 import { VERSION_OUTPUT_KINDS, type VersionOutputKind } from '@/types/versionOutputs'
 
-/** Requests one claim takes (each is a SOLIDWORKS export, minutes at worst). */
-export const OUTPUT_REQUEST_CLAIM_LIMIT = 3
+/**
+ * Requests one claim takes: one, so a claim never waits behind another export of this machine
+ * (each is a SOLIDWORKS export, minutes at worst) while another machine could have taken it.
+ */
+export const OUTPUT_REQUEST_CLAIM_LIMIT = 1
 /** Items one create call carries. */
 const CREATE_BATCH = 500
 const IN_BATCH = 100
@@ -211,5 +214,22 @@ export async function finishOutputRequest(
     p_error: error ? error.slice(0, ERROR_MAX_LENGTH) : null,
   })
   if (rpcError) return refused('Finish output request', rpcError)
+  return { ok: true }
+}
+
+/** Keep a claim fresh while it runs (the claimer only): a claim older than 15 minutes is taken over. */
+export async function touchOutputRequest(id: string): Promise<OutputRequestResult> {
+  const { error } = await db().rpc('version_output_request_touch', { p_id: id })
+  if (error) return refused('Touch output request', error)
+  return { ok: true }
+}
+
+/**
+ * Give a claimed request back (the claimer only): pending again, for any machine. The server
+ * counts the attempts and fails a request given back too often (`TOO_MANY_ATTEMPTS`).
+ */
+export async function releaseOutputRequest(id: string): Promise<OutputRequestResult> {
+  const { error } = await db().rpc('version_output_request_release', { p_id: id })
+  if (error) return refused('Release output request', error)
   return { ok: true }
 }

@@ -267,24 +267,6 @@ export async function permanentlyDeleteFile(
     return { success: false, error: 'File must be in trash before permanent deletion' }
   }
 
-  // Log activity BEFORE delete
-  try {
-    await client.from('activity').insert({
-      org_id: file.org_id,
-      file_id: null, // Set to null since file will be deleted
-      user_id: userId,
-      user_email: '',
-      action: 'delete' as const,
-      details: {
-        file_name: file.file_name,
-        file_path: file.file_path,
-        permanent: true,
-      },
-    })
-  } catch {
-    // Activity logging is non-critical
-  }
-
   // Delete file versions. Schema 515 refuses (hint REFERENCED_BY_RELEASE) while a released
   // version's closure references one of them; stop before the references go too.
   const { error: versionsError } = await client.from('file_version').delete().eq('file_id', fileId)
@@ -311,6 +293,25 @@ export async function permanentlyDeleteFile(
       success: false,
       error: isReferencedByRelease(error) ? referencedByReleaseMessage(file.file_name) : error.message,
     }
+  }
+
+  // Log the permanent delete only once it happened: schema 515 refuses deleting a version a
+  // release still references, and a refused delete must not read as done in the history.
+  try {
+    await client.from('activity').insert({
+      org_id: file.org_id,
+      file_id: null, // The file row is gone
+      user_id: userId,
+      user_email: '',
+      action: 'delete' as const,
+      details: {
+        file_name: file.file_name,
+        file_path: file.file_path,
+        permanent: true,
+      },
+    })
+  } catch {
+    // Activity logging is non-critical
   }
 
   return { success: true }

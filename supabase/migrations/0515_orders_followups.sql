@@ -7,7 +7,9 @@
 --                       iges, stl, dxf), made from the web or a machine without SOLIDWORKS. Any
 --                       signed-in desktop with SOLIDWORKS whose user has explorer edit and the
 --                       vault claims it (version_output_request_claim(), FOR UPDATE SKIP LOCKED,
---                       a claim older than 15 minutes can be taken again), generates the output
+--                       a claim older than 15 minutes can be taken again; a working claimer keeps
+--                       it fresh with version_output_request_touch() or hands it back with
+--                       _release(), and a fourth claim fails it with TOO_MANY_ATTEMPTS), generates the output
 --                       through the normal path (file_version_output_record() /
 --                       drawing_pdf_render_record()) and finishes it. Recording the matching output
 --                       marks every open request for it done (trg_output_request_complete), so a
@@ -23,7 +25,8 @@
 --   trg_file_version_release_closure_guard  a version that a released version references, directly
 --                       or through other versions (file_version_reference.child_version_id, exact or
 --                       approximate), is never deleted while the released version's file is live and
---                       its organization exists (hint REFERENCED_BY_RELEASE). The deletion paths are
+--                       its organization exists (hint REFERENCED_BY_RELEASE; the message names the
+--                       released file only to a caller who can read its vault). The deletion paths are
 --                       all deletes of file_version rows: the client's version delete (policy
 --                       "file_version: engineers manage"), a file purge (file delete, cascading),
 --                       a vault delete (cascading through file) and an organization delete; the
@@ -70,6 +73,9 @@ CREATE TABLE IF NOT EXISTS version_output_request (
   requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   claimed_by UUID REFERENCES app_user(id) ON DELETE SET NULL,
   claimed_at TIMESTAMPTZ,
+  -- How many times the request was claimed. A fourth claim is refused: the request fails with
+  -- TOO_MANY_ATTEMPTS instead (a version that crashes or hangs every machine that tries it).
+  attempts INTEGER NOT NULL DEFAULT 0 CONSTRAINT version_output_request_attempts_check CHECK (attempts >= 0),
   finished_at TIMESTAMPTZ,
   error TEXT CONSTRAINT version_output_request_error_check CHECK (length(error) <= 2000),
   -- The order the request was made from, for context only.
@@ -319,7 +325,9 @@ REVOKE ALL ON FUNCTION version_output_request_create(JSONB) FROM PUBLIC, anon, a
 GRANT EXECUTE ON FUNCTION version_output_request_create(JSONB) TO authenticated, service_role;
 
 -- Claims up to p_limit (1 to 50) open requests of the caller's organization in vaults the caller
--- reads, oldest first: pending ones, and claims older than 15 minutes (a machine that stopped).
+-- reads, oldest first: pending ones, and claims older than 15 minutes (a machine that stopped;
+-- a working claimer keeps its claim fresh with version_output_request_touch()). Each claim counts
+-- an attempt; a request that would be claimed a fourth time fails with TOO_MANY_ATTEMPTS instead.
 -- Needs explorer edit, since the claimer records the outputs. Rows another claimer has locked are
 -- skipped, so concurrent workers never claim the same request.
 CREATE OR REPLACE FUNCTION version_output_request_claim(p_limit INTEGER DEFAULT 5)
@@ -344,11 +352,25 @@ BEGIN
       USING ERRCODE = 'insufficient_privilege', HINT = 'NO_EDIT_PERMISSION';
   END IF;
 
+  UPDATE version_output_request r
+     SET status = 'failed', finished_at = NOW(), error = 'TOO_MANY_ATTEMPTS'
+   WHERE r.id IN (
+     SELECT x.id
+       FROM version_output_request x
+      WHERE x.org_id = v_org_id
+        AND x.attempts >= 3
+        AND (x.status = 'pending'
+             OR (x.status = 'claimed' AND x.claimed_at < NOW() - INTERVAL '15 minutes'))
+        AND x.vault_id IN (SELECT my_accessible_vault_ids())
+        FOR UPDATE OF x SKIP LOCKED
+   );
+
   SELECT COALESCE(array_agg(s.id), '{}'::UUID[]) INTO v_ids
     FROM (
       SELECT r.id
         FROM version_output_request r
        WHERE r.org_id = v_org_id
+         AND r.attempts < 3
          AND (r.status = 'pending'
               OR (r.status = 'claimed' AND r.claimed_at < NOW() - INTERVAL '15 minutes'))
          AND r.vault_id IN (SELECT my_accessible_vault_ids())
@@ -364,7 +386,8 @@ BEGIN
   RETURN QUERY
     WITH claimed AS (
       UPDATE version_output_request r
-         SET status = 'claimed', claimed_by = v_actor, claimed_at = NOW(), error = NULL
+         SET status = 'claimed', claimed_by = v_actor, claimed_at = NOW(), error = NULL,
+             attempts = r.attempts + 1
        WHERE r.id = ANY (v_ids)
       RETURNING r.*
     )
@@ -374,6 +397,93 @@ $$;
 
 REVOKE ALL ON FUNCTION version_output_request_claim(INTEGER) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION version_output_request_claim(INTEGER) TO authenticated, service_role;
+
+-- Keeps the caller's claim fresh while it works (a batch can outlast 15 minutes): claimed_at = now.
+-- Only by its claimer (NOT_CLAIMER, also once a stale claim was taken over). A request of the
+-- caller's that was finished or cancelled meanwhile is left as it is ({changed: false}), which
+-- tells the worker to stop.
+CREATE OR REPLACE FUNCTION version_output_request_touch(p_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID;
+  v_org_id UUID;
+  v_request version_output_request%ROWTYPE;
+BEGIN
+  v_actor := my_actor_id();
+  SELECT u.org_id INTO v_org_id FROM app_user u WHERE u.id = v_actor;
+  IF v_org_id IS NULL THEN
+    RAISE EXCEPTION 'You are not a member of an organization'
+      USING ERRCODE = 'insufficient_privilege', HINT = 'NOT_MEMBER';
+  END IF;
+  SELECT * INTO v_request FROM version_output_request r
+   WHERE r.id = p_id AND r.org_id = v_org_id
+   FOR UPDATE;
+  IF v_request.id IS NULL OR NOT (v_request.vault_id IN (SELECT my_accessible_vault_ids())) THEN
+    RAISE EXCEPTION 'Request not found' USING ERRCODE = 'insufficient_privilege', HINT = 'NOT_FOUND';
+  END IF;
+  IF v_request.claimed_by IS DISTINCT FROM v_actor THEN
+    RAISE EXCEPTION 'The request is not claimed by you'
+      USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'NOT_CLAIMER';
+  END IF;
+  IF v_request.status <> 'claimed' THEN
+    RETURN jsonb_build_object('ok', true, 'changed', false, 'request', to_jsonb(v_request));
+  END IF;
+  UPDATE version_output_request SET claimed_at = NOW() WHERE id = v_request.id
+  RETURNING * INTO v_request;
+  RETURN jsonb_build_object('ok', true, 'changed', true, 'request', to_jsonb(v_request));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION version_output_request_touch(UUID) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION version_output_request_touch(UUID) TO authenticated, service_role;
+
+-- Hands a claimed request back (this machine cannot do it now): pending and unclaimed again, for
+-- the next worker. The attempt it used still counts. Only by its claimer (NOT_CLAIMER); a request
+-- of the caller's that was finished or cancelled meanwhile is left as it is ({changed: false}).
+CREATE OR REPLACE FUNCTION version_output_request_release(p_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID;
+  v_org_id UUID;
+  v_request version_output_request%ROWTYPE;
+BEGIN
+  v_actor := my_actor_id();
+  SELECT u.org_id INTO v_org_id FROM app_user u WHERE u.id = v_actor;
+  IF v_org_id IS NULL THEN
+    RAISE EXCEPTION 'You are not a member of an organization'
+      USING ERRCODE = 'insufficient_privilege', HINT = 'NOT_MEMBER';
+  END IF;
+  SELECT * INTO v_request FROM version_output_request r
+   WHERE r.id = p_id AND r.org_id = v_org_id
+   FOR UPDATE;
+  IF v_request.id IS NULL OR NOT (v_request.vault_id IN (SELECT my_accessible_vault_ids())) THEN
+    RAISE EXCEPTION 'Request not found' USING ERRCODE = 'insufficient_privilege', HINT = 'NOT_FOUND';
+  END IF;
+  IF v_request.claimed_by IS DISTINCT FROM v_actor THEN
+    RAISE EXCEPTION 'The request is not claimed by you'
+      USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'NOT_CLAIMER';
+  END IF;
+  IF v_request.status <> 'claimed' THEN
+    RETURN jsonb_build_object('ok', true, 'changed', false, 'request', to_jsonb(v_request));
+  END IF;
+  UPDATE version_output_request
+     SET status = 'pending', claimed_by = NULL, claimed_at = NULL
+   WHERE id = v_request.id
+  RETURNING * INTO v_request;
+  RETURN jsonb_build_object('ok', true, 'changed', true, 'request', to_jsonb(v_request));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION version_output_request_release(UUID) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION version_output_request_release(UUID) TO authenticated, service_role;
 
 -- Finishes a claimed request: done (only once the output is recorded, NO_OUTPUT otherwise; the
 -- output's own trigger usually got there first) or failed with an error text. Only by its claimer
@@ -534,6 +644,7 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_release RECORD;
+  v_name TEXT;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM file_version_reference e WHERE e.child_version_id = OLD.id) THEN
     RETURN OLD;
@@ -546,7 +657,7 @@ BEGIN
       FROM file_version_reference e
       JOIN above a ON e.child_version_id = a.version_id
   )
-  SELECT pv.version, pf.file_name INTO v_release
+  SELECT pv.version, pf.file_name, pf.vault_id INTO v_release
     FROM above a
     JOIN file_version pv ON pv.id = a.version_id
     JOIN file pf ON pf.id = pv.file_id AND pf.deleted_at IS NULL
@@ -556,8 +667,16 @@ BEGIN
    LIMIT 1;
 
   IF FOUND THEN
-    RAISE EXCEPTION 'Version % is referenced by released version % of %, and is kept',
-      OLD.version, v_release.version, v_release.file_name
+    -- The message names the version being deleted, and the release only to a caller who can read
+    -- its vault (an administrator reads every vault): never a file of a vault the caller lacks.
+    SELECT f.file_name INTO v_name FROM file f WHERE f.id = OLD.file_id;
+    IF v_release.vault_id IN (SELECT my_accessible_vault_ids()) THEN
+      RAISE EXCEPTION 'Version % of % is referenced by released version % of %, and is kept',
+        OLD.version, COALESCE(v_name, 'this file'), v_release.version, v_release.file_name
+        USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'REFERENCED_BY_RELEASE';
+    END IF;
+    RAISE EXCEPTION 'Version % of % is referenced by a released version, and is kept',
+      OLD.version, COALESCE(v_name, 'this file')
       USING ERRCODE = 'object_not_in_prerequisite_state', HINT = 'REFERENCED_BY_RELEASE';
   END IF;
   RETURN OLD;
@@ -707,6 +826,8 @@ $rfq_import$;
 INSERT INTO schema_function_inventory (signature, module, release) VALUES
   ('version_output_request_create(jsonb)', '10-source-files', 515),
   ('version_output_request_claim(integer)', '10-source-files', 515),
+  ('version_output_request_touch(uuid)', '10-source-files', 515),
+  ('version_output_request_release(uuid)', '10-source-files', 515),
   ('version_output_request_finish(uuid, text, text)', '10-source-files', 515),
   ('version_output_request_cancel(uuid[])', '10-source-files', 515),
   ('trg_output_request_complete()', '10-source-files', 515),
@@ -723,7 +844,11 @@ INSERT INTO schema_manifest_entry (kind, name, module, probe, requires, since_ve
   ('function', 'version_output_request_create(jsonb)', '10-source-files', NULL,
     'my_actor_id && my_accessible_vault_ids && has_version_output && org_id && deleted_at', 515),
   ('function', 'version_output_request_claim(integer)', '10-source-files', NULL,
-    'my_actor_id && has_team_permission && my_accessible_vault_ids && SKIP LOCKED && org_id', 515),
+    'my_actor_id && has_team_permission && my_accessible_vault_ids && SKIP LOCKED && attempts && org_id', 515),
+  ('function', 'version_output_request_touch(uuid)', '10-source-files', NULL,
+    'my_actor_id && my_accessible_vault_ids && claimed_by && claimed_at && org_id', 515),
+  ('function', 'version_output_request_release(uuid)', '10-source-files', NULL,
+    'my_actor_id && my_accessible_vault_ids && claimed_by && org_id', 515),
   ('function', 'version_output_request_finish(uuid,text,text)', '10-source-files', NULL,
     'my_actor_id && my_accessible_vault_ids && has_version_output && claimed_by && org_id', 515),
   ('function', 'version_output_request_cancel(uuid[])', '10-source-files', NULL,
@@ -731,7 +856,7 @@ INSERT INTO schema_manifest_entry (kind, name, module, probe, requires, since_ve
   ('function', 'supply_order_count_hidden_lines(uuid)', '30-supply-chain', NULL,
     'supply_order_require_module && my_accessible_vault_ids && org_id', 515),
   ('function', 'trg_file_version_release_closure_guard()', '10-source-files', NULL,
-    'file_version_reference && released_at && deleted_at', 515)
+    'file_version_reference && released_at && deleted_at && my_accessible_vault_ids', 515)
 ON CONFLICT (kind, name) DO UPDATE
   SET module = EXCLUDED.module, probe = EXCLUDED.probe, requires = EXCLUDED.requires,
       since_version = EXCLUDED.since_version;
@@ -747,8 +872,9 @@ LANGUAGE sql IMMUTABLE AS $$ SELECT
   'Orders follow-ups. version_output_request asks for an output a version lacks (pdf, step, iges, stl, '
   'dxf): version_output_request_create() requests the kinds the file can have, '
   'version_output_request_claim() hands them to a desktop with explorer edit and the vault (a claim '
-  'older than 15 minutes is taken again), version_output_request_finish() and _cancel() close them, '
-  'and recording the output marks its requests done. supply_order_count_hidden_lines() says per vault '
+  'older than 15 minutes is taken again; _touch() keeps it fresh, _release() hands it back, and a '
+  'fourth claim fails it with TOO_MANY_ATTEMPTS), version_output_request_finish() and _cancel() close '
+  'them, and recording the output marks its requests done. supply_order_count_hidden_lines() says per vault '
   'how many lines of an order the caller cannot read. A version a released version references is '
   'never deleted while that release is live (REFERENCED_BY_RELEASE). RFQs are imported as quote '
   'orders (supply_order.imported_from_rfq_id); the rfq tables stay.'

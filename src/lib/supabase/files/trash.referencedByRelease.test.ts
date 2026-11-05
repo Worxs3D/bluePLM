@@ -1,11 +1,13 @@
 /**
  * Schema 515 refuses deleting a version a released version's closure references (hint
  * `REFERENCED_BY_RELEASE`). A permanent delete must stop there, before the file's references go,
- * and say why in words.
+ * say why in words, and write no "permanently deleted" activity row. A delete that goes through
+ * writes the row after the file is gone.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const deleted: string[] = []
+const steps: string[] = []
+let refuseVersions = true
 
 const client = {
   from: (table: string) => {
@@ -21,26 +23,35 @@ const client = {
         }),
         delete: () => ({
           eq: async () => {
-            deleted.push('file')
+            steps.push('delete file')
             return { error: null }
           },
         }),
       }
     }
-    if (table === 'activity') return { insert: async () => ({ error: null }) }
+    if (table === 'activity') {
+      return {
+        insert: async () => {
+          steps.push('activity')
+          return { error: null }
+        },
+      }
+    }
     if (table === 'file_version') {
       return {
         delete: () => ({
-          eq: async () => ({
-            error: { message: 'refused', hint: 'REFERENCED_BY_RELEASE', code: 'P0001' },
-          }),
+          eq: async () => {
+            if (refuseVersions) return { error: { message: 'refused', hint: 'REFERENCED_BY_RELEASE', code: 'P0001' } }
+            steps.push('delete versions')
+            return { error: null }
+          },
         }),
       }
     }
     return {
       delete: () => ({
         or: async () => {
-          deleted.push(table)
+          steps.push(`delete ${table}`)
           return { error: null }
         },
       }),
@@ -53,11 +64,23 @@ vi.mock('../client', () => ({ getSupabaseClient: () => client }))
 import { permanentlyDeleteFile } from './trash'
 
 describe('permanentlyDeleteFile and a version a release references', () => {
-  it('stops before anything else is deleted and explains the refusal', async () => {
+  beforeEach(() => {
+    steps.length = 0
+  })
+
+  it('stops before anything else is deleted, logs no activity, and explains the refusal', async () => {
+    refuseVersions = true
     const result = await permanentlyDeleteFile('f1', 'u1')
     expect(result.success).toBe(false)
     expect(result.error).toContain('Bolt.SLDPRT')
     expect(result.error).not.toContain('REFERENCED_BY_RELEASE')
-    expect(deleted).toEqual([])
+    expect(steps).toEqual([])
+  })
+
+  it('logs the permanent delete only after the file is gone', async () => {
+    refuseVersions = false
+    const result = await permanentlyDeleteFile('f1', 'u1')
+    expect(result.success).toBe(true)
+    expect(steps).toEqual(['delete versions', 'delete file_reference', 'delete file', 'activity'])
   })
 })

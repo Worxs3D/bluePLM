@@ -22,6 +22,7 @@ import { cancelRequests, exportOrderOutputs, generateMissing, requestMissing } f
 import { useHiddenLineVaults } from '../hooks/useHiddenLineVaults'
 import { useLatestVersions } from '../hooks/useLatestVersions'
 import { useMayCancelRequest } from '../hooks/useMayCancelRequest'
+import { canGenerateHere } from '../lib/generateGate'
 import { hiddenLinesText } from '../lib/hiddenLines'
 import { livingLines, missingCount, missingOutputs, splitMissing } from '../lib/outputChips'
 import { OrderLineRow, WIDE_COLUMN } from './OrderLineRow'
@@ -38,10 +39,11 @@ interface OrderLinesSectionProps {
 export function OrderLinesSection({ order, lines, states }: OrderLinesSectionProps) {
   const { t } = useTranslation()
   const desktop = hasDesktop()
-  // Generate here only where SOLIDWORKS can run; elsewhere ask a machine that has it.
+  // Generate here only with SOLIDWORKS known to run here; elsewhere ask a machine that has it.
+  const swRunning = usePDMStore((s) => s.solidworksServiceStatus.running)
   const swInstalled = usePDMStore((s) => s.solidworksServiceStatus.swInstalled)
   const mayCancel = useMayCancelRequest()
-  const canGenerate = desktop && swInstalled !== false
+  const canGenerate = canGenerateHere(desktop, { running: swRunning, swInstalled })
   const canSaveToFolder = desktop || webFolderExportSupported()
   const editable = linesEditable(order)
   const latest = useLatestVersions(lines, editable)

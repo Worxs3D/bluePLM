@@ -33,6 +33,7 @@ import type { ModelOutputKind, VersionOutput, VersionOutputKind } from '@/types/
 
 import { baseNameOf, outputFileName } from './fileName'
 import { isDrawingFile, kindTakesConfiguration, outputExtension, supportsOutputKind } from './kinds'
+import { withGenerationLock } from './generationLock'
 import { orgExportFilenamePattern } from './naming'
 
 /** The staging subfolder exports are written to, next to the staged vault tree. */
@@ -165,7 +166,8 @@ export async function ensureVersionOutput(
     const unavailable = await pdfRenderUnavailableReason()
     if (unavailable) return { status: 'needs_solidworks', reason: unavailable }
 
-    return await exportAndRecord(fileVersionId, kind, configuration, closure, options)
+    // One export pipeline at a time across the app (queue, orders, reviews, the request worker).
+    return await withGenerationLock(() => exportAndRecord(fileVersionId, kind, configuration, closure, options))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.warn('[Outputs]', 'Version output failed', { fileVersionId, kind, error: message })

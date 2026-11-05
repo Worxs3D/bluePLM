@@ -57,6 +57,7 @@ vi.mock('./ensure', () => ({ ensureVersionOutput: (...args: unknown[]) => h.ensu
 import type { OutputRequest } from '@/types/outputRequests'
 
 import type { EnsureVersionOutputResult } from './ensure'
+import { generationLockBusy, holdGeneration, withGenerationLock } from './generationLock'
 import { resetOutputQueue } from './queueReset'
 import {
   cancelOutputRequests,
@@ -68,15 +69,18 @@ import {
   onOutputRequestChange,
   OUTPUT_REQUEST_BACKOFF_MAX_MS,
   OUTPUT_REQUEST_BUSY_MS,
-  OUTPUT_REQUEST_CLAIM_LIMIT,
   OUTPUT_REQUEST_POLL_MS,
   OUTPUT_REQUEST_START_MS,
+  OUTPUT_REQUEST_TOUCH_MS,
   OUTPUT_REQUEST_WAKE_MS,
   parseCreateResult,
+  releaseOutputRequest,
+  requestBackoffMs,
   requestOutcome,
   requestOutputs,
   startOutputRequestWorker,
   toOutputRequest,
+  touchOutputRequest,
   type OutputRequestWorkerDeps,
 } from './requests'
 
@@ -136,6 +140,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('rows and outcomes', () => {
@@ -241,6 +246,16 @@ describe('wrappers', () => {
     })
   })
 
+  it('touches and releases with the RPC argument names', async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true }, error: null })
+    expect(await touchOutputRequest('a')).toEqual({ ok: true })
+    expect(h.rpc).toHaveBeenLastCalledWith('version_output_request_touch', { p_id: 'a' })
+    expect(await releaseOutputRequest('a')).toEqual({ ok: true })
+    expect(h.rpc).toHaveBeenLastCalledWith('version_output_request_release', { p_id: 'a' })
+    h.rpc.mockResolvedValue({ data: null, error: { message: 'not yours', hint: 'NOT_CLAIMER' } })
+    expect(await releaseOutputRequest('a')).toMatchObject({ ok: false, code: 'NOT_CLAIMER' })
+  })
+
   it('lists the waiting requests of versions, in batches', async () => {
     h.rows = [row('a', { status: 'pending' })]
     const ids = Array.from({ length: 150 }, (_, i) => `v${i}`)
@@ -258,7 +273,7 @@ describe('wrappers', () => {
 
 describe('the worker', () => {
   function deps(over: Partial<OutputRequestWorkerDeps> = {}) {
-    const claims: OutputRequest[][] = []
+    const queue: OutputRequest[] = []
     const d = {
       setTimer: (fn: () => void, ms: number) => {
         const id = setTimeout(fn, ms)
@@ -266,80 +281,145 @@ describe('the worker', () => {
       },
       enabled: vi.fn<() => boolean>(() => true),
       canGenerate: vi.fn<() => Promise<boolean>>(async () => true),
-      queueBusy: vi.fn<() => boolean>(() => false),
-      claim: vi.fn<(limit: number) => Promise<OutputRequest[]>>(async () => claims.shift() ?? []),
+      busy: vi.fn<() => boolean>(() => false),
+      claim: vi.fn<() => Promise<OutputRequest | null>>(async () => queue.shift() ?? null),
+      touch: vi.fn<(id: string) => Promise<void>>(async () => undefined),
+      release: vi.fn<(id: string) => Promise<void>>(async () => undefined),
       finish: vi.fn<(id: string, status: 'done' | 'failed', error: string | null) => Promise<void>>(async () => undefined),
       generate: vi.fn<(r: OutputRequest) => Promise<EnsureVersionOutputResult>>(async () => generated),
     }
     // Overrides are spies too; the declared types stay the defaults'.
     Object.assign(d, over)
-    return { d, claims }
+    return { d, queue }
   }
 
-  it('claims after the start delay, generates each and finishes it', async () => {
+  /** A generate that resolves only when `release()` is called. */
+  function held() {
+    let release: () => void = () => undefined
+    const generate = vi.fn(
+      () =>
+        new Promise<EnsureVersionOutputResult>((resolve) => {
+          release = () => resolve(generated)
+        }),
+    )
+    return { generate, release: () => release() }
+  }
+
+  it('claims one request after the start delay, touches it, generates and finishes it, then claims again soon', async () => {
     vi.useFakeTimers()
-    const { d, claims } = deps()
-    claims.push([request('a'), request('b')])
+    const { d, queue } = deps()
+    queue.push(request('a'), request('b'))
     createOutputRequestWorker(d)
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_START_MS - 1)
     expect(d.claim).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
-    expect(d.claim).toHaveBeenCalledWith(OUTPUT_REQUEST_CLAIM_LIMIT)
-    expect(d.generate.mock.calls.map((c) => c[0].id)).toEqual(['a', 'b'])
+    expect(d.claim).toHaveBeenCalledTimes(1)
+    expect(d.touch).toHaveBeenCalledWith('a')
+    expect(d.finish.mock.calls).toEqual([['a', 'done', null]])
+    // One was waiting, so another may be.
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
     expect(d.finish.mock.calls).toEqual([
       ['a', 'done', null],
       ['b', 'done', null],
     ])
-    // A short claim: the next one is the slow poll.
+    // Nothing left: the slow poll.
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
+    expect(d.claim).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_POLL_MS - 1)
-    expect(d.claim).toHaveBeenCalledTimes(1)
+    expect(d.claim).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(1)
-    expect(d.claim).toHaveBeenCalledTimes(2)
+    expect(d.claim).toHaveBeenCalledTimes(4)
   })
 
-  it('claims again soon after a full claim', async () => {
+  it('keeps a long request\'s claim fresh while it runs, and stops touching after', async () => {
     vi.useFakeTimers()
-    const { d, claims } = deps()
-    claims.push(Array.from({ length: OUTPUT_REQUEST_CLAIM_LIMIT }, (_, i) => request(`r${i}`)))
+    const g = held()
+    const { d, queue } = deps({ generate: g.generate })
+    queue.push(request('a'))
     createOutputRequestWorker(d, 0)
     await vi.advanceTimersByTimeAsync(0)
-    expect(d.claim).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
-    expect(d.claim).toHaveBeenCalledTimes(2)
+    expect(d.touch).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_TOUCH_MS * 3)
+    expect(d.touch).toHaveBeenCalledTimes(4)
+    g.release()
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_TOUCH_MS * 3)
+    expect(d.touch).toHaveBeenCalledTimes(4)
   })
 
-  it('fails what cannot be made, and leaves what this machine cannot make now', async () => {
+  it('fails what cannot be made', async () => {
     vi.useFakeTimers()
     const results: Record<string, EnsureVersionOutputResult> = {
       bad: { status: 'failed', error: 'x', errorCode: 'EXPORT_FAILED' },
-      open: { status: 'failed', error: 'open', errorCode: 'SAME_NAME_OPEN' },
       unsupported: { status: 'unsupported' },
-      gone: { status: 'needs_solidworks', reason: 'service_offline' },
-      after: generated,
     }
-    const { d, claims } = deps({ generate: vi.fn(async (r: OutputRequest) => results[r.id]) })
-    claims.push(['bad', 'open', 'unsupported', 'gone', 'after'].map(request))
+    const { d, queue } = deps({ generate: vi.fn(async (r: OutputRequest) => results[r.id]) })
+    queue.push(request('bad'), request('unsupported'))
     createOutputRequestWorker(d, 0)
-    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
     expect(d.finish.mock.calls).toEqual([
       ['bad', 'failed', 'EXPORT_FAILED'],
       ['unsupported', 'failed', 'UNSUPPORTED'],
     ])
-    // SOLIDWORKS went away: the rest stays claimed for any machine to take later.
-    expect(d.generate.mock.calls.map((c) => c[0].id)).not.toContain('after')
+    expect(d.release).not.toHaveBeenCalled()
   })
 
-  it('waits for the app queue, the setting and SOLIDWORKS', async () => {
+  it('gives back what this machine cannot make now, and backs off', async () => {
+    vi.useFakeTimers()
+    const results: Record<string, EnsureVersionOutputResult> = {
+      open: { status: 'failed', error: 'open', errorCode: 'SAME_NAME_OPEN' },
+      gone: { status: 'needs_solidworks', reason: 'service_offline' },
+    }
+    const { d, queue } = deps({ generate: vi.fn(async (r: OutputRequest) => results[r.id]) })
+    queue.push(request('open'), request('gone'))
+    createOutputRequestWorker(d, 0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(d.release.mock.calls).toEqual([['open']])
+    expect(d.finish).not.toHaveBeenCalled()
+    // Backs off: one poll interval, then two.
+    await vi.advanceTimersByTimeAsync(requestBackoffMs(1) - 1)
+    expect(d.claim).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(d.release.mock.calls).toEqual([['open'], ['gone']])
+    await vi.advanceTimersByTimeAsync(requestBackoffMs(2) - 1)
+    expect(d.claim).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(d.claim).toHaveBeenCalledTimes(3)
+    expect(requestBackoffMs(20)).toBe(OUTPUT_REQUEST_BACKOFF_MAX_MS)
+  })
+
+  it('claims nothing while the app\'s own generation runs, checking again right before the claim', async () => {
     vi.useFakeTimers()
     let busy = true
-    let enabled = true
-    let can = false
-    const { d } = deps({ queueBusy: vi.fn(() => busy), enabled: vi.fn(() => enabled), canGenerate: vi.fn(async () => can) })
-    const worker = createOutputRequestWorker(d, 0)
+    let checks = 0
+    const { d, queue } = deps({
+      busy: vi.fn(() => busy),
+      // The user starts a job while the service status is read.
+      canGenerate: vi.fn(async () => {
+        checks++
+        if (checks === 1) busy = true
+        return true
+      }),
+    })
+    queue.push(request('a'))
+    createOutputRequestWorker(d, 0)
     await vi.advanceTimersByTimeAsync(0)
     expect(d.canGenerate).not.toHaveBeenCalled()
     busy = false
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_BUSY_MS)
+    expect(d.canGenerate).toHaveBeenCalledTimes(1)
+    expect(d.claim).not.toHaveBeenCalled()
+    busy = false
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_BUSY_MS)
+    expect(d.claim).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for the setting and SOLIDWORKS', async () => {
+    vi.useFakeTimers()
+    let enabled = true
+    let can = false
+    const { d } = deps({ enabled: vi.fn(() => enabled), canGenerate: vi.fn(async () => can) })
+    const worker = createOutputRequestWorker(d, 0)
+    await vi.advanceTimersByTimeAsync(0)
     expect(d.canGenerate).toHaveBeenCalledTimes(1)
     expect(d.claim).not.toHaveBeenCalled()
     can = true
@@ -367,31 +447,36 @@ describe('the worker', () => {
     expect(d.claim).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_POLL_MS)
     expect(d.claim).toHaveBeenCalledTimes(3)
-    // Never longer than the bound.
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_BACKOFF_MAX_MS * 3)
     expect(d.claim.mock.calls.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('debounces wakes into one claim, and a wake while busy claims soon after', async () => {
+  it('stops for the session when the user may not record outputs', async () => {
     vi.useFakeTimers()
-    let release: () => void = () => undefined
-    const { d, claims } = deps({
-      generate: vi.fn(
-        () =>
-          new Promise<EnsureVersionOutputResult>((resolve) => {
-            release = () => resolve(generated)
-          }),
-      ),
-    })
+    const refusal = Object.assign(new Error('no edit'), { code: 'NO_EDIT_PERMISSION' })
+    const { d } = deps({ claim: vi.fn(async () => Promise.reject(refusal)) })
+    const worker = createOutputRequestWorker(d, 0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(worker.isStopped()).toBe(true)
+    worker.wake()
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_BACKOFF_MAX_MS * 4)
+    expect(d.claim).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('debounces wakes into one claim, and a wake while running claims soon after', async () => {
+    vi.useFakeTimers()
+    const g = held()
+    const { d, queue } = deps({ generate: g.generate })
     const worker = createOutputRequestWorker(d)
     for (let i = 0; i < 20; i++) worker.wake()
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
     expect(d.claim).toHaveBeenCalledTimes(1)
-    claims.push([request('a')])
+    queue.push(request('a'))
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_POLL_MS)
     expect(d.generate).toHaveBeenCalledTimes(1)
     worker.wake()
-    release()
+    g.release()
     await vi.advanceTimersByTimeAsync(0)
     expect(d.claim).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_WAKE_MS)
@@ -400,37 +485,86 @@ describe('the worker', () => {
 
   it('stops: no finish for the running request, no timer after', async () => {
     vi.useFakeTimers()
-    let release: () => void = () => undefined
-    const { d, claims } = deps({
-      generate: vi.fn(
-        () =>
-          new Promise<EnsureVersionOutputResult>((resolve) => {
-            release = () => resolve(generated)
-          }),
-      ),
-    })
-    claims.push([request('a'), request('b')])
+    const g = held()
+    const { d, queue } = deps({ generate: g.generate })
+    queue.push(request('a'), request('b'))
     const worker = createOutputRequestWorker(d, 0)
     await vi.advanceTimersByTimeAsync(0)
     worker.stop()
-    release()
+    g.release()
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_POLL_MS * 10)
     expect(d.finish).not.toHaveBeenCalled()
+    expect(d.release).not.toHaveBeenCalled()
     expect(d.generate).toHaveBeenCalledTimes(1)
     expect(d.claim).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
   })
 })
 
+describe('the generation lock', () => {
+  it('runs one pipeline at a time, in arrival order, and is busy while any runs, waits or is held', async () => {
+    const order: string[] = []
+    let releaseFirst: () => void = () => undefined
+    expect(generationLockBusy()).toBe(false)
+    const first = withGenerationLock(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push('first start')
+          releaseFirst = () => {
+            order.push('first end')
+            resolve()
+          }
+        }),
+    )
+    const second = withGenerationLock(async () => {
+      order.push('second')
+    })
+    await Promise.resolve()
+    expect(generationLockBusy()).toBe(true)
+    expect(order).toEqual(['first start'])
+    releaseFirst()
+    await Promise.all([first, second])
+    expect(order).toEqual(['first start', 'first end', 'second'])
+    expect(generationLockBusy()).toBe(false)
+    // A failing pipeline frees the lock too.
+    await expect(withGenerationLock(async () => Promise.reject(new Error('x')))).rejects.toThrow('x')
+    expect(generationLockBusy()).toBe(false)
+    const end = holdGeneration()
+    expect(generationLockBusy()).toBe(true)
+    end()
+    end()
+    expect(generationLockBusy()).toBe(false)
+  })
+})
+
 describe('the app worker', () => {
-  it('stops at sign-out or an organization change', async () => {
+  it('survives the session reset of the commit that started it (the effect owns its lifetime)', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('window', {
+      electronAPI: {
+        solidworks: {
+          getServiceStatus: async () => ({ success: true, data: { running: true, version: '1.29.0', swInstalled: true } }),
+        },
+      },
+    })
+    h.rpc.mockResolvedValue({ data: [], error: null })
+    const stop = startOutputRequestWorker('org')
+    // App.tsx: the realtime effect starts the worker, then the session-boundary effect resets.
+    resetOutputQueue()
+    await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_START_MS)
+    expect(h.rpc).toHaveBeenCalledWith('version_output_request_claim', { p_limit: 1 })
+    stop()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(h.listeners).toHaveLength(0)
+  })
+
+  it('claims nothing once the organization is not the one it started for', async () => {
     vi.useFakeTimers()
     h.rpc.mockResolvedValue({ data: [], error: null })
     const stop = startOutputRequestWorker('org')
-    resetOutputQueue()
+    h.state.organization = { id: 'other' }
     await vi.advanceTimersByTimeAsync(OUTPUT_REQUEST_START_MS * 2)
     expect(h.rpc).not.toHaveBeenCalled()
-    expect(h.listeners).toHaveLength(0)
     stop()
   })
 

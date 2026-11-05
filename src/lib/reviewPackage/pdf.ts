@@ -12,6 +12,7 @@
  */
 
 import { log } from '@/lib/logger'
+import { withGenerationLock } from '@/lib/outputs/generationLock'
 import { getDownloadUrl, uploadFile } from '@/lib/storage'
 import {
   getDrawingPdf,
@@ -112,7 +113,8 @@ export async function ensureDrawingPdf(
     const unavailable = await pdfRenderUnavailableReason()
     if (unavailable) return { status: 'needs_solidworks', reason: unavailable }
 
-    return await renderAndRecord(fileVersionId, closure, onProgress)
+    // One export pipeline at a time across the app (src/lib/outputs/generationLock.ts).
+    return await withGenerationLock(() => renderAndRecord(fileVersionId, closure, onProgress))
   } catch (err) {
     log.warn('[ReviewPackage]', 'Drawing PDF failed', {
       fileVersionId,

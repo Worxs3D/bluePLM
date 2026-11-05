@@ -81,6 +81,10 @@ function fakeApi(): Fake {
         f.marker.value = content
         return { success: true }
       },
+      openRoot: async (path: string) => {
+        f.opened.push(path)
+        return { success: true }
+      },
     },
     statFile: async (path: string) => {
       const d = f.disk.get(path)
@@ -91,10 +95,6 @@ function fakeApi(): Fake {
       return { success: true }
     },
     hashFile: async (path: string) => ({ success: true, hash: `retargeted:${path.split('\\').pop()}` }),
-    openFile: async (path: string) => {
-      f.opened.push(path)
-      return { success: true }
-    },
     solidworks: {
       getServiceStatus: async () => ({
         success: true,
@@ -288,6 +288,14 @@ describe('openVersionWithReferences', () => {
   it('is unsupported for a version that is not a SOLIDWORKS document', async () => {
     const pdf = closureOf([pkg(ROOT, 'Docs/spec.pdf', 'hpdf')])
     expect(await openVersionWithReferences(ROOT, {}, deps(fake, pdf).d)).toEqual({ status: 'unsupported' })
+  })
+
+  it('decides by the path that is opened, not the row name (a .sldasm name over an .exe path)', async () => {
+    const prepare = vi.spyOn(fake.api.versionOpen, 'prepareEntry')
+    const spoofed = closureOf([pkg(ROOT, 'Top/x.exe', 'hexe', { fileName: 'x.sldasm' })])
+    expect(await openVersionWithReferences(ROOT, {}, deps(fake, spoofed).d)).toEqual({ status: 'unsupported' })
+    expect(prepare).not.toHaveBeenCalled()
+    expect(fake.opened).toEqual([])
   })
 
   it('stops when cancelled', async () => {

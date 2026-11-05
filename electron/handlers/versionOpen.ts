@@ -16,7 +16,7 @@
  * prune). Every channel takes a version id or a path that must resolve to an entry folder directly
  * under the cache root, so none can be pointed anywhere else.
  */
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
@@ -63,6 +63,21 @@ export function isCacheEntry(dir: unknown, root: string): boolean {
     path.dirname(resolved).toLowerCase() === path.resolve(root).toLowerCase() &&
     ENTRY_KEY.test(path.basename(resolved))
   )
+}
+
+const OPENABLE = /\.(sldprt|sldasm|slddrw)$/i
+
+/**
+ * Whether `filePath` is a SOLIDWORKS part, assembly or drawing inside an entry folder under
+ * `root`: the only thing `version-open:open-root` hands to the shell. A file row's name and path
+ * come from other members, so the path that is opened is the one checked, never a display name.
+ */
+export function isOpenableCacheFile(filePath: unknown, root: string): boolean {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) return false
+  const relative = path.relative(path.resolve(root), path.resolve(filePath))
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false
+  const segments = relative.split(path.sep)
+  return segments.length >= 2 && ENTRY_KEY.test(segments[0]) && OPENABLE.test(path.basename(filePath))
 }
 
 export interface CacheEntryInfo {
@@ -248,6 +263,22 @@ export function registerVersionOpenHandlers(deps: VersionOpenHandlerDependencies
     }
   })
 
+  // Open the staged root in SOLIDWORKS. Only a .sldprt/.sldasm/.slddrw inside an entry: the
+  // general fs:open-file would run whatever the path names.
+  ipcMain.handle('version-open:open-root', async (_, filePath: unknown) => {
+    if (!isOpenableCacheFile(filePath, cacheRoot())) {
+      return { success: false, error: 'Not a SOLIDWORKS file in the version cache' }
+    }
+    const target = path.resolve(filePath as string)
+    if (!fs.existsSync(target)) return { success: false, error: 'The staged file is missing' }
+    const error = await shell.openPath(target)
+    if (error) {
+      logError('[VersionOpen] Could not open the staged version', { target, error })
+      return { success: false, error }
+    }
+    return { success: true }
+  })
+
   startupPrune = setTimeout(() => {
     startupPrune = null
     const root = cacheRoot()
@@ -267,4 +298,5 @@ export function unregisterVersionOpenHandlers(): void {
   ipcMain.removeHandler('version-open:prepare-entry')
   ipcMain.removeHandler('version-open:begin-restage')
   ipcMain.removeHandler('version-open:write-marker')
+  ipcMain.removeHandler('version-open:open-root')
 }

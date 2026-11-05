@@ -77,8 +77,10 @@ export {
   OUTPUT_REQUEST_CLAIM_LIMIT,
   OUTPUT_REQUEST_POLL_MS,
   outputRequestWorkerEnabled,
+  releaseOutputRequest,
   requestOutcome,
   requestOutputs,
+  touchOutputRequest,
   setOutputRequestWorkerEnabled,
   startOutputRequestWorker,
   wakeOutputRequestWorker,
@@ -86,3 +88,4 @@ export {
   type OutputRequestWorkerDeps,
   type RequestOutcome,
 } from './requests'
+export { generationLockBusy, withGenerationLock } from './generationLock'

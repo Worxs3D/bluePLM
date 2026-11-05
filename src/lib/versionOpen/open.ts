@@ -10,7 +10,8 @@
  *    deduplicated, resumable), retarget the assemblies and drawings at each other through the
  *    service's `retargetReferences` exactly as `download-review-package` does, make every file
  *    read-only, and write the marker last.
- * 5. Open the root through the shell (`openFile`), which hands a SOLIDWORKS file to SOLIDWORKS.
+ * 5. Open the root through `versionOpen.openRoot`, which hands only a SOLIDWORKS file inside the
+ *    cache to the shell. The opened path itself is checked, never the row's display name.
  *
  * An approximate closure (versions checked in before schema 107) is staged and opened too, and the
  * result says so; the caller tells the user. Without a usable service an assembly or drawing is not
@@ -38,7 +39,7 @@ import type { CacheMarker, CacheMarkerFile, OpenVersionResult, VersionOpenProgre
 type ElectronApi = NonNullable<Window['electronAPI']>
 
 /** The parts of the desktop bridge this pipeline uses. */
-export type VersionOpenApi = Pick<ElectronApi, 'versionOpen' | 'statFile' | 'setReadonlyBatch' | 'hashFile' | 'openFile'> & {
+export type VersionOpenApi = Pick<ElectronApi, 'versionOpen' | 'statFile' | 'setReadonlyBatch' | 'hashFile'> & {
   solidworks: Pick<ElectronApi['solidworks'], 'getServiceStatus' | 'getOpenDocuments' | 'retargetReferences'>
 }
 
@@ -113,7 +114,7 @@ function opened(path: string, reused: boolean, marker: CacheMarker): OpenVersion
 }
 
 async function openRoot(api: VersionOpenApi, path: string): Promise<string | null> {
-  const result = await api.openFile(path)
+  const result = await api.versionOpen.openRoot(path)
   return result.success ? null : (result.error ?? 'Could not open the file')
 }
 
@@ -153,7 +154,11 @@ async function run(
   progress('resolving')
   const closure = await deps.closure(fileVersionId)
   const root = closure.files.find((f) => f.fileVersionId === fileVersionId)
-  if (!root || !isOpenableWithReferences(root.fileName || root.filePath)) return { status: 'unsupported' }
+  if (!root) return { status: 'unsupported' }
+  const rootPath = packageRelativePath(root.filePath)
+  // The path that is opened decides, never the row's file name: a row named `x.sldasm` whose path
+  // is `x.exe` must not reach the shell.
+  if (!isOpenableWithReferences(rootPath)) return { status: 'unsupported' }
   if (options.isCancelled?.()) return { status: 'cancelled' }
 
   const prepared = await api.versionOpen.prepareEntry(fileVersionId)
@@ -161,7 +166,6 @@ async function run(
     return { status: 'failed', error: prepared.error ?? 'The version cache is not available' }
   }
   const entry = prepared.path
-  const rootPath = packageRelativePath(root.filePath)
   const rootLocal = joinLocalPath(entry, rootPath)
 
   // A same-named document open outside this entry would be used instead of the staged file.

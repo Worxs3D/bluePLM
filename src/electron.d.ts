@@ -1180,6 +1180,8 @@ declare global {
         beginRestage: (entryPath: string) => Promise<{ success: boolean; error?: string }>
         /** Write the entry's marker, the last step of staging. Only into an entry folder. */
         writeMarker: (entryPath: string, content: string) => Promise<{ success: boolean; error?: string }>
+        /** Open a staged .sldprt/.sldasm/.slddrw in SOLIDWORKS; refuses any other file or place. */
+        openRoot: (filePath: string) => Promise<{ success: boolean; error?: string }>
       }
 
       orders: {

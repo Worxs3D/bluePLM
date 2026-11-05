@@ -645,6 +645,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     beginRestage: (entryPath: string) => ipcRenderer.invoke('version-open:begin-restage', entryPath),
     writeMarker: (entryPath: string, content: string) =>
       ipcRenderer.invoke('version-open:write-marker', entryPath, content),
+    openRoot: (filePath: string) => ipcRenderer.invoke('version-open:open-root', filePath),
   },
 
   // Orders (src/lib/orders): export an order's files as a zip or into a new folder

@@ -73,6 +73,8 @@ const V3A = fid(15) // self.sldasm, VA3, released, references V3P in VA3
 const V3P = fid(16) // self-part.sldprt, VA3
 const CA = fid(17) // org C, released assembly
 const CP = fid(18) // org C, its part
+const RA = fid(19) // hidden-top.sldasm, VA2, released, references RP in VA1
+const RP = fid(20) // shared.sldprt, VA1
 
 const P1V1 = vid(1)
 const P1V2 = vid(2)
@@ -94,6 +96,8 @@ const V3AV1 = vid(17)
 const V3PV1 = vid(18)
 const CAV1 = vid(19)
 const CPV1 = vid(20)
+const RAV1 = vid(21)
+const RPV1 = vid(22)
 
 const RFQ1 = '70000000-0000-0000-0000-000000000001'
 const RFQ2 = '70000000-0000-0000-0000-000000000002'
@@ -168,6 +172,18 @@ async function refusal(user: string | null, sql: string, params: unknown[] = [])
   }
 }
 
+/** The refusal's message and HINT, or null when the statement succeeded. */
+async function refusalOf(user: string, sql: string, params: unknown[] = []): Promise<{ hint?: string; message: string } | null> {
+  await actAs(db, user)
+  try {
+    await db.query(sql, params)
+    return null
+  } catch (e) {
+    const err = e as { hint?: string; message: string }
+    return { hint: err.hint, message: err.message }
+  }
+}
+
 async function request(user: string, items: Json[]): Promise<CreateResult> {
   return rpc<CreateResult>(user, 'version_output_request_create($1::jsonb)', [JSON.stringify(items)])
 }
@@ -232,21 +248,25 @@ function seedSql(): string {
       ${file(V3A, ORG_A, VA3, 'a3/self.sldasm', 15)},
       ${file(V3P, ORG_A, VA3, 'a3/self-part.sldprt', 16)},
       ${file(CA, ORG_C, VC, 'c/top.sldasm', 17)},
-      ${file(CP, ORG_C, VC, 'c/part.sldprt', 18)};
+      ${file(CP, ORG_C, VC, 'c/part.sldprt', 18)},
+      ${file(RA, ORG_A, VA2, 'a2/hidden-top.sldasm', 19)},
+      ${file(RP, ORG_A, VA1, 'a1/shared.sldprt', 20)};
     INSERT INTO file_version (id, file_id, version, revision, content_hash, file_size, part_number, description, created_by, released_at) VALUES
       ${version(P1V1, P1, 1, 1)}, ${version(P1V2, P1, 2, 2)}, ${version(D1V1, D1, 1, 3)}, ${version(D2V1, D2, 1, 4)},
       ${version(S1V1, S1, 1, 5)}, ${version(SDV1, SD, 1, 6)}, ${version(X1V1, X1, 1, 7)}, ${version(T1V1, T1, 1, 8)},
       ${version(PBV1, PB, 1, 9)}, ${version(ASMV1, ASM, 1, 10)}, ${version(ASMV2, ASM, 2, 11, true)},
       ${version(SUBV1, SUB, 1, 12)}, ${version(PRTV1, PRT, 1, 13)}, ${version(PRTV2, PRT, 2, 14)},
       ${version(XAV1, XA, 1, 15, true)}, ${version(XQV1, XQ, 1, 16)}, ${version(V3AV1, V3A, 1, 17, true)},
-      ${version(V3PV1, V3P, 1, 18)}, ${version(CAV1, CA, 1, 19, true)}, ${version(CPV1, CP, 1, 20)};
+      ${version(V3PV1, V3P, 1, 18)}, ${version(CAV1, CA, 1, 19, true)}, ${version(CPV1, CP, 1, 20)},
+      ${version(RAV1, RA, 1, 21, true)}, ${version(RPV1, RP, 1, 22)};
     INSERT INTO file_version_reference (org_id, parent_version_id, parent_file_id, child_file_id, child_version_id, child_path, is_exact) VALUES
       ${edge(ORG_A, ASMV2, ASM, SUB, SUBV1, 'a1/sub.sldasm', true)},
       ${edge(ORG_A, SUBV1, SUB, PRT, PRTV1, 'a1/pin.sldprt', false)},
       ${edge(ORG_A, ASMV1, ASM, PRT, PRTV2, 'a1/pin.sldprt', true)},
       ${edge(ORG_A, XAV1, XA, XQ, XQV1, 'a2/cross-part.sldprt', true)},
       ${edge(ORG_A, V3AV1, V3A, V3P, V3PV1, 'a3/self-part.sldprt', true)},
-      ${edge(ORG_C, CAV1, CA, CP, CPV1, 'c/part.sldprt', true)};
+      ${edge(ORG_C, CAV1, CA, CP, CPV1, 'c/part.sldprt', true)},
+      ${edge(ORG_A, RAV1, RA, RP, RPV1, 'a1/shared.sldprt', true)};
     INSERT INTO file_version_output (org_id, file_id, file_version_id, kind, configuration, storage_hash, file_size, file_name) VALUES
       ('${ORG_A}', '${P1}', '${P1V2}', 'step', NULL, '${hash(100)}', 11, 'bracket.step');
     INSERT INTO drawing_pdf_render (org_id, file_id, file_version_id, storage_hash, file_size) VALUES
@@ -354,7 +374,8 @@ describe('supabase/migrations/0515_orders_followups.sql', () => {
         WHERE p.pronamespace = 'public'::regnamespace
           AND p.proname IN ('version_output_request_create', 'version_output_request_claim', 'version_output_request_finish',
                             'version_output_request_cancel', 'supply_order_count_hidden_lines', 'has_version_output',
-                            'trg_output_request_complete', 'trg_file_version_release_closure_guard')
+                            'trg_output_request_complete', 'trg_file_version_release_closure_guard',
+                            'version_output_request_touch', 'version_output_request_release')
         ORDER BY 1`,
     )
     expect(fns.filter((f) => f.auth).map((f) => f.sig)).toEqual([
@@ -363,6 +384,8 @@ describe('supabase/migrations/0515_orders_followups.sql', () => {
       'version_output_request_claim(integer)',
       'version_output_request_create(jsonb)',
       'version_output_request_finish(uuid,text,text)',
+      'version_output_request_release(uuid)',
+      'version_output_request_touch(uuid)',
     ])
     for (const f of fns) expect(f.anon).toBe(false)
   })
@@ -735,6 +758,57 @@ describe('version_output_request_cancel()', () => {
 // Hidden lines
 // ---------------------------------------------------------------------------
 
+describe('version_output_request_touch(), _release() and attempts', () => {
+  let q: RequestRow & { attempts: number }
+  const claim = async (user: string, limit = 1) =>
+    rows<RequestRow & { attempts: number }>(user, 'SELECT * FROM version_output_request_claim($1)', [limit])
+
+  it('claims one at a time and keeps a working claim fresh', async () => {
+    const got = await claim(ALICE)
+    expect(got).toHaveLength(1)
+    q = got[0]
+    expect(q).toMatchObject({ file_version_id: D1V1, kind: 'step', status: 'claimed', claimed_by: ALICE, attempts: 1 })
+    await actAsOwner(db)
+    await db.query(`UPDATE version_output_request SET claimed_at = NOW() - INTERVAL '16 minutes' WHERE id = $1`, [q.id])
+    expect(await rpc(ALICE, 'version_output_request_touch($1)', [q.id])).toMatchObject({ changed: true, request: { status: 'claimed' } })
+    const fresh = await rows<{ age: number }>(null, `SELECT extract(epoch FROM NOW() - claimed_at)::int AS age FROM version_output_request WHERE id = $1`, [q.id])
+    expect(fresh[0].age).toBeLessThan(60)
+    expect((await claim(BOB, 50)).map((r) => r.id)).not.toContain(q.id)
+    expect(await refusal(BOB, 'SELECT version_output_request_touch($1)', [q.id])).toBe('NOT_CLAIMER')
+    expect(await refusal(ALICE, 'SELECT version_output_request_touch($1)', [MISSING])).toBe('NOT_FOUND')
+    expect(await refusal(OTHER, 'SELECT version_output_request_touch($1)', [q.id])).toBe('NOT_FOUND')
+  })
+
+  it('hands a claim back to pending, keeps the attempts, and fails a fourth claim', async () => {
+    expect(await refusal(BOB, 'SELECT version_output_request_release($1)', [q.id])).toBe('NOT_CLAIMER')
+    for (const n of [2, 3]) {
+      const r = await rpc<{ changed: boolean; request: RequestRow & { attempts: number } }>(ALICE, 'version_output_request_release($1)', [q.id])
+      expect(r).toMatchObject({ changed: true, request: { status: 'pending', claimed_by: null, claimed_at: null, attempts: n - 1 } })
+      const again = await claim(ALICE)
+      expect(again.map((x) => [x.id, x.attempts])).toEqual([[q.id, n]])
+    }
+    await rpc(ALICE, 'version_output_request_release($1)', [q.id])
+    expect(await claim(ALICE, 50)).toEqual([])
+    expect(await requestRow(q.id)).toMatchObject({ status: 'failed', error: 'TOO_MANY_ATTEMPTS' })
+    expect((await requestRow(q.id)).finished_at).not.toBeNull()
+  })
+
+  it('fails a stale claim that used its attempts instead of handing it out', async () => {
+    const r = await request(ALICE, [{ file_version_id: P1V1, kind: 'stl', configuration: 'Short' }])
+    const id = r.requests[0].id
+    await actAsOwner(db)
+    await db.query(
+      `UPDATE version_output_request SET status = 'claimed', claimed_by = $2, claimed_at = NOW() - INTERVAL '16 minutes', attempts = 3 WHERE id = $1`,
+      [id, BOB],
+    )
+    expect(await claim(ALICE, 50)).toEqual([])
+    expect(await requestRow(id)).toMatchObject({ status: 'failed', error: 'TOO_MANY_ATTEMPTS', attempts: 3 })
+    // Its former claimer finds it finished.
+    expect(await rpc(BOB, 'version_output_request_release($1)', [id])).toMatchObject({ changed: false })
+    expect(await rpc(BOB, 'version_output_request_touch($1)', [id])).toMatchObject({ changed: false })
+  })
+})
+
 describe('supply_order_count_hidden_lines()', () => {
   let orderId = ''
 
@@ -827,6 +901,18 @@ describe('trg_file_version_release_closure_guard', () => {
                      ALTER TABLE vault ENABLE TRIGGER trg_vault_realtime_tombstone;`)
     }
     expect(await exists(CPV1)).toBe(false)
+  })
+
+  it('names a release only to a caller who can read its vault', async () => {
+    const alice = await refusalOf(ALICE, 'DELETE FROM file_version WHERE id = $1', [RPV1])
+    expect(alice?.hint).toBe('REFERENCED_BY_RELEASE')
+    expect(alice?.message).toContain('shared.sldprt')
+    expect(alice?.message).not.toContain('hidden-top')
+    const bob = await refusalOf(BOB, 'DELETE FROM file_version WHERE id = $1', [RPV1])
+    expect(bob?.hint).toBe('REFERENCED_BY_RELEASE')
+    expect(bob?.message).toContain('hidden-top.sldasm')
+    const admin = await refusalOf(ADMIN, 'DELETE FROM file WHERE id = $1', [RP])
+    expect(admin?.message).toContain('hidden-top.sldasm')
   })
 
   it('stops protecting once the released file is in the trash, as 0509 does for the release itself', async () => {

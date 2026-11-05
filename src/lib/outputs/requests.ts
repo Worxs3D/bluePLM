@@ -5,19 +5,23 @@
  * A user on BluePLM Web, or on a desktop without SOLIDWORKS, asks for a missing output
  * (`requestOutputs`). Every signed-in desktop with a known SOLIDWORKS service, full SOLIDWORKS
  * and "Generate requested outputs on this machine" on (`outputRequestWorkerEnabled`, per machine,
- * on by default) runs the worker: it claims a few requests at a time
+ * on by default) runs the worker: it claims one request at a time
  * (`version_output_request_claim`, `FOR UPDATE SKIP LOCKED`, so two machines never take the same
- * one), generates each through `ensureVersionOutput` (the same staged-closure path as Generate),
- * and finishes it (`done` or `failed`). The server also marks a request `done` once its output is
- * recorded, from any machine.
+ * one), keeps the claim fresh while it runs (`version_output_request_touch`), generates it through
+ * `ensureVersionOutput` (the same staged-closure path as Generate) and finishes it (`done` or
+ * `failed`). The server also marks a request `done` once its output is recorded, from any machine.
  *
  * The worker is woken by realtime (`handleOutputRequestEvent`, a new pending request) and polls
- * slowly otherwise, so a missed event costs minutes, not the request. It never claims while the
- * app's own output queue has work (the user's jobs come first, and another machine can take the
- * request meanwhile), keeps one timer and no growing state, and stops at sign-out and at an
- * organization change (`resetOutputQueue`). A request it could not run for a reason of this
- * machine (SOLIDWORKS went away, a same-named document is open) is left claimed: the server lets
- * any machine claim it again after 15 minutes. It never runs on the web.
+ * slowly otherwise, so a missed event costs minutes, not the request. Before each claim it checks
+ * that the app's own generation is idle (the output queue and the export lock of
+ * `./generationLock`, which every export pipeline takes, so two never drive SOLIDWORKS at once):
+ * the user's jobs come first, and another machine can take the request meanwhile. A request it
+ * cannot run for a reason of this machine (SOLIDWORKS went away, a same-named document is open) is
+ * given back (`version_output_request_release`) and the worker backs off. A caller without
+ * explorer edit (or no longer a member) stops the worker for the session. It keeps one timer and
+ * no growing state. Its lifetime is the realtime effect's (`startOutputRequestWorker` and the
+ * function it returns), with a same-session guard (organization and user); it never runs on the
+ * web.
  *
  * The wrappers and the row parser live in `./requestsApi` (free of store imports) and are
  * re-exported here.
@@ -35,8 +39,15 @@ import type { OutputRequest } from '@/types/outputRequests'
 
 import { appOutputQueueSize } from './autoQueue'
 import { ensureVersionOutput, type EnsureVersionOutputResult } from './ensure'
-import { registerOutputQueueReset } from './queueReset'
-import { claimOutputRequests, finishOutputRequest, OUTPUT_REQUEST_CLAIM_LIMIT, toOutputRequest } from './requestsApi'
+import { generationLockBusy } from './generationLock'
+import {
+  claimOutputRequests,
+  finishOutputRequest,
+  OUTPUT_REQUEST_CLAIM_LIMIT,
+  releaseOutputRequest,
+  toOutputRequest,
+  touchOutputRequest,
+} from './requestsApi'
 
 export {
   cancelOutputRequests,
@@ -46,8 +57,10 @@ export {
   OUTPUT_REQUEST_CLAIM_LIMIT,
   outputRequestErrorCode,
   parseCreateResult,
+  releaseOutputRequest,
   requestOutputs,
   toOutputRequest,
+  touchOutputRequest,
 } from './requestsApi'
 
 /** The fallback poll when realtime says nothing. */
@@ -56,10 +69,14 @@ export const OUTPUT_REQUEST_POLL_MS = 5 * 60_000
 export const OUTPUT_REQUEST_WAKE_MS = 2_000
 /** Delay before the first claim of a session (the app is still loading). */
 export const OUTPUT_REQUEST_START_MS = 15_000
-/** Wait while the app's own output queue has work. */
+/** Wait while the app's own generation has work. */
 export const OUTPUT_REQUEST_BUSY_MS = 30_000
-/** Longest wait after failed claims (backoff doubles from the poll interval up to this). */
+/** Longest wait after failed claims or given-back requests (doubles from the poll interval). */
 export const OUTPUT_REQUEST_BACKOFF_MAX_MS = 30 * 60_000
+/** How often a running request's claim is refreshed (the server takes over claims after 15 min). */
+export const OUTPUT_REQUEST_TOUCH_MS = 4 * 60_000
+/** Claim refusals that hold for the whole session: the worker stops instead of retrying. */
+export const OUTPUT_REQUEST_STOP_CODES: readonly string[] = ['NO_EDIT_PERMISSION', 'NOT_MEMBER']
 
 function db(): SupabaseClient {
   return getSupabaseClient() as unknown as SupabaseClient
@@ -109,7 +126,7 @@ export function handleOutputRequestEvent(row: unknown): void {
 export type RequestOutcome =
   | { finish: 'done' }
   | { finish: 'failed'; error: string }
-  /** A reason of this machine: leave it claimed (any machine may claim it again later). */
+  /** A reason of this machine: give it back for any machine, and back off. */
   | { finish: null; machineUnavailable: boolean; reason: string }
 
 export function requestOutcome(result: EnsureVersionOutputResult): RequestOutcome {
@@ -129,16 +146,24 @@ export function requestOutcome(result: EnsureVersionOutputResult): RequestOutcom
   }
 }
 
+/** The wait after `n` failures or give-backs in a row: the poll interval, doubling, bounded. Pure. */
+export function requestBackoffMs(n: number): number {
+  return Math.min(OUTPUT_REQUEST_POLL_MS * 2 ** Math.max(0, n - 1), OUTPUT_REQUEST_BACKOFF_MAX_MS)
+}
+
 export interface OutputRequestWorkerDeps {
   /** Run `fn` after `ms`; returns a function that cancels it. */
   setTimer: (fn: () => void, ms: number) => () => void
-  /** The per-machine setting. */
+  /** The per-machine setting, and the session the worker was started for. */
   enabled: () => boolean
   /** Whether this machine can generate now (known service, full SOLIDWORKS). */
   canGenerate: () => Promise<boolean>
-  /** The app's own output jobs waiting or running. */
-  queueBusy: () => boolean
-  claim: (limit: number) => Promise<OutputRequest[]>
+  /** The app's own generation runs or waits (the output queue, the export lock). */
+  busy: () => boolean
+  /** Claim one request, or none. Throws an error with a `code` on a refusal. */
+  claim: () => Promise<OutputRequest | null>
+  touch: (id: string) => Promise<void>
+  release: (id: string) => Promise<void>
   finish: (id: string, status: 'done' | 'failed', error: string | null) => Promise<void>
   generate: (request: OutputRequest) => Promise<EnsureVersionOutputResult>
 }
@@ -146,9 +171,18 @@ export interface OutputRequestWorkerDeps {
 export interface OutputRequestWorker {
   /** Claim soon (a realtime event, the setting turned on). */
   wake: () => void
-  /** Stop for good: the timer is cancelled and a running request's result is not reported. */
+  /** Stop for good: the timers are cancelled and a running request's result is not reported. */
   stop: () => void
   isStopped: () => boolean
+}
+
+function codeOf(err: unknown): string | null {
+  const code = typeof err === 'object' && err !== null ? (err as { code?: unknown }).code : null
+  return typeof code === 'string' ? code : null
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export function createOutputRequestWorker(
@@ -156,11 +190,22 @@ export function createOutputRequestWorker(
   startDelayMs = OUTPUT_REQUEST_START_MS,
 ): OutputRequestWorker {
   let stopped = false
-  let busy = false
-  let wokenWhileBusy = false
+  let running = false
+  let wokenWhileRunning = false
   let failures = 0
+  let givenBack = 0
   let timerAt: number | null = null
   let cancelTimer: (() => void) | null = null
+  let cancelTouch: (() => void) | null = null
+
+  const stop = () => {
+    stopped = true
+    cancelTimer?.()
+    cancelTimer = null
+    timerAt = null
+    cancelTouch?.()
+    cancelTouch = null
+  }
 
   const schedule = (ms: number) => {
     if (stopped) return
@@ -176,76 +221,101 @@ export function createOutputRequestWorker(
     }, ms)
   }
 
-  const runOne = async (request: OutputRequest): Promise<'ok' | 'unavailable'> => {
+  const touch = (id: string) =>
+    deps.touch(id).catch((err) => log.debug('[OutputRequests]', 'Could not refresh a claim', { requestId: id, error: messageOf(err) }))
+
+  /** Refresh the claim every `OUTPUT_REQUEST_TOUCH_MS` until the returned function is called. */
+  const keepFresh = (id: string): (() => void) => {
+    let cancel: (() => void) | null = null
+    const arm = () => {
+      cancel = deps.setTimer(() => {
+        if (stopped) return
+        void touch(id)
+        arm()
+      }, OUTPUT_REQUEST_TOUCH_MS)
+    }
+    arm()
+    return () => cancel?.()
+  }
+
+  /** 'done' when the request was finished; 'given_back' when this machine could not run it. */
+  const runOne = async (request: OutputRequest): Promise<'done' | 'given_back'> => {
     log.info('[OutputRequests]', 'Generating a requested output', {
       requestId: request.id,
       fileVersionId: request.fileVersionId,
       kind: request.kind,
     })
+    await touch(request.id)
+    cancelTouch = keepFresh(request.id)
     let outcome: RequestOutcome
     try {
       outcome = requestOutcome(await deps.generate(request))
     } catch (err) {
-      outcome = { finish: 'failed', error: err instanceof Error ? err.message : String(err) }
+      outcome = { finish: 'failed', error: messageOf(err) }
+    } finally {
+      cancelTouch?.()
+      cancelTouch = null
     }
-    if (stopped) return 'ok'
+    if (stopped) return 'done'
     if (outcome.finish === null) {
-      log.info('[OutputRequests]', 'Requested output left for later', { requestId: request.id, reason: outcome.reason })
-      return outcome.machineUnavailable ? 'unavailable' : 'ok'
+      log.info('[OutputRequests]', 'Requested output given back', { requestId: request.id, reason: outcome.reason })
+      await deps.release(request.id).catch((err) =>
+        log.warn('[OutputRequests]', 'Could not give back an output request', { requestId: request.id, error: messageOf(err) }),
+      )
+      return 'given_back'
     }
-    try {
-      await deps.finish(request.id, outcome.finish, outcome.finish === 'failed' ? outcome.error : null)
-    } catch (err) {
-      log.warn('[OutputRequests]', 'Could not finish an output request', {
-        requestId: request.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-    return 'ok'
+    await deps.finish(request.id, outcome.finish, outcome.finish === 'failed' ? outcome.error : null).catch((err) =>
+      log.warn('[OutputRequests]', 'Could not finish an output request', { requestId: request.id, error: messageOf(err) }),
+    )
+    return 'done'
   }
 
   const tick = async () => {
     if (stopped) return
-    if (busy) {
-      wokenWhileBusy = true
+    if (running) {
+      wokenWhileRunning = true
       return
     }
     if (!deps.enabled()) return
-    if (deps.queueBusy()) {
+    if (deps.busy()) {
       schedule(OUTPUT_REQUEST_BUSY_MS)
       return
     }
-    busy = true
-    wokenWhileBusy = false
+    running = true
+    wokenWhileRunning = false
     let next = OUTPUT_REQUEST_POLL_MS
     try {
-      if (!(await deps.canGenerate())) {
-        failures = 0
+      if (!(await deps.canGenerate())) return
+      if (stopped || !deps.enabled()) return
+      // The user may have started a job meanwhile: check again right before claiming.
+      if (deps.busy()) {
+        next = OUTPUT_REQUEST_BUSY_MS
         return
       }
-      if (stopped || !deps.enabled()) return
-      const claimed = await deps.claim(OUTPUT_REQUEST_CLAIM_LIMIT)
+      const request = await deps.claim()
       failures = 0
-      let unavailable = false
-      for (const request of claimed) {
-        if (stopped) return
-        if ((await runOne(request)) === 'unavailable') {
-          unavailable = true
-          break
-        }
+      if (!request) return
+      if ((await runOne(request)) === 'given_back') {
+        givenBack++
+        next = requestBackoffMs(givenBack)
+      } else {
+        givenBack = 0
+        // One was waiting, so more may be: claim again soon.
+        next = OUTPUT_REQUEST_WAKE_MS
       }
-      // A full claim means more may wait: claim again soon.
-      if (!unavailable && claimed.length >= OUTPUT_REQUEST_CLAIM_LIMIT) next = OUTPUT_REQUEST_WAKE_MS
     } catch (err) {
+      const code = codeOf(err)
+      if (code && OUTPUT_REQUEST_STOP_CODES.includes(code)) {
+        log.info('[OutputRequests]', 'Request worker stopped for this session', { code })
+        stop()
+        return
+      }
       failures++
-      next = Math.min(OUTPUT_REQUEST_POLL_MS * 2 ** (failures - 1), OUTPUT_REQUEST_BACKOFF_MAX_MS)
-      log.warn('[OutputRequests]', 'Could not claim output requests', {
-        error: err instanceof Error ? err.message : String(err),
-        retryInMs: next,
-      })
+      next = requestBackoffMs(failures)
+      log.warn('[OutputRequests]', 'Could not claim output requests', { error: messageOf(err), retryInMs: next })
     } finally {
-      busy = false
-      if (wokenWhileBusy && failures === 0) next = Math.min(next, OUTPUT_REQUEST_WAKE_MS)
+      running = false
+      if (wokenWhileRunning && failures === 0 && givenBack === 0) next = Math.min(next, OUTPUT_REQUEST_WAKE_MS)
       schedule(next)
     }
   }
@@ -255,18 +325,13 @@ export function createOutputRequestWorker(
   return {
     wake: () => {
       if (stopped) return
-      if (busy) {
-        wokenWhileBusy = true
+      if (running) {
+        wokenWhileRunning = true
         return
       }
       schedule(OUTPUT_REQUEST_WAKE_MS)
     },
-    stop: () => {
-      stopped = true
-      cancelTimer?.()
-      cancelTimer = null
-      timerAt = null
-    },
+    stop,
     isStopped: () => stopped,
   }
 }
@@ -326,7 +391,6 @@ async function generateRequest(request: OutputRequest): Promise<EnsureVersionOut
 }
 
 interface ActiveWorker {
-  orgId: string
   worker: OutputRequestWorker
   release: () => void
 }
@@ -339,16 +403,33 @@ function stopActive(which: ActiveWorker): void {
   if (activeWorker === which) activeWorker = null
 }
 
+/** Throw the claim refusal with its code, so the worker can tell a lasting one. */
+async function claimOne(): Promise<OutputRequest | null> {
+  const [request] = await claimOutputRequests(OUTPUT_REQUEST_CLAIM_LIMIT)
+  return request ?? null
+}
+
+async function orThrow(result: Promise<{ ok: boolean; message?: string }>): Promise<void> {
+  const r = await result
+  if (!r.ok) throw new Error(r.message ?? 'refused')
+}
+
 /**
- * Start this machine's request worker for the signed-in organization (the realtime effect calls
- * it with each session). Returns a function that stops it. Does nothing on the web, offline or
- * without an organization. A second start replaces the first. `resetOutputQueue` (sign-out,
- * organization change) stops it as well.
+ * Start this machine's request worker for the signed-in session (the realtime effect calls it
+ * with each session and calls the function it returns in its cleanup, which is the worker's whole
+ * lifetime). Does nothing on the web, offline or without an organization. A second start replaces
+ * the first. It is not tied to `resetOutputQueue`: the session reset runs in the same commit as
+ * the effect that starts the worker, so it would stop the new session's worker. Instead the
+ * worker claims nothing once the organization or the user is not the one it started with.
  */
 export function startOutputRequestWorker(orgId: string | null = usePDMStore.getState().organization?.id ?? null): () => void {
   if (activeWorker) stopActive(activeWorker)
   if (!hasDesktop() || !orgId) return () => undefined
-  const sameSession = () => (usePDMStore.getState().organization?.id ?? null) === orgId
+  const userId = usePDMStore.getState().user?.id ?? null
+  const sameSession = () => {
+    const state = usePDMStore.getState()
+    return (state.organization?.id ?? null) === orgId && (state.user?.id ?? null) === userId
+  }
   const worker = createOutputRequestWorker({
     setTimer: (fn, ms) => {
       const id = setTimeout(fn, ms)
@@ -356,24 +437,18 @@ export function startOutputRequestWorker(orgId: string | null = usePDMStore.getS
     },
     enabled: () => sameSession() && usePDMStore.getState().outputRequestWorkerEnabled !== false,
     canGenerate: canGenerateRequestedOutputs,
-    queueBusy: () => appOutputQueueSize() > 0,
-    claim: (limit) => claimOutputRequests(limit),
-    finish: async (id, status, error) => {
-      const result = await finishOutputRequest(id, status, error)
-      if (!result.ok) throw new Error(result.message)
-    },
+    busy: () => appOutputQueueSize() > 0 || generationLockBusy(),
+    claim: claimOne,
+    touch: (id) => orThrow(touchOutputRequest(id)),
+    release: (id) => orThrow(releaseOutputRequest(id)),
+    finish: (id, status, error) => orThrow(finishOutputRequest(id, status, error)),
     generate: generateRequest,
   })
   // Turning the setting on claims at once instead of at the next poll.
   const unsubscribe = usePDMStore.subscribe((state, prev) => {
     if (state.outputRequestWorkerEnabled && !prev.outputRequestWorkerEnabled) worker.wake()
   })
-  const entry: ActiveWorker = { orgId, worker, release: () => undefined }
-  const unregister = registerOutputQueueReset(() => stopActive(entry))
-  entry.release = () => {
-    unsubscribe()
-    unregister()
-  }
+  const entry: ActiveWorker = { worker, release: unsubscribe }
   activeWorker = entry
   log.debug('[OutputRequests]', 'Request worker started', { orgId })
   return () => stopActive(entry)
