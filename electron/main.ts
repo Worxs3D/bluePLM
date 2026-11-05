@@ -39,6 +39,12 @@ import {
 } from './handlers'
 import { createAppMenu } from './menu'
 import {
+  flushReviewDecisionsBeforeQuit,
+  quitGuard,
+  registerReviewDecisionQuitHandlers,
+  watchWindowSessionEnd,
+} from './handlers/reviewDecisionQuitIpc'
+import {
   RENDERER_STALL_CHANNEL,
   handleRendererStall,
   parseRendererStallPayload,
@@ -693,6 +699,9 @@ function initializeApp() {
         if (info) void handleRendererStall(info)
       })
 
+      // Queued review decisions are sent before any quit (reviewDecisionQuit.ts).
+      registerReviewDecisionQuitHandlers()
+
       log('App ready, creating window...')
       createWindow()
 
@@ -732,19 +741,20 @@ function initializeApp() {
     }
   })
 
-  // Track if we're already quitting to prevent re-entry
-  let isQuitting = false
-
   // Cleanup on app quit
   app.on('before-quit', async (event) => {
-    // Prevent re-entry during cleanup
-    if (isQuitting) {
+    // The default quit is always held: the first call runs the flush and the cleanup and ends in
+    // app.exit(0); a later one (a shutdown handler's app.quit(), Exit clicked again) is held too,
+    // or Electron would quit in the middle of that first one (quitGuard, reviewDecisionQuit.ts).
+    if (!quitGuard.begin(event)) {
       return
     }
 
-    // Prevent default quit behavior to allow async cleanup
-    event.preventDefault()
-    isQuitting = true
+    // Review decisions still in their undo window go out first, while every renderer and the
+    // signed-in session are alive. Bounded (QUIT_FLUSH_TIMEOUT_MS) and resolves at once when no
+    // renderer has any; app.exit below skips the renderers' own beforeunload.
+    await flushReviewDecisionsBeforeQuit()
+
     isAppQuitting = true
     stopRendererMemorySampling()
     stopStallProfiler()
@@ -1137,6 +1147,9 @@ function createWindow() {
       log,
     })
   })
+
+  // Windows shutdown, restart or log-off with review decisions queued: hold it, send them, quit.
+  watchWindowSessionEnd(mainWindow)
 
   mainWindow.on('closed', () => {
     // ============================================

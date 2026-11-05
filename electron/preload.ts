@@ -310,6 +310,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   close: () => ipcRenderer.send('window:close'),
 
+  // Queued review decisions are sent before the app quits (electron/handlers/reviewDecisionQuit.ts)
+  reviewDecisions: {
+    setPending: (pending: boolean) => ipcRenderer.send('review-decisions:pending', pending === true),
+    onFlushRequest: (callback: (requestId: string) => void) => {
+      const handler = (_: unknown, requestId: string) => callback(requestId)
+      ipcRenderer.on('review-decisions:flush', handler)
+      return () => ipcRenderer.removeListener('review-decisions:flush', handler)
+    },
+    flushDone: (requestId: string) => ipcRenderer.send('review-decisions:flush-done', requestId),
+  },
+
   // Working directory
   selectWorkingDir: () => ipcRenderer.invoke('working-dir:select'),
   setWorkingDir: (path: string) => ipcRenderer.invoke('working-dir:set', path),

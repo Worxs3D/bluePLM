@@ -208,10 +208,12 @@ function ReviewDetailBody({
     return map
   }, [items, detail.review.currentRound, detail.me.userId])
   const pendingByItem = useMemo(() => {
-    const map = new Map<string, ReviewDecision>()
+    // Queued in the undo window, then in flight until a reload no longer lists the item as owed:
+    // the list keeps saying "sending" and the bar never offers the decision again meanwhile.
+    const map = new Map<string, ReviewDecision>(pending.sendingDecisions)
     for (const e of pending.queue) for (const id of e.itemIds) map.set(id, e.decision)
     return map
-  }, [pending.queue])
+  }, [pending.queue, pending.sendingDecisions])
 
   // Pick a file when none is chosen (or the chosen one is not in this review): the first owed one,
   // else the first drawing (it has a PDF to look at), else the first file.

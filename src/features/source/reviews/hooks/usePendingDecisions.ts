@@ -5,16 +5,21 @@
  * item back (it is still owed on the server).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
-import { registerPendingDecisionFlush } from '@/lib/reviewDecisionFlush'
+import {
+  notifyPendingReviewDecisionsChanged,
+  registerPendingDecisionFlush,
+} from '@/lib/reviewDecisionFlush'
 import { usePDMStore } from '@/stores/pdmStore'
+import type { ReviewDecision } from '@/types/reviews'
 
 import {
   UNDO_WINDOW_MS,
   cancelDecision,
+  decisionsToSend,
   enqueueDecision,
   expireDecisions,
   flushDecisions,
@@ -27,6 +32,8 @@ export interface PendingDecisionsApi {
   queue: PendingDecision[]
   /** Item ids being sent right now. */
   sending: ReadonlySet<string>
+  /** What each item in `sending` is being sent as (the list and bar keep showing it). */
+  sendingDecisions: ReadonlyMap<string, ReviewDecision>
   /** Queue a decision; `label` is the toast text. */
   queueDecision: (entry: Omit<PendingDecision, 'id' | 'queuedAt'>, label: string) => void
   /** Send everything now (before navigating away). */
@@ -69,6 +76,8 @@ export function usePendingDecisions({
   const setBoth = (next: PendingDecision[]) => {
     queueRef.current = next
     setQueue(next)
+    // The desktop's quit handshake reports this window as holding decisions (or not).
+    notifyPendingReviewDecisionsChanged()
   }
 
   const dropToast = (entryId: string) => {
@@ -82,6 +91,8 @@ export function usePendingDecisions({
   const owedRef = useRef(owedOnServer)
   owedRef.current = owedOnServer
   const inFlight = useRef(new Set<Promise<void>>())
+  /** The decision each dispatched item was sent as. */
+  const sentAs = useRef(new Map<string, ReviewDecision>())
 
   const forget = useCallback((ids: readonly string[]) => {
     for (const id of ids) sent.current.delete(id)
@@ -105,6 +116,7 @@ export function usePendingDecisions({
     (entries: PendingDecision[]) => {
       for (const entry of entries) {
         dropToast(entry.id)
+        for (const d of decisionsToSend(entry)) sentAs.current.set(d.itemId, d.decision)
         setSending((prev) => new Set([...prev, ...entry.itemIds]))
         const run = callbacks.current
           .send(entry)
@@ -123,8 +135,12 @@ export function usePendingDecisions({
             forget(entry.itemIds)
             callbacks.current.onFailed(entry, error)
           })
-          .finally(() => inFlight.current.delete(run))
+          .finally(() => {
+            inFlight.current.delete(run)
+            notifyPendingReviewDecisionsChanged()
+          })
         inFlight.current.add(run)
+        notifyPendingReviewDecisionsChanged()
       }
     },
     [forget],
@@ -163,8 +179,9 @@ export function usePendingDecisions({
       () => {
         const step = expireDecisions(queueRef.current, Date.now())
         if (step.toSend.length === 0) return
-        setBoth(step.queue)
+        // Dispatch first, so the window never looks clear between leaving the queue and the send.
         dispatch(step.toSend)
+        setBoth(step.queue)
       },
       Math.max(0, soonest - Date.now()),
     )
@@ -174,8 +191,8 @@ export function usePendingDecisions({
   const flush = useCallback(() => {
     const step = flushDecisions(queueRef.current)
     if (step.toSend.length === 0) return
-    setBoth(step.queue)
     dispatch(step.toSend)
+    setBoth(step.queue)
   }, [dispatch])
 
   const flushAndWait = useCallback(async () => {
@@ -197,5 +214,14 @@ export function usePendingDecisions({
     [flushAndWait],
   )
 
-  return { queue, sending, queueDecision, flush, flushAndWait }
+  const sendingDecisions = useMemo(() => {
+    const map = new Map<string, ReviewDecision>()
+    for (const id of sending) {
+      const decision = sentAs.current.get(id)
+      if (decision) map.set(id, decision)
+    }
+    return map
+  }, [sending])
+
+  return { queue, sending, sendingDecisions, queueDecision, flush, flushAndWait }
 }
