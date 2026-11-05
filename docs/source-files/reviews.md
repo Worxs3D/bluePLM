@@ -55,6 +55,11 @@ drawing and in the list beside it, can be replied to, and can be resolved and re
 author, the requester and reviewers of the review, and admins. The top-bar right-pane button hides
 and shows the comments.
 
+A new comment or reply notifies the requester and the other reviewers (at most once an hour per
+review), and the notification's **Open** goes to that comment. The reviewer search greys out
+people who cannot see the vault of the files. A decision still in its Undo window is sent before
+BluePLM quits.
+
 | Key | Action |
 |-----|--------|
 | A | Approve |

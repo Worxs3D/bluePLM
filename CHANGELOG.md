@@ -4,6 +4,35 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [5.12.0] - 2026-11-05
+
+Schema 514 (`0514_review_comment_notify.sql`). No API or SolidWorks service change. 5.11.0 keeps
+working against it: it shows the new comment notifications as ordinary review notifications.
+
+### Added
+
+- **Review comments notify the people on the review (schema 514).** A comment or reply on an
+  open or sent-back review notifies its requester and the current round's reviewers who can see
+  the vault, never the person who wrote it, at most once per person per review per hour, so a
+  markup session is one notification, not ten. **Open** goes straight to the review, the file and
+  the comment's thread.
+- **A review in the queue can say "Nobody left to decide"** when every reviewer still owing a
+  decision was withdrawn.
+
+### Fixed
+
+- **Quitting no longer drops a review decision still in its Undo window.** File > Exit, Alt+F4,
+  Cmd+Q, closing the last window, installing an update and a system shutdown or sign-out now send
+  queued decisions first, waiting at most 5 seconds. A Windows sign-out that cannot be held starts
+  the sends without waiting.
+- **Resolve on a comment appears only where it will work.** It used to show for anyone with edit
+  rights in any vault and was then refused; it now follows the server's rule
+  (`file_comment_list_resolvable()`): the comment's author, the review's requester and reviewers,
+  administrators, or, outside a review, edit rights on that file's vault.
+- **The reviewer search greys out people who cannot see the files' vault**, with the reason,
+  instead of the request being refused after you send it.
+- **Light-theme avatars show their initials again.**
+
 ## [5.11.0] - 2026-11-04
 
 Schema 513 (`0513_supply_orders.sql`) and API 4.2.3 (server backups include orders). No SolidWorks
