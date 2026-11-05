@@ -24,6 +24,7 @@ export const pt: OfficialExtensionsDict = {
   ordersAddsView: 'a visualização Pedidos',
   ordersAddsMenu: 'o submenu Pedidos do menu de contexto',
   ordersAddsHistory: '"Adicionar ao pedido" no histórico de versões',
+  ordersAddsSettings: 'Configurações > Pedidos',
 
   core_explorer: 'Explorador de arquivos',
   core_versions: 'Versões',

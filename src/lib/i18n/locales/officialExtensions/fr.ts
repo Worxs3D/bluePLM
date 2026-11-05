@@ -24,6 +24,7 @@ export const fr: OfficialExtensionsDict = {
   ordersAddsView: 'la vue Commandes',
   ordersAddsMenu: 'le sous-menu Commandes du menu contextuel',
   ordersAddsHistory: '« Ajouter à la commande » dans l’historique des versions',
+  ordersAddsSettings: 'Paramètres > Commandes',
 
   core_explorer: 'Explorateur de fichiers',
   core_versions: 'Versions',

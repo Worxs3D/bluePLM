@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 515
+export const EXPECTED_SCHEMA_VERSION = 516
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -80,6 +80,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Review comment notifications. A new comment or reply in an open review notifies its requester and current-round reviewers who are not withdrawn and can read the vault, never the commenter, at most once per recipient per review per hour (review_comment). file_comment_list_resolvable() returns the comments the caller may resolve, by file_comment_set_resolved()'s rule. review_list_queue() package rows add reviewers_owing and reviewers_withdrawn.",
   515:
     "Orders follow-ups. version_output_request asks for an output a version lacks (pdf, step, iges, stl, dxf): version_output_request_create() requests the kinds the file can have, version_output_request_claim() hands them to a desktop with explorer edit and the vault (a claim older than 15 minutes is taken again; _touch() keeps it fresh, _release() hands it back, and a fourth claim fails it with TOO_MANY_ATTEMPTS), version_output_request_finish() and _cancel() close them, and recording the output marks its requests done. supply_order_count_hidden_lines() says per vault how many lines of an order the caller cannot read. A version a released version references is never deleted while that release is live (REFERENCED_BY_RELEASE). RFQs are imported as quote orders (supply_order.imported_from_rfq_id); the rfq tables stay.",
+  516:
+    "Official extensions. Reviews, Inspection and Orders are installed or uninstalled per organization (organization.settings.extensions; unset = installed) through org_extension_set_installed(), admins only. While one is uninstalled, a signed-in caller's direct writes to its tables are refused (EXTENSION_NOT_INSTALLED) and can_access_module() closes its module; nothing is deleted. Without Reviews a drawing releases with no review.",
 }
 
 export interface SchemaVersionInfo {

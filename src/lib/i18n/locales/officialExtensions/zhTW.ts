@@ -21,6 +21,7 @@ export const zhTW: OfficialExtensionsDict = {
   ordersAddsView: '訂單檢視',
   ordersAddsMenu: '右鍵選單中的訂單子選單',
   ordersAddsHistory: '版本歷程中的「加入訂單」',
+  ordersAddsSettings: '設定 > 訂單',
 
   core_explorer: '檔案總管',
   core_versions: '版本',

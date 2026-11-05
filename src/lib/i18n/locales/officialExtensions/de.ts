@@ -24,6 +24,7 @@ export const de: OfficialExtensionsDict = {
   ordersAddsView: 'die Ansicht Bestellungen',
   ordersAddsMenu: 'das Untermenü Bestellungen im Kontextmenü',
   ordersAddsHistory: '„Zur Bestellung hinzufügen“ im Versionsverlauf',
+  ordersAddsSettings: 'Einstellungen > Bestellungen',
 
   core_explorer: 'Datei-Explorer',
   core_versions: 'Versionen',

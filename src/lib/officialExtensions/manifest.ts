@@ -140,11 +140,11 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
     },
     contributes: {
       modules: ['orders'],
-      settingsTabs: [],
+      settingsTabs: ['orders'],
       contextMenuEntries: ['orders'],
       commands: [],
       shortcutCategories: [],
-      surfaceKeys: ['ordersAddsView', 'ordersAddsMenu', 'ordersAddsHistory'],
+      surfaceKeys: ['ordersAddsView', 'ordersAddsMenu', 'ordersAddsHistory', 'ordersAddsSettings'],
       hooks: [],
     },
     uninstallEffectKeys: [],

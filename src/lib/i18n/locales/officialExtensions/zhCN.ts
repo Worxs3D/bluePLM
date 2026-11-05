@@ -21,6 +21,7 @@ export const zhCN: OfficialExtensionsDict = {
   ordersAddsView: '订单视图',
   ordersAddsMenu: '右键菜单中的订单子菜单',
   ordersAddsHistory: '版本历史中的“添加到订单”',
+  ordersAddsSettings: '设置 > 订单',
 
   core_explorer: '文件资源管理器',
   core_versions: '版本',

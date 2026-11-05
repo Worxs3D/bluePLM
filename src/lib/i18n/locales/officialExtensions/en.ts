@@ -25,6 +25,7 @@ export const en = {
   ordersAddsView: 'the Orders view',
   ordersAddsMenu: 'the Orders submenu of the right-click menu',
   ordersAddsHistory: '"Add to order" in version history',
+  ordersAddsSettings: 'Settings > Orders',
 
   // Core features named under "Needs"
   core_explorer: 'File explorer',
