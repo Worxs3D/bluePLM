@@ -26,7 +26,7 @@ src/
 │   ├── settings/         # All settings screens
 │   ├── search/           # Command palette, search views
 │   ├── change-control/   # ECR, ECO, deviations
-│   ├── supply-chain/     # Suppliers, RFQ, portal
+│   ├── supply-chain/     # Suppliers, portal (RFQs are quote orders: features/orders)
 │   ├── integrations/     # Google Drive, SolidWorks
 │   ├── notifications/    # Notification center
 │   ├── items/            # BOMs, products

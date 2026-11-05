@@ -471,6 +471,11 @@ export function queueCheckinOutputs(files: readonly LocalFile[], after?: Promise
   })()
 }
 
+/** Jobs waiting or running in the app's queue (0 when none was created this session). */
+export function appOutputQueueSize(): number {
+  return appQueue?.size() ?? 0
+}
+
 /** Queue outputs the user asked for (Generate PDF / Generate STEP on a selection), one at a time. */
 export function queueOutputs(jobs: readonly PlannedOutputJob[]): number {
   if (!hasDesktop()) return 0

@@ -41,7 +41,7 @@ vi.mock('@/stores/pdmStore', () => {
 
 import type { LineOutputState, SupplyOrderLine } from '@/types/orders'
 
-import { generateMissingOutputs, missingOutputJobs } from './generate'
+import { generateMissingOutputs, missingOutputJobs, missingOutputRequestItems, requestMissingOutputs } from './generate'
 
 function line(p: Partial<SupplyOrderLine>): SupplyOrderLine {
   return {
@@ -129,5 +129,38 @@ describe('generateMissingOutputs', () => {
     if (result.status === 'queued') await result.done
     expect(h.ensured).toEqual([['part-v2', 'step', { configuration: 'Long' }]])
     expect(h.jobs.get('part:step:Long')?.status).toBe('done')
+  })
+})
+
+describe('requestMissingOutputs', () => {
+  it('asks once per version, kind and configuration, never for source, requested or sent kinds', async () => {
+    const a = line({ id: 'a' })
+    const b = line({ id: 'b', orderId: 'o2', configuration: 'Long', outputKinds: ['pdf', 'step', 'stl'] })
+    const sent = line({ id: 's', sentOutputs: [] })
+    const states = new Map<string, LineOutputState[]>([
+      ['a', [...missing(['pdf', 'step', 'source']), { kind: 'dxf', status: 'requested', included: true }]],
+      ['b', missing(['pdf', 'step', 'stl'])],
+      ['s', missing(['step'])],
+    ])
+    expect(missingOutputRequestItems([a, b, sent], states)).toEqual([
+      { fileVersionId: 'drw-v4', kind: 'pdf', configuration: null, orderId: 'o' },
+      { fileVersionId: 'part-v2', kind: 'step', configuration: null, orderId: 'o' },
+      { fileVersionId: 'part-v2', kind: 'step', configuration: 'Long', orderId: 'o2' },
+      { fileVersionId: 'part-v2', kind: 'stl', configuration: 'Long', orderId: 'o2' },
+    ])
+    const request = vi.fn(async () => ({ ok: true as const, created: 4, existing: 0, skipped: [] }))
+    expect(await requestMissingOutputs([a, b], states, request)).toMatchObject({ ok: true, created: 4 })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes no call when nothing is missing', async () => {
+    const request = vi.fn()
+    expect(await requestMissingOutputs([line({})], new Map(), request)).toEqual({ ok: true, created: 0, existing: 0, skipped: [] })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('also generates a requested kind on the desktop', () => {
+    const states = new Map<string, LineOutputState[]>([['l1', [{ kind: 'pdf', status: 'requested', included: true }]]])
+    expect(missingOutputJobs([line({})], states).map((j) => j.kind)).toEqual(['pdf'])
   })
 })

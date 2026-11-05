@@ -16,6 +16,8 @@ export type OutputChipState =
   | 'ready'
   /** Included, and no output exists (or none was sent). */
   | 'missing'
+  /** Included, missing, and requested: a desktop with SOLIDWORKS will generate it (5.13.0). */
+  | 'requested'
   /** Included, and the line cannot have it (a PDF without a drawing). */
   | 'unsupported'
   /** Included, and the outputs are still being looked up. */
@@ -30,6 +32,9 @@ export interface OutputChip {
   toggleable: boolean
   /** The output's file name, when known. */
   fileName: string | null
+  /** With `requested`: the request's id (Cancel request) and who asked. */
+  requestId?: string
+  requestedBy?: string | null
 }
 
 type LineFields = Pick<SupplyOrderLine, 'outputKinds' | 'sentOutputs' | 'missingKinds'>
@@ -71,8 +76,15 @@ export function lineOutputChips(
         ? 'ready'
         : st.status === 'unsupported'
           ? 'unsupported'
-          : 'missing'
-    chips.push({ kind, state, toggleable: editable, fileName: st?.output?.fileName ?? null })
+          : st.status === 'requested'
+            ? 'requested'
+            : 'missing'
+    const chip: OutputChip = { kind, state, toggleable: editable, fileName: st?.output?.fileName ?? null }
+    if (state === 'requested' && st?.request) {
+      chip.requestId = st.request.id
+      chip.requestedBy = st.request.requestedBy
+    }
+    chips.push(chip)
   }
   return chips
 }
@@ -129,4 +141,41 @@ export function livingLines<T extends Pick<SupplyOrderLine, 'fileId' | 'fileVers
 /** How many included outputs of the lines are missing in total. */
 export function missingCount(missing: readonly LineMissing[]): number {
   return missing.reduce((n, m) => n + m.kinds.length, 0)
+}
+
+/** What the lines' included, missing outputs are waiting on. */
+export interface MissingSplit {
+  /** Missing and not requested: what Request missing would ask for. */
+  unrequested: number
+  /** Requested (pending or claimed). */
+  requested: number
+  /** The ids of the requests this user may cancel (`mayCancel`), for Cancel requests. */
+  requestIds: string[]
+}
+
+/**
+ * The included kinds of these lines that are missing, split into requested and not (resolved
+ * states only; `source` is never generated or requested, so it is left out). Pure.
+ */
+export function splitMissing(
+  lines: readonly SupplyOrderLine[],
+  statesByLine: Readonly<Record<string, readonly LineOutputState[]>> | undefined,
+  mayCancel: (requestedBy: string | null) => boolean = () => true,
+): MissingSplit {
+  const out: MissingSplit = { unrequested: 0, requested: 0, requestIds: [] }
+  const ids = new Set<string>()
+  for (const line of lines) {
+    for (const st of statesByLine?.[line.id] ?? []) {
+      if (!st.included || st.kind === 'source') continue
+      if (st.status === 'missing') out.unrequested++
+      else if (st.status === 'requested') {
+        out.requested++
+        if (st.request && !ids.has(st.request.id) && mayCancel(st.request.requestedBy)) {
+          ids.add(st.request.id)
+          out.requestIds.push(st.request.id)
+        }
+      }
+    }
+  }
+  return out
 }

@@ -23,6 +23,7 @@ import { hasDesktop } from '@/lib/platform'
 import { useFlyout } from '../customizable/flyout'
 import type { EntryHookResult } from '../customizable/types'
 import { SubmenuArrow } from '../components/SubmenuArrow'
+import { confirmApproximateReleases } from '@/features/source/releases/approximateRelease'
 
 export interface CheckoutEntriesProps extends RefreshableActionProps {
   counts: SelectionCounts
@@ -443,7 +444,15 @@ function BulkChangeStateEntry({
                   e.stopPropagation()
                   onClose()
                   flyout.setOpen(false)
-                  handleBulkStateChange(syncedFilesInSelection, stateOption)
+                  // A release of assemblies or drawings whose references are approximate would not
+                  // freeze them (5.13.0): ask first.
+                  if (stateOption !== 'released') {
+                    handleBulkStateChange(syncedFilesInSelection, stateOption)
+                    return
+                  }
+                  void confirmApproximateReleases(syncedFilesInSelection).then((go) => {
+                    if (go) handleBulkStateChange(syncedFilesInSelection, stateOption)
+                  })
                 }}
               >
                 <span

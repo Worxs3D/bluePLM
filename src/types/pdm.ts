@@ -1,6 +1,7 @@
 // PDM Types for SolidWorks and CAD file management
 
 import type { OrgContextMenuSettings } from '../lib/contextMenu/types'
+import type { OrderOutputKind } from './orders'
 import type { OrgOutputSettings } from './versionOutputs'
 
 export interface CheckoutUserProfile {
@@ -608,8 +609,6 @@ export interface Organization {
   is_google_drive_enabled?: boolean
   google_drive_client_id?: string | null
   google_drive_client_secret?: string | null
-  // RFQ settings
-  rfq_settings?: RFQSettings | null
   // Serialization settings
   serialization_settings?: SerializationSettings | null
   // Module defaults for organization members
@@ -638,20 +637,6 @@ export interface AuthProviderSettings {
 export const DEFAULT_AUTH_PROVIDERS: AuthProviderSettings = {
   users: { google: true, email: true, phone: true },
   suppliers: { google: true, email: true, phone: true },
-}
-
-// RFQ template settings
-export interface RFQSettings {
-  default_payment_terms: string
-  default_incoterms: string
-  default_valid_days: number
-  show_company_logo: boolean
-  show_revision_column: boolean
-  show_material_column: boolean
-  show_finish_column: boolean
-  show_notes_column: boolean
-  terms_and_conditions: string
-  footer_text: string
 }
 
 // Serialization settings for sequential item numbers
@@ -728,11 +713,30 @@ export interface OrgSettings {
   outputs?: OrgOutputSettings
   /** Inspection report naming (5.5.0); read through `reportNamingFromSettings` (defaults applied). */
   inspection_reports?: InspectionReportOrgSettings
+  /** Orders (5.13.0): number prefix and default line kinds; read through `orderSettingsFromOrg`. */
+  orders?: OrderOrgSettings
   /**
    * Right-click menu templates and the organization default (admins). Untrusted JSON: read it
    * through `orgTemplates` / `sanitizeOrgContextMenu`, write it through `contextMenuTemplates.ts`.
    */
   context_menu?: OrgContextMenuSettings
+}
+
+/**
+ * `organization.settings.orders` (5.13.0, Settings > Orders): the order number prefix
+ * (`supply_order_create_row`, default `ORD-`) and the kinds a new line starts with, per kind of
+ * line. Untrusted JSON: read it through `orderSettingsFromOrg` (`src/lib/orders/settings.ts`).
+ */
+export interface OrderOrgSettings {
+  number_prefix?: string
+  default_kinds?: {
+    /** A part or assembly line with a drawing (built in: PDF and STEP). */
+    model_with_drawing?: OrderOutputKind[]
+    /** A part or assembly line without a drawing (built in: STEP). */
+    model?: OrderOutputKind[]
+    /** A drawing on its own (built in: PDF). */
+    drawing?: OrderOutputKind[]
+  }
 }
 
 /** `organization.settings.inspection_reports`: report number pattern, where `{n}` counts, logo. */

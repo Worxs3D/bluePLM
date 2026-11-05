@@ -1,6 +1,7 @@
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePattern'
+import { isReferencedByRelease, referencedByReleaseMessage } from '@/lib/versionOpen/deleteRefusal'
 
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { getSupabaseClient } from '../client'
@@ -284,8 +285,17 @@ export async function permanentlyDeleteFile(
     // Activity logging is non-critical
   }
 
-  // Delete file versions
-  await client.from('file_version').delete().eq('file_id', fileId)
+  // Delete file versions. Schema 515 refuses (hint REFERENCED_BY_RELEASE) while a released
+  // version's closure references one of them; stop before the references go too.
+  const { error: versionsError } = await client.from('file_version').delete().eq('file_id', fileId)
+  if (versionsError) {
+    return {
+      success: false,
+      error: isReferencedByRelease(versionsError)
+        ? referencedByReleaseMessage(file.file_name)
+        : versionsError.message,
+    }
+  }
 
   // Delete file references
   await client
@@ -297,7 +307,10 @@ export async function permanentlyDeleteFile(
   const { error } = await client.from('file').delete().eq('id', fileId)
 
   if (error) {
-    return { success: false, error: error.message }
+    return {
+      success: false,
+      error: isReferencedByRelease(error) ? referencedByReleaseMessage(file.file_name) : error.message,
+    }
   }
 
   return { success: true }

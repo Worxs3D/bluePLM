@@ -11,13 +11,17 @@
  * - `source`: the line version's own file bytes.
  *
  * A sent order's lines carry the outputs that went out (`sentOutputs`); those are the answer then,
- * never a newer output.
+ * never a newer output. A draft line's missing kind with a pending or claimed output request
+ * (schema 515) is `requested`.
  */
 
+import { log } from '@/lib/logger'
 import { isDrawingFile, kindTakesConfiguration } from '@/lib/outputs/kinds'
+import { listOutputRequests } from '@/lib/outputs/requestsApi'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { listOutputsForVersions } from '@/lib/supabase/versionOutputs'
 import { ORDER_OUTPUT_KINDS, type LineOutputState, type OrderOutputKind, type SupplyOrderLine } from '@/types/orders'
+import type { OutputRequest } from '@/types/outputRequests'
 import type { VersionOutput } from '@/types/versionOutputs'
 
 /** Where one kind of a line comes from. */
@@ -113,6 +117,24 @@ export interface VersionContent {
 export interface ResolveOutputsDeps {
   outputsForVersions: (fileVersionIds: readonly string[]) => Promise<Map<string, VersionOutput[]>>
   versionContent: (fileVersionIds: readonly string[]) => Promise<Map<string, VersionContent>>
+  /** Pending and claimed output requests of these versions; none when omitted. */
+  activeRequests?: (fileVersionIds: readonly string[]) => Promise<OutputRequest[]>
+}
+
+/** The key a request and a line's kind meet on. Pure. */
+export function requestKey(fileVersionId: string, kind: string, configuration: string | null): string {
+  return `${fileVersionId}:${kind}:${configuration ?? ''}`
+}
+
+/** Active requests by `requestKey`; the oldest of duplicates wins. Pure. */
+export function requestsByKey(requests: readonly OutputRequest[]): Map<string, OutputRequest> {
+  const out = new Map<string, OutputRequest>()
+  for (const r of requests) {
+    if (r.status !== 'pending' && r.status !== 'claimed') continue
+    const key = requestKey(r.fileVersionId, r.kind, r.configuration)
+    if (!out.has(key)) out.set(key, r)
+  }
+  return out
 }
 
 export type ResolvableLine = SourceLine & Pick<SupplyOrderLine, 'id' | 'outputKinds' | 'sentOutputs' | 'missingKinds'>
@@ -140,6 +162,7 @@ export function draftLineStates(
   line: ResolvableLine,
   outputs: ReadonlyMap<string, readonly VersionOutput[]>,
   contents: ReadonlyMap<string, VersionContent>,
+  requests: ReadonlyMap<string, OutputRequest> = new Map(),
 ): LineOutputState[] {
   return ORDER_OUTPUT_KINDS.map((kind) => {
     const included = line.outputKinds.includes(kind)
@@ -160,14 +183,24 @@ export function draftLineStates(
     const found = (outputs.get(source.fileVersionId) ?? []).find(
       (o) => o.kind === kind && o.fileId === source.fileId && (o.configuration ?? null) === source.configuration,
     )
-    return found
-      ? {
-          kind,
-          status: 'ready',
-          included,
-          output: { storageHash: found.storageHash, fileSize: found.fileSize, fileName: found.fileName },
-        }
-      : { kind, status: 'missing', included }
+    if (found) {
+      return {
+        kind,
+        status: 'ready',
+        included,
+        output: { storageHash: found.storageHash, fileSize: found.fileSize, fileName: found.fileName },
+      }
+    }
+    const request = requests.get(requestKey(source.fileVersionId, kind, source.configuration))
+    if (request && (request.status === 'pending' || request.status === 'claimed')) {
+      return {
+        kind,
+        status: 'requested',
+        included,
+        request: { id: request.id, status: request.status, requestedBy: request.requestedBy, requestedAt: request.requestedAt },
+      }
+    }
+    return { kind, status: 'missing', included }
   })
 }
 
@@ -189,9 +222,20 @@ async function versionContent(fileVersionIds: readonly string[]): Promise<Map<st
   return out
 }
 
+/** Requests of these versions; a database before 515 (no table) or a failed read gives none. */
+async function activeRequests(fileVersionIds: readonly string[]): Promise<OutputRequest[]> {
+  try {
+    return await listOutputRequests(fileVersionIds)
+  } catch (error) {
+    log.debug('[Orders]', 'Output requests unavailable', { error: error instanceof Error ? error.message : String(error) })
+    return []
+  }
+}
+
 export const defaultResolveOutputsDeps: ResolveOutputsDeps = {
   outputsForVersions: listOutputsForVersions,
   versionContent,
+  activeRequests,
 }
 
 /**
@@ -218,10 +262,14 @@ export async function resolveLineOutputs(
       else outputVersionIds.add(source.fileVersionId)
     }
   }
-  const [outputs, contents] = await Promise.all([
+  const [outputs, contents, requests] = await Promise.all([
     outputVersionIds.size > 0 ? deps.outputsForVersions([...outputVersionIds]) : Promise.resolve(new Map()),
     sourceVersionIds.size > 0 ? deps.versionContent([...sourceVersionIds]) : Promise.resolve(new Map()),
+    outputVersionIds.size > 0 && deps.activeRequests
+      ? deps.activeRequests([...outputVersionIds])
+      : Promise.resolve([] as OutputRequest[]),
   ])
-  for (const line of drafts) result.set(line.id, draftLineStates(line, outputs, contents))
+  const byKey = requestsByKey(requests)
+  for (const line of drafts) result.set(line.id, draftLineStates(line, outputs, contents, byKey))
   return result
 }

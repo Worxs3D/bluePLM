@@ -25,14 +25,23 @@ export {
   DRAWING_ONLY_LINE_KINDS,
   MODEL_LINE_KINDS,
   pickDrawingModel,
+  drawingCandidates,
   pickModelDrawing,
   planOrderLinesForFiles,
+  type DrawingCandidate,
+  type DrawingCandidates,
   type PlanOrderLinesOptions,
   type PlanOrderLinesResult,
   type PlanSkipReason,
 } from './plan'
-export { lineKindSource, resolveLineOutputs, type LineKindSource } from './outputs'
-export { generateMissingOutputs, missingOutputJobs, type GenerateMissingResult } from './generate'
+export { lineKindSource, requestKey, requestsByKey, resolveLineOutputs, type LineKindSource } from './outputs'
+export {
+  generateMissingOutputs,
+  missingOutputJobs,
+  missingOutputRequestItems,
+  requestMissingOutputs,
+  type GenerateMissingResult,
+} from './generate'
 export {
   csvCell,
   lineOutputName,
@@ -46,4 +55,5 @@ export {
   type OrderExportPlan,
 } from './exportPlan'
 export { exportOrder, type ExportOrderOptions } from './exportOrder'
+export { webFolderExportSupported } from './exportWebFolder'
 export { deletable, headerEditable, linesEditable, nextAllowedStatuses } from './status'

@@ -17,6 +17,10 @@
  *   A child referenced in several configurations gets one line per configuration.
  * - Default kinds: `{pdf, step}` with a drawing, `{step}` without, `{pdf}` for a drawing-only line.
  * - One line per (file, configuration); a line with a drawing wins over one without.
+ *
+ * "Choose drawing" on a line (5.13.0) lists every candidate of that rule (`drawingCandidates`):
+ * each live drawing whose latest version references the line's model, with the one the rule
+ * would pick marked; the UI adds "No drawing".
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -30,7 +34,7 @@ import {
   type LatestFileVersion,
 } from '@/lib/supabase/reviews'
 import type { LocalFile } from '@/stores/types'
-import type { AddLineInput, OrderOutputKind } from '@/types/orders'
+import type { AddLineInput, OrderOutputKind, SupplyOrderLine } from '@/types/orders'
 import type { DependencyClosureRow } from '@/types/reviews'
 
 import { readAllPages } from './paging'
@@ -62,6 +66,8 @@ export interface ModelDrawingRef {
   /** The drawing's latest version, the one that references the model. */
   drawingVersionId: string
   drawingFileName: string
+  /** The drawing's latest version number, when read. */
+  drawingVersion?: number | null
 }
 
 /** A `file_version_reference` row with its parent file and version embedded. */
@@ -352,6 +358,7 @@ export function latestDrawingRefs(rows: readonly ParentReferenceRow[]): ModelDra
       drawingFileId: r.parent_file_id,
       drawingVersionId: r.parent_version_id,
       drawingFileName: name,
+      drawingVersion: parent.version,
     })
   }
   return [...out.values()]
@@ -384,6 +391,48 @@ async function modelDrawingRefs(modelFileIds: readonly string[]): Promise<ModelD
     rows.push(...(page as unknown as ParentReferenceRow[]))
   }
   return latestDrawingRefs(rows)
+}
+
+/** A drawing "Choose drawing" offers for a line. */
+export interface DrawingCandidate {
+  fileId: string
+  /** Its latest version, the one that references the model (what the line pins when chosen). */
+  fileVersionId: string
+  fileName: string
+  version: number | null
+}
+
+export interface DrawingCandidates {
+  /** Every live drawing whose latest version references the line's model, by name. */
+  candidates: DrawingCandidate[]
+  /** The candidate the pairing rule picks (`pickModelDrawing`), or null when it is ambiguous. */
+  suggestedVersionId: string | null
+}
+
+/**
+ * The drawings a line's model can be paired with. A drawing-only line, a purged file or a file
+ * that is no part or assembly has none. Throws on a query error.
+ */
+export async function drawingCandidates(
+  line: Pick<SupplyOrderLine, 'fileId' | 'fileName'>,
+  deps: Pick<PlanDeps, 'modelDrawingRefs'> = defaultPlanDeps,
+): Promise<DrawingCandidates> {
+  if (!line.fileId || !isModelFile(line.fileName)) return { candidates: [], suggestedVersionId: null }
+  const refs = await deps.modelDrawingRefs([line.fileId])
+  const byFile = new Map<string, DrawingCandidate>()
+  for (const r of refs) {
+    if (r.modelFileId !== line.fileId || byFile.has(r.drawingFileId)) continue
+    byFile.set(r.drawingFileId, {
+      fileId: r.drawingFileId,
+      fileVersionId: r.drawingVersionId,
+      fileName: r.drawingFileName,
+      version: r.drawingVersion ?? null,
+    })
+  }
+  const candidates = [...byFile.values()].sort(
+    (a, b) => a.fileName.toLowerCase().localeCompare(b.fileName.toLowerCase()) || a.fileId.localeCompare(b.fileId),
+  )
+  return { candidates, suggestedVersionId: pickModelDrawing(line.fileName, candidates) }
 }
 
 export const defaultPlanDeps: PlanDeps = {

@@ -22,7 +22,8 @@ import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 import type { SupplyOrder } from '@/types/orders'
 
-import { createAndOpenOrder } from './actions'
+import { createAndOpenOrder, dropFilesOnOrder } from './actions'
+import { useFileDropTarget } from './hooks/useFileDropTarget'
 import { STATUS_TONE, shortDate } from './lib/format'
 import { filterOrders, type OrderListFilter } from './lib/orderList'
 
@@ -205,7 +206,18 @@ function OrderListRow({ order, selected, tabIndex, language, onOpen }: OrderList
       : t('orders.lineCountMany', { count: order.lineCount })
   // The count before the supplier, so a narrow pane cuts the name, not the count.
   const meta = [order.orderNumber, lines, order.supplierName].filter(Boolean).join(' · ')
+  // Files dragged from the file list or the tree onto a draft row are added to it.
+  const drop = useFileDropTarget(
+    (found, orderable) => void dropFilesOnOrder(order.id, found, orderable),
+    order.status === 'draft',
+  )
   return (
+    <div
+      role="presentation"
+      {...drop.handlers}
+      className={drop.over ? 'bg-ui-selected ring-2 ring-inset ring-ui-accent/50' : undefined}
+      title={drop.over ? t('orders.dropHint', { order: order.orderNumber }) : undefined}
+    >
     <ListRow
       id={OPTION_ID(order.id)}
       role="option"
@@ -226,5 +238,6 @@ function OrderListRow({ order, selected, tabIndex, language, onOpen }: OrderList
         </span>
       }
     />
+    </div>
   )
 }

@@ -224,6 +224,7 @@ export const createUISlice: StateCreator<
         'properties',
         'whereused',
         'vendors',
+        'orders',
         'inspection',
       ]
       const currentOrder = bottomPanelTabOrder.length > 0 ? bottomPanelTabOrder : defaultOrder

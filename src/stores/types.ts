@@ -90,6 +90,7 @@ export type DetailsPanelTab =
   | 'whereused'
   | 'datacard'
   | 'vendors'
+  | 'orders'
   | 'inspection'
 export type PanelPosition = 'bottom' | 'right'
 export type ToastType = 'error' | 'success' | 'info' | 'warning' | 'progress' | 'update'

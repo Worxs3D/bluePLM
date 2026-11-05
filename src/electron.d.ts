@@ -517,12 +517,6 @@ declare global {
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<SaveDialogResult>
 
-      // PDF generation
-      generatePdfFromHtml: (
-        htmlContent: string,
-        outputPath: string,
-      ) => Promise<{ success: boolean; path?: string; size?: number; error?: string }>
-
       // Archive (ZIP) operations
       archive: {
         /**
@@ -1172,6 +1166,22 @@ declare global {
         ) => Promise<{ success: boolean; path?: string; error?: string }>
       }
 
+      // Open with its references (src/lib/versionOpen): one cache entry per checked-in version
+      versionOpen: {
+        /**
+         * `<userData>/version-open-cache/<key>` for the version, created if missing, with the
+         * entry's marker (JSON) when staging finished there before. Prunes the cache by age and
+         * size first and marks this entry as just used.
+         */
+        prepareEntry: (
+          fileVersionId: string,
+        ) => Promise<{ success: boolean; path?: string; marker?: string | null; error?: string }>
+        /** Remove the entry's marker and make its files writable, before staging it again. */
+        beginRestage: (entryPath: string) => Promise<{ success: boolean; error?: string }>
+        /** Write the entry's marker, the last step of staging. Only into an entry folder. */
+        writeMarker: (entryPath: string, content: string) => Promise<{ success: boolean; error?: string }>
+      }
+
       orders: {
         /**
          * Export an order's files (5.11.0). The main process asks where (a save dialog for
@@ -1206,40 +1216,6 @@ declare global {
         onExportProgress: (
           callback: (progress: { phase: 'downloading' | 'writing'; completed: number; total: number }) => void,
         ) => () => void
-      }
-
-      // RFQ Release Files API
-      rfq: {
-        getOutputDir: (
-          rfqId: string,
-          rfqNumber?: string,
-        ) => Promise<{ success: boolean; path?: string; error?: string }>
-        exportReleaseFile: (options: {
-          rfqId: string
-          rfqNumber?: string
-          sourceFilePath: string
-          exportType: 'step' | 'pdf' | 'dxf' | 'iges'
-          partNumber?: string
-          revision?: string
-          configuration?: string
-        }) => Promise<{
-          success: boolean
-          outputPath?: string
-          fileName?: string
-          fileSize?: number
-          error?: string
-        }>
-        createZip: (options: {
-          rfqId: string
-          rfqNumber: string
-          files: Array<{ path: string; name: string }>
-          rfqPdfPath?: string
-          outputPath?: string
-        }) => Promise<{ success: boolean; zipPath?: string; fileSize?: number; error?: string }>
-        openFolder: (
-          rfqId: string,
-          rfqNumber?: string,
-        ) => Promise<{ success: boolean; error?: string }>
       }
 
       // Embedded eDrawings preview

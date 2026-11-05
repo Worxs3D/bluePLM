@@ -99,10 +99,12 @@ describe('validateExportRequest', () => {
     for (const c of cases) expect(() => validateExportRequest(c)).toThrow()
   })
 
-  it('refuses a zip over its size limit but allows it as a folder', () => {
-    const big = Array.from({ length: 2 }, (_, i) => file(`f${i}.step`, { size: 2 * 1024 ** 3 }))
-    expect(() => validateExportRequest({ mode: 'zip', name: 'o', files: big, texts: [] })).toThrow(/larger/)
-    expect(validateExportRequest({ mode: 'folder', name: 'o', files: big, texts: [] }).files).toHaveLength(2)
+  it('takes a zip past 4 GiB (ZIP64) and refuses either mode past the export limit', () => {
+    const big = Array.from({ length: 3 }, (_, i) => file(`f${i}.step`, { size: 2 * 1024 ** 3 }))
+    expect(validateExportRequest({ mode: 'zip', name: 'o', files: big, texts: [] }).files).toHaveLength(3)
+    const huge = Array.from({ length: 26 }, (_, i) => file(`f${i}.step`, { size: 2 * 1024 ** 3 }))
+    expect(() => validateExportRequest({ mode: 'zip', name: 'o', files: huge, texts: [] })).toThrow(/larger/)
+    expect(() => validateExportRequest({ mode: 'folder', name: 'o', files: huge, texts: [] })).toThrow(/larger/)
   })
 })
 
@@ -187,9 +189,11 @@ describe('exports', () => {
     const zipPath = path.join(dir, 'big.zip')
     // Declared sizes say 1 byte each; the downloads are 12 and 11.
     const lying = { ...request('zip'), files: request('zip').files.map((f) => ({ ...f, size: 1 })) }
-    await expect(exportToZip(lying, zipPath, () => undefined, 15)).rejects.toMatchObject({ code: 'TOO_LARGE' })
+    await expect(exportToZip(lying, zipPath, () => undefined, { maxBytes: 15 })).rejects.toMatchObject({ code: 'TOO_LARGE' })
     // The files fit, the CSV pushes it over.
-    await expect(exportToZip(request('zip'), zipPath, () => undefined, 25)).rejects.toMatchObject({ code: 'TOO_LARGE' })
+    await expect(exportToZip(request('zip'), zipPath, () => undefined, { maxBytes: 25 })).rejects.toMatchObject({
+      code: 'TOO_LARGE',
+    })
     expect(fs.readdirSync(dir).filter((f) => f.startsWith('big.zip'))).toEqual([])
   })
 

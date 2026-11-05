@@ -319,6 +319,8 @@ export const usePDMStore = create<PDMStoreState>()(
         inspectionShowFilters: state.inspectionShowFilters,
         inspectionAutoSync: state.inspectionAutoSync,
         inspectionDrawingSync: state.inspectionDrawingSync,
+        // Output requests (5.13.0): this machine generates other users' requests (default on).
+        outputRequestWorkerEnabled: state.outputRequestWorkerEnabled,
 
         // ═══════════════════════════════════════════════════════════════
         // Theme & Appearance

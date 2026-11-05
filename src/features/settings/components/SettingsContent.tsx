@@ -63,8 +63,8 @@ const SerializationSettings = lazy(() =>
 const ExportSettings = lazy(() =>
   import('../system/ExportSettings').then((m) => ({ default: m.ExportSettings })),
 )
-const RFQSettings = lazy(() =>
-  import('../system/RFQSettings').then((m) => ({ default: m.RFQSettings })),
+const OrdersSettings = lazy(() =>
+  import('../organization/OrdersSettings').then((m) => ({ default: m.OrdersSettings })),
 )
 const FileWorkflowsSettings = lazy(() =>
   import('../organization/FileWorkflowsSettings').then((m) => ({
@@ -227,8 +227,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SerializationSettings />
       case 'export':
         return <ExportSettings />
-      case 'rfq':
-        return <RFQSettings />
+      case 'orders':
+        return <OrdersSettings key={orgKey} />
       case 'metadata-columns':
         return <MetadataColumnsSettings />
       case 'file-workflows':

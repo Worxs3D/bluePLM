@@ -9,10 +9,12 @@ import {
   subscribeToPermissions,
   subscribeToVaults,
   subscribeToSupplyOrders,
+  subscribeToOutputRequests,
   unsubscribeAll,
   type FolderRealtimeRow,
 } from '@/lib/realtime'
 import { createOrdersRealtimeRefresh } from '@/lib/orders/realtimeRefresh'
+import { handleOutputRequestEvent, startOutputRequestWorker } from '@/lib/outputs/requests'
 import { buildFullPath } from '@/lib/commands/types'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
@@ -1124,7 +1126,6 @@ export function useRealtimeSubscriptions(
 
         // Check JSONB columns for admin settings
         const jsonbAdminFields = [
-          'rfq_settings',
           'serialization_settings',
           'module_defaults',
         ] as const
@@ -1362,6 +1363,14 @@ export function useRealtimeSubscriptions(
     // Orders (schema 513): the list and the loaded orders refresh, debounced.
     const ordersRefresh = createOrdersRealtimeRefresh()
     const unsubscribeOrders = subscribeToSupplyOrders(organization.id, (orderId) => ordersRefresh.add(orderId))
+    // Output requests (schema 515): a request's order refreshes (its chips), a new one wakes this
+    // machine's worker, which runs only on a desktop with SOLIDWORKS (it stops with this effect).
+    const unsubscribeOutputRequests = subscribeToOutputRequests(organization.id, (row) => {
+      const orderId = row && typeof row === 'object' ? (row as { order_id?: unknown }).order_id : null
+      if (typeof orderId === 'string' && orderId) ordersRefresh.add(orderId)
+      handleOutputRequestEvent(row)
+    })
+    const stopOutputRequestWorker = startOutputRequestWorker(organization.id)
 
     return () => {
       subscriptionActive = false
@@ -1390,6 +1399,8 @@ export function useRealtimeSubscriptions(
       unsubscribeVaults()
       ordersRefresh.cancel()
       unsubscribeOrders()
+      stopOutputRequestWorker()
+      unsubscribeOutputRequests()
       unsubscribeAll()
     }
     // requestSilentRefresh is intentionally not a dependency - see requestSilentRefreshRef above.

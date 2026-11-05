@@ -11,6 +11,8 @@ export { SegmentedControl } from './SegmentedControl'
 export type { SegmentedOption } from './SegmentedControl'
 export { Select } from './Select'
 export { Switch } from './Switch'
+export { ToggleGroup } from './ToggleGroup'
+export type { ToggleOption } from './ToggleGroup'
 export { FIELD_CLASS, TextArea, TextInput } from './TextInput'
 
 // Layout: Page > Section > RowGroup > Row (settings re-exports these under its own names).

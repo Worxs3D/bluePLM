@@ -4,6 +4,7 @@ vi.mock('@/lib/supabase/client', () => ({ getSupabaseClient: () => ({}) }))
 vi.mock('@/lib/supabase/versionOutputs', () => ({ listOutputsForVersions: vi.fn() }))
 
 import type { SupplyOrderLine } from '@/types/orders'
+import type { OutputRequest } from '@/types/outputRequests'
 import type { VersionOutput } from '@/types/versionOutputs'
 
 import { lineKindSource, resolveLineOutputs, type ResolveOutputsDeps } from './outputs'
@@ -158,5 +159,65 @@ describe('resolveLineOutputs', () => {
     })
     expect(states.find((s) => s.kind === 'pdf')?.status).toBe('unsupported')
     expect(d.outputsForVersions).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveLineOutputs with output requests', () => {
+  const request = (p: Partial<OutputRequest> & Pick<OutputRequest, 'fileVersionId' | 'kind'>): OutputRequest => ({
+    id: `${p.fileVersionId}-${p.kind}-req`,
+    orgId: 'org',
+    vaultId: 'vault',
+    configuration: null,
+    status: 'pending',
+    requestedBy: 'u1',
+    requestedAt: '2026-11-04T10:00:00Z',
+    claimedBy: null,
+    claimedAt: null,
+    finishedAt: null,
+    error: null,
+    orderId: null,
+    ...p,
+  })
+
+  it('marks a missing kind with a pending or claimed request as requested, matched on version, kind and configuration', async () => {
+    const activeRequests = vi.fn(async () => [
+      request({ fileVersionId: 'drw-v4', kind: 'pdf', status: 'claimed' }),
+      // The saved configuration's STEP is not what the configured line needs.
+      request({ fileVersionId: 'part-v2', kind: 'step' }),
+      request({ fileVersionId: 'part-v2', kind: 'stl', configuration: 'Long' }),
+      // A finished request is not waiting for anything.
+      request({ fileVersionId: 'part-v2', kind: 'iges', status: 'failed' }),
+    ])
+    const d: ResolveOutputsDeps = {
+      outputsForVersions: vi.fn(async () => new Map()),
+      versionContent: vi.fn(async () => new Map()),
+      activeRequests,
+    }
+    const states = (await resolveLineOutputs([withDrawing], d)).get('line-1')!
+    expect(states.map((s) => [s.kind, s.status])).toEqual([
+      ['pdf', 'requested'],
+      ['step', 'missing'],
+      ['iges', 'missing'],
+      ['stl', 'requested'],
+      ['dxf', 'missing'],
+      ['source', 'missing'],
+    ])
+    expect(states[0].request).toEqual({
+      id: 'drw-v4-pdf-req',
+      status: 'claimed',
+      requestedBy: 'u1',
+      requestedAt: '2026-11-04T10:00:00Z',
+    })
+    expect(activeRequests).toHaveBeenCalledWith(expect.arrayContaining(['drw-v4', 'part-v2']))
+  })
+
+  it('keeps an output that exists ready, whatever is requested', async () => {
+    const d: ResolveOutputsDeps = {
+      outputsForVersions: vi.fn(async () => new Map([['drw-v4', [output({ kind: 'pdf', fileId: 'drw', fileVersionId: 'drw-v4' })]]])),
+      versionContent: vi.fn(async () => new Map()),
+      activeRequests: vi.fn(async () => [request({ fileVersionId: 'drw-v4', kind: 'pdf' })]),
+    }
+    const states = (await resolveLineOutputs([withDrawing], d)).get('line-1')!
+    expect(states[0]).toMatchObject({ kind: 'pdf', status: 'ready' })
   })
 })

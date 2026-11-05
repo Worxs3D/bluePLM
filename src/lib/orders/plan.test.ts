@@ -12,6 +12,7 @@ import type { DependencyClosureRow } from '@/types/reviews'
 
 import {
   closureChildLines,
+  drawingCandidates,
   latestDrawingRefs,
   pickDrawingModel,
   pickModelDrawing,
@@ -259,7 +260,9 @@ describe('latestDrawingRefs', () => {
       // The same drawing twice (two configurations referenced) is one candidate.
       row({ parent_file_id: 'drw' }),
     ])
-    expect(refs).toEqual([{ modelFileId: 'part', drawingFileId: 'drw', drawingVersionId: 'drw-v2', drawingFileName: 'drw.SLDDRW' }])
+    expect(refs).toEqual([
+      { modelFileId: 'part', drawingFileId: 'drw', drawingVersionId: 'drw-v2', drawingFileName: 'drw.SLDDRW', drawingVersion: 2 },
+    ])
   })
 })
 
@@ -282,5 +285,32 @@ describe('pickDrawingModel / pickModelDrawing', () => {
       ]),
     ).toBe('d1')
     expect(pickModelDrawing('A.sldprt', [])).toBeNull()
+  })
+})
+
+describe('drawingCandidates', () => {
+  const refs: ModelDrawingRef[] = [
+    { modelFileId: 'part', drawingFileId: 'z', drawingVersionId: 'z-v3', drawingFileName: 'Zeta.slddrw', drawingVersion: 3 },
+    { modelFileId: 'part', drawingFileId: 'a', drawingVersionId: 'a-v1', drawingFileName: 'Bracket.SLDDRW', drawingVersion: 1 },
+    // The same drawing twice (two configurations referenced) is one candidate.
+    { modelFileId: 'part', drawingFileId: 'a', drawingVersionId: 'a-v1', drawingFileName: 'Bracket.SLDDRW', drawingVersion: 1 },
+    { modelFileId: 'other', drawingFileId: 'o', drawingVersionId: 'o-v1', drawingFileName: 'Other.slddrw' },
+  ]
+  const deps = { modelDrawingRefs: vi.fn(async (ids: readonly string[]) => refs.filter((r) => ids.includes(r.modelFileId))) }
+
+  it('lists every drawing of the model by name, with the rule\'s pick', async () => {
+    const result = await drawingCandidates({ fileId: 'part', fileName: 'Bracket.sldprt' }, deps)
+    expect(result.candidates).toEqual([
+      { fileId: 'a', fileVersionId: 'a-v1', fileName: 'Bracket.SLDDRW', version: 1 },
+      { fileId: 'z', fileVersionId: 'z-v3', fileName: 'Zeta.slddrw', version: 3 },
+    ])
+    expect(result.suggestedVersionId).toBe('a-v1')
+    // Two drawings and neither has the model's name: no pick.
+    expect((await drawingCandidates({ fileId: 'part', fileName: 'Plate.sldprt' }, deps)).suggestedVersionId).toBeNull()
+  })
+
+  it('has none for a drawing-only or purged line', async () => {
+    expect(await drawingCandidates({ fileId: 'd', fileName: 'A.slddrw' }, deps)).toEqual({ candidates: [], suggestedVersionId: null })
+    expect(await drawingCandidates({ fileId: null, fileName: 'A.sldprt' }, deps)).toEqual({ candidates: [], suggestedVersionId: null })
   })
 })

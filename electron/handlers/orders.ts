@@ -5,9 +5,13 @@
  * stored file; this process owns the rest. It asks where to save (a save dialog for a zip, a
  * folder picker for a folder), downloads each URL streaming to disk while hashing it, and fails
  * the whole export when any download is not the content it names: nothing is left behind, and no
- * partial zip or folder is kept. Memory stays bounded: files stream to a temp folder (or straight
- * into the new folder) and the zip streams from them without compression (CAD outputs barely
- * compress), so neither is held whole.
+ * partial zip or folder is kept. Memory stays bounded: a folder export streams each download
+ * straight into its file; a zip (5.13.0) is written by yazl, which streams each download straight
+ * into the archive, one entry after another, stored without compression (CAD outputs barely
+ * compress), and switches to ZIP64 where an entry, an offset or the archive passes 4 GiB, so a zip
+ * has the folder's size limit instead of JSZip's 3.5 GiB. While one file streams into the zip, the
+ * next few small ones (`ZIP_PREFETCH_*`) download into memory, so an order of many small files is
+ * not one round trip per file.
  *
  * Every input is checked here: https URLs only (plain http only to this machine, for a local
  * Supabase), SHA-256 hashes, sizes and counts within limits, and every path inside the export a
@@ -17,12 +21,11 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import crypto from 'crypto'
 import fs from 'fs'
-import JSZip from 'jszip'
-import os from 'os'
 import path from 'path'
-import { Readable, Transform } from 'stream'
+import { PassThrough, Readable, Transform, Writable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { ReadableStream as NodeReadableStream } from 'stream/web'
+import { ZipFile } from 'yazl'
 
 export const ORDER_EXPORT_CHANNEL = 'orders:export'
 export const ORDER_EXPORT_PROGRESS_CHANNEL = 'orders:export-progress'
@@ -31,17 +34,20 @@ export const ORDER_EXPORT_PROGRESS_CHANNEL = 'orders:export-progress'
 export const ORDER_EXPORT_MAX_FILES = 2000
 /** One file at most (a STEP of a large assembly can be big). */
 export const ORDER_EXPORT_MAX_FILE_BYTES = 2 * 1024 ** 3
-/** A zip at most: JSZip writes no ZIP64, so a zip stays well under 4 GiB. */
-export const ORDER_EXPORT_MAX_ZIP_BYTES = 3.5 * 1024 ** 3
 /** A folder export at most. */
 export const ORDER_EXPORT_MAX_FOLDER_BYTES = 50 * 1024 ** 3
+/** A zip at most: ZIP64 (yazl) has no 4 GiB limit, so the folder's bound applies. */
+export const ORDER_EXPORT_MAX_ZIP_BYTES = ORDER_EXPORT_MAX_FOLDER_BYTES
+/** Files downloaded into memory ahead of the one streaming into the zip. */
+export const ZIP_PREFETCH_FILES = 4
+/** Only files this small (declared and real) are downloaded ahead; larger ones stream in turn. */
+export const ZIP_PREFETCH_MAX_BYTES = 8 * 1024 * 1024
 /** The CSV and order.json: a few texts of bounded size. */
 const MAX_TEXTS = 4
 const MAX_TEXT_BYTES = 16 * 1024 * 1024
 const MAX_PATH_LENGTH = 240
 const MAX_SEGMENT_LENGTH = 200
 const DOWNLOAD_CONCURRENCY = 4
-const TEMP_DIR = 'blueplm-order-export'
 const HASH = /^[0-9a-f]{64}$/
 // eslint-disable-next-line no-control-regex
 const INVALID_SEGMENT_CHARS = /[<>:"/\\|?*\u0000-\u001f]/
@@ -233,14 +239,14 @@ export interface DownloadBudget {
 }
 
 /**
- * Download `url` to `target`, hashing as it streams. Rejects (and removes the partial file) on a
- * network or write error, a body over `maxBytes`, an export over its `budget` (both
- * `TOO_LARGE`, counted from the bytes that really arrive, not the sizes declared), an abort, or a
- * hash other than `expectedHash` (`HASH_MISMATCH`).
+ * Download `url` into `sink`, hashing as it streams; `sink` is ended on success. Rejects on a
+ * network or write error, a body over `maxBytes`, an export over its `budget` (both `TOO_LARGE`,
+ * counted from the bytes that really arrive, not the sizes declared), an abort, or a hash other
+ * than `expectedHash` (`HASH_MISMATCH`). Returns the bytes.
  */
-export async function downloadToFile(
+export async function downloadInto(
   url: string,
-  target: string,
+  sink: Writable,
   expectedHash: string,
   maxBytes: number,
   signal?: AbortSignal,
@@ -270,21 +276,28 @@ export async function downloadToFile(
       callback(null, chunk)
     },
   })
+  await pipeline(Readable.fromWeb(response.body as unknown as NodeReadableStream<Uint8Array>), meter, sink, { signal })
+  if (hash.digest('hex') !== expectedHash) {
+    throw new ExportError('HASH_MISMATCH', 'A downloaded file does not match its recorded hash')
+  }
+  return bytes
+}
+
+/** Download `url` to the new file `target` (see `downloadInto`); the partial file is removed on failure. */
+export async function downloadToFile(
+  url: string,
+  target: string,
+  expectedHash: string,
+  maxBytes: number,
+  signal?: AbortSignal,
+  budget?: DownloadBudget,
+): Promise<number> {
   try {
-    await pipeline(
-      Readable.fromWeb(response.body as unknown as NodeReadableStream<Uint8Array>),
-      meter,
-      fs.createWriteStream(target, { flags: 'wx' }),
-      { signal },
-    )
-    if (hash.digest('hex') !== expectedHash) {
-      throw new ExportError('HASH_MISMATCH', 'A downloaded file does not match its recorded hash')
-    }
+    return await downloadInto(url, fs.createWriteStream(target, { flags: 'wx' }), expectedHash, maxBytes, signal, budget)
   } catch (error) {
     await fs.promises.rm(target, { force: true }).catch(() => undefined)
     throw error
   }
-  return bytes
 }
 
 /** Download every file to `targetOf(file)`, a few at a time; the first failure aborts the rest. */
@@ -366,6 +379,7 @@ export async function exportToFolder(
   request: OrderExportRequest,
   parent: string,
   onProgress: (progress: OrderExportProgress) => void,
+  maxBytes = ORDER_EXPORT_MAX_FOLDER_BYTES,
 ): Promise<{ path: string; bytes: number }> {
   const root = await createUniqueFolder(parent, request.name)
   try {
@@ -378,7 +392,7 @@ export async function exportToFolder(
         return target
       },
       (completed) => onProgress({ phase: 'downloading', completed, total }),
-      ORDER_EXPORT_MAX_FOLDER_BYTES,
+      maxBytes,
     )
     onProgress({ phase: 'writing', completed: 0, total: request.texts.length })
     for (const text of request.texts) {
@@ -394,81 +408,146 @@ export async function exportToFolder(
   }
 }
 
-/**
- * A stream of `file` that opens it on the first read. JSZip takes every entry's stream up front,
- * and an export of a couple of thousand files must not hold that many files open at once.
- */
-export function lazyReadStream(file: string): Readable {
-  let inner: fs.ReadStream | null = null
-  const outer: Readable = new Readable({
-    read() {
-      if (inner) {
-        inner.resume()
-        return
-      }
-      inner = fs.createReadStream(file)
-      inner.on('data', (chunk) => {
-        if (!outer.push(chunk)) inner?.pause()
-      })
-      inner.on('end', () => outer.push(null))
-      inner.on('error', (error) => outer.destroy(error))
-    },
-    destroy(error, callback) {
-      inner?.destroy()
-      callback(error)
-    },
-  })
-  return outer
+/** A `Writable` that keeps what it is given (a prefetched file; its size is capped upstream). */
+class BufferSink extends Writable {
+  readonly chunks: Buffer[] = []
+  override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    this.chunks.push(chunk)
+    callback()
+  }
 }
 
+type Prefetched =
+  | { kind: 'buffer'; data: Buffer }
+  /** Too large to hold: downloaded when its turn comes, straight into the zip. */
+  | { kind: 'stream' }
+  | { kind: 'error'; error: unknown }
+
+/** Download a small file into memory, hash-checked; never rejects. */
+async function prefetch(file: OrderExportFile, signal: AbortSignal): Promise<Prefetched> {
+  if (file.size > ZIP_PREFETCH_MAX_BYTES) return { kind: 'stream' }
+  const sink = new BufferSink()
+  try {
+    await downloadInto(file.url, sink, file.sha256, ZIP_PREFETCH_MAX_BYTES, signal)
+    return { kind: 'buffer', data: Buffer.concat(sink.chunks) }
+  } catch (error) {
+    // A recorded size that was too small: the file streams in its turn instead.
+    if (error instanceof ExportError && error.code === 'TOO_LARGE') return { kind: 'stream' }
+    return { kind: 'error', error }
+  }
+}
+
+export interface ExportToZipOptions {
+  /** The bytes the files and texts may take (default `ORDER_EXPORT_MAX_ZIP_BYTES`). */
+  maxBytes?: number
+  /** Write every entry in ZIP64 form (tests prove a reader takes it without 4 GiB of data). */
+  forceZip64?: boolean
+}
+
+/**
+ * Write the export as a zip at `zipPath`: each file is downloaded straight into the archive (yazl,
+ * stored, ZIP64 where needed) and checked against its hash as it goes; a few small files download
+ * ahead. The zip is written beside the target as `.partial-*` and renamed over it only once
+ * complete; any failure (a mismatch, a download, the size limit, a write) removes it.
+ */
 export async function exportToZip(
   request: OrderExportRequest,
   zipPath: string,
   onProgress: (progress: OrderExportProgress) => void,
-  maxBytes = ORDER_EXPORT_MAX_ZIP_BYTES,
+  options: ExportToZipOptions = {},
 ): Promise<{ path: string; bytes: number }> {
-  const tempRoot = path.join(os.tmpdir(), TEMP_DIR)
-  await fs.promises.mkdir(tempRoot, { recursive: true })
-  const staging = await fs.promises.mkdtemp(path.join(tempRoot, 'e-'))
+  const maxBytes = options.maxBytes ?? ORDER_EXPORT_MAX_ZIP_BYTES
   const partial = `${zipPath}.partial-${crypto.randomBytes(4).toString('hex')}`
+  const controller = new AbortController()
+  const zip = new ZipFile()
+  const zipStream = zip.outputStream as unknown as Readable
+  // yazl may still write a data descriptor after a failed export destroyed the stream.
+  zipStream.on('error', () => undefined)
+  const out = fs.createWriteStream(partial, { flags: 'wx' })
+  const written = pipeline(zipStream, out)
+  // A zip or disk error fails whatever is being awaited (yazl's pipes do not pass errors on).
+  const broken = new Promise<never>((_, reject) => {
+    zip.on('error', reject)
+    written.catch(reject)
+  })
+  broken.catch(() => undefined)
+  const guard = <T>(work: Promise<T>): Promise<T> => Promise.race([work, broken])
+  const entryOptions = { compress: false, mtime: new Date(), forceZip64Format: options.forceZip64 === true }
+
   try {
     const total = request.files.length
-    const staged: string[] = new Array(total)
-    const bytes = await downloadAll(
-      request.files,
-      async (_file, index) => {
-        staged[index] = path.join(staging, `f${index}`)
-        return staged[index]
-      },
-      (completed) => onProgress({ phase: 'downloading', completed, total }),
-      maxBytes,
-    )
-    // The real total (the declared sizes can be wrong): JSZip writes no ZIP64, so an archive past
-    // 4 GiB would be broken. Refused before a byte of the zip is written.
+    const budget: DownloadBudget = { used: 0, max: maxBytes }
+    const ahead: Array<Promise<Prefetched> | undefined> = new Array(total)
+    const startAhead = (from: number) => {
+      for (let i = from; i < Math.min(total, from + ZIP_PREFETCH_FILES); i++) {
+        ahead[i] ??= prefetch(request.files[i], controller.signal)
+      }
+    }
+    let bytes = 0
+    onProgress({ phase: 'downloading', completed: 0, total })
+    for (let index = 0; index < total; index++) {
+      const file = request.files[index]
+      startAhead(index + 1)
+      const got = ahead[index] ? await guard(ahead[index]!) : ({ kind: 'stream' } as const)
+      ahead[index] = undefined
+      const entry = new PassThrough()
+      // Resolves once yazl has read the whole entry, so the next one never piles up in memory.
+      const consumed = new Promise<void>((resolve, reject) => {
+        entry.on('end', resolve)
+        entry.on('error', reject)
+      })
+      consumed.catch(() => undefined)
+      zip.addReadStream(entry, file.path, entryOptions)
+      try {
+        if (got.kind === 'error') throw got.error
+        if (got.kind === 'buffer') {
+          budget.used += got.data.length
+          if (budget.used > budget.max) throw new ExportError('TOO_LARGE', 'The export is larger than its limit')
+          entry.end(got.data)
+          bytes += got.data.length
+        } else {
+          bytes += await guard(
+            downloadInto(file.url, entry, file.sha256, ORDER_EXPORT_MAX_FILE_BYTES, controller.signal, budget),
+          )
+        }
+        await guard(consumed)
+      } catch (error) {
+        const code = error instanceof ExportError ? error.code : codeOf(error)
+        throw new ExportError(code, `${file.path}: ${errorMessage(error)}`)
+      }
+      onProgress({ phase: 'downloading', completed: index + 1, total })
+    }
+    // The real total (the declared sizes can be wrong), texts included.
     const textBytes = request.texts.reduce((sum, t) => sum + Buffer.byteLength(t.content, 'utf8'), 0)
     if (bytes + textBytes > maxBytes) {
       throw new ExportError('TOO_LARGE', 'The downloaded files are too large for one zip; save them to a folder')
     }
     onProgress({ phase: 'writing', completed: 0, total: 1 })
-    const zip = new JSZip()
-    request.files.forEach((file, index) => {
-      zip.file(file.path, lazyReadStream(staged[index]), { binary: true })
-    })
-    for (const text of request.texts) zip.file(text.path, text.content)
-    await pipeline(
-      zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'STORE' }),
-      fs.createWriteStream(partial, { flags: 'wx' }),
-    )
+    for (const text of request.texts) zip.addBuffer(Buffer.from(text.content, 'utf8'), text.path, entryOptions)
+    zip.end()
+    await guard(written)
     // Replaces a zip the user chose to overwrite in the save dialog, in one step.
     await fs.promises.rename(partial, zipPath)
     onProgress({ phase: 'writing', completed: 1, total: 1 })
     return { path: zipPath, bytes }
   } catch (error) {
+    controller.abort()
+    const failure = error instanceof ExportError ? error : new ExportError(codeOf(error), errorMessage(error))
+    zipStream.destroy()
+    out.destroy()
+    await written.catch(() => undefined)
+    // Windows cannot remove a file that is still open.
+    if (!out.closed) await new Promise<void>((resolve) => out.once('close', () => resolve()))
     await fs.promises.rm(partial, { force: true }).catch(() => undefined)
-    throw error
-  } finally {
-    await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => undefined)
+    throw failure
   }
+}
+
+/** A non-export error from writing or downloading: an abort or network error, else a write error. */
+function codeOf(error: unknown): OrderExportErrorCode {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  if (typeof code === 'string' && /^E(NOSPC|ACCES|PERM|ROFS|EXIST|NOENT|IO|BUSY)$/.test(code)) return 'WRITE_FAILED'
+  return error instanceof TypeError ? 'DOWNLOAD_FAILED' : 'WRITE_FAILED'
 }
 
 // ---------------------------------------------------------------------------

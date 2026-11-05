@@ -103,3 +103,15 @@ organization setting `orders.number_prefix`.
 
 Orders are shared across the organization. Anyone whose team has access to the Orders module can create and edit
 orders. Adding a file also needs read access to that file's vault.
+
+## RFQs became quote orders
+
+BluePLM used to have a separate RFQ screen with its own PDF and release ZIP. In 5.13.0 it was retired: a request
+for quote is now an order with the purpose Quote, so it pins exact versions and exports the same way as any
+other order. The upgrade to schema 515 turned every existing RFQ into a quote order. Its title starts with the
+old RFQ number (`RFQ-0007 Brackets`), its supplier is the awarded supplier, and each item became a line pinned
+to its file's newest checked-in version at the upgrade. An item with no file, or a file that was never checked
+in, keeps a line with the item's details and no pinned version.
+
+The Supplier Portal in the sidebar shows the quote orders: how many are drafts, awaiting a quote and quoted, and
+the newest ones. Click one to open it in Orders.

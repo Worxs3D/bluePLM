@@ -1,5 +1,6 @@
 /**
- * Export an order's files for the supplier: a zip (desktop and web) or a new folder (desktop).
+ * Export an order's files for the supplier: a zip (desktop and web) or a new folder (desktop, and
+ * the web where the browser has `showDirectoryPicker`: `./exportWebFolder`).
  *
  * The plan (`planOrderExport`) names every file; content marked damaged or missing (schema 503,
  * `blockedContentHashes`) refuses the whole export, naming the files. A sent order exports the
@@ -9,7 +10,8 @@
  *   which asks where to save, downloads and verifies every file and writes the zip or folder.
  * - Web: the renderer fetches each file, checks its SHA-256, builds the zip with JSZip (stored,
  *   not compressed) and saves it through the browser, within `WEB_DOWNLOAD_MAX_FILES` and
- *   `WEB_DOWNLOAD_MAX_BYTES` since the zip is built in memory.
+ *   `WEB_DOWNLOAD_MAX_BYTES` since the zip is built in memory. A web folder export fetches and
+ *   checks each content the same way and writes it into a new subfolder of the picked folder.
  *
  * Any download that does not hash to its recorded hash fails the whole export.
  */
@@ -33,6 +35,7 @@ import type {
 } from '@/types/orders'
 
 import { planOrderExport, type OrderExportPlan } from './exportPlan'
+import { exportToWebFolder, pickWebExportFolder, WebFolderExportError, webFolderExportSupported } from './exportWebFolder'
 import { resolveLineOutputs } from './outputs'
 
 /** Signed URLs live this long: the main process may download many files one after another. */
@@ -60,7 +63,7 @@ class OrderExportFailure extends Error {
 }
 
 function failed(error: unknown): ExportOrderResult {
-  if (error instanceof OrderExportFailure) {
+  if (error instanceof OrderExportFailure || error instanceof WebFolderExportError) {
     return error.files
       ? { status: 'failed', code: error.code, message: error.message, files: error.files }
       : { status: 'failed', code: error.code, message: error.message }
@@ -193,18 +196,33 @@ export async function exportOrder(
   try {
     if (lines.length === 0) throw new OrderExportFailure('NOTHING_TO_EXPORT', 'The order has no lines')
     const desktop = hasDesktop() && !!window.electronAPI?.orders
-    if (mode === 'folder' && !desktop) throw new OrderExportFailure('DESKTOP_ONLY', 'Saving to a folder needs the desktop app')
+    if (mode === 'folder' && !desktop && !webFolderExportSupported()) {
+      throw new OrderExportFailure('DESKTOP_ONLY', 'Saving to a folder needs the desktop app')
+    }
+    // The browser's folder picker needs the click's user activation: it comes before any read.
+    let webFolder: FileSystemDirectoryHandle | null = null
+    if (mode === 'folder' && !desktop) {
+      webFolder = await pickWebExportFolder()
+      if (!webFolder) return { status: 'canceled' }
+    }
     const states = options.states ?? (await resolveLineOutputs(lines))
     const pattern = orgExportFilenamePattern(usePDMStore.getState().organization)
     const plan = planOrderExport(order, lines, states, pattern, options.now)
     await refuseBlocked(plan)
     const result = desktop
       ? await exportOnDesktop(orgId, plan, mode, options.onProgress)
-      : await exportOnWeb(orgId, plan, options.onProgress)
+      : webFolder
+        ? await exportToWebFolder(
+            webFolder,
+            plan,
+            { fetchVerified: (hash, name) => fetchVerified(orgId, hash, name) },
+            options.onProgress,
+          )
+        : await exportOnWeb(orgId, plan, options.onProgress)
     if (result.status === 'saved' || result.status === 'downloaded') {
       log.info('[Orders]', 'Order exported', {
         orderId: order.id,
-        mode: desktop ? mode : 'web',
+        mode: desktop ? mode : webFolder ? 'web-folder' : 'web',
         files: plan.entries.length,
         missing: plan.missing.length,
       })

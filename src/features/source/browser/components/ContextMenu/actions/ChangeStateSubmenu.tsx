@@ -30,6 +30,8 @@ import {
   readTargetState,
   requestForcedReleaseReason,
 } from '@/features/source/releases/forceRelease'
+import { confirmApproximateReleases } from '@/features/source/releases/approximateRelease'
+import { hasFreezableReferences } from '@/lib/versionOpen'
 import { SubmenuArrow } from '../components/SubmenuArrow'
 
 interface ChangeStateSubmenuProps {
@@ -182,6 +184,17 @@ export function ChangeStateSubmenu({
 
     setExecuting(true)
     try {
+      // Releasing an assembly or drawing whose references are approximate would not freeze them
+      // (5.13.0): ask first. The warning opens in its own root, so the menu closes first.
+      if (hasFreezableReferences(targetFile.name)) {
+        const target = await readTargetState(transition.to_state_id)
+        if (target.releasesVersion) {
+          onClose()
+          setShowStateSubmenu(false)
+          if (!(await confirmApproximateReleases([targetFile]))) return
+        }
+      }
+
       const { data: result, error } = await executeTransition(fileId, transition.transition_id)
 
       if (error || !result) {

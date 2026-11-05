@@ -219,6 +219,15 @@ async function main(): Promise<void> {
       throw new Error(`the perf boot never reported the vault loaded (${where}): ${String(error)}`)
     })
 
+    // A hidden window produces frames only when asked, and a CSS transition advances only with
+    // frames: a colour change (the activity bar's lit item after a scene's setActiveView) could
+    // stay at its first value in the shot while the DOM already said otherwise. Transitions end at
+    // once here, so a shot shows the state the app settles in (the visible app runs them in 100ms).
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet()
+      sheet.replaceSync('*, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; }')
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+    })
     if (theme) await page.evaluate((t) => window.__blueplmLook!.theme(t), theme)
 
     if (list) {

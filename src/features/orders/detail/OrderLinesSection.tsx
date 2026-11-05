@@ -1,21 +1,29 @@
 /**
- * The lines of an order: the table, the note about lines in vaults this user cannot see, and
- * the output actions (Generate missing on the desktop for a draft, Export zip, and Save files to
- * folder on the desktop). A sent order exports exactly what was recorded when it went out.
+ * The lines of an order: the table, the note about lines in vaults this user cannot see (and
+ * which vaults, 5.13.0), and the output actions: for a draft, Generate missing on a desktop with
+ * SOLIDWORKS, else Request missing (a desktop with SOLIDWORKS generates requested outputs), with
+ * a note while outputs are requested; Export zip; and Save files to folder (desktop, and browsers
+ * with the File System Access API). A sent order exports exactly what was recorded when it went
+ * out.
  */
 
 import { useState } from 'react'
-import { Download, FolderDown, Wand2 } from 'lucide-react'
+import { Download, FolderDown, Send, Wand2 } from 'lucide-react'
 
 import { Button, Callout, EmptyState, Section } from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
 import { linesEditable } from '@/lib/orders'
+import { webFolderExportSupported } from '@/lib/orders/exportWebFolder'
 import { hasDesktop } from '@/lib/platform'
+import { usePDMStore } from '@/stores/pdmStore'
 import type { LineOutputState, SupplyOrder, SupplyOrderLine } from '@/types/orders'
 
-import { exportOrderOutputs, generateMissing } from '../actions'
+import { cancelRequests, exportOrderOutputs, generateMissing, requestMissing } from '../actions'
+import { useHiddenLineVaults } from '../hooks/useHiddenLineVaults'
 import { useLatestVersions } from '../hooks/useLatestVersions'
-import { livingLines, missingCount, missingOutputs } from '../lib/outputChips'
+import { useMayCancelRequest } from '../hooks/useMayCancelRequest'
+import { hiddenLinesText } from '../lib/hiddenLines'
+import { livingLines, missingCount, missingOutputs, splitMissing } from '../lib/outputChips'
 import { OrderLineRow, WIDE_COLUMN } from './OrderLineRow'
 
 /** The `<col>` of a column shown from `xl` up (`WIDE_COLUMN` on its cells). */
@@ -30,17 +38,26 @@ interface OrderLinesSectionProps {
 export function OrderLinesSection({ order, lines, states }: OrderLinesSectionProps) {
   const { t } = useTranslation()
   const desktop = hasDesktop()
+  // Generate here only where SOLIDWORKS can run; elsewhere ask a machine that has it.
+  const swInstalled = usePDMStore((s) => s.solidworksServiceStatus.swInstalled)
+  const mayCancel = useMayCancelRequest()
+  const canGenerate = desktop && swInstalled !== false
+  const canSaveToFolder = desktop || webFolderExportSupported()
   const editable = linesEditable(order)
   const latest = useLatestVersions(lines, editable)
-  const [busy, setBusy] = useState<'zip' | 'folder' | 'generate' | null>(null)
+  const [busy, setBusy] = useState<'zip' | 'folder' | 'generate' | 'request' | 'cancel' | null>(null)
 
   const hidden = Math.max(0, order.lineCount - lines.length)
+  const hiddenVaults = useHiddenLineVaults(order.id, hidden)
   // Before sending, "missing" is about outputs that exist now; once sent, about what went out.
   // Purged lines (no file left in the vault) cannot be generated.
   const generatable = livingLines(lines)
   const missing = editable ? missingCount(missingOutputs(generatable, states)) : 0
+  const split = editable
+    ? splitMissing(generatable, states, mayCancel)
+    : { unrequested: 0, requested: 0, requestIds: [] }
 
-  const run = async (id: 'zip' | 'folder' | 'generate', work: () => Promise<void>) => {
+  const run = async (id: NonNullable<typeof busy>, work: () => Promise<void>) => {
     setBusy(id)
     try {
       await work()
@@ -52,7 +69,7 @@ export function OrderLinesSection({ order, lines, states }: OrderLinesSectionPro
   const actions =
     lines.length > 0 ? (
       <>
-        {desktop && editable && missing > 0 && (
+        {canGenerate && editable && missing > 0 && (
           <Button
             size="sm"
             icon={<Wand2 size={14} />}
@@ -65,6 +82,20 @@ export function OrderLinesSection({ order, lines, states }: OrderLinesSectionPro
               : t('orders.generateMissingMany', { count: missing })}
           </Button>
         )}
+        {!canGenerate && editable && split.unrequested > 0 && (
+          <Button
+            size="sm"
+            icon={<Send size={14} />}
+            loading={busy === 'request'}
+            disabled={busy !== null}
+            title={t('orders.requestMissingHint')}
+            onClick={() => void run('request', () => requestMissing(order, generatable, states ?? {}))}
+          >
+            {split.unrequested === 1
+              ? t('orders.requestMissingOne')
+              : t('orders.requestMissingMany', { count: split.unrequested })}
+          </Button>
+        )}
         <Button
           size="sm"
           icon={<Download size={14} />}
@@ -74,7 +105,7 @@ export function OrderLinesSection({ order, lines, states }: OrderLinesSectionPro
         >
           {t('orders.exportZip')}
         </Button>
-        {desktop && (
+        {canSaveToFolder && (
           <Button
             size="sm"
             icon={<FolderDown size={14} />}
@@ -99,7 +130,30 @@ export function OrderLinesSection({ order, lines, states }: OrderLinesSectionPro
     >
       {hidden > 0 && (
         <Callout tone="info" className="my-3">
-          {hidden === 1 ? t('orders.hiddenLinesOne') : t('orders.hiddenLinesMany', { count: hidden })}
+          {hiddenLinesText(hidden, hiddenVaults, t)}
+        </Callout>
+      )}
+      {split.requested > 0 && (
+        <Callout
+          tone="info"
+          className="my-3"
+          action={
+            split.requestIds.length > 0 ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={busy === 'cancel'}
+                disabled={busy !== null}
+                onClick={() => void run('cancel', () => cancelRequests(order, split.requestIds))}
+              >
+                {t('orders.cancelRequests')}
+              </Button>
+            ) : undefined
+          }
+        >
+          {split.requested === 1
+            ? t('orders.requestedNoteOne')
+            : t('orders.requestedNoteMany', { count: split.requested })}
         </Callout>
       )}
       {!editable && lines.length > 0 && (
@@ -158,7 +212,7 @@ export function OrderLinesSection({ order, lines, states }: OrderLinesSectionPro
               {lines.map((line) => (
                 <OrderLineRow
                   key={line.id}
-                  orderId={order.id}
+                  order={order}
                   line={line}
                   states={states?.[line.id]}
                   editable={editable}

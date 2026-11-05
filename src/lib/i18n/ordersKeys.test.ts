@@ -76,7 +76,9 @@ describe('orders.* keys exist in every locale', () => {
     const built = [
       ...ORDER_STATUSES.flatMap((s) => [`status_${s}`, `statusAt_${s}`, `toastStatus_${s}`]),
       ...ORDER_OUTPUT_KINDS.map((k) => `kind_${k}`),
-      ...['ready', 'missing', 'unsupported', 'checking', 'excluded'].map((s) => `chip_${s}`),
+      ...['ready', 'missing', 'requested', 'unsupported', 'checking', 'excluded'].map((s) => `chip_${s}`),
+      // 5.13.0: refused output requests (actions.ts requestErrorText).
+      ...['NO_VAULT_ACCESS', 'NOT_ALLOWED', 'NOT_MEMBER', 'UNKNOWN'].map((c) => `requestError${c}`),
       ...['send', 'receive', 'close', 'reopen', 'restore', 'cancel'].map((a) => `action_${a}`),
       ...[...ORDER_ERROR_CODES, 'UNKNOWN'].map((c) => `error${c}`),
       ...EXPORT_ERROR_CODES.map((c) => `exportError${c}`),
@@ -85,6 +87,28 @@ describe('orders.* keys exist in every locale', () => {
       'purpose_purchase',
     ]
     for (const key of built) expect(keys.has(key), key).toBe(true)
+  })
+
+  it('has the 5.13.0 keys (requests, Choose drawing, hidden-line vaults, settings)', () => {
+    for (const key of [
+      'requestMissingOne',
+      'requestMissingMany',
+      'cancelRequests',
+      'chooseDrawing',
+      'noDrawing',
+      'hiddenLinesInVaults',
+      'hiddenLinesAsk',
+      'dropHint',
+      'fileOrdersEmptyTitle',
+      'settingsPrefix',
+      'settingsWorker',
+    ]) {
+      expect(KEYS).toContain(`orders.${key}`)
+    }
+  })
+
+  it('labels the Orders tab of the file details pane', () => {
+    expect(getTranslation('en', 'source.details.popoutTabOrders')).toBe('Orders')
   })
 
   it('labels the module in the sidebar', () => {

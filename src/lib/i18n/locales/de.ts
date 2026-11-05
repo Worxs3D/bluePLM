@@ -5,7 +5,9 @@ import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
 import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // German translations
 export const de: TranslationDict = {
@@ -45,7 +47,9 @@ export const de: TranslationDict = {
   dbUpgrade: dbUpgradeStrings.de,
   releases: releasesStrings.de,
   orders: ordersStrings.de,
+  versionOpen: versionOpenStrings.de,
   securityMonitoring: securityMonitoringStrings.de,
+  supplierPortal: supplierPortalStrings.de,
   checkoutDisplay: {
     you: 'Du',
     loadingOwner: 'Checkout-Besitzer wird geladen',

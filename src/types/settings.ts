@@ -16,7 +16,7 @@ export const SETTINGS_TABS = [
   'auth-providers',
   'serialization',
   'export',
-  'rfq',
+  'orders',
   'metadata-columns',
   'file-workflows',
   'item-designations',

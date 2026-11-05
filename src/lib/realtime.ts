@@ -89,6 +89,7 @@ let memberChangesChannel: RealtimeChannel | null = null
 let foldersChannel: RealtimeChannel | null = null
 let notificationsChannel: RealtimeChannel | null = null
 let supplyOrdersChannel: RealtimeChannel | null = null
+let outputRequestsChannel: RealtimeChannel | null = null
 
 /** The `notifications` columns a client toast needs (RLS lets a user read only their own rows). */
 export interface NotificationRealtimeRow {
@@ -313,7 +314,6 @@ export function subscribeToActivity(orgId: string, onActivity: ActivityCallback)
  * Updates are instant for:
  * - Integration settings (API URLs, license keys)
  * - Google Drive configuration
- * - RFQ settings
  * - Any other org-level settings
  *
  * This ensures all users in an org see settings changes immediately
@@ -475,6 +475,33 @@ export function subscribeToVaults(orgId: string, onVaultChange: VaultChangeCallb
     if (vaultsChannel) {
       vaultsChannel.unsubscribe()
       vaultsChannel = null
+    }
+  }
+}
+
+/**
+ * Subscribe to output requests (schema 515): inserts and updates of `version_output_request` in
+ * the organization, as the new row. RLS filters the events like reads (the file's vault).
+ */
+export function subscribeToOutputRequests(orgId: string, onRequestChange: (row: unknown) => void): () => void {
+  rebuilders.set('output_requests', () => subscribeToOutputRequests(orgId, onRequestChange))
+  if (outputRequestsChannel) {
+    outputRequestsChannel.unsubscribe()
+  }
+  outputRequestsChannel = supabase
+    .channel(`output_requests:${orgId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'version_output_request', filter: `org_id=eq.${orgId}` },
+      (payload) => onRequestChange(payload.new),
+    )
+  outputRequestsChannel.subscribe()
+
+  return () => {
+    rebuilders.delete('output_requests')
+    if (outputRequestsChannel) {
+      outputRequestsChannel.unsubscribe()
+      outputRequestsChannel = null
     }
   }
 }
@@ -854,6 +881,7 @@ export function realtimeChannelStates(): Array<{ kind: string; state: string }> 
     ['permissions', permissionsChannel],
     ['notifications', notificationsChannel],
     ['supply_orders', supplyOrdersChannel],
+    ['output_requests', outputRequestsChannel],
   ]
   return channels
     .filter((entry): entry is [string, RealtimeChannel] => entry[1] !== null)
@@ -918,6 +946,10 @@ export function unsubscribeAll() {
   if (supplyOrdersChannel) {
     supplyOrdersChannel.unsubscribe()
     supplyOrdersChannel = null
+  }
+  if (outputRequestsChannel) {
+    outputRequestsChannel.unsubscribe()
+    outputRequestsChannel = null
   }
 }
 

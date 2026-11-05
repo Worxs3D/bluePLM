@@ -6,7 +6,9 @@
  * Helpers for `--eval`, on `window.__blueplmLookOrders`: `ids` (order ids by key: `pumpBuild`,
  * `housing`, `spares`, ...), `renderMissing()` records every missing PDF and STEP of the drafts
  * (what Generate missing does with SOLIDWORKS, which the boot does not have), `lastExport` (the
- * request the fake main process got from Export zip), `model` (the RPC model).
+ * request the fake main process got from Export zip), `model` (the RPC model),
+ * `fulfilRequests()` (a desktop with SOLIDWORKS generating every requested output, 5.13.0) and
+ * `dragFiles(names, selector, drop)` (drag review files from the file list onto an element).
  */
 import type { usePDMStore } from '@/stores/pdmStore'
 import type { Row } from '@/test/fakeSupabase'
@@ -15,13 +17,20 @@ import type { PerfBackend } from '../backend'
 import {
   buildLookOrderWorld,
   LOOK_MAIN_DRAFT,
+  LOOK_SUPPLIERS,
   seedLookOrders,
   storeLookOrderPdf,
   storeLookStep,
   type LookOrdersIds,
 } from '../lookOrdersFixtures'
 import { LookOrdersModel } from '../lookOrdersModel'
-import { LOOK_REVIEW_FILE_IDS, LOOK_REVIEW_FILES, LOOK_REVIEW_FOLDER, lookReviewPath } from '../lookReviewFixtures'
+import {
+  LOOK_REVIEW_FILE_IDS,
+  LOOK_REVIEW_FILES,
+  LOOK_REVIEW_FOLDER,
+  lookReviewPath,
+  lookReviewVersionId,
+} from '../lookReviewFixtures'
 
 type Store = typeof usePDMStore
 type ElectronApi = NonNullable<Window['electronAPI']>
@@ -34,6 +43,10 @@ export interface OrdersLookApi {
   /** The lines the context menu would plan for these review files (or the planner's error). */
   plan(names: string[], withReferencedParts?: boolean): Promise<unknown>
   lastExport: (ExportRequest & { verified: number }) | null
+  /** Generate every requested output (as a desktop with SOLIDWORKS would) and settle the requests. */
+  fulfilRequests(): Promise<number>
+  /** Drag these review files (by name) over the first element matching `selector`; `drop` drops them. */
+  dragFiles(names: string[], selector: string, drop?: boolean): Promise<void>
 }
 
 declare global {
@@ -107,6 +120,8 @@ export function createOrdersLook(store: Store, backend: PerfBackend): Record<str
     model,
     lastExport: null,
     renderMissing: async () => 0,
+    fulfilRequests: async () => 0,
+    dragFiles: async () => undefined,
     async plan(names, withReferencedParts = false) {
       const { planOrderLinesForFiles } = await import('@/lib/orders')
       const wanted = new Set(names.map((n) => n.toLowerCase()))
@@ -180,10 +195,20 @@ export function createOrdersLook(store: Store, backend: PerfBackend): Record<str
     return count
   }
 
+  // A scene's extra drawing reference (Choose drawing), removed again on reset.
+  const extraRefs: Row[] = []
+
+  /** A desktop with SOLIDWORKS (Generate missing), or one without (Request missing). */
+  const setSolidWorks = (installed: boolean) => {
+    store.getState().setSolidworksServiceStatus({ running: installed, swInstalled: installed, version: installed ? '1.29.0' : undefined })
+  }
+
   const reset = async (world = true) => {
     await ready
     setDesktop(true)
+    setSolidWorks(true)
     store.setState(realActions)
+    if (extraRefs.length > 0) db.removeRows('file_version_reference', extraRefs.splice(0) as never)
     // Close whatever menu or dialog the last scene left open.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
@@ -196,6 +221,40 @@ export function createOrdersLook(store: Store, backend: PerfBackend): Record<str
     for (const key of Object.keys(api.ids)) delete api.ids[key]
     if (world) Object.assign(api.ids, buildLookOrderWorld(db, model, ids))
     store.getState().resetOrders()
+  }
+
+  api.fulfilRequests = async () => {
+    let count = 0
+    for (const req of db.rows('version_output_request' as never)) {
+      if (req.status !== 'pending' && req.status !== 'claimed') continue
+      const fv = db.rows('file_version').find((v) => v.id === req.file_version_id)
+      const spec = LOOK_REVIEW_FILES.find((f) => LOOK_REVIEW_FILE_IDS[f.name] === fv?.file_id)
+      if (!fv || !spec) continue
+      const table = req.kind === 'pdf' ? 'drawing_pdf_render' : 'file_version_output'
+      const before = new Set(db.rows(table as never))
+      if (req.kind === 'pdf') await storeLookOrderPdf(db, ids, spec.name, Number(fv.version))
+      else if (req.kind === 'step') await storeLookStep(db, ids, spec.name, Number(fv.version))
+      else continue
+      for (const row of db.rows(table as never)) if (!before.has(row)) generated.push([table, row])
+      count++
+    }
+    model.settleRequests()
+    const active = store.getState().activeOrderId
+    if (active) await store.getState().refreshOrderOutputs(active)
+    return count
+  }
+
+  // An HTML5 drag from the file list: the same `application/x-plm-files` data its rows put on it.
+  api.dragFiles = async (names, selector, drop = false) => {
+    const target = await until(() => document.querySelector<HTMLElement>(selector))
+    const transfer = new DataTransfer()
+    transfer.setData('application/x-plm-files', JSON.stringify(names.map((n) => `${LOOK_REVIEW_FOLDER}/${n}`)))
+    const box = target.getBoundingClientRect()
+    const at = { bubbles: true, cancelable: true, dataTransfer: transfer, clientX: box.left + 20, clientY: box.top + 10 }
+    target.dispatchEvent(new DragEvent('dragenter', at))
+    target.dispatchEvent(new DragEvent('dragover', at))
+    if (drop) target.dispatchEvent(new DragEvent('drop', at))
+    await sleep(drop ? 900 : 300)
   }
 
   const showOrders = async (orderKey: string | null, options: { width?: number } = {}) => {
@@ -323,11 +382,131 @@ export function createOrdersLook(store: Store, backend: PerfBackend): Record<str
       await until(() => store.getState().orderErrors[api.ids[LOOK_MAIN_DRAFT]])
       await sleep(300)
     },
-    // BluePLM Web: no Generate missing, no Save to folder, Export zip only.
+    // BluePLM Web: Request missing instead of Generate missing; Save to folder only where the
+    // browser has showDirectoryPicker (Chromium, so the harness shows it).
     'orders-web': async () => {
       await reset()
       setDesktop(false)
       await showOrders(LOOK_MAIN_DRAFT)
+    },
+    // 5.13.0: the web user's Request missing went out: Requested chips, the note, Cancel requests.
+    'orders-requested': async () => {
+      await reset()
+      setDesktop(false)
+      await showOrders(LOOK_MAIN_DRAFT)
+      await clickText('Request 2 missing')
+      await until(() => document.body.textContent?.includes('Cancel requests'))
+      await sleep(300)
+    },
+    // A desktop without SOLIDWORKS: Request missing, as on the web, and Save files to folder.
+    'orders-no-solidworks': async () => {
+      await reset()
+      setSolidWorks(false)
+      await showOrders(LOOK_MAIN_DRAFT)
+    },
+    // After the requests: a desktop with SOLIDWORKS generated them; the chips are ready.
+    'orders-requested-done': async () => {
+      await reset()
+      setDesktop(false)
+      await showOrders(LOOK_MAIN_DRAFT)
+      await clickText('Request 2 missing')
+      await until(() => document.body.textContent?.includes('Cancel requests'))
+      await api.fulfilRequests()
+      await sleep(300)
+    },
+    // Choose drawing on the housing line: two drawings reference it (the assembly drawing too).
+    'orders-choose-drawing': async () => {
+      await reset()
+      const latest = LOOK_REVIEW_FILES.find((f) => f.name === 'PMP-2000.SLDDRW')!.version
+      const parentVersion = db.rows('file_version').find(
+        (v) => v.file_id === LOOK_REVIEW_FILE_IDS['PMP-2000.SLDDRW'] && Number(v.version) === latest,
+      )
+      extraRefs.push(
+        db.seed('file_version_reference', {
+          org_id: ids.orgId,
+          parent_file_id: LOOK_REVIEW_FILE_IDS['PMP-2000.SLDDRW'],
+          parent_version_id: String(parentVersion?.id ?? ''),
+          child_file_id: LOOK_REVIEW_FILE_IDS['PMP-2001.SLDPRT'],
+          child_version_id: null,
+          child_path: `${LOOK_REVIEW_FOLDER}/PMP-2001.SLDPRT`,
+          reference_type: 'reference',
+          is_exact: true,
+        }) as unknown as Row,
+      )
+      await showOrders(LOOK_MAIN_DRAFT)
+      const button = await until(() =>
+        Array.from(document.querySelectorAll<HTMLElement>('button[aria-label="Choose the drawing of PMP-2001"]')).find(
+          (b) => b.offsetParent !== null,
+        ),
+      )
+      button.click()
+      await until(() => document.querySelector('[role="menu"]')?.textContent?.includes('No drawing'))
+      await sleep(300)
+    },
+    // A file list drag held over a draft in the list (Spare impellers).
+    'orders-drop-hover': async () => {
+      await reset()
+      await showOrders(LOOK_MAIN_DRAFT)
+      await api.dragFiles(['PMP-2003.SLDPRT'], '[role="listbox"] [role="presentation"]:nth-child(2)')
+    },
+    // The same drag held over the open draft.
+    'orders-drop-hover-detail': async () => {
+      await reset()
+      await showOrders(LOOK_MAIN_DRAFT)
+      await api.dragFiles(['PMP-2003.SLDPRT'], '[data-order-drop="detail"]')
+    },
+    // Files dropped on Sam's draft (Spare impellers): added like Add to order.
+    'orders-drop-added': async () => {
+      await reset()
+      await showOrders('spares')
+      await api.dragFiles(['PMP-2003.SLDPRT', 'PMP-2004.SLDDRW'], '[data-order-drop="detail"]', true)
+      await until(() => (store.getState().orderLines[api.ids.spares]?.length ?? 0) >= 3)
+      await sleep(400)
+    },
+    // The Orders tab of the file details pane: the housing part is in several orders.
+    'orders-file-details': async () => {
+      await reset()
+      await store.getState().loadOrders()
+      showExplorer(['PMP-2001.SLDPRT'])
+      store.setState({ detailsPanelVisible: true })
+      store.getState().setDetailsPanelTab('orders')
+      await until(() => document.body.textContent?.includes('Pump assembly, rev B build'))
+      await sleep(400)
+    },
+    // The same tab for a file in no order.
+    'orders-file-details-empty': async () => {
+      await reset()
+      await store.getState().loadOrders()
+      showExplorer(['PMP-2003.SLDDRW'])
+      store.setState({ detailsPanelVisible: true })
+      store.getState().setDetailsPanelTab('orders')
+      await sleep(900)
+    },
+    // Settings > Orders: prefix with the next number, default kinds, this computer.
+    'orders-settings': async () => {
+      await reset()
+      await store.getState().loadOrders()
+      store.getState().openSettings('orders')
+      await until(() => document.body.textContent?.includes('Next order number'))
+      await sleep(400)
+    },
+    // The Supplier Portal on quote orders (5.13.0: RFQs became quote orders).
+    'orders-portal': async () => {
+      await reset()
+      // Two open quote orders beside the world's cancelled one: a draft, and one awaiting a quote.
+      const quote = (title: string, supplier: keyof typeof LOOK_SUPPLIERS, file: string, version: number, send: boolean) => {
+        const id = String((model.create({ p_title: title, p_purpose: 'quote', p_supplier_id: LOOK_SUPPLIERS[supplier].id, p_supplier_name: LOOK_SUPPLIERS[supplier].name }).order as Row).id)
+        model.addLines({ p_order_id: id, p_lines: [{ file_version_id: lookReviewVersionId(file, version), output_kinds: ['step'], quantity: 500 }] })
+        if (send) model.setStatus({ p_order_id: id, p_status: 'sent', p_allow_missing: true })
+      }
+      quote('Impeller, quote for 500', 'apex', 'PMP-2002.SLDPRT', 3, true)
+      quote('Seal carrier, rev A quote', 'northline', 'PMP-2003.SLDPRT', 2, false)
+      const state = store.getState()
+      state.closeSettings()
+      state.setActiveView('supplier-portal')
+      store.setState({ sidebarWidth: 300, rightPanelVisible: false, detailsPanelVisible: false })
+      await state.loadOrders()
+      await sleep(600)
     },
     // The main draft in a narrow window (run with --size 1000x800) and a narrow list pane.
     'orders-narrow': async () => {

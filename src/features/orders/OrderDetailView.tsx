@@ -13,10 +13,11 @@ import { Button, EmptyState, Page, StatusText } from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
 
-import { createAndOpenOrder } from './actions'
+import { createAndOpenOrder, dropFilesOnOrder } from './actions'
 import { OrderDetailsSection } from './detail/OrderDetailsSection'
 import { OrderLinesSection } from './detail/OrderLinesSection'
 import { OrderTitleBar } from './detail/OrderTitleBar'
+import { useFileDropTarget } from './hooks/useFileDropTarget'
 
 function Centered({ children }: { children: ReactNode }) {
   return (
@@ -41,6 +42,13 @@ export function OrderDetailView() {
       })),
     )
   const order = activeOrderId ? orders.find((o) => o.id === activeOrderId) : undefined
+  // Files dragged from the file list or the tree onto an open draft are added to it.
+  const drop = useFileDropTarget(
+    (found, orderable) => {
+      if (activeOrderId) void dropFilesOnOrder(activeOrderId, found, orderable)
+    },
+    order?.status === 'draft',
+  )
 
   // An order opened from a link or a toast before its lines arrived.
   useEffect(() => {
@@ -101,7 +109,18 @@ export function OrderDetailView() {
   }
 
   return (
-    <div className="min-w-0 flex-1 overflow-y-auto bg-ui-bg font-ui">
+    <div
+      {...drop.handlers}
+      data-order-drop="detail"
+      className={`relative min-w-0 flex-1 overflow-y-auto bg-ui-bg font-ui ${drop.over ? 'ring-2 ring-inset ring-ui-accent/50' : ''}`}
+    >
+      {drop.over && (
+        <div className="pointer-events-none sticky top-3 z-10 flex h-0 items-start justify-center overflow-visible">
+          <span className="rounded-lg border border-ui-border bg-ui-bg px-3 py-1.5 text-[13px] text-ui-fg shadow-lg">
+            {t('orders.dropHint', { order: order.orderNumber })}
+          </span>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
         <Page>
           <OrderTitleBar order={order} lines={lines} states={states} />

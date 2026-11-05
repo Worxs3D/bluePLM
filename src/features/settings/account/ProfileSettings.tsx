@@ -10,6 +10,7 @@ import {
   SettingsSection,
 } from '@/features/settings/components/ui'
 import { isAdminUser } from '@/lib/isAdminUser'
+import { useTranslation } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
 import { getSupabaseClient, useAdminRecoveryCode, supabase } from '@/lib/supabase'
@@ -30,13 +31,13 @@ interface ECORecord {
   created_by: string
 }
 
-interface RFQRecord {
+/** An order this user created (`supply_order`); RFQs became quote orders in 5.13.0. */
+interface OrderRecord {
   id: string
-  rfq_number: string
+  order_number: string
   title: string | null
   status: string | null
   created_at: string | null
-  created_by: string | null
 }
 
 export function ProfileSettings() {
@@ -50,10 +51,11 @@ export function ProfileSettings() {
     })),
   )
 
+  const { t } = useTranslation()
   const [isLoadingECOs, setIsLoadingECOs] = useState(true)
-  const [isLoadingRFQs, setIsLoadingRFQs] = useState(true)
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true)
   const [userECOs, setUserECOs] = useState<ECORecord[]>([])
-  const [userRFQs, setUserRFQs] = useState<RFQRecord[]>([])
+  const [userOrders, setUserOrders] = useState<OrderRecord[]>([])
 
   // Avatar upload state
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -246,36 +248,34 @@ export function ProfileSettings() {
     loadECOs()
   }, [user, organization])
 
-  // Load user's RFQs
+  // Load the orders this user created (quote and purchase orders)
   useEffect(() => {
     if (!user || !organization) return
 
-    const loadRFQs = async () => {
-      setIsLoadingRFQs(true)
+    const loadOrders = async () => {
+      setIsLoadingOrders(true)
       try {
-        const client = getSupabaseClient()
-
-        const { data, error } = await client
-          .from('rfq')
-          .select('id, rfq_number, title, status, created_at, created_by')
+        const { data, error } = await getDb()
+          .from('supply_order')
+          .select('id, order_number, title, status, created_at')
           .eq('org_id', organization.id)
           .eq('created_by', user.id)
           .order('created_at', { ascending: false })
           .limit(10)
 
         if (error) {
-          log.error('[Profile]', 'Error loading RFQs', { error })
+          log.error('[Profile]', 'Error loading orders', { error })
         } else {
-          setUserRFQs(data || [])
+          setUserOrders((data as OrderRecord[] | null) || [])
         }
       } catch (error) {
-        log.error('[Profile]', 'Error loading RFQs (exception)', { error: error })
+        log.error('[Profile]', 'Error loading orders (exception)', { error: error })
       } finally {
-        setIsLoadingRFQs(false)
+        setIsLoadingOrders(false)
       }
     }
 
-    loadRFQs()
+    loadOrders()
   }, [user, organization])
 
   const statusTone = (status: string | null): BadgeTone => {
@@ -469,18 +469,24 @@ export function ProfileSettings() {
         </SettingsGroup>
       </SettingsSection>
 
-      <SettingsSection title="My RFQs">
+      <SettingsSection title={t('orders.listLabel')}>
         <SettingsGroup>
-          {isLoadingRFQs ? (
+          {isLoadingOrders ? (
             <div className="flex items-center gap-2 py-3 text-[14px] text-ui-fg-secondary">
               <Loader2 size={14} className="animate-spin" />
-              Loading RFQs...
+              {t('orders.loading')}
             </div>
-          ) : userRFQs.length === 0 ? (
-            <div className="py-3 text-[14px] text-ui-fg-secondary">No RFQs found</div>
+          ) : userOrders.length === 0 ? (
+            <div className="py-3 text-[14px] text-ui-fg-secondary">{t('orders.emptyTitle')}</div>
           ) : (
-            userRFQs.map((rfq) =>
-              renderRecordRow(rfq.id, rfq.rfq_number, rfq.title, rfq.created_at, rfq.status),
+            userOrders.map((order) =>
+              renderRecordRow(
+                order.id,
+                order.order_number,
+                order.title,
+                order.created_at,
+                order.status,
+              ),
             )
           )}
         </SettingsGroup>

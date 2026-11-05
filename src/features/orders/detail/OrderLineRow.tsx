@@ -6,22 +6,25 @@
  */
 
 import { useState } from 'react'
-import { ArrowUpCircle, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowUpCircle, SlidersHorizontal, Trash2, X } from 'lucide-react'
 
 import { Button, IconButton, OverflowMenu, StatusText, TextInput } from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
-import type { LineOutputState, OrderLinePatch, SupplyOrderLine } from '@/types/orders'
+import { isModelFile } from '@/lib/outputs/kinds'
+import type { LineOutputState, OrderLinePatch, SupplyOrder, SupplyOrderLine } from '@/types/orders'
 
-import { removeLines, saveOrderLine } from '../actions'
+import { cancelRequests, removeLines, saveOrderLine } from '../actions'
 import { useDraftField } from '../hooks/useDraftField'
+import { useMayCancelRequest } from '../hooks/useMayCancelRequest'
 import type { LatestVersion } from '../hooks/useLatestVersions'
 import { kindKey } from '../lib/format'
 import { isPurgedLine, lineOutputChips, toggleOutputKind } from '../lib/outputChips'
 import { parseQuantity } from '../lib/quantity'
+import { ChooseDrawingMenu } from './ChooseDrawingMenu'
 import { OutputChip } from './OutputChip'
 
 interface OrderLineRowProps {
-  orderId: string
+  order: SupplyOrder
   line: SupplyOrderLine
   states: LineOutputState[] | undefined
   editable: boolean
@@ -32,8 +35,10 @@ const CELL = 'px-2 py-2.5 align-top'
 /** Shown from `xl` up; below, the item cell carries the drawing and the note. */
 export const WIDE_COLUMN = 'hidden xl:table-cell'
 
-export function OrderLineRow({ orderId, line, states, editable, latest }: OrderLineRowProps) {
+export function OrderLineRow({ order, line, states, editable, latest }: OrderLineRowProps) {
   const { t } = useTranslation()
+  const orderId = order.id
+  const mayCancel = useMayCancelRequest()
   const [saving, setSaving] = useState(false)
   const quantity = useDraftField(String(line.quantity))
   const notes = useDraftField(line.notes ?? '')
@@ -41,6 +46,8 @@ export function OrderLineRow({ orderId, line, states, editable, latest }: OrderL
   const name = line.partNumber || line.fileName
   const purged = isPurgedLine(line)
   const newer = editable && !purged && latest && latest.version > line.version ? latest : null
+  // A part or assembly line of a draft can be paired with another drawing, or none (5.13.0).
+  const canChooseDrawing = editable && !purged && isModelFile(line.fileName)
   const drawing = line.drawingFileName
     ? line.drawingVersion !== null
       ? t('orders.drawingWithVersion', { name: line.drawingFileName, version: line.drawingVersion })
@@ -68,6 +75,16 @@ export function OrderLineRow({ orderId, line, states, editable, latest }: OrderL
           checked: c.state !== 'excluded',
           onSelect: () => void save({ outputKinds: toggleOutputKind(line.outputKinds, c.kind) }),
         }))
+  // A requested kind can be cancelled from the same menu (the requester or an admin).
+  const cancels = chips
+    .filter((c) => c.state === 'requested' && c.requestId && mayCancel(c.requestedBy ?? null))
+    .map((c) => ({
+      id: `cancel-${c.kind}`,
+      label: t('orders.cancelRequestOf', { kind: t(kindKey(c.kind)) }),
+      icon: <X size={14} />,
+      onSelect: () => void cancelRequests(order, [c.requestId as string]),
+    }))
+  const menuItems = [...choices, ...cancels]
 
   const commitQuantity = () => {
     const text = quantity.commit()
@@ -104,9 +121,12 @@ export function OrderLineRow({ orderId, line, states, editable, latest }: OrderL
               {secondary}
             </div>
           )}
-          {drawing && (
-            <div className="truncate text-ui-fg-tertiary xl:hidden" title={line.drawingFileName ?? undefined}>
-              {drawing}
+          {(drawing || canChooseDrawing) && (
+            <div className="flex min-w-0 items-center gap-0.5 xl:hidden">
+              <span className="truncate text-ui-fg-tertiary" title={line.drawingFileName ?? undefined}>
+                {drawing ?? t('orders.noDrawing')}
+              </span>
+              {canChooseDrawing && <ChooseDrawingMenu orderId={orderId} line={line} name={name} disabled={saving} />}
             </div>
           )}
           {line.notes && (
@@ -139,9 +159,12 @@ export function OrderLineRow({ orderId, line, states, editable, latest }: OrderL
         )}
       </td>
       <td className={`${CELL} ${WIDE_COLUMN} text-ui-fg-secondary`}>
-        <span className="block truncate" title={line.drawingFileName ?? undefined}>
-          {drawing ?? t('orders.none')}
-        </span>
+        <div className="flex min-w-0 items-start gap-0.5">
+          <span className="min-w-0 truncate pt-0.5" title={line.drawingFileName ?? undefined}>
+            {drawing ?? (canChooseDrawing ? t('orders.noDrawing') : t('orders.none'))}
+          </span>
+          {canChooseDrawing && <ChooseDrawingMenu orderId={orderId} line={line} name={name} disabled={saving} />}
+        </div>
       </td>
       <td className={`${CELL} text-right tabular-nums`}>
         {editable ? (
@@ -176,13 +199,13 @@ export function OrderLineRow({ orderId, line, states, editable, latest }: OrderL
             ))}
             {shown.length === 0 && <span className="text-ui-fg-tertiary">{t('orders.noOutputs')}</span>}
           </div>
-          {choices.length > 0 && (
+          {menuItems.length > 0 && (
             <OverflowMenu
               size="sm"
               label={t('orders.chooseOutputs', { name })}
               icon={<SlidersHorizontal size={14} />}
               disabled={saving}
-              items={choices}
+              items={menuItems}
             />
           )}
         </div>

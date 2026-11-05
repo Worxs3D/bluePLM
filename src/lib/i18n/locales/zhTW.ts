@@ -5,7 +5,9 @@ import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
 import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // Traditional Chinese translations (繁體中文)
 export const zhTW: TranslationDict = {
@@ -42,7 +44,9 @@ export const zhTW: TranslationDict = {
   dbUpgrade: dbUpgradeStrings.zhTW,
   releases: releasesStrings.zhTW,
   orders: ordersStrings.zhTW,
+  versionOpen: versionOpenStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
+  supplierPortal: supplierPortalStrings.zhTW,
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在載入簽出者',

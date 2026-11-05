@@ -71,6 +71,14 @@ const PENDING_TABLES: Record<string, { columns: string[]; requiredOnInsert: stri
     ],
     requiredOnInsert: ['order_id', 'org_id', 'vault_id', 'file_name'],
   },
+  // Schema 515 (output requests; lookOrdersModel.ts writes them as the RPCs would).
+  version_output_request: {
+    columns: [
+      'id', 'org_id', 'vault_id', 'file_version_id', 'kind', 'configuration', 'status',
+      'requested_by', 'requested_at', 'claimed_by', 'claimed_at', 'finished_at', 'error', 'order_id',
+    ],
+    requiredOnInsert: ['org_id', 'file_version_id', 'kind', 'status'],
+  },
 }
 
 type MutableTables = Map<string, { columns: Set<string>; requiredOnInsert: Set<string> }>

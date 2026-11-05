@@ -1,10 +1,10 @@
 /**
  * One output kind an order line sends: "STEP" as a Badge with a glyph for its state (ready,
- * missing, not available, being checked), so the state never rests on colour alone. Status
+ * missing, requested, not available, being checked), so the state never rests on colour alone. Status
  * only: which kinds a draft line sends is chosen in the line's outputs menu (`OrderLineRow`).
  */
 
-import { Ban, Check, Loader2, TriangleAlert } from 'lucide-react'
+import { Ban, Check, Clock, Loader2, TriangleAlert } from 'lucide-react'
 
 import { Badge, type BadgeTone } from '@/components/core/ui'
 import { useTranslation } from '@/lib/i18n'
@@ -15,6 +15,7 @@ import type { OutputChip as OutputChipModel } from '../lib/outputChips'
 const TONE: Record<OutputChipModel['state'], BadgeTone> = {
   ready: 'success',
   missing: 'warning',
+  requested: 'info',
   unsupported: 'error',
   checking: 'neutral',
   excluded: 'neutral',
@@ -26,6 +27,8 @@ function Glyph({ state }: { state: OutputChipModel['state'] }) {
       return <Check size={12} aria-hidden />
     case 'missing':
       return <TriangleAlert size={12} aria-hidden />
+    case 'requested':
+      return <Clock size={12} aria-hidden />
     case 'unsupported':
       return <Ban size={12} aria-hidden />
     case 'checking':

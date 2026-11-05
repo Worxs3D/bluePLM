@@ -154,14 +154,18 @@ export type OrderLineSkipReason = 'NOT_FOUND' | 'NO_VAULT_ACCESS' | 'NOT_A_DRAWI
 /**
  * Whether one kind of a line can be sent. `ready` carries the output; `missing` = the line can
  * have it but none is generated (or none was recorded when it was sent); `unsupported` = the line
- * cannot have this kind (a PDF of a part with no drawing, DXF without a drawing).
+ * cannot have this kind (a PDF of a part with no drawing, DXF without a drawing); `requested` =
+ * missing, with a pending or claimed output request (5.13.0, schema 515) that a desktop with
+ * SOLIDWORKS will generate. Only a draft line is ever `requested`.
  */
 export interface LineOutputState {
   kind: OrderOutputKind
-  status: 'ready' | 'missing' | 'unsupported'
+  status: 'ready' | 'missing' | 'requested' | 'unsupported'
   /** Whether the line includes this kind (`outputKinds`). States are given for every kind. */
   included: boolean
   output?: { storageHash: string; fileSize: number; fileName: string | null }
+  /** With `requested`: the request (a requester or an admin may cancel it). */
+  request?: { id: string; status: 'pending' | 'claimed'; requestedBy: string | null; requestedAt: string }
 }
 
 /** One element of `supply_order_add_lines(p_lines)`. */

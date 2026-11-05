@@ -407,10 +407,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     filters?: Array<{ name: string; extensions: string[] }>,
   ) => ipcRenderer.invoke('dialog:save-text-file', defaultName, utf8Content, filters),
 
-  // PDF generation
-  generatePdfFromHtml: (htmlContent: string, outputPath: string) =>
-    ipcRenderer.invoke('pdf:generate-from-html', htmlContent, outputPath),
-
   // eDrawings preview
   checkEDrawingsInstalled: () => ipcRenderer.invoke('edrawings:check-installed'),
   openInEDrawings: (filePath: string) => ipcRenderer.invoke('edrawings:open-file', filePath),
@@ -616,30 +612,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('solidworks:check-license-registry', serialNumber),
   },
 
-  // RFQ Release Files API
-  rfq: {
-    getOutputDir: (rfqId: string, rfqNumber?: string) =>
-      ipcRenderer.invoke('rfq:get-output-dir', rfqId, rfqNumber),
-    exportReleaseFile: (options: {
-      rfqId: string
-      rfqNumber?: string
-      sourceFilePath: string
-      exportType: 'step' | 'pdf' | 'dxf' | 'iges'
-      partNumber?: string
-      revision?: string
-      configuration?: string
-    }) => ipcRenderer.invoke('rfq:export-release-file', options),
-    createZip: (options: {
-      rfqId: string
-      rfqNumber: string
-      files: Array<{ path: string; name: string }>
-      rfqPdfPath?: string
-      outputPath?: string
-    }) => ipcRenderer.invoke('rfq:create-zip', options),
-    openFolder: (rfqId: string, rfqNumber?: string) =>
-      ipcRenderer.invoke('rfq:open-folder', rfqId, rfqNumber),
-  },
-
   // Review packages: staging folders for PDF renders and the bounded review PDF cache
   reviewPackage: {
     createStagingDir: () => ipcRenderer.invoke('review-package:create-staging-dir'),
@@ -665,6 +637,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   versionOutputs: {
     open: (url: string, fileName: string, expectedHash: string) =>
       ipcRenderer.invoke('version-outputs:open', url, fileName, expectedHash),
+  },
+
+  // Open with its references (src/lib/versionOpen): the per-version cache under userData
+  versionOpen: {
+    prepareEntry: (fileVersionId: string) => ipcRenderer.invoke('version-open:prepare-entry', fileVersionId),
+    beginRestage: (entryPath: string) => ipcRenderer.invoke('version-open:begin-restage', entryPath),
+    writeMarker: (entryPath: string, content: string) =>
+      ipcRenderer.invoke('version-open:write-marker', entryPath, content),
   },
 
   // Orders (src/lib/orders): export an order's files as a zip or into a new folder

@@ -248,6 +248,11 @@ export function buildLookOrderWorld(db: FakeSupabase, model: LookOrdersModel, id
     quantity: 4, output_kinds: ['step'], added_by: ids.userId, added_at: new Date(Date.now() - DAY).toISOString(),
   } as never)
   model.hidden.set(main, 2)
+  // Schema 515: which vaults they are in (supply_order_count_hidden_lines).
+  model.hiddenVaults.set(main, [
+    { vault_id: 'look-vault-electronics', vault_name: 'Electronics', count: 1 },
+    { vault_id: 'look-vault-archive', vault_name: 'Supplier archive', count: 1 },
+  ])
   const mainRow = db.rows('supply_order' as never).find((r) => r.id === main)!
   mainRow.line_count = model.lines(main).length + 2
   return out

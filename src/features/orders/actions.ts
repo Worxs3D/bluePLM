@@ -17,6 +17,9 @@ import {
   updateOrder,
   updateOrderLine,
 } from '@/lib/orders'
+import { requestMissingOutputs } from '@/lib/orders/generate'
+import { applyDefaultKinds, orderSettingsFromOrg } from '@/lib/orders/settings'
+import { cancelOutputRequests } from '@/lib/outputs'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -28,10 +31,12 @@ import type {
   OrderHeaderPatch,
   OrderLinePatch,
   OrderOutputKind,
+  OrderPurpose,
   OrderStatus,
   SupplyOrder,
   SupplyOrderLine,
 } from '@/types/orders'
+import type { OutputRequestErrorCode } from '@/types/outputRequests'
 
 import { addResultMessage, type PlannerSkipReason } from './lib/addResultMessage'
 import { defaultOrderTitle } from './lib/orderList'
@@ -60,9 +65,15 @@ export function showOrder(orderId: string): void {
   void s.openOrder(orderId)
 }
 
-/** Create an empty draft and open it. Returns the new order, or null (a toast said why). */
-export async function createAndOpenOrder(title?: string): Promise<SupplyOrder | null> {
-  const result = await createOrder({ title: title?.trim() || t('orders.untitled') })
+/**
+ * Create an empty draft (a purchase unless `purpose` says quote) and open it. Returns the new
+ * order, or null (a toast said why).
+ */
+export async function createAndOpenOrder(
+  title?: string,
+  purpose?: OrderPurpose,
+): Promise<SupplyOrder | null> {
+  const result = await createOrder({ title: title?.trim() || t('orders.untitled'), ...(purpose ? { purpose } : {}) })
   if (!result.ok) {
     toastFailure(result.code, result.message, 'Creating an order failed')
     return null
@@ -154,16 +165,35 @@ export async function addFilesToOrder(
 ): Promise<void> {
   try {
     const plan = await planOrderLinesForFiles([...files], { withReferencedParts })
+    // The organization's default kinds per kind of line (Settings > Orders).
+    const lines = applyDefaultKinds(plan.lines, orderSettingsFromOrg(store().organization?.settings))
     const title = defaultOrderTitle(
       files.map((f) => ({ partNumber: f.pdmData?.part_number ?? null, name: f.name })),
       (key, params) =>
         key === 'one' ? params.first : t('orders.titleAndMore', { first: params.first, count: params.count }),
     )
-    await addPlannedLines(target, plan.lines, plan.skipped, title)
+    await addPlannedLines(target, lines, plan.skipped, title)
   } catch (error) {
     log.error('[Orders]', 'Planning order lines failed', { error })
     store().addToast('error', t('orders.toastAddFailed'))
   }
+}
+
+/**
+ * Files dropped on a draft order (the list row or the open order), added like the context menu's
+ * Add. `found` are the store's files for the drag, `orderable` those that can become lines.
+ */
+export async function dropFilesOnOrder(
+  orderId: string,
+  found: readonly LocalFile[],
+  orderable: readonly LocalFile[],
+): Promise<void> {
+  if (found.length === 0) return
+  if (orderable.length === 0) {
+    store().addToast('warning', t('orders.toastDropNothing'))
+    return
+  }
+  await addFilesToOrder(orderable, { orderId }, false)
 }
 
 /** Version history's "Add this version to order": exactly that version, nothing paired. */
@@ -173,7 +203,9 @@ export async function addVersionToOrder(
   target: OrderTarget,
 ): Promise<void> {
   const isDrawing = file.extension.toLowerCase() === '.slddrw'
-  const kinds: OrderOutputKind[] = isDrawing ? ['pdf'] : ['step']
+  // Nothing is paired here, so a model is a line without a drawing.
+  const defaults = orderSettingsFromOrg(store().organization?.settings).defaultKinds
+  const kinds: OrderOutputKind[] = isDrawing ? defaults.drawing : defaults.model
   const title = file.pdmData?.part_number?.trim() || file.name.replace(/\.[^.]+$/, '')
   await addPlannedLines(target, [{ fileVersionId, outputKinds: kinds }], [], title)
 }
@@ -337,4 +369,58 @@ export function generateMissing(
       : t('orders.toastGeneratingMany', { order: order.orderNumber, count: result.queued }),
   )
   void result.done.then(() => store().refreshOrderOutputs(order.id))
+}
+
+/** The sentence for a refused output request; codes without their own fall back to UNKNOWN. */
+function requestErrorText(code: OutputRequestErrorCode): string {
+  const known: readonly OutputRequestErrorCode[] = ['NO_VAULT_ACCESS', 'NOT_ALLOWED', 'NOT_MEMBER']
+  return t(`orders.requestError${known.includes(code) ? code : 'UNKNOWN'}`)
+}
+
+/**
+ * Request the missing outputs of a draft (web, or a desktop without SOLIDWORKS): any signed-in
+ * desktop with SOLIDWORKS that can read the vault generates them, and the chips say "Requested"
+ * until it has. The states are read again so the chips change at once.
+ */
+export async function requestMissing(
+  order: SupplyOrder,
+  lines: SupplyOrderLine[],
+  states: Readonly<Record<string, LineOutputState[]>>,
+): Promise<void> {
+  const result = await requestMissingOutputs(lines, new Map(Object.entries(states)))
+  if (!result.ok) {
+    log.warn('[Orders]', 'Requesting outputs failed', { code: result.code, message: result.message })
+    store().addToast('error', requestErrorText(result.code))
+    return
+  }
+  const asked = result.created + result.existing
+  const skipped = result.skipped.length
+  if (asked === 0 && skipped === 0) {
+    store().addToast('info', t('orders.toastNothingToRequest'))
+  } else {
+    const sentence =
+      asked === 1
+        ? t('orders.toastRequestedOne', { order: order.orderNumber })
+        : t('orders.toastRequestedMany', { order: order.orderNumber, count: asked })
+    const skippedNote =
+      skipped === 0 ? '' : ` ${skipped === 1 ? t('orders.requestSkippedOne') : t('orders.requestSkippedMany', { count: skipped })}`
+    store().addToast(skipped > 0 ? 'warning' : 'success', asked === 0 ? skippedNote.trim() : sentence + skippedNote)
+  }
+  await store().refreshOrderOutputs(order.id)
+}
+
+/** Cancel output requests (the requester's own, or any for an admin) and read the states again. */
+export async function cancelRequests(order: SupplyOrder, requestIds: readonly string[]): Promise<void> {
+  if (requestIds.length === 0) return
+  const result = await cancelOutputRequests(requestIds)
+  if (!result.ok) {
+    log.warn('[Orders]', 'Cancelling output requests failed', { code: result.code, message: result.message })
+    store().addToast('error', requestErrorText(result.code))
+  } else {
+    store().addToast(
+      'success',
+      result.cancelled === 1 ? t('orders.toastRequestCancelledOne') : t('orders.toastRequestCancelledMany', { count: result.cancelled }),
+    )
+  }
+  await store().refreshOrderOutputs(order.id)
 }

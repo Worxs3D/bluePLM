@@ -51,7 +51,7 @@ export function CompanyProfileSettings() {
                   </span>
                 )}
                 <span className="text-[14px] leading-[1.4] text-ui-fg-secondary">
-                  PNG, JPG, or SVG. Max 2MB. Appears on RFQ documents.
+                  PNG, JPG, or SVG. Max 2MB. Appears on inspection reports.
                 </span>
               </span>
             }

@@ -33,6 +33,7 @@ export const POPOUT_TABS: readonly DetailsPanelTab[] = [
   'properties',
   'whereused',
   'vendors',
+  'orders',
   'inspection',
 ]
 
@@ -95,6 +96,7 @@ const TAB_LABEL_KEYS: Record<DetailsPanelTab, string> = {
   whereused: 'source.details.popoutTabWhereUsed',
   datacard: 'source.details.popoutTabDataCard',
   vendors: 'source.details.popoutTabVendors',
+  orders: 'source.details.popoutTabOrders',
   inspection: 'source.details.popoutTabInspection',
 }
 

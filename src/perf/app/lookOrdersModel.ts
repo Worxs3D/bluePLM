@@ -6,7 +6,13 @@
  *
  * Not modelled: module access (the perf user has every module) and RLS (every vault is readable).
  * Lines RLS would hide are a per-order count (`hidden`) that only `line_count` sees, which is what
- * the "lines in vaults you can't see" note reads.
+ * the "lines in vaults you can't see" note reads; `hiddenVaults` says which vaults they are in
+ * (`supply_order_count_hidden_lines`, schema 515).
+ *
+ * Schema 515 output requests: `version_output_request_create` / `_cancel` write
+ * `version_output_request` rows as the SQL does (one active request per version, kind and
+ * configuration; an existing output is skipped as `EXISTS`), and `fulfilRequests()` plays the
+ * desktop that generates them.
  */
 import { FakeRpcRefusal, type FakeSupabase, type Row } from '@/test/fakeSupabase'
 
@@ -42,6 +48,8 @@ function quantityOf(value: unknown): number {
 export class LookOrdersModel {
   /** Lines RLS would hide from the signed-in user, per order (counted in `line_count` only). */
   readonly hidden = new Map<string, number>()
+  /** Which vaults each order's hidden lines are in (names as the org sees them). */
+  readonly hiddenVaults = new Map<string, Array<{ vault_id: string; vault_name: string; count: number }>>()
   /** RPCs that fail as if the server were down (the error scenes). */
   readonly failing = new Set<string>()
   private last = 0
@@ -100,7 +108,9 @@ export class LookOrdersModel {
   reset(): void {
     this.db.removeRows('supply_order_line' as never, [...this.rows('supply_order_line')])
     this.db.removeRows('supply_order' as never, [...this.rows('supply_order')])
+    this.db.removeRows('version_output_request' as never, [...this.rows('version_output_request')])
     this.hidden.clear()
+    this.hiddenVaults.clear()
     this.failing.clear()
   }
 
@@ -402,9 +412,108 @@ export class LookOrdersModel {
     return { ok: true }
   }
 
+  /** `supply_order_count_hidden_lines`: the hidden lines' vaults, or one unnamed entry. */
+  hiddenSummary(a: Row): unknown {
+    const order = this.order(a.p_order_id)
+    const hidden = this.hidden.get(String(order.id)) ?? 0
+    if (hidden === 0) return []
+    return this.hiddenVaults.get(String(order.id)) ?? [{ vault_id: 'look-hidden-vault', vault_name: 'Hidden vault', count: hidden }]
+  }
+
+  /** Whether the output of a request exists (drawing PDF render, or a version output). */
+  private outputExists(fileVersionId: string, kind: string, configuration: string | null): boolean {
+    if (kind === 'pdf') return this.rows('drawing_pdf_render').some((r) => r.file_version_id === fileVersionId)
+    return this.rows('file_version_output').some(
+      (r) => r.file_version_id === fileVersionId && r.kind === kind && (r.configuration ?? '') === (configuration ?? ''),
+    )
+  }
+
+  private activeRequest(fileVersionId: string, kind: string, configuration: string | null): Row | undefined {
+    return this.rows('version_output_request').find(
+      (r) =>
+        r.file_version_id === fileVersionId &&
+        r.kind === kind &&
+        (r.configuration ?? '') === (configuration ?? '') &&
+        (r.status === 'pending' || r.status === 'claimed'),
+    )
+  }
+
+  /** `version_output_request_create(p_items)`. */
+  createRequests(a: Row): Row {
+    const items = Array.isArray(a.p_items) ? (a.p_items as Row[]) : refuse('p_items must be an array', 'BAD_REQUEST', '22023')
+    let created = 0
+    let existing = 0
+    const skipped: Row[] = []
+    for (const item of items) {
+      const versionId = String(item.file_version_id ?? '')
+      const kind = String(item.kind ?? '')
+      const configuration = (item.configuration as string | null | undefined) ?? null
+      const fv = this.find('file_version', versionId)
+      const file = fv ? this.find('file', fv.file_id) : null
+      if (!fv || !file) {
+        skipped.push({ file_version_id: versionId, kind, reason: 'NOT_FOUND' })
+        continue
+      }
+      if ((kind === 'pdf' || kind === 'dxf') !== isDrawingName(file.file_name) && kind !== 'step') {
+        skipped.push({ file_version_id: versionId, kind, reason: 'BAD_KIND' })
+        continue
+      }
+      if (this.outputExists(versionId, kind, configuration)) {
+        skipped.push({ file_version_id: versionId, kind, reason: 'EXISTS' })
+        continue
+      }
+      if (this.activeRequest(versionId, kind, configuration)) {
+        existing++
+        continue
+      }
+      this.insert('version_output_request', {
+        org_id: this.orgId,
+        vault_id: file.vault_id,
+        file_version_id: versionId,
+        kind,
+        configuration,
+        status: 'pending',
+        requested_by: this.db.actorId,
+        requested_at: this.now(),
+        claimed_by: null,
+        claimed_at: null,
+        finished_at: null,
+        error: null,
+        order_id: (item.order_id as string | null | undefined) ?? null,
+      })
+      created++
+    }
+    return { ok: true, created, existing, skipped }
+  }
+
+  /** `version_output_request_cancel(p_ids)`: the requester's own, or any for an admin. */
+  cancelRequests(a: Row, isAdmin: boolean): Row {
+    const ids = new Set(Array.isArray(a.p_ids) ? (a.p_ids as unknown[]).map(String) : [])
+    let cancelled = 0
+    for (const r of this.rows('version_output_request')) {
+      if (!ids.has(String(r.id)) || (r.status !== 'pending' && r.status !== 'claimed')) continue
+      if (r.requested_by !== this.db.actorId && !isAdmin) refuse('Only the requester or an administrator can cancel', 'NOT_ALLOWED', '42501')
+      Object.assign(r, { status: 'cancelled', finished_at: this.now() })
+      cancelled++
+    }
+    return { ok: true, cancelled }
+  }
+
+  /** Mark every active request whose output now exists done (the 515 trigger). */
+  settleRequests(): void {
+    for (const r of this.rows('version_output_request')) {
+      if ((r.status === 'pending' || r.status === 'claimed') && this.outputExists(String(r.file_version_id), String(r.kind), (r.configuration as string | null) ?? null)) {
+        Object.assign(r, { status: 'done', finished_at: this.now() })
+      }
+    }
+  }
+
   /** Register every order RPC on the fake (untyped: `src/types/supabase.ts` predates 513). */
   register(isAdmin: () => boolean): void {
-    const rpcs: Record<string, (a: Row) => Row> = {
+    const rpcs: Record<string, (a: Row) => unknown> = {
+      supply_order_count_hidden_lines: (a) => this.hiddenSummary(a),
+      version_output_request_create: (a) => this.createRequests(a),
+      version_output_request_cancel: (a) => this.cancelRequests(a, isAdmin()),
       supply_order_create: (a) => this.create(a),
       supply_order_update: (a) => this.update(a),
       supply_order_add_lines: (a) => this.addLines(a),
