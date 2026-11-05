@@ -6,7 +6,7 @@
  * in `org_extension_set_installed()` (schema 516). Works on the web build as well.
  */
 import { useState } from 'react'
-import { ClipboardCheck, Ruler, ShoppingCart, type LucideIcon } from 'lucide-react'
+import { ClipboardCheck, Ruler, Truck, type LucideIcon } from 'lucide-react'
 
 import { usePDMStore } from '@/stores/pdmStore'
 import { t } from '@/lib/i18n'
@@ -28,7 +28,7 @@ import { extensionName, joinNames, k } from './names'
 const ICONS: Record<OfficialExtensionId, LucideIcon> = {
   'blueplm.reviews': ClipboardCheck,
   'blueplm.inspection': Ruler,
-  'blueplm.orders': ShoppingCart,
+  'blueplm.supply-chain': Truck,
 }
 
 /** The version every official extension carries: the app's own, since it ships with it. */

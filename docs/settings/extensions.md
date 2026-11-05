@@ -5,7 +5,7 @@ page has two parts.
 
 ## BluePLM extensions
 
-Reviews, Inspection and Orders are built into BluePLM. Each is installed for every organization until an admin
+Reviews, Inspection and Supply chain are built into BluePLM. Each is installed for every organization until an admin
 uninstalls it, so nothing changes on an upgrade. Each row says what the extension adds, what it needs and what it
 works with. The three are independent: none needs another.
 
@@ -20,7 +20,7 @@ older app or a script cannot add to it either.
 | --- | --- |
 | Reviews | No review packages: no Reviews submenu, no review pane, nothing added to a review from version history or a review stage. Drawings release without an approved review, and review stages in file workflows act as plain states. The Reviews view stays, with workflow approvals only. |
 | Inspection | No Inspection tab on drawings, no inspection reports under drawings or in the Outputs column, no Settings → Inspection templates. Reports of a drawing that is checked out stay on the old version until Inspection is installed again. |
-| Orders | No Orders view, no Orders submenu, no "Add to order" in version history. |
+| Supply chain | No Orders, Supplier database or Supplier portal views, no Orders submenu, no "Add to order" in version history, no Vendors or Orders tab on files, no Settings → Orders. |
 
 ## Organization extensions
 

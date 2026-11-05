@@ -25,8 +25,8 @@ Orders (5.11.0; schema 513, API 4.2.3, renderer + Electron main; no service chan
 - RFQs (5.13.0): RFQs were imported once as quote orders (`imported_from_rfq_id`), and the RFQ feature is removed. Its tables stay.
 - Guide: `docs/orders.md`. Plan and reports: `.cursor/plans/orders-*`.
 
-Official extensions (schema 516, renderer; no API or service change). Reviews, Inspection and Orders are first-party extensions an organization installs or uninstalls in Settings > Extensions. They ship inside the app; native `.bpx` packages stay for private code such as Customers.
-- Each has a manifest in `src/lib/officialExtensions/manifest.ts`: what it needs, what it works with, the tables it owns, and what it adds (modules, settings tabs, right-click entries, commands, shortcut categories). Every gate reads those lists, so a new contribution goes in the manifest.
+Official extensions (schema 516, renderer; no API or service change). Reviews, Inspection and Supply chain (`blueplm.supply-chain`: Orders, Supplier database, Supplier portal, the Vendors tab) are first-party extensions an organization installs or uninstalls in Settings > Extensions. They ship inside the app; native `.bpx` packages stay for private code such as Customers.
+- Each has a manifest in `src/lib/officialExtensions/manifest.ts`: what it needs, what it works with, the tables it owns, and what it adds (modules, settings tabs, details tabs, right-click entries, commands, shortcut categories). Every gate reads those lists, so a new contribution goes in the manifest.
 - The install state is `organization.settings.extensions` (unset = installed). Read it through `officialExtensionInstalled()` or `useOfficialExtensionInstalled()`. Write it only through `org_extension_set_installed()`, which is admin-only, knows the ids and applies the dependency rules of `dependencies.ts`. None of the three needs another.
 - Uninstall hides the feature and deletes nothing. A guard trigger refuses a signed-in caller's direct writes to the extension's tables (`EXTENSION_NOT_INSTALLED`). Writes from other triggers, server callers and deletes pass, so core housekeeping never breaks.
 - Without Reviews:

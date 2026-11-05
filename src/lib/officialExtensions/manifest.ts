@@ -18,8 +18,9 @@ import type { SettingsTab } from '@/types/settings'
 import type { CommandId } from '@/lib/commands/types'
 import type { ContextMenuEntryId } from '@/lib/contextMenu/entries'
 import type { ShortcutCategory } from '@/lib/keybindings/registry'
+import type { DetailsPanelTab } from '@/stores/types'
 
-export const OFFICIAL_EXTENSION_IDS = ['blueplm.reviews', 'blueplm.inspection', 'blueplm.orders'] as const
+export const OFFICIAL_EXTENSION_IDS = ['blueplm.reviews', 'blueplm.inspection', 'blueplm.supply-chain'] as const
 
 export type OfficialExtensionId = (typeof OFFICIAL_EXTENSION_IDS)[number]
 
@@ -40,8 +41,6 @@ export interface OfficialExtensionManifest {
   descriptionKey: string
   /** lucide icon name, the same as its sidebar module where it has one */
   icon: string
-  /** The app release it first shipped in. Its version is the app's: it ships with the app. */
-  since: string
   /** Hard dependencies: the extension cannot be installed without them. */
   dependencies: {
     core: readonly CoreFeature[]
@@ -52,12 +51,16 @@ export interface OfficialExtensionManifest {
   /** Schema objects the extension owns (kept on uninstall; the server refuses writes to the tables). */
   schema: {
     tables: readonly string[]
+    /** Owned but not guarded: a retired feature's tables that nothing writes any more (RFQs). */
+    retiredTables: readonly string[]
     functions: readonly string[]
   }
   /** What the extension adds. Every gate reads these lists, so an entry here is hidden on uninstall. */
   contributes: {
     modules: readonly ModuleId[]
     settingsTabs: readonly SettingsTab[]
+    /** Tabs of the file details panel (bottom, right or popped out) */
+    detailsTabs: readonly DetailsPanelTab[]
     contextMenuEntries: readonly ContextMenuEntryId[]
     commands: readonly CommandId[]
     shortcutCategories: readonly ShortcutCategory[]
@@ -76,7 +79,6 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
     nameKey: 'reviewsName',
     descriptionKey: 'reviewsDescription',
     icon: 'ClipboardCheck',
-    since: '4.9.0',
     dependencies: { core: ['explorer', 'versions'], extensions: [] },
     integrations: [],
     schema: {
@@ -88,6 +90,7 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
         'review_response',
         'review_decision',
       ],
+      retiredTables: [],
       functions: ['review_request', 'review_item_respond', 'review_settle', 'review_advance_items'],
     },
     contributes: {
@@ -95,6 +98,7 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
       // stays without the extension and shows only those.
       modules: [],
       settingsTabs: [],
+      detailsTabs: [],
       contextMenuEntries: ['reviews'],
       commands: ['download-review-package', 'generate-review-pdfs'],
       shortcutCategories: ['reviews'],
@@ -108,16 +112,17 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
     nameKey: 'inspectionName',
     descriptionKey: 'inspectionDescription',
     icon: 'Ruler',
-    since: '4.6.0',
     dependencies: { core: ['explorer', 'versions', 'solidworks'], extensions: [] },
     integrations: [],
     schema: {
       tables: ['inspection_characteristic', 'inspection_report', 'inspection_template'],
+      retiredTables: [],
       functions: ['inspection_report_overwrite', 'inspection_report_pin', 'inspection_template_sync_folder'],
     },
     contributes: {
       modules: [],
       settingsTabs: ['inspection-templates'],
+      detailsTabs: ['inspection'],
       contextMenuEntries: ['generate.server.inspectionReport', 'generate.local.inspectionReport'],
       commands: [],
       shortcutCategories: [],
@@ -127,24 +132,34 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
     uninstallEffectKeys: ['inspectionEffectWorkingCopies'],
   },
   {
-    id: 'blueplm.orders',
-    nameKey: 'ordersName',
-    descriptionKey: 'ordersDescription',
-    icon: 'ShoppingCart',
-    since: '5.11.0',
+    id: 'blueplm.supply-chain',
+    nameKey: 'supplyChainName',
+    descriptionKey: 'supplyChainDescription',
+    icon: 'Truck',
     dependencies: { core: ['explorer', 'versions'], extensions: [] },
     integrations: [],
     schema: {
-      tables: ['supply_order', 'supply_order_line', 'supply_order_number_counter'],
+      tables: [
+        'supply_order',
+        'supply_order_line',
+        'supply_order_number_counter',
+        'supplier',
+        'supplier_contact',
+        'supplier_invitation',
+        'part_supplier',
+      ],
+      retiredTables: ['rfq', 'rfq_item', 'rfq_supplier', 'rfq_quote', 'rfq_activity', 'rfq_number_counter'],
       functions: ['supply_order_create', 'supply_order_line_get_outputs'],
     },
     contributes: {
-      modules: ['orders'],
+      modules: ['orders', 'supplier-database', 'supplier-portal'],
       settingsTabs: ['orders'],
+      detailsTabs: ['vendors', 'orders'],
       contextMenuEntries: ['orders'],
       commands: [],
       shortcutCategories: [],
-      surfaceKeys: ['ordersAddsView', 'ordersAddsMenu', 'ordersAddsHistory', 'ordersAddsSettings'],
+      surfaceKeys: ['supplyChainAddsView', 'supplyChainAddsMenu', 'supplyChainAddsHistory', 'supplyChainAddsSettings',
+        'supplyChainAddsSuppliers', 'supplyChainAddsPortal', 'supplyChainAddsVendors'],
       hooks: [],
     },
     uninstallEffectKeys: [],

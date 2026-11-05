@@ -20,12 +20,16 @@ export const en = {
   inspectionAddsTemplates: 'Settings > Inspection templates',
   inspectionEffectWorkingCopies:
     'Reports of a checked-out drawing stay on the old version until Inspection is installed again.',
-  ordersName: 'Orders',
-  ordersDescription: 'Group version-pinned PDF, STEP and other outputs into orders for suppliers.',
-  ordersAddsView: 'the Orders view',
-  ordersAddsMenu: 'the Orders submenu of the right-click menu',
-  ordersAddsHistory: '"Add to order" in version history',
-  ordersAddsSettings: 'Settings > Orders',
+  supplyChainName: 'Supply chain',
+  supplyChainDescription:
+    'Suppliers, the supplier portal, and orders of version-pinned PDF, STEP and other outputs for them.',
+  supplyChainAddsView: 'the Orders view',
+  supplyChainAddsMenu: 'the Orders submenu of the right-click menu',
+  supplyChainAddsHistory: '"Add to order" in version history',
+  supplyChainAddsSettings: 'Settings > Orders',
+  supplyChainAddsSuppliers: 'the Supplier database',
+  supplyChainAddsPortal: 'the Supplier portal',
+  supplyChainAddsVendors: 'the Vendors tab of files',
 
   // Core features named under "Needs"
   core_explorer: 'File explorer',

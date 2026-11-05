@@ -19,12 +19,16 @@ export const es: OfficialExtensionsDict = {
   inspectionAddsTemplates: 'Configuración > Plantillas de inspección',
   inspectionEffectWorkingCopies:
     'Los informes de un plano extraído se quedan en la versión anterior hasta que Inspección se instale de nuevo.',
-  ordersName: 'Pedidos',
-  ordersDescription: 'Agrupe salidas PDF, STEP y otras fijadas a una versión en pedidos para proveedores.',
-  ordersAddsView: 'la vista Pedidos',
-  ordersAddsMenu: 'el submenú Pedidos del menú contextual',
-  ordersAddsHistory: '«Añadir al pedido» en el historial de versiones',
-  ordersAddsSettings: 'Configuración > Pedidos',
+  supplyChainName: 'Cadena de suministro',
+  supplyChainDescription:
+    'Proveedores, el portal de proveedores y pedidos de salidas PDF, STEP y otras fijadas a una versión para ellos.',
+  supplyChainAddsView: 'la vista Pedidos',
+  supplyChainAddsMenu: 'el submenú Pedidos del menú contextual',
+  supplyChainAddsHistory: '«Añadir al pedido» en el historial de versiones',
+  supplyChainAddsSettings: 'Configuración > Pedidos',
+  supplyChainAddsSuppliers: 'la base de datos de proveedores',
+  supplyChainAddsPortal: 'el portal de proveedores',
+  supplyChainAddsVendors: 'la pestaña Proveedores de los archivos',
 
   core_explorer: 'Explorador de archivos',
   core_versions: 'Versiones',

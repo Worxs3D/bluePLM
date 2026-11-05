@@ -19,12 +19,16 @@ export const de: OfficialExtensionsDict = {
   inspectionAddsTemplates: 'Einstellungen > Prüfvorlagen',
   inspectionEffectWorkingCopies:
     'Berichte einer ausgecheckten Zeichnung bleiben bei der alten Version, bis Inspektion wieder installiert ist.',
-  ordersName: 'Bestellungen',
-  ordersDescription: 'Versionsgebundene PDF-, STEP- und andere Ausgaben zu Bestellungen für Lieferanten bündeln.',
-  ordersAddsView: 'die Ansicht Bestellungen',
-  ordersAddsMenu: 'das Untermenü Bestellungen im Kontextmenü',
-  ordersAddsHistory: '„Zur Bestellung hinzufügen“ im Versionsverlauf',
-  ordersAddsSettings: 'Einstellungen > Bestellungen',
+  supplyChainName: 'Lieferkette',
+  supplyChainDescription:
+    'Lieferanten, das Lieferantenportal und Bestellungen versionsgebundener PDF-, STEP- und anderer Ausgaben für sie.',
+  supplyChainAddsView: 'die Ansicht Bestellungen',
+  supplyChainAddsMenu: 'das Untermenü Bestellungen im Kontextmenü',
+  supplyChainAddsHistory: '„Zur Bestellung hinzufügen“ im Versionsverlauf',
+  supplyChainAddsSettings: 'Einstellungen > Bestellungen',
+  supplyChainAddsSuppliers: 'die Lieferantendatenbank',
+  supplyChainAddsPortal: 'das Lieferantenportal',
+  supplyChainAddsVendors: 'den Reiter Lieferanten bei Dateien',
 
   core_explorer: 'Datei-Explorer',
   core_versions: 'Versionen',

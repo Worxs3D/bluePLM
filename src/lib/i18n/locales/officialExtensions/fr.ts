@@ -19,12 +19,16 @@ export const fr: OfficialExtensionsDict = {
   inspectionAddsTemplates: 'Paramètres > Modèles d’inspection',
   inspectionEffectWorkingCopies:
     'Les rapports d’un plan extrait restent sur l’ancienne version jusqu’à la réinstallation d’Inspection.',
-  ordersName: 'Commandes',
-  ordersDescription: 'Regroupez des sorties PDF, STEP et autres liées à une version en commandes pour les fournisseurs.',
-  ordersAddsView: 'la vue Commandes',
-  ordersAddsMenu: 'le sous-menu Commandes du menu contextuel',
-  ordersAddsHistory: '« Ajouter à la commande » dans l’historique des versions',
-  ordersAddsSettings: 'Paramètres > Commandes',
+  supplyChainName: 'Chaîne d’approvisionnement',
+  supplyChainDescription:
+    'Les fournisseurs, le portail fournisseurs et les commandes de sorties PDF, STEP et autres liées à une version.',
+  supplyChainAddsView: 'la vue Commandes',
+  supplyChainAddsMenu: 'le sous-menu Commandes du menu contextuel',
+  supplyChainAddsHistory: '« Ajouter à la commande » dans l’historique des versions',
+  supplyChainAddsSettings: 'Paramètres > Commandes',
+  supplyChainAddsSuppliers: 'la base de fournisseurs',
+  supplyChainAddsPortal: 'le portail fournisseurs',
+  supplyChainAddsVendors: 'l’onglet Fournisseurs des fichiers',
 
   core_explorer: 'Explorateur de fichiers',
   core_versions: 'Versions',

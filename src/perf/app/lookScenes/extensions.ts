@@ -1,8 +1,8 @@
 /**
  * ui-look official extension scenes (`extensions-*`): Settings > Extensions with Reviews,
- * Inspection and Orders installed or not, the install and uninstall confirmations, and the app with
- * each one uninstalled (no Reviews or Orders in the activity bar, no Inspection tab on a drawing, no
- * Reviews or Orders submenu). Each scene starts from a reset: it writes the install state on the
+ * Inspection and Supply chain installed or not, the install and uninstall confirmations, and the app
+ * with each one uninstalled (no Orders or supplier views, no Inspection or Vendors tab on a drawing,
+ * no Reviews or Orders submenu; the Reviews view stays for workflow approvals). Each scene starts from a reset: it writes the install state on the
  * organization row and in the store, as `org_extension_set_installed()` (schema 516) would.
  *
  * Run as a member with `--as` to see the read-only catalog. `window.__blueplmLookExtensions.set(id,
@@ -23,7 +23,7 @@ declare global {
   }
 }
 
-const KNOWN: readonly OfficialExtensionId[] = ['blueplm.reviews', 'blueplm.inspection', 'blueplm.orders']
+const KNOWN: readonly OfficialExtensionId[] = ['blueplm.reviews', 'blueplm.inspection', 'blueplm.supply-chain']
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -109,8 +109,8 @@ export function createExtensionsLook(
   return {
     // All three installed (every organization after the upgrade).
     'extensions-catalog': async () => openCatalog([]),
-    // Inspection and Orders uninstalled.
-    'extensions-catalog-mixed': async () => openCatalog(['blueplm.inspection', 'blueplm.orders']),
+    // Inspection and Supply chain uninstalled.
+    'extensions-catalog-mixed': async () => openCatalog(['blueplm.inspection', 'blueplm.supply-chain']),
     // The uninstall confirmation of Reviews (the one with effects on core flows).
     'extensions-uninstall-reviews': async () => {
       openCatalog([])
@@ -120,12 +120,12 @@ export function createExtensionsLook(
       openCatalog([])
       await clickWhenReady('[data-extension-id="blueplm.inspection"] button')
     },
-    // The install confirmation of Orders.
-    'extensions-install-orders': async () => {
-      openCatalog(['blueplm.orders'])
-      await clickWhenReady('[data-extension-id="blueplm.orders"] button')
+    // The install confirmation of Supply chain.
+    'extensions-install-supply-chain': async () => {
+      openCatalog(['blueplm.supply-chain'])
+      await clickWhenReady('[data-extension-id="blueplm.supply-chain"] button')
     },
-    // The app with all three uninstalled: no Reviews or Orders view, no Inspection tab.
+    // The app with all three uninstalled: no Orders or supplier views, no Inspection or Vendors tab.
     'extensions-none-installed': async () => {
       setState(KNOWN)
       store.getState().closeSettings()

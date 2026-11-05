@@ -1,7 +1,7 @@
 /**
  * supabase/migrations/0516_official_extensions.sql on real Postgres (PGlite), applied after
  * 0501-0515 to the 5.0 baseline as the migration runner applies them: it stamps 516; every
- * organization reads Reviews, Inspection and Orders as installed until an admin uninstalls one
+ * organization reads Reviews, Inspection and Supply chain as installed until an admin uninstalls one
  * through org_extension_set_installed(); while one is uninstalled a signed-in caller's direct
  * writes to its tables are refused (EXTENSION_NOT_INSTALLED) and its module is closed, but
  * housekeeping from other triggers and server callers still write; and the drawing release gate
@@ -195,21 +195,21 @@ describe('the install state', () => {
   })
 
   it('is changed by an admin only, for a known extension', async () => {
-    expect((await setInstalled(REVIEWER, 'blueplm.orders', false)).error_code).toBe('NOT_ADMIN')
+    expect((await setInstalled(REVIEWER, 'blueplm.supply-chain', false)).error_code).toBe('NOT_ADMIN')
     expect((await setInstalled(ADMIN, 'blueplm.nope', false)).error_code).toBe('UNKNOWN_EXTENSION')
-    expect((await setInstalled(ADMIN, 'blueplm.orders', null)).error_code).toBe('UNKNOWN_EXTENSION')
-    expect(await installed(ORG_A, 'blueplm.orders')).toBe(true)
+    expect((await setInstalled(ADMIN, 'blueplm.supply-chain', null)).error_code).toBe('UNKNOWN_EXTENSION')
+    expect(await installed(ORG_A, 'blueplm.supply-chain')).toBe(true)
   })
 
   it("uninstalls in the admin's organization only, records who, and keeps other settings", async () => {
     await actAsOwner(db)
     await db.query(`UPDATE organization SET settings = '{"file_workflows_enabled": true}' WHERE id = $1`, [ORG_A])
-    const r = await setInstalled(ADMIN, 'blueplm.orders', false)
+    const r = await setInstalled(ADMIN, 'blueplm.supply-chain', false)
     expect(r.success).toBe(true)
-    expect(r.settings?.extensions?.['blueplm.orders']).toMatchObject({ installed: false, changed_by: ADMIN })
+    expect(r.settings?.extensions?.['blueplm.supply-chain']).toMatchObject({ installed: false, changed_by: ADMIN })
     expect(r.settings).toMatchObject({ file_workflows_enabled: true })
-    expect(await installed(ORG_A, 'blueplm.orders')).toBe(false)
-    expect(await installed(ORG_B, 'blueplm.orders')).toBe(true)
+    expect(await installed(ORG_A, 'blueplm.supply-chain')).toBe(false)
+    expect(await installed(ORG_B, 'blueplm.supply-chain')).toBe(true)
   })
 
   it("closes an uninstalled extension's module to everyone, admins included", async () => {
@@ -221,7 +221,7 @@ describe('the install state', () => {
 
   it('refuses an order while Orders is uninstalled, and takes one again after a reinstall', async () => {
     expect(await hintOf(ADMIN, `SELECT supply_order_create(p_title => 'Brackets')`)).not.toBeNull()
-    expect((await setInstalled(ADMIN, 'blueplm.orders', true)).success).toBe(true)
+    expect((await setInstalled(ADMIN, 'blueplm.supply-chain', true)).success).toBe(true)
     expect(await canAccess(ADMIN, 'orders')).toBe(true)
     expect(await hintOf(ADMIN, `SELECT supply_order_create(p_title => 'Brackets')`)).toBeNull()
   })

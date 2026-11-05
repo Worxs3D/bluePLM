@@ -30,7 +30,7 @@ Connect to external services:
 - **Odoo ERP** - Enterprise resource planning
 - **Webhooks** - Custom integrations
 - **REST API** - API access configuration
-- **Extensions** - Install or uninstall Reviews, Inspection and Orders, and organization packages ([extensions.md](extensions.md))
+- **Extensions** - Install or uninstall Reviews, Inspection and Supply chain, and organization packages ([extensions.md](extensions.md))
 
 ### System
 Technical settings:

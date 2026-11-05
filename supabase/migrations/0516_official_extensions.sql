@@ -1,7 +1,8 @@
 -- =====================================================================
 -- 0516_official_extensions.sql: official extensions (schema 515 -> 516)
 -- =====================================================================
--- Reviews, Inspection and Orders become official extensions: built into the app, installed or
+-- Reviews, Inspection and Supply chain (orders, suppliers, the supplier portal) become official
+-- extensions: built into the app, installed or
 -- uninstalled per organization from Settings > Extensions, and independent of each other. Plan and
 -- coupling map: .cursor/plans/official-extensions.plan.md.
 --
@@ -22,7 +23,8 @@
 --                       back. inspection_characteristic_version is not guarded: check-in copies
 --                       the live rows into it, and they cannot change while Inspection is out.
 --   can_access_module()                 answers false for the module of an uninstalled extension
---                       (orders), admins included, so Orders' RLS and RPCs agree with the hidden
+--                       (orders, supplier-database, supplier-portal), admins included, so
+--                       Supply chain's RLS and RPCs agree with the hidden
 --                       module. The Reviews view is not Reviews': workflow gate approvals (core)
 --                       are decided there too.
 --   workflow_transition_execute()/apply()  the drawing release gate (509) is Reviews': without
@@ -61,7 +63,7 @@ SET search_path = public
 AS $$
   VALUES ('blueplm.reviews'::text, ARRAY[]::text[]),
          ('blueplm.inspection'::text, ARRAY[]::text[]),
-         ('blueplm.orders'::text, ARRAY[]::text[]);
+         ('blueplm.supply-chain'::text, ARRAY[]::text[]);
 $$;
 
 REVOKE ALL ON FUNCTION official_extension_list_dependencies() FROM PUBLIC, anon, authenticated;
@@ -162,6 +164,8 @@ BEGIN
       RETURN NEW;
     END IF;
     SELECT r.org_id INTO v_org_id FROM review r WHERE r.id = NEW.review_id;
+  ELSIF TG_TABLE_NAME = 'supplier_contact' THEN
+    SELECT s.org_id INTO v_org_id FROM supplier s WHERE s.id = NEW.supplier_id;
   ELSE
     v_org_id := NEW.org_id;
   END IF;
@@ -210,13 +214,27 @@ CREATE TRIGGER trg_inspection_template_extension_guard BEFORE INSERT OR UPDATE O
 
 DROP TRIGGER IF EXISTS trg_supply_order_extension_guard ON supply_order;
 CREATE TRIGGER trg_supply_order_extension_guard BEFORE INSERT OR UPDATE ON supply_order
-  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.orders');
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
 DROP TRIGGER IF EXISTS trg_supply_order_line_extension_guard ON supply_order_line;
 CREATE TRIGGER trg_supply_order_line_extension_guard BEFORE INSERT OR UPDATE ON supply_order_line
-  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.orders');
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
 DROP TRIGGER IF EXISTS trg_supply_order_number_counter_extension_guard ON supply_order_number_counter;
 CREATE TRIGGER trg_supply_order_number_counter_extension_guard BEFORE INSERT OR UPDATE ON supply_order_number_counter
-  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.orders');
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
+DROP TRIGGER IF EXISTS trg_supplier_extension_guard ON supplier;
+CREATE TRIGGER trg_supplier_extension_guard BEFORE INSERT OR UPDATE ON supplier
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
+DROP TRIGGER IF EXISTS trg_supplier_contact_extension_guard ON supplier_contact;
+CREATE TRIGGER trg_supplier_contact_extension_guard BEFORE INSERT OR UPDATE ON supplier_contact
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
+DROP TRIGGER IF EXISTS trg_supplier_invitation_extension_guard ON supplier_invitation;
+CREATE TRIGGER trg_supplier_invitation_extension_guard BEFORE INSERT OR UPDATE ON supplier_invitation
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
+DROP TRIGGER IF EXISTS trg_part_supplier_extension_guard ON part_supplier;
+CREATE TRIGGER trg_part_supplier_extension_guard BEFORE INSERT OR UPDATE ON part_supplier
+  FOR EACH ROW EXECUTE FUNCTION trg_official_extension_guard('blueplm.supply-chain');
+-- The rfq tables are Supply chain's too, but nothing writes them since 5.13.0 retired RFQs (515),
+-- so they are not guarded.
 
 -- ===========================================
 -- 3. can_access_module(): an uninstalled extension's module is closed
@@ -253,7 +271,9 @@ BEGIN
   -- Schema 516: the modules official extensions add (manifest `contributes.modules`).
   -- Not 'reviews': the Reviews view also holds workflow gate approvals, which are core.
   v_extension := CASE p_module_id
-    WHEN 'orders' THEN 'blueplm.orders'
+    WHEN 'orders' THEN 'blueplm.supply-chain'
+    WHEN 'supplier-database' THEN 'blueplm.supply-chain'
+    WHEN 'supplier-portal' THEN 'blueplm.supply-chain'
   END;
   IF v_extension IS NOT NULL AND NOT is_org_extension_installed(v_org_id, v_extension) THEN
     RETURN false;
@@ -686,7 +706,7 @@ LANGUAGE sql IMMUTABLE AS $$ SELECT 516 $$;
 -- Must equal VERSION_DESCRIPTIONS[516] in src/lib/schemaVersion.ts.
 CREATE OR REPLACE FUNCTION schema_release_description() RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$ SELECT
-  'Official extensions. Reviews, Inspection and Orders are installed or uninstalled per organization '
+  'Official extensions. Reviews, Inspection and Supply chain are installed or uninstalled per organization '
   '(organization.settings.extensions; unset = installed) through org_extension_set_installed(), admins '
   'only. While one is uninstalled, a signed-in caller''s direct writes to its tables are refused '
   '(EXTENSION_NOT_INSTALLED) and can_access_module() closes its module; nothing is deleted. Without '

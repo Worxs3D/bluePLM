@@ -9,6 +9,7 @@ import type { Organization } from '@/types/pdm'
 import type { ModuleId } from '@/types/modules'
 import type { SettingsTab } from '@/types/settings'
 import type { CommandId } from '@/lib/commands/types'
+import type { DetailsPanelTab } from '@/stores/types'
 
 import { OFFICIAL_EXTENSIONS, isOfficialExtensionId, type OfficialExtensionId } from './manifest'
 
@@ -50,6 +51,11 @@ export function parseExtensionIds(key: string): OfficialExtensionId[] {
 /** The sidebar modules of uninstalled extensions: denied to everyone, admins included. */
 export function modulesOfUninstalledExtensions(uninstalled: readonly OfficialExtensionId[]): ModuleId[] {
   return OFFICIAL_EXTENSIONS.filter((m) => uninstalled.includes(m.id)).flatMap((m) => [...m.contributes.modules])
+}
+
+/** The details panel tabs of uninstalled extensions (Inspection, Vendors, Orders), hidden everywhere. */
+export function detailsTabsOfUninstalledExtensions(uninstalled: readonly OfficialExtensionId[]): DetailsPanelTab[] {
+  return OFFICIAL_EXTENSIONS.filter((m) => uninstalled.includes(m.id)).flatMap((m) => [...m.contributes.detailsTabs])
 }
 
 /** The extension that adds a settings tab, if any. */

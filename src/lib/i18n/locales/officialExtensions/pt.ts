@@ -19,12 +19,16 @@ export const pt: OfficialExtensionsDict = {
   inspectionAddsTemplates: 'Configurações > Modelos de inspeção',
   inspectionEffectWorkingCopies:
     'Os relatórios de um desenho em check-out ficam na versão anterior até a Inspeção ser instalada de novo.',
-  ordersName: 'Pedidos',
-  ordersDescription: 'Agrupe saídas PDF, STEP e outras fixadas a uma versão em pedidos para fornecedores.',
-  ordersAddsView: 'a visualização Pedidos',
-  ordersAddsMenu: 'o submenu Pedidos do menu de contexto',
-  ordersAddsHistory: '"Adicionar ao pedido" no histórico de versões',
-  ordersAddsSettings: 'Configurações > Pedidos',
+  supplyChainName: 'Cadeia de suprimentos',
+  supplyChainDescription:
+    'Fornecedores, o portal de fornecedores e pedidos de saídas PDF, STEP e outras fixadas a uma versão para eles.',
+  supplyChainAddsView: 'a visualização Pedidos',
+  supplyChainAddsMenu: 'o submenu Pedidos do menu de contexto',
+  supplyChainAddsHistory: '"Adicionar ao pedido" no histórico de versões',
+  supplyChainAddsSettings: 'Configurações > Pedidos',
+  supplyChainAddsSuppliers: 'o banco de dados de fornecedores',
+  supplyChainAddsPortal: 'o portal de fornecedores',
+  supplyChainAddsVendors: 'a aba Fornecedores dos arquivos',
 
   core_explorer: 'Explorador de arquivos',
   core_versions: 'Versões',

@@ -11,6 +11,7 @@ import {
   OFFICIAL_EXTENSIONS,
   OFFICIAL_EXTENSION_IDS,
   dependentsOf,
+  detailsTabsOfUninstalledExtensions,
   extensionOfCommand,
   extensionOfMenuEntry,
   extensionOfSettingsTab,
@@ -40,11 +41,11 @@ describe('install state', () => {
   it('uninstalls only on an explicit installed: false', () => {
     const o = org({
       'blueplm.reviews': { installed: false },
-      'blueplm.orders': { installed: true },
+      'blueplm.supply-chain': { installed: true },
       'blueplm.inspection': { installed: 'no' },
     })
     expect(officialExtensionInstalled(o, 'blueplm.reviews')).toBe(false)
-    expect(officialExtensionInstalled(o, 'blueplm.orders')).toBe(true)
+    expect(officialExtensionInstalled(o, 'blueplm.supply-chain')).toBe(true)
     expect(officialExtensionInstalled(o, 'blueplm.inspection')).toBe(true)
     expect(uninstalledOfficialExtensions(o)).toEqual(['blueplm.reviews'])
   })
@@ -57,9 +58,9 @@ describe('install state', () => {
 
   it('round-trips the joined key selectors use, dropping unknown ids', () => {
     expect(parseExtensionIds('')).toEqual([])
-    expect(parseExtensionIds('blueplm.reviews,blueplm.nope,blueplm.orders')).toEqual([
+    expect(parseExtensionIds('blueplm.reviews,blueplm.nope,blueplm.supply-chain')).toEqual([
       'blueplm.reviews',
-      'blueplm.orders',
+      'blueplm.supply-chain',
     ])
   })
 })
@@ -85,7 +86,7 @@ describe('manifests', () => {
     expect(extensionOfSettingsTab('profile')).toBeNull()
     expect(extensionOfCommand('download-review-package')).toBe('blueplm.reviews')
     expect(extensionOfCommand('checkin')).toBeNull()
-    expect(extensionOfMenuEntry('orders')).toBe('blueplm.orders')
+    expect(extensionOfMenuEntry('orders')).toBe('blueplm.supply-chain')
     expect(extensionOfMenuEntry('reviews')).toBe('blueplm.reviews')
     expect(extensionOfMenuEntry('generate.local.inspectionReport')).toBe('blueplm.inspection')
   })
@@ -94,13 +95,19 @@ describe('manifests', () => {
 describe('gates', () => {
   it('deny the modules of uninstalled extensions to everyone', () => {
     // The Reviews view stays without Reviews: workflow gate approvals are decided there.
-    const modules = modulesOfUninstalledExtensions(['blueplm.reviews', 'blueplm.orders'])
-    expect(modules).toEqual(['orders'])
+    const modules = modulesOfUninstalledExtensions(['blueplm.reviews', 'blueplm.supply-chain'])
+    expect(modules).toEqual(['orders', 'supplier-database', 'supplier-portal'])
     const denied = computeDeniedModules([], true, true, modules)
     expect(denied.has('reviews')).toBe(false)
     expect(denied.has('orders')).toBe(true)
     expect(denied.has('explorer')).toBe(false)
     expect(computeDeniedModules([], true, true, []).size).toBe(0)
+  })
+
+  it('hide the details tabs of uninstalled extensions', () => {
+    expect(detailsTabsOfUninstalledExtensions([])).toEqual([])
+    expect(detailsTabsOfUninstalledExtensions(['blueplm.inspection'])).toEqual(['inspection'])
+    expect(detailsTabsOfUninstalledExtensions(['blueplm.supply-chain'])).toEqual(['vendors', 'orders'])
   })
 
   it('hide a settings tab of an uninstalled extension, admins included', () => {
@@ -109,7 +116,7 @@ describe('gates', () => {
       .find((i) => i.id === 'inspection-templates')!
     expect(isSettingsTabAvailable(tab, true, true)).toBe(true)
     expect(isSettingsTabAvailable(tab, true, true, ['blueplm.inspection'])).toBe(false)
-    expect(isSettingsTabAvailable(tab, true, true, ['blueplm.orders'])).toBe(true)
+    expect(isSettingsTabAvailable(tab, true, true, ['blueplm.supply-chain'])).toBe(true)
   })
 
   it('show Settings > Extensions on the web', () => {
@@ -131,7 +138,7 @@ describe('dependency plans', () => {
   })
 
   it('install just the extension when its dependencies are core only', () => {
-    expect(planInstall('blueplm.orders', (id) => id !== 'blueplm.orders').install).toEqual(['blueplm.orders'])
+    expect(planInstall('blueplm.supply-chain', (id) => id !== 'blueplm.supply-chain').install).toEqual(['blueplm.supply-chain'])
   })
 })
 

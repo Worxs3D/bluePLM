@@ -7,7 +7,7 @@ import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPan
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
-import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
+import { useHiddenDetailsTabs } from '@/hooks/useOfficialExtensionInstalled'
 import { ArrowLeft } from 'lucide-react'
 import { canPopOutTabs, isPopoutTab } from '../panelPopout/panelPopout'
 import { PanelTabMenu, PoppedOutPlaceholder } from '../panelPopout/PanelTabMenu'
@@ -40,10 +40,10 @@ export function RightPanel() {
     })),
   )
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
-  // The Inspection tab is the Inspection extension's: without it the tab is left out here, and the
-  // layout keeps it for a reinstall.
-  const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
-  const rightPanelTabs = inspectionInstalled ? storedTabs : storedTabs.filter((tab) => tab !== 'inspection')
+  // Tabs of uninstalled official extensions (Inspection, Vendors, Orders) are left out here; the
+  // layout keeps them for a reinstall.
+  const hiddenTabs = useHiddenDetailsTabs()
+  const rightPanelTabs = hiddenTabs.size === 0 ? storedTabs : storedTabs.filter((tab) => !hiddenTabs.has(tab))
   const rightPanelTab = storedTab && rightPanelTabs.includes(storedTab) ? storedTab : (rightPanelTabs[0] ?? null)
   const poppedOutTabs = usePDMStore((s) => s.poppedOutTabs)
   const [tabMenu, setTabMenu] = useState<{

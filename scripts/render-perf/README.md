@@ -270,15 +270,15 @@ and returns its lines or error, `lastExport` is the request Export zip sent, `mo
 
 ## Official extension scenes
 
-Settings > Extensions and the app without Reviews, Inspection or Orders (schema 516). The scenes
+Settings > Extensions and the app without Reviews, Inspection or Supply chain (schema 516). The scenes
 (`src/perf/app/lookScenes/extensions.ts`) write `organization.settings.extensions` on the fake
 organization row and in the store, and define `org_extension_set_installed` on the fake with the
 migration's rules (admin only, known ids), so Install and Uninstall work end to end.
 
-Scenes: `extensions-catalog` (all installed), `extensions-catalog-mixed` (Inspection and Orders
+Scenes: `extensions-catalog` (all installed), `extensions-catalog-mixed` (Inspection and Supply chain
 not installed), `extensions-uninstall-reviews` and `extensions-uninstall-inspection` (the
-confirmation), `extensions-install-orders`, `extensions-none-installed` (the drawing with its
-Inspection tab asked for, all three uninstalled: no Reviews or Orders view, no Inspection tab) and
+confirmation), `extensions-install-supply-chain`, `extensions-none-installed` (the drawing with its
+Inspection tab asked for, all three uninstalled: no Orders or supplier views, no Inspection or Vendors tab) and
 `extensions-all-installed` to compare. `--as sam` shows the member's read-only catalog.
 
 ```
@@ -286,4 +286,4 @@ npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --scene extensions-uninsta
 npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --as sam --scene extensions-catalog --shot member --out <dir>
 ```
 
-`window.__blueplmLookExtensions.set('blueplm.orders', false)` changes one extension for `--eval`.
+`window.__blueplmLookExtensions.set('blueplm.supply-chain', false)` changes one extension for `--eval`.
