@@ -24,6 +24,17 @@ All notable changes to BluePLM will be documented in this file.
   untoleranced angles the angle rule for theirs. Before, the angle column was dropped or read as
   lengths, and `X.` (whole numbers) was not recognised. Each entry belongs to the column header it
   sits under, whether the block is one note or a grid of cells.
+- **Balloons no longer land on top of dimensions (SolidWorks service 1.30.0).** Balloons were
+  dropped at a fixed offset from each annotation's anchor point, so they often covered the
+  dimension's own text, a neighbour's text or the part. The service now reads what is on each sheet
+  (every annotation's text and lines, view edges and hatching, the sheet format) and lays the
+  balloons out together: each sits right next to its own characteristic, never on text or another
+  balloon, off lines where there is room, and closer to its own characteristic than to any other.
+  The layout is deterministic, so the same drawing always gets the same balloons. Balloons an older
+  service placed that were never moved are moved into the new layout (`relaid`); hand-moved
+  balloons stay where they are. Not yet confirmed in a real SOLIDWORKS session (R27-R31 in
+  `SolidWorksAPI.BalloonScene.cs`): if the drawing data cannot be read, placement falls back to
+  estimated text boxes and view outlines, and the service log says so per sheet.
 
 ## [5.13.0] - 2026-11-05
 

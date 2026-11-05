@@ -1397,6 +1397,7 @@ declare global {
             keptPositions: number
             kept?: number
             unchanged?: boolean
+            relaid?: number
             saved: boolean
           }
           error?: string

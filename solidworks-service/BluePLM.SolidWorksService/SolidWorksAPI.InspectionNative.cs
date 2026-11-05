@@ -1166,7 +1166,33 @@ namespace BluePLM.SolidWorksService
             var targets = ordered.SelectMany(sg => sg.SelectMany(p => p.items.Select(b =>
                 new InspectionNative.BalloonTarget(b.Label, p.site.Sheet.Name, p.site.ViewName)))).ToList();
             var plan = InspectionNative.PlanBalloonUpdate(oldBalloons, targets);
-            report.Kept = plan.Kept;
+
+            double charHeight = 0;
+            try { charHeight = doc.Extension.GetUserPreferenceTextFormat((int)swUserPreferenceTextFormat_e.swDetailingBalloonTextFormat, 0)?.CharHeight ?? 0; } catch { }
+            if (charHeight <= 0)
+            {
+                try { charHeight = doc.Extension.GetUserPreferenceTextFormat((int)swUserPreferenceTextFormat_e.swDetailingNoteTextFormat, 0)?.CharHeight ?? 0; } catch { }
+            }
+            var diameter = InspectionNative.BalloonDiameter(charHeight);
+
+            // 3b. A kept balloon still exactly where the pre-1.30.0 placer put it was never moved by
+            //     hand, so the layout re-places it (moved, not replaced: it stays the same note).
+            var relaid = new HashSet<int>();
+            {
+                var t = 0;
+                foreach (var sg in ordered)
+                    foreach (var (site, items) in sg)
+                    {
+                        var (cx, cy) = OutwardCentre(site);
+                        var legacy = InspectionNative.BalloonPositions(site.X, site.Y, cx, cy, items.Count, diameter,
+                            site.Sheet.WidthM, site.Sheet.HeightM);
+                        for (var i = 0; i < items.Count; i++, t++)
+                            if (plan.Actions[t] == InspectionNative.BalloonAction.Keep
+                                && InspectionNative.AtLegacyPosition(oldBalloons[plan.OldIndex[t]!.Value], legacy[i]))
+                                relaid.Add(t);
+                    }
+            }
+            report.Kept = plan.Kept - relaid.Count;
 
             // The layer is created only when something will be inserted on it. An existing layer is
             // made visible and printable on every run, so balloons reach every PDF made from the
@@ -1224,44 +1250,84 @@ namespace BluePLM.SolidWorksService
                 report.RemovedPrevious += selected;
             }
 
-            if (plan.Inserts == 0) return null;
+            if (plan.Inserts == 0 && relaid.Count == 0) return null;
 
-            // 5. Insert the requests with no kept balloon. A balloon that cannot be placed fails the whole call.
-            double charHeight = 0;
-            try { charHeight = doc.Extension.GetUserPreferenceTextFormat((int)swUserPreferenceTextFormat_e.swDetailingBalloonTextFormat, 0)?.CharHeight ?? 0; } catch { }
-            if (charHeight <= 0)
-            {
-                try { charHeight = doc.Extension.GetUserPreferenceTextFormat((int)swUserPreferenceTextFormat_e.swDetailingNoteTextFormat, 0)?.CharHeight ?? 0; } catch { }
-            }
-            var diameter = InspectionNative.BalloonDiameter(charHeight);
-
+            // 5. Lay out and insert the requests with no kept balloon, and move the relaid ones. A
+            //    balloon that cannot be placed fails the whole call.
             try { layerMgr.SetCurrentLayer(InspectionNative.BalloonLayer); } catch { }
+
+            // Old balloons that are gone (deleted) or about to move (relaid) are not obstacles.
+            var leaving = new HashSet<AnnotationSite>(plan.Delete.Select(i => previousSites[i]));
+            foreach (var t in relaid) leaving.Add(previousSites[plan.OldIndex[t]!.Value]);
+            bool LaidOut(int t) => plan.Actions[t] == InspectionNative.BalloonAction.InsertComputed || relaid.Contains(t);
 
             var targetIndex = 0;
             foreach (var sheetGroup in ordered)
             {
-                var sheetActivated = false;
+                var firstTarget = targetIndex;
+                targetIndex += sheetGroup.Sum(p => p.items.Count);
+                if (!Enumerable.Range(firstTarget, targetIndex - firstTarget).Any(t => plan.Actions[t] != InspectionNative.BalloonAction.Keep || relaid.Contains(t)))
+                    continue;
+
+                try { drw.ActivateSheet(sheetGroup.Key); } catch { }
+                var sheet = sheetGroup.First().site.Sheet;
+
+                // The sheet as it is now, plus the balloons going back where they were (InsertAtOld).
+                var build = BuildBalloonScene(sheet, sites.Where(x => ReferenceEquals(x.Sheet, sheet)), leaving, diameter);
+                var subjects = new List<BalloonLayout.Subject>();
+                var subjectTargets = new List<List<int>>();
+                var subjectSites = new HashSet<AnnotationSite>();
+                var t0 = firstTarget;
                 foreach (var (site, items) in sheetGroup)
                 {
-                    // Computed positions stay those of the full stack, so a new value of an annotation
-                    // goes where it would have gone and does not land on a kept sibling.
-                    var (cx, cy) = OutwardCentre(site);
-                    var positions = InspectionNative.BalloonPositions(site.X, site.Y, cx, cy, items.Count, diameter,
-                        site.Sheet.WidthM, site.Sheet.HeightM);
-
+                    var need = new List<int>();
                     for (var i = 0; i < items.Count; i++)
                     {
-                        var t = targetIndex++;
-                        var action = plan.Actions[t];
-                        if (action == InspectionNative.BalloonAction.Keep) continue;
-                        if (!sheetActivated)
+                        var t = t0 + i;
+                        if (LaidOut(t)) need.Add(t);
+                        else if (plan.Actions[t] == InspectionNative.BalloonAction.InsertAtOld)
                         {
-                            try { drw.ActivateSheet(sheetGroup.Key); } catch { }
-                            sheetActivated = true;
+                            var old = oldBalloons[plan.OldIndex[t]!.Value];
+                            build.Scene.Balloons.Add(new BalloonLayout.Circle(old.X, old.Y, diameter / 2));
                         }
+                    }
+                    t0 += items.Count;
+                    if (need.Count == 0) continue;
+                    var anchor = build.Anchors.TryGetValue(site, out var a) ? a : EstimatedTextBox(site.X, site.Y, diameter);
+                    subjects.Add(new BalloonLayout.Subject(anchor, need.Count));
+                    subjectTargets.Add(need);
+                    subjectSites.Add(site);
+                }
+                foreach (var kv in build.Anchors)
+                    if (!subjectSites.Contains(kv.Key)) build.Scene.OtherAnchors.Add(kv.Value);
+
+                var layout = BalloonLayout.Place(subjects, build.Scene, diameter);
+                Console.Error.WriteLine($"[InspectionNative] Balloon layout, {build.Summary(sheetGroup.Key)}; {subjects.Count} characteristic(s) laid out");
+                var computed = new Dictionary<int, (double X, double Y)>();
+                for (var s = 0; s < subjects.Count; s++)
+                    for (var j = 0; j < subjectTargets[s].Count; j++)
+                        computed[subjectTargets[s][j]] = layout[s][j];
+
+                t0 = firstTarget;
+                foreach (var (site, items) in sheetGroup)
+                {
+                    for (var i = 0; i < items.Count; i++)
+                    {
+                        var t = t0 + i;
+                        var action = plan.Actions[t];
+                        if (relaid.Contains(t))
+                        {
+                            var (rx, ry) = computed[t];
+                            changed = true;
+                            if (!MoveBalloon(previousSites[plan.OldIndex[t]!.Value].Annotation, rx, ry, diameter))
+                                return new CommandResult { Success = false, Error = $"Could not move balloon '{items[i].Label}' for {items[i].SourceKey}", Data = report };
+                            report.Relaid++;
+                            continue;
+                        }
+                        if (action == InspectionNative.BalloonAction.Keep) continue;
 
                         changed = true;
-                        var (x, y) = positions[i];
+                        double x, y;
                         if (action == InspectionNative.BalloonAction.InsertAtOld)
                         {
                             var old = oldBalloons[plan.OldIndex[t]!.Value];
@@ -1269,7 +1335,10 @@ namespace BluePLM.SolidWorksService
                             y = old.Y;
                             report.KeptPositions++;
                         }
-                        if (!InsertBalloon(doc, drw, site, items[i].Label, x, y))
+                        else (x, y) = computed[t];
+
+                        var laidOut = action == InspectionNative.BalloonAction.InsertComputed;
+                        if (!InsertBalloon(doc, drw, site, items[i].Label, x, y, laidOut ? diameter : 0))
                         {
                             return new CommandResult
                             {
@@ -1280,10 +1349,23 @@ namespace BluePLM.SolidWorksService
                         }
                         report.Placed++;
                     }
+                    t0 += items.Count;
                 }
             }
 
             return null;
+        }
+
+        /// <summary>Moves a kept balloon to a laid-out centre (its leader, size and style stay).</summary>
+        private static bool MoveBalloon(Annotation ann, double x, double y, double diameter)
+        {
+            try
+            {
+                if (!ann.SetPosition2(x, y, 0) && !ann.SetPosition(x, y, 0)) return false;
+            }
+            catch { return false; }
+            CentreBalloon(ann, x, y, diameter);
+            return true;
         }
 
         private static int SubIndex(string sourceKey)
@@ -1354,7 +1436,10 @@ namespace BluePLM.SolidWorksService
             return (site.Sheet.WidthM / 2, site.Sheet.HeightM / 2);
         }
 
-        private static bool InsertBalloon(ModelDoc2 doc, DrawingDoc drw, AnnotationSite site, string label, double x, double y)
+        /// <param name="centre">The balloon diameter when (x, y) is the wanted circle centre (laid out):
+        /// the balloon is then centred on it by its drawn circle (R31). 0 keeps SetPosition2's anchor
+        /// as given (an old balloon's recorded position, R13).</param>
+        private static bool InsertBalloon(ModelDoc2 doc, DrawingDoc drw, AnnotationSite site, string label, double x, double y, double centre)
         {
             // A13: activate the owning view so the note belongs to it and moves with it.
             try
@@ -1372,6 +1457,7 @@ namespace BluePLM.SolidWorksService
             if (!(note.GetAnnotation() is Annotation ann)) return false;
             try { ann.Layer = InspectionNative.BalloonLayer; } catch { }
             try { if (!ann.SetPosition2(x, y, 0)) ann.SetPosition(x, y, 0); } catch { }
+            if (centre > 0) CentreBalloon(ann, x, y, centre);
 
             string? layer = null;
             try { layer = ann.Layer; } catch { }
