@@ -360,7 +360,7 @@ export function MetadataColumnsSettings() {
     <SettingsPage>
       <SettingsSection
         title={t('settingsPages.metadata.builtInColumns')}
-        description={`Standard columns. ${
+        description={`${t('settingsPages.metadata.standardColumns')} ${
           isAdmin
             ? t('settingsPages.metadata.adminBuiltInHelp')
               : t('settingsPages.metadata.memberBuiltInHelp')
@@ -583,7 +583,7 @@ export function MetadataColumnsSettings() {
         <SettingsGroup>
           {user && (
             <SettingRow
-              label="Your layout"
+              label={t('settingsPages.metadata.yourLayout')}
               description={t('settingsPages.metadata.personalDefaultsHelp')}
             >
               <Button
@@ -606,7 +606,7 @@ export function MetadataColumnsSettings() {
           )}
           {organization && (
             <SettingRow
-              label="Organization layout"
+              label={t('settingsPages.metadata.organizationLayout')}
               description={
                 isAdmin
                   ? t('settingsPages.metadata.organizationDefaultsHelp')

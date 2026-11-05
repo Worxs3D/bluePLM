@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+
 // i18n module - internationalization support for BluePLM
 // Re-export types
 export type { Language, TranslationValue, TranslationDict, FlatTranslations } from './types'
@@ -53,8 +55,11 @@ function interpolate(text: string, params?: TranslationParams): string {
 export function useTranslation() {
   const language = usePDMStore((state) => state.language)
 
-  const t = (key: string, fallbackOrParams?: string | TranslationParams): string =>
-    getTranslation(language, key, fallbackOrParams)
+  const t = useCallback(
+    (key: string, fallbackOrParams?: string | TranslationParams): string =>
+      getTranslation(language, key, fallbackOrParams),
+    [language],
+  )
 
   return { t, language }
 }

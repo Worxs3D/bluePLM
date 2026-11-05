@@ -85,7 +85,12 @@ export function SettingsSearchResults() {
                     onMouseMove={() => {
                       if (!isActive) setActiveIndex(index)
                     }}
-                    onClick={() => openSettingFromSearch(hit.entry.tab, hit.entry.label)}
+                    onClick={() =>
+                      openSettingFromSearch(
+                        hit.entry.tab,
+                        hit.entry.isTab ? undefined : hit.entry.label,
+                      )
+                    }
                     className={`-mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-2 text-left outline-none transition-colors ${
                       isActive ? 'bg-ui-hover' : ''
                     }`}

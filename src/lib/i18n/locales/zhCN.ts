@@ -223,6 +223,19 @@ export const zhCN: TranslationDict = {
   },
 
   source: {
+    outputs: {
+      settingsTitle: '签入时生成的输出文件',
+      settingsDescription:
+        '成功签入后，桌面应用会基于已签入版本在后台逐个生成这些输出文件。超过 {{max}} 个文件的签入，以及未安装 SOLIDWORKS 的计算机都会跳过。签入操作不会等待生成完成。',
+      settingsAdminOnly: '只有管理员可以更改此设置。',
+      settingsPdf: '每个已签入工程图的 PDF',
+      settingsPdfHint: '显示在文件列表的工程图下方，并用于评审和检验报告。',
+      settingsStep: '每个已签入零件和装配体的 STEP',
+      settingsStepHint: '文件保存时使用的配置。',
+      settingsSaved: '已保存签入时输出设置',
+      settingsSaveFailed: '保存失败：{{error}}',
+      settingsNoPermission: '您没有权限更改组织设置。',
+    },
     configTree: {
       drawings: '工程图',
       ebom: 'eBOM',
@@ -1263,6 +1276,7 @@ export const zhCN: TranslationDict = {
   settingsPages: {
     export: {
       title: '导出设置',
+      permissionDenied: '你没有权限更改组织设置',
       description: '配置导出文件的命名方式',
       loading: '正在加载导出设置…',
       savedPersonal: '已保存为个人偏好',
@@ -1376,6 +1390,8 @@ export const zhCN: TranslationDict = {
       optionExists: '此选项已存在',
       builtInColumns: '内置列',
       standardColumns: '标准列。',
+      yourLayout: '你的布局',
+      organizationLayout: '组织布局',
       adminBuiltInHelp: '为您的组织设置默认宽度和可见性。',
       memberBuiltInHelp: '切换可见性以显示/隐藏。',
       column: '列',

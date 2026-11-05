@@ -723,10 +723,9 @@ export interface UISlice {
   setSettingsTab: (tab: SettingsTab) => void
   setSettingsSearchQuery: (query: string) => void
   setSettingsSearchActiveIndex: (index: number) => void
-  /** Open `tab`, clear the search, and ask the panel to reveal the setting named `label`. */
-  openSettingFromSearch: (tab: SettingsTab, label: string) => void
+  /** Open `tab`, clear the search, and optionally reveal a setting named `label`. */
+  openSettingFromSearch: (tab: SettingsTab, label?: string) => void
   clearSettingsFocusTarget: () => void
-
 
   // Clipboard
   setClipboard: (clipboard: { files: LocalFile[]; operation: 'copy' | 'cut' } | null) => void
@@ -1171,7 +1170,9 @@ export interface FilesSlice {
   setCheckoutHydrationStatus: (fileId: string, status: CheckoutHydrationStatus) => void
   clearCheckoutHydrationStatus: (fileId: string) => void
   /** Record many hydration statuses in a single store update. */
-  setCheckoutHydrationStatuses: (entries: ReadonlyArray<readonly [string, CheckoutHydrationStatus]>) => void
+  setCheckoutHydrationStatuses: (
+    entries: ReadonlyArray<readonly [string, CheckoutHydrationStatus]>,
+  ) => void
   /** Drop many hydration statuses in a single store update. */
   clearCheckoutHydrationStatuses: (fileIds: readonly string[]) => void
   clearCheckoutHydration: () => void
@@ -1849,13 +1850,7 @@ export interface OrganizationDataSlice {
 // system stats, and integration settings)
 
 /** Integration identifiers for status tracking */
-export type IntegrationId =
-  | 'supabase'
-  | 'solidworks'
-  | 'google-drive'
-  | 'odoo'
-  | 'webhooks'
-  | 'api'
+export type IntegrationId = 'supabase' | 'solidworks' | 'google-drive' | 'odoo' | 'webhooks' | 'api'
 
 /** Status of an individual integration */
 export type IntegrationStatusValue =

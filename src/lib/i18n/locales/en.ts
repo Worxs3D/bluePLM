@@ -2837,6 +2837,7 @@ export const en: TranslationDict = {
   settingsPages: {
     export: {
       title: 'Export Settings',
+      permissionDenied: 'You do not have permission to change the organization settings',
       description: 'Configure how exported files are named',
       loading: 'Loading export settings...',
       savedPersonal: 'Saved as your personal preference',
@@ -2953,6 +2954,8 @@ export const en: TranslationDict = {
       optionExists: 'This option already exists',
       builtInColumns: 'Built-in Columns',
       standardColumns: 'Standard columns.',
+      yourLayout: 'Your layout',
+      organizationLayout: 'Organization layout',
       adminBuiltInHelp: 'Set default width and visibility for your organization.',
       memberBuiltInHelp: 'Toggle visibility to show/hide.',
       column: 'Column',

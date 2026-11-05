@@ -17,6 +17,7 @@ const settingsFiles = [
   'organization/MetadataColumnsSettings.tsx',
   'organization/MetadataColumnEditor.tsx',
   'organization/MetadataColumnDialogs.tsx',
+  'system/AutoOutputSettings.tsx',
   'system/ExportSettings.tsx',
   'system/SerializationSettingsPresentation.tsx',
 ]
@@ -24,19 +25,21 @@ const usedKeys = new Set(
   settingsFiles.flatMap((file) => {
     const source = readFileSync(join(process.cwd(), 'src/features/settings', file), 'utf8')
     const directKeys = source.matchAll(
-      /\b(?:t|translate)\('((?:settings|accountSettings|settingsPages)\.[^']+)'/g,
+      /\b(?:t|translate)\('((?:settings|accountSettings|settingsPages|source\.outputs)\.[^']+)'/g,
     )
     const dataKeys = source.matchAll(
       /\b(?:translationKey|labelKey|descriptionKey|noteKey)\s*:\s*'((?:settings|accountSettings|settingsPages)\.[^']+)'/g,
     )
-    return [
-      ...directKeys,
-      ...dataKeys,
-    ].map((match) => match[1])
+    return [...directKeys, ...dataKeys].map((match) => match[1])
   }),
 )
-const catalogSource = readFileSync(join(process.cwd(), 'src/features/settings/settingsCatalog.ts'), 'utf8')
-for (const match of catalogSource.matchAll(/:\s*'((?:settings|preferences|accountSettings|sidebar|securityMonitoring)\.[^']+)'/g)) {
+const catalogSource = readFileSync(
+  join(process.cwd(), 'src/features/settings/settingsCatalog.ts'),
+  'utf8',
+)
+for (const match of catalogSource.matchAll(
+  /:\s*'((?:settings|preferences|accountSettings|sidebar|securityMonitoring)\.[^']+)'/g,
+)) {
   usedKeys.add(match[1])
 }
 for (const key of [
@@ -50,12 +53,14 @@ for (const key of [
   'settings.backupsWorking',
   'settings.backupFailed',
   'preferences.updateReadyTitle',
+  'source.outputs.settingsTitle',
 ]) {
   usedKeys.add(key)
 }
 
 const flat = (dict: TranslationDict) => flattenTranslations(dict)
-const tokens = (value: string) => [...value.matchAll(/\{\{[^{}]+\}\}/g)].map((match) => match[0]).sort()
+const tokens = (value: string) =>
+  [...value.matchAll(/\{\{[^{}]+\}\}/g)].map((match) => match[0]).sort()
 
 describe('settings localization coverage', () => {
   it('preserves case and singular forms in English', () => {
@@ -66,6 +71,17 @@ describe('settings localization coverage', () => {
       '{{digits}} digit ({{first}}-{{last}})',
     )
     expect(values['settingsPages.noOrganizationSelected']).toBe('No organization selected')
+  })
+
+  it.each([
+    ['de', de, '{{digits}} Stelle ({{first}}-{{last}})'],
+    ['es', es, '{{digits}} dígito ({{first}}-{{last}})'],
+    ['fr', fr, '{{digits}} chiffre ({{first}}-{{last}})'],
+    ['pt', pt, '{{digits}} dígito ({{first}}-{{last}})'],
+    ['zh-CN', zhCN, '{{digits}} 位（{{first}}-{{last}}）'],
+    ['zh-TW', zhTW, '{{digits}} 位（{{first}}-{{last}}）'],
+  ])('uses a singular digit label in %s', (_, dict, expected) => {
+    expect(flat(dict)['settingsPages.serialization.tabDigitsOptionOne']).toBe(expected)
   })
 
   it.each(Object.entries(locales))(

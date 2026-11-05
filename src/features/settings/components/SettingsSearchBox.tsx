@@ -50,7 +50,7 @@ export function SettingsSearchBox() {
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const hit = hits[Math.min(activeIndex, hits.length - 1)]
-      openSettingFromSearch(hit.entry.tab, hit.entry.label)
+      openSettingFromSearch(hit.entry.tab, hit.entry.isTab ? undefined : hit.entry.label)
       inputRef.current?.blur()
     }
   }

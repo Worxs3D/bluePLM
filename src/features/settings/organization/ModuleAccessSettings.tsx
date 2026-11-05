@@ -326,7 +326,7 @@ export function ModuleAccessSettings() {
                               onClick={() => handleSave(module.id)}
                               disabled={!dirty}
                             >
-                              {t('settingsPages.saveSettings')}
+                              {t('common.save')}
                             </Button>
 
                             {(draft.teamIds.length > 0 || draft.userIds.length > 0) && (

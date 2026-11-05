@@ -35,10 +35,12 @@ function runSearch(
   const uninstalled = parseExtensionIds(uninstalledKey)
   const sections = settingsSections(t).map((section) => ({
     ...section,
-    items: section.items.filter((item) => isSettingsTabAvailable(item, isAdmin, desktop, uninstalled)),
+    items: section.items.filter((item) =>
+      isSettingsTabAvailable(item, isAdmin, desktop, uninstalled),
+    ),
   }))
   const groups = query.trim()
-    ? searchSettings(buildSettingsSearchIndex(sections, settingsCatalogFor(desktop)), query)
+    ? searchSettings(buildSettingsSearchIndex(sections, settingsCatalogFor(desktop), t), query)
     : []
   const value = { query: query.trim(), groups, hits: flattenSettingsSearch(groups) }
   cache = { key, value }

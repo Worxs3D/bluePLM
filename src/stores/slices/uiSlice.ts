@@ -273,11 +273,13 @@ export const createUISlice: StateCreator<
   setSettingsSearchQuery: (query: string) =>
     set({ settingsSearchQuery: query, settingsSearchActiveIndex: 0 }),
   setSettingsSearchActiveIndex: (index: number) => set({ settingsSearchActiveIndex: index }),
-  openSettingFromSearch: (tab: SettingsTab, label: string) =>
+  openSettingFromSearch: (tab: SettingsTab, label?: string) =>
     set((state) => ({
       settingsTab: tab,
       settingsSearchQuery: '',
-      settingsFocusTarget: { tab, label, nonce: (state.settingsFocusTarget?.nonce ?? 0) + 1 },
+      settingsFocusTarget: label
+        ? { tab, label, nonce: (state.settingsFocusTarget?.nonce ?? 0) + 1 }
+        : null,
     })),
   clearSettingsFocusTarget: () => set({ settingsFocusTarget: null }),
 

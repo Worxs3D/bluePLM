@@ -16,7 +16,14 @@ interface SettingsNavigationProps {
 }
 
 // Items that show a connection status dot
-const integrationIds = ['supabase', 'solidworks', 'google-drive', 'odoo', 'webhooks', 'api'] as const
+const integrationIds = [
+  'supabase',
+  'solidworks',
+  'google-drive',
+  'odoo',
+  'webhooks',
+  'api',
+] as const
 
 type DotStatus = IntegrationStatusValue | BackupStatusValue
 
@@ -96,7 +103,9 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
       >
         {sections.map((section) => (
           <div key={section.category} className="pt-5">
-            <div className="pb-1.5 text-[14px] leading-5 text-ui-fg-tertiary">{section.category}</div>
+            <div className="pb-1.5 text-[14px] leading-5 text-ui-fg-tertiary">
+              {section.category}
+            </div>
             <ul>
               {section.items.map((item) => {
                 const selected = activeTab === item.id && !query
@@ -110,7 +119,8 @@ export function SettingsNavigation({ activeTab, onTabChange }: SettingsNavigatio
                       onClick={() => {
                         logSettings(`Changed settings tab to ${item.label}`, { tabId: item.id })
                         if (query) {
-                          usePDMStore.getState().openSettingFromSearch(item.id, item.label)
+                          // A tab label is not a setting label rendered in the panel.
+                          usePDMStore.getState().openSettingFromSearch(item.id)
                         } else {
                           onTabChange(item.id)
                         }

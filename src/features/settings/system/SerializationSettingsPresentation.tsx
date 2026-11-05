@@ -336,12 +336,14 @@ export function SerializationSettingsPresentation({
               disabled={locked}
               className="w-40"
             >
-              <option value={3}>3 digits (001)</option>
-              <option value={4}>4 digits (0001)</option>
-              <option value={5}>5 digits (00001)</option>
-              <option value={6}>6 digits (000001)</option>
-              <option value={7}>7 digits (0000001)</option>
-              <option value={8}>8 digits (00000001)</option>
+              {[3, 4, 5, 6, 7, 8].map((digits) => (
+                <option key={digits} value={digits}>
+                  {t('settingsPages.serialization.digitsOption', {
+                    digits,
+                    sample: String(1).padStart(digits, '0'),
+                  })}
+                </option>
+              ))}
             </Select>
           </SettingRow>
           <SettingRow
@@ -481,10 +483,19 @@ export function SerializationSettingsPresentation({
                 disabled={locked}
                 className="w-40"
               >
-                <option value={1}>1 digit (1-9)</option>
-                <option value={2}>2 digits (01-99)</option>
-                <option value={3}>3 digits (001-999)</option>
-                <option value={4}>4 digits (0001-9999)</option>
+                {[1, 2, 3, 4].map((digits) => {
+                  const rangeEnd = 10 ** digits - 1
+                  return (
+                    <option key={digits} value={digits}>
+                      {t(
+                        digits === 1
+                          ? 'settingsPages.serialization.tabDigitsOptionOne'
+                          : 'settingsPages.serialization.tabDigitsOption',
+                        { digits, first: 1, last: rangeEnd },
+                      )}
+                    </option>
+                  )
+                })}
               </Select>
             </SettingRow>
             <SettingRow

@@ -223,6 +223,19 @@ export const zhTW: TranslationDict = {
   },
 
   source: {
+    outputs: {
+      settingsTitle: '簽入時產生的輸出檔',
+      settingsDescription:
+        '成功簽入後，桌面應用程式會以已簽入版本為基礎，在背景逐一產生這些輸出檔。超過 {{max}} 個檔案的簽入，以及未安裝 SOLIDWORKS 的電腦都會略過。簽入不會等待產生完成。',
+      settingsAdminOnly: '只有管理員可以變更此設定。',
+      settingsPdf: '每個已簽入工程圖的 PDF',
+      settingsPdfHint: '顯示在檔案清單的工程圖下方，並用於審查與檢驗報告。',
+      settingsStep: '每個已簽入零件與組合件的 STEP',
+      settingsStepHint: '檔案儲存時所使用的組態。',
+      settingsSaved: '已儲存簽入時輸出設定',
+      settingsSaveFailed: '儲存失敗：{{error}}',
+      settingsNoPermission: '您沒有權限變更組織設定。',
+    },
     configTree: {
       drawings: '工程圖',
       ebom: 'eBOM',
@@ -1263,6 +1276,7 @@ export const zhTW: TranslationDict = {
   settingsPages: {
     export: {
       title: '匯出設定',
+      permissionDenied: '您沒有權限變更組織設定',
       description: '設定匯出檔案的命名方式',
       loading: '正在載入匯出設定…',
       savedPersonal: '已儲存為個人偏好',
@@ -1376,6 +1390,8 @@ export const zhTW: TranslationDict = {
       optionExists: '此選項已存在',
       builtInColumns: '內建欄位',
       standardColumns: '標準欄位。',
+      yourLayout: '您的版面配置',
+      organizationLayout: '組織版面配置',
       adminBuiltInHelp: '為您的組織設定預設寬度與可見性。',
       memberBuiltInHelp: '切換可見性以顯示/隱藏。',
       column: '欄位',

@@ -44,6 +44,12 @@ interface MetadataColumnDialogsProps {
   onConfirmPush: () => void
 }
 
+export function emphasizeColumnLabel(confirmation: string, label: string): ReactNode {
+  const index = confirmation.indexOf(label)
+  if (!label || index < 0) return confirmation
+  return <>{confirmation.slice(0, index)}<strong>{label}</strong>{confirmation.slice(index + label.length)}</>
+}
+
 /** The delete-column and push-to-all-users confirmations of the File Metadata page. */
 export function MetadataColumnDialogs({
   deletingColumn,
@@ -80,7 +86,10 @@ export function MetadataColumnDialogs({
           }
         >
           <p className="mb-3 text-[14px] text-ui-fg-secondary">
-            {t('settingsPages.metadata.deleteConfirm', { label: deletingColumn.label })}
+            {emphasizeColumnLabel(
+              t('settingsPages.metadata.deleteConfirm', { label: deletingColumn.label }),
+              deletingColumn.label,
+            )}
           </p>
           <p className="mb-4 text-[13px] text-ui-fg">
             {t('settingsPages.metadata.deleteHelp')}
@@ -109,7 +118,12 @@ export function MetadataColumnDialogs({
           }
         >
           <p className="mb-3 text-[14px] text-ui-fg-secondary">
-            {t('settingsPages.metadata.pushConfirm')}
+            {(() => {
+              const confirmation = t('settingsPages.metadata.pushConfirm')
+              const emphasis = t('settingsPages.metadata.pushEmphasis')
+              const index = confirmation.indexOf(emphasis)
+              return index < 0 ? confirmation : <>{confirmation.slice(0, index)}<strong>{emphasis}</strong>{confirmation.slice(index + emphasis.length)}</>
+            })()}
           </p>
           <p className="mb-4 text-[13px] text-ui-fg">
             {t('settingsPages.metadata.pushHelp')}

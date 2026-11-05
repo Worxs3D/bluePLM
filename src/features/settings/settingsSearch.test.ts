@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { settingsCatalog, settingsSections } from './settingsCatalog'
 import { buildSettingsSearchIndex, flattenSettingsSearch, searchSettings } from './settingsSearch'
+import { getTranslation } from '@/lib/i18n'
 
 const index = buildSettingsSearchIndex(settingsSections(), settingsCatalog)
 const search = (q: string) => searchSettings(index, q)
@@ -22,6 +24,19 @@ describe('settings catalog', () => {
 })
 
 describe('searchSettings', () => {
+  it('localizes metadata editor field search while keeping English query terms searchable', () => {
+    const translate = (key: string) => getTranslation('de', key)
+    const germanIndex = buildSettingsSearchIndex(
+      settingsSections(translate),
+      settingsCatalog,
+      (key) => getTranslation('de', key),
+    )
+    const localized = flattenSettingsSearch(searchSettings(germanIndex, 'Interner Name'))[0]
+    expect(localized?.entry).toMatchObject({ label: 'Interner Name', tab: 'metadata-columns' })
+    const englishQuery = flattenSettingsSearch(searchSettings(germanIndex, 'Internal Name'))[0]
+    expect(englishQuery?.entry).toMatchObject({ label: 'Interner Name', tab: 'metadata-columns' })
+  })
+
   it('finds an individual setting by its label', () => {
     expect(top('dark')).toMatchObject({ tab: 'appearance', label: 'Dark' })
     expect(top('keepout')).toMatchObject({ tab: 'serialization', label: 'Keepout Zones' })
@@ -35,7 +50,10 @@ describe('searchSettings', () => {
 
   it('matches multi-word queries across label and tab', () => {
     expect(top('solidworks thumbnail')).toMatchObject({ tab: 'solidworks' })
-    expect(top('serialization keepout')).toMatchObject({ tab: 'serialization', label: 'Keepout Zones' })
+    expect(top('serialization keepout')).toMatchObject({
+      tab: 'serialization',
+      label: 'Keepout Zones',
+    })
   })
 
   it('lists every setting of a tab whose name matches, under one group', () => {

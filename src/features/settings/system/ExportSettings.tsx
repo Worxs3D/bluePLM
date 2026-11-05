@@ -112,14 +112,26 @@ const FILENAME_TOKENS = [
 
 // Preset patterns for quick selection
 const PRESET_PATTERNS = [
-  { pattern: '{filename}_{config}', labelKey: 'settingsPages.export.presets.fileAndConfig', description: 'Part1_Default.step' },
-  { pattern: '{partNumber}', labelKey: 'settingsPages.export.presets.partNumberOnly', description: 'BR-101011-394.step' },
+  {
+    pattern: '{filename}_{config}',
+    labelKey: 'settingsPages.export.presets.fileAndConfig',
+    description: 'Part1_Default.step',
+  },
+  {
+    pattern: '{partNumber}',
+    labelKey: 'settingsPages.export.presets.partNumberOnly',
+    description: 'BR-101011-394.step',
+  },
   {
     pattern: '{partNumber}_Rev{rev}',
     labelKey: 'settingsPages.export.presets.partAndRevision',
     description: 'BR-101011-394_RevA.step',
   },
-  { pattern: '{partNumber}-{tab}', labelKey: 'settingsPages.export.presets.partAndTab', description: 'BR-101011-394.step' },
+  {
+    pattern: '{partNumber}-{tab}',
+    labelKey: 'settingsPages.export.presets.partAndTab',
+    description: 'BR-101011-394.step',
+  },
   {
     pattern: '{partNumber}-{tab}_Rev{rev}',
     labelKey: 'settingsPages.export.presets.partTabAndRevision',
@@ -135,7 +147,11 @@ const PRESET_PATTERNS = [
     labelKey: 'settingsPages.export.presets.partConfigAndRevision',
     description: 'BR-101011-394_Default_RevA.step',
   },
-  { pattern: '{filename}_{date}', labelKey: 'settingsPages.export.presets.fileAndDate', description: 'Part1_2026-01-01.step' },
+  {
+    pattern: '{filename}_{date}',
+    labelKey: 'settingsPages.export.presets.fileAndDate',
+    description: 'Part1_2026-01-01.step',
+  },
 ]
 
 // '' stands for a stored setting that has no value yet: no segment is selected.
@@ -222,7 +238,7 @@ export function ExportSettings() {
       setSettings(userSettings)
       setHasUserOverride(true)
     } else {
-      const orgSettings = (organization.settings as any)?.export_settings // TODO: type this
+      const orgSettings = organization.settings.export_settings
       if (orgSettings) {
         setSettings({ ...DEFAULT_EXPORT_SETTINGS, ...orgSettings })
       } else {
@@ -235,7 +251,7 @@ export function ExportSettings() {
 
   // Get org default for comparison
   const orgDefault = useMemo(() => {
-    const orgSettings = (organization?.settings as any)?.export_settings // TODO: type this
+    const orgSettings = organization?.settings.export_settings
     return orgSettings ? { ...DEFAULT_EXPORT_SETTINGS, ...orgSettings } : DEFAULT_EXPORT_SETTINGS
   }, [organization?.settings])
 
@@ -288,10 +304,10 @@ export function ExportSettings() {
         log.error('[ExportSettings]', 'Supabase error', { error })
         throw error
       }
-      if (!data) throw new Error('No permission to change the organization settings')
+      if (!data) throw new Error(t('settingsPages.export.permissionDenied'))
 
       // Update local state
-      updateOrganization({ settings: newSettings } as any) // TODO: type this
+      updateOrganization({ settings: newSettings })
       addToast('success', t('settingsPages.export.savedOrganization'))
     } catch (error) {
       log.error('[ExportSettings]', 'Failed to save org export settings', { error: error })

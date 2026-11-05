@@ -7,7 +7,7 @@ export interface SettingsSearchEntry {
   tab: SettingsTab
   tabLabel: string
   category: string
-  /** The setting's rendered English label; for a tab entry, the tab label. */
+  /** The rendered label in the active language; for a tab entry, the tab label. */
   label: string
   keywords: readonly string[]
   tabKeywords: readonly string[]
@@ -45,6 +45,7 @@ const FIELDS: readonly FuzzyField<SettingsSearchEntry>[] = [
 export function buildSettingsSearchIndex(
   sections: readonly SettingsSection[],
   catalog: SettingsCatalog,
+  translate?: (key: string) => string,
 ): SettingsSearchEntry[] {
   const index: SettingsSearchEntry[] = []
   for (const section of sections) {
@@ -53,7 +54,13 @@ export function buildSettingsSearchIndex(
       const base = { tab: item.id, tabLabel: item.label, category: section.category, tabKeywords }
       index.push({ ...base, label: item.label, keywords: tabKeywords, isTab: true })
       for (const setting of catalog[item.id] ?? []) {
-        index.push({ ...base, label: setting.label, keywords: setting.keywords ?? [], isTab: false })
+        index.push({
+          ...base,
+          label: setting.labelKey && translate ? translate(setting.labelKey) : setting.label,
+          // Keep the English catalog label searchable for users who know the old wording.
+          keywords: [setting.label, ...(setting.keywords ?? [])],
+          isTab: false,
+        })
       }
     }
   }

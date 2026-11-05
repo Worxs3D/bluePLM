@@ -5,6 +5,7 @@ import {
   type SerializationSettingsBindings,
 } from './SerializationSettingsPresentation'
 import { DEFAULT_SERIALIZATION_SETTINGS } from './serializationSettingsModel'
+import { getTranslation } from '@/lib/i18n'
 
 const richSettings = {
   ...DEFAULT_SERIALIZATION_SETTINGS,
@@ -64,6 +65,7 @@ interface ElementProps {
   onClick?: () => unknown
   onChange?: (event: { target: { value: string; checked: boolean } }) => unknown
   onKeyDown?: (event: { key: string }) => unknown
+  id?: string
 }
 
 function elements(node: ReactNode): Array<{ type: unknown; props: ElementProps }> {
@@ -92,6 +94,35 @@ function button(value: SerializationSettingsBindings, label: string) {
 }
 
 describe('shared Serialization settings presentation', () => {
+  it.each([
+    ['en', '2 digits (1-99)', '1 digit (1-9)'],
+    ['de', '2 Stellen (1-99)', '1 Stelle (1-9)'],
+  ] as const)('localizes tab digit options in %s', (language, plural, singular) => {
+    const value = bindings({
+      settings: richSettings,
+      t: (key, params) => getTranslation(language, key, params),
+    })
+    const options = tree(value).filter(
+      (node) => node.type === 'option' && [1, 2, 3, 4].includes(Number(node.props.value)),
+    )
+    expect(options.map((node) => text(node.props.children))).toContain(plural)
+    expect(options.map((node) => text(node.props.children))).toContain(singular)
+  })
+
+  it.each([
+    ['en', '3 digits (001)', '8 digits (00000001)'],
+    ['de', '3 Stellen (001)', '8 Stellen (00000001)'],
+  ] as const)('localizes number padding options in %s', (language, first, last) => {
+    const value = bindings({
+      t: (key, params) => getTranslation(language, key, params),
+    })
+    const options = tree(value).filter(
+      (node) => node.type === 'option' && [3, 4, 5, 6, 7, 8].includes(Number(node.props.value)),
+    )
+    expect(options.map((node) => text(node.props.children))).toContain(first)
+    expect(options.map((node) => text(node.props.children))).toContain(last)
+  })
+
   it('routes preview, scan, explicit Apply and Save to their supplied normal callbacks', async () => {
     const value = bindings({
       detectedResult: {
