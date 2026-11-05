@@ -22,7 +22,7 @@ import { computeDeniedModules, type ModuleId } from '@/types/modules'
  * deny the Workflows view to everyone, admins included, so every surface that
  * honours module access hides it too.
  *
- * An official extension the organization uninstalled (Settings > Extensions, schema 515) denies its
+ * An official extension the organization uninstalled (Settings > Extensions, schema 516) denies its
  * modules (Reviews, Orders) to everyone the same way.
  *
  * On BluePLM Web (no Electron bridge, `hasDesktop()` false) the desktop-only modules

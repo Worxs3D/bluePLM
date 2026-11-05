@@ -270,7 +270,7 @@ and returns its lines or error, `lastExport` is the request Export zip sent, `mo
 
 ## Official extension scenes
 
-Settings > Extensions and the app without Reviews, Inspection or Orders (schema 515). The scenes
+Settings > Extensions and the app without Reviews, Inspection or Orders (schema 516). The scenes
 (`src/perf/app/lookScenes/extensions.ts`) write `organization.settings.extensions` on the fake
 organization row and in the store, and define `org_extension_set_installed` on the fake with the
 migration's rules (admin only, known ids), so Install and Uninstall work end to end.

@@ -3,7 +3,7 @@
  * Inspection and Orders installed or not, the install and uninstall confirmations, and the app with
  * each one uninstalled (no Reviews or Orders in the activity bar, no Inspection tab on a drawing, no
  * Reviews or Orders submenu). Each scene starts from a reset: it writes the install state on the
- * organization row and in the store, as `org_extension_set_installed()` (schema 515) would.
+ * organization row and in the store, as `org_extension_set_installed()` (schema 516) would.
  *
  * Run as a member with `--as` to see the read-only catalog. `window.__blueplmLookExtensions.set(id,
  * installed)` changes one extension for `--eval`.
@@ -73,7 +73,7 @@ export function createExtensionsLook(
     store.getState().setOrganization({ ...org, settings })
   }
 
-  // The server side of Install / Uninstall (migration 515): admin only, known ids, no dependencies
+  // The server side of Install / Uninstall (migration 516): admin only, known ids, no dependencies
   // between the three today.
   db.defineRpc(
     'org_extension_set_installed',

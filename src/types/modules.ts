@@ -863,7 +863,7 @@ const NO_DENIED_MODULES: ReadonlySet<ModuleId> = new Set()
  * The full set of denied modules: the admin-managed denials, plus File Workflows when the
  * organization switched them off, plus the desktop-only modules when `desktop` is false (BluePLM
  * Web, see hasDesktop()), plus the modules of official extensions the organization uninstalled
- * (`modulesOfUninstalledExtensions`, schema 515). Returns one shared empty Set when nothing is
+ * (`modulesOfUninstalledExtensions`, schema 516). Returns one shared empty Set when nothing is
  * denied, so the common case allocates nothing and memo dependencies downstream stay stable.
  */
 export function computeDeniedModules(

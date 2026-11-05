@@ -1,5 +1,5 @@
 /**
- * `officialExtensions.*` (schema 515): the Settings > Extensions catalog of the built-in
+ * `officialExtensions.*` (schema 516): the Settings > Extensions catalog of the built-in
  * extensions (Reviews, Inspection, Orders), its install and uninstall dialogs, and the message a
  * command of an uninstalled extension shows. One flat namespace, one file per locale, spread into
  * each locale as `officialExtensions`; `officialExtensionsKeys.test.ts` checks every key in every

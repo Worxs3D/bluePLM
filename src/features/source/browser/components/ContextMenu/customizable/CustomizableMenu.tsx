@@ -8,7 +8,7 @@
  * rest: entries, separators, flyout groups (`ContextMenuGroup`), inline groups (a small heading
  * when a person named the group) and the collapsed "More actions" group. The last row, outside
  * every layout, opens the settings page where the menu is customised. Entries of an official
- * extension the organization uninstalled are left out here, for every menu (schema 515).
+ * extension the organization uninstalled are left out here, for every menu (schema 516).
  */
 import { Fragment, useState, type ReactNode } from 'react'
 import { SlidersHorizontal } from 'lucide-react'

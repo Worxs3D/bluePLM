@@ -721,7 +721,7 @@ export interface OrgSettings {
    */
   context_menu?: OrgContextMenuSettings
   /**
-   * Official extensions (schema 515): `{ [id]: { installed, changed_at, changed_by } }`. Only an
+   * Official extensions (schema 516): `{ [id]: { installed, changed_at, changed_by } }`. Only an
    * explicit `installed: false` uninstalls one. Read through `officialExtensionInstalled`, write
    * through `setOfficialExtensionInstalled` (`org_extension_set_installed()`).
    */

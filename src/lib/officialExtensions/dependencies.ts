@@ -1,6 +1,6 @@
 /**
  * Install and uninstall plans for official extensions. The rules, which the server applies again in
- * `org_extension_set_installed()` (schema 515):
+ * `org_extension_set_installed()` (schema 516):
  * - Install needs every hard dependency installed. The plan installs missing ones first, in order.
  * - Uninstall is refused while an installed extension needs it; the plan names them. Nothing is
  *   uninstalled along with it, because uninstalling hides a feature people use.

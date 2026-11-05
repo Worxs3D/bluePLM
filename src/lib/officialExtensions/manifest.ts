@@ -7,10 +7,10 @@
  *
  * A manifest says what the extension needs, what it works with, which schema objects it owns and what
  * it adds to the app. The install state is `organization.settings.extensions` (see `installed.ts`),
- * written only through `org_extension_set_installed()` (schema 515), which applies the same
+ * written only through `org_extension_set_installed()` (schema 516), which applies the same
  * dependency rules as `dependencies.ts`.
  *
- * Never rename an id: the setting stores it, and the server's list in migration 515 names it.
+ * Never rename an id: the setting stores it, and the server's list in migration 516 names it.
  */
 
 import type { ModuleId } from '@/types/modules'

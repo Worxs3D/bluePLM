@@ -1,7 +1,7 @@
 /**
  * Whether an official extension is installed for the signed-in organization. One definition for
  * every surface that hides an extension's UI, matching the server's `is_org_extension_installed()`
- * (schema 515): only an explicit `installed: false` uninstalls, so an organization that never
+ * (schema 516): only an explicit `installed: false` uninstalls, so an organization that never
  * touched the setting (every organization before 5.12, every new one) has all of them installed.
  */
 

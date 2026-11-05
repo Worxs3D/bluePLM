@@ -3,7 +3,7 @@
  * Orders). Each row says whether it is installed, what it adds, what it needs and what it works
  * with; an admin installs or uninstalls it for the whole organization after a confirmation that
  * names the impact. The rules live in `src/lib/officialExtensions/`; the server applies them again
- * in `org_extension_set_installed()` (schema 515). Works on the web build as well.
+ * in `org_extension_set_installed()` (schema 516). Works on the web build as well.
  */
 import { useState } from 'react'
 import { ClipboardCheck, Ruler, ShoppingCart, type LucideIcon } from 'lucide-react'

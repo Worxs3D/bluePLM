@@ -1,5 +1,5 @@
 /**
- * Install or uninstall an official extension for the signed-in organization (schema 515). The only
+ * Install or uninstall an official extension for the signed-in organization (schema 516). The only
  * writer of `organization.settings.extensions`: `org_extension_set_installed()` is SECURITY
  * DEFINER, admin only, knows the ids, applies the dependency rules of
  * `src/lib/officialExtensions/dependencies.ts` and changes the one key in place, so it never
@@ -43,7 +43,7 @@ export async function setOfficialExtensionInstalled(
     p_installed: installed,
   })
   if (error) {
-    // PGRST202: the function does not exist yet (a database below 515).
+    // PGRST202: the function does not exist yet (a database below 516).
     if (error.code === 'PGRST202' || error.code === '42883') {
       return { ok: false, code: 'NEEDS_UPGRADE', message: error.message }
     }
