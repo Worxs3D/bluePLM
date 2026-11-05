@@ -441,6 +441,26 @@ describe('Main auth authority', () => {
       restored.dispose()
     },
   )
+  it('preserves a valid saved session when restore receives an unparsable principal', async () => {
+    const { create, persistence, fetchImpl } = setup()
+    const initial = create()
+    await initial.signIn({ serverUrl: 'https://example.test/', email: 'a', password: 'b' })
+    await initial.verifyTotp('123456')
+    const saved = await persistence.load()
+    initial.dispose()
+    fetchImpl.mockImplementation(async (url: URL) => {
+      if (url.pathname.endsWith('/health'))
+        return Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+      if (url.pathname.endsWith('/auth/me'))
+        return Response.json({ user: { ...user, userId: 'not-a-uuid' } })
+      throw Error('unexpected request')
+    })
+    const restored = create()
+    await expect(restored.restore()).rejects.toMatchObject({ code: 'invalid-principal-response' })
+    expect(restored.state()).toEqual({ status: 'signed-out' })
+    expect(await persistence.load()).toEqual(saved)
+    restored.dispose()
+  })
   it('does not clear a newer sign-in when a stale restore returns unauthorized', async () => {
     const { create, persistence, fetchImpl } = setup()
     const initial = create()
@@ -480,6 +500,119 @@ describe('Main auth authority', () => {
     await failure
     expect(authority.state()).toMatchObject({ status: 'verified' })
     expect((await persistence.load())?.bearerToken).toBe('new-secret')
+    await authority.signOut()
+    authority.dispose()
+  })
+  it('does not let the old expiry timer clear a session saved by a newer sign-in', async () => {
+    vi.useFakeTimers()
+    const start = new Date('2026-01-01T00:00:00Z')
+    vi.setSystemTime(start)
+    try {
+      const { persistence } = setup()
+      const fetchImpl = vi.fn(async (url: URL) => {
+        if (url.pathname === '/health')
+          return Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+        if (url.pathname === '/auth/login') {
+          const expiresAt =
+            url.hostname === 'old.test'
+              ? '2026-01-01T00:01:00Z'
+              : '2026-01-01T00:03:00Z'
+          return Response.json({ token: `${url.hostname}-token`, expiresAt })
+        }
+        if (url.pathname === '/auth/me')
+          return Response.json({ user: { ...user, email: url.hostname } })
+        if (url.pathname === '/organizations/current')
+          return Response.json({ organization })
+        throw Error('unexpected request')
+      })
+      const authority = createMdbAuthAuthority({
+        confirmServer: async () => true,
+        persistence,
+        fetchImpl,
+        now: () => new Date(),
+      })
+      await authority.signIn({ serverUrl: 'https://old.test/', email: 'a', password: 'b' })
+      await vi.advanceTimersByTimeAsync(30_000)
+      await authority.signIn({ serverUrl: 'https://new.test/', email: 'a', password: 'b' })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(authority.state()).toMatchObject({
+        status: 'verified',
+        principal: { email: 'new.test' },
+      })
+      expect((await persistence.load())?.bearerToken).toBe('new.test-token')
+      await authority.signOut()
+      authority.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('does not let state expiry clear a concurrent session save', async () => {
+    let now = new Date('2026-01-01T00:00:00Z')
+    let saved: MdbAuthSnapshot | null = null
+    let saveCount = 0
+    let releaseSave!: () => void
+    let signalSaveStarted!: () => void
+    const saveStarted = new Promise<void>((resolve) => {
+      signalSaveStarted = resolve
+    })
+    const saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve
+    })
+    const persistence: MdbAuthPersistence = {
+      load: async () => saved,
+      save: async (snapshot, canCommit) => {
+        saveCount++
+        if (saveCount === 2) {
+          signalSaveStarted()
+          await saveGate
+        }
+        if (!canCommit()) return false
+        saved = snapshot
+        return true
+      },
+      clear: async () => {
+        saved = null
+      },
+    }
+    const fetchImpl = vi.fn(async (url: URL) => {
+      if (url.pathname === '/health')
+        return Response.json({ ok: true, runtime: 'php', supabase: false, apiVersion: 2 })
+      if (url.pathname === '/auth/login') {
+        const expiresAt =
+          url.hostname === 'old.test'
+            ? '2026-01-01T00:01:00Z'
+            : '2026-01-01T00:03:00Z'
+        return Response.json({ token: `${url.hostname}-token`, expiresAt })
+      }
+      if (url.pathname === '/auth/me')
+        return Response.json({ user: { ...user, email: url.hostname } })
+      if (url.pathname === '/organizations/current')
+        return Response.json({ organization })
+      throw Error('unexpected request')
+    })
+    const authority = createMdbAuthAuthority({
+      confirmServer: async () => true,
+      persistence,
+      fetchImpl,
+      now: () => now,
+    })
+    await authority.signIn({ serverUrl: 'https://old.test/', email: 'a', password: 'b' })
+    now = new Date('2026-01-01T00:00:30Z')
+    const newSignIn = authority.signIn({
+      serverUrl: 'https://new.test/',
+      email: 'a',
+      password: 'b',
+    })
+    await saveStarted
+    now = new Date('2026-01-01T00:01:00Z')
+    expect(authority.state()).toEqual({ status: 'signed-out' })
+    releaseSave()
+    await newSignIn
+    expect(authority.state()).toMatchObject({
+      status: 'verified',
+      principal: { email: 'new.test' },
+    })
+    expect((await persistence.load())?.bearerToken).toBe('new.test-token')
     await authority.signOut()
     authority.dispose()
   })

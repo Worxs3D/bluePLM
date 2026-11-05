@@ -13,7 +13,7 @@ import {
   verifyMdbTotp,
   type MdbFetch,
 } from './mdbAuthTransport'
-import { MdbAuthAuthorityError } from './mdbAuthAuthorityError'
+import { MdbAuthAuthorityError, MdbAuthIdentityChangedError } from './mdbAuthAuthorityError'
 import {
   isExpired,
   parseLogin,
@@ -61,7 +61,7 @@ export function createMdbAuthAuthority(options: {
     if (pending !== null && isExpired(pending.expiresAt, now)) pending = null
     if (active !== null && isExpired(active.expiresAt, now)) {
       active = null
-      void clear().catch(() => undefined)
+      void clearIfSignedOut(generation).catch(() => undefined)
     }
     if (pending !== null) return { status: 'totp-required' }
     if (active === null) return { status: 'signed-out' }
@@ -114,6 +114,20 @@ export function createMdbAuthAuthority(options: {
         )
       }
     })
+  const clearIfSignedOut = (expected: number) =>
+    enqueue(async () => {
+      if (generation !== expected || active !== null) return
+      try {
+        await options.persistence.clear()
+        clearFailed = false
+      } catch {
+        clearFailed = true
+        throw new MdbAuthAuthorityError(
+          'persistence-clear-failed',
+          'Could not clear saved MDB session.',
+        )
+      }
+    })
   const scheduleExpiry = (expected: number) => {
     if (expiryTimer !== undefined) clearTimeout(expiryTimer)
     expiryTimer = undefined
@@ -127,7 +141,7 @@ export function createMdbAuthAuthority(options: {
         if (generation !== expected) return
         if (active !== null && isExpired(active.expiresAt, now)) {
           active = null
-          void clear().catch(() => undefined)
+          void clearIfSignedOut(expected).catch(() => undefined)
         }
         if (pending !== null && isExpired(pending.expiresAt, now)) pending = null
         publish()
@@ -187,7 +201,7 @@ export function createMdbAuthAuthority(options: {
       (previous.principal.userId !== principal.userId ||
         previous.principal.organizationId !== principal.organizationId)
     )
-      throw new MdbAuthAuthorityError('invalid-principal-response', 'Restored identity changed.')
+      throw new MdbAuthIdentityChangedError()
     const organization = parseOrganization(await transport.currentOrganization(signal))
     current(expected)
     if (organization.id !== principal.organizationId)
@@ -322,7 +336,7 @@ export function createMdbAuthAuthority(options: {
         await activate(serverUrl, saved.bearerToken, saved.expiresAt, expected, req.signal, saved)
       } catch (error) {
         const revoked =
-          (error instanceof MdbAuthAuthorityError && error.code === 'invalid-principal-response') ||
+          error instanceof MdbAuthIdentityChangedError ||
           (error instanceof MdbFileVaultTransportError && error.code === 'unauthorized')
         if (revoked && generation === expected) {
           invalidate()

@@ -8,3 +8,11 @@ export class MdbAuthAuthorityError extends Error {
     this.name = 'MdbAuthAuthorityError'
   }
 }
+
+/** Internal marker for an identity mismatch that revokes a restored session. */
+export class MdbAuthIdentityChangedError extends MdbAuthAuthorityError {
+  constructor() {
+    super('invalid-principal-response', 'Restored identity changed.')
+    this.name = 'MdbAuthIdentityChangedError'
+  }
+}
