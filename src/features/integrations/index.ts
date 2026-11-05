@@ -8,4 +8,3 @@
 export { IntegrationsView } from './IntegrationsView'
 export * from './google-drive'
 export * from './solidworks'
-export * from './gsd'

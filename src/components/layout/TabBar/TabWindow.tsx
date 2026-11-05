@@ -34,23 +34,11 @@ const TerminalView = lazy(() =>
 const ECOView = lazy(() =>
   import('@/features/change-control/eco').then((m) => ({ default: m.ECOView })),
 )
-const ECRView = lazy(() =>
-  import('@/features/change-control/ecr').then((m) => ({ default: m.ECRView })),
-)
 const DeviationsView = lazy(() =>
   import('@/features/change-control/deviations').then((m) => ({ default: m.DeviationsView })),
 )
-const ProductsView = lazy(() =>
-  import('@/features/items/products').then((m) => ({ default: m.ProductsView })),
-)
 const ItemBrowserView = lazy(() =>
   import('@/features/items/itemBrowser').then((m) => ({ default: m.ItemBrowserView })),
-)
-const ProcessView = lazy(() =>
-  import('@/features/change-control/process').then((m) => ({ default: m.ProcessView })),
-)
-const ScheduleView = lazy(() =>
-  import('@/features/change-control/schedule').then((m) => ({ default: m.ScheduleView })),
 )
 const SuppliersView = lazy(() =>
   import('@/features/supply-chain/suppliers').then((m) => ({ default: m.SuppliersView })),
@@ -248,40 +236,16 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
             <ECOView />
           </Suspense>
         )
-      case 'ecr':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ECRView />
-          </Suspense>
-        )
       case 'deviations':
         return (
           <Suspense fallback={<ViewLoading />}>
             <DeviationsView />
           </Suspense>
         )
-      case 'products':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ProductsView />
-          </Suspense>
-        )
       case 'items':
         return (
           <Suspense fallback={<ViewLoading />}>
             <ItemBrowserView />
-          </Suspense>
-        )
-      case 'process':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ProcessView />
-          </Suspense>
-        )
-      case 'release-schedule':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ScheduleView />
           </Suspense>
         )
       case 'supplier-database':

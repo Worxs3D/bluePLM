@@ -9,15 +9,11 @@ export const moduleTranslationKeys: Record<ModuleId, string> = {
   workflows: 'sidebar.workflows',
   reviews: 'sidebar.reviews',
   trash: 'sidebar.trash',
-  // Products
-  products: 'sidebar.products',
+  // Items
   items: 'sidebar.items',
   // Change Control
-  ecr: 'sidebar.ecr',
   eco: 'sidebar.eco',
   deviations: 'sidebar.deviations',
-  'release-schedule': 'sidebar.releaseSchedule',
-  process: 'sidebar.process',
   // Supply Chain - Suppliers
   'supplier-database': 'sidebar.supplierDatabase',
   'supplier-portal': 'sidebar.supplierPortal',

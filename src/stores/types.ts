@@ -56,13 +56,9 @@ export type CoreSidebarView =
   | 'trash'
   // Items
   | 'items'
-  | 'products'
   // Change Control
-  | 'ecr'
   | 'eco'
   | 'deviations'
-  | 'release-schedule'
-  | 'process'
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'

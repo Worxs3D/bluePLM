@@ -11,13 +11,9 @@ export type ModuleId =
   | 'trash'
   // Items
   | 'items'
-  | 'products'
   // Change Control
-  | 'ecr'
   | 'eco'
   | 'deviations'
-  | 'release-schedule'
-  | 'process'
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
@@ -32,7 +28,6 @@ export type ModuleId =
 // Module group identifiers
 export type ModuleGroupId =
   | 'source-files'
-  | 'items'
   | 'change-control'
   | 'supply-chain'
   | 'supply-chain-suppliers'
@@ -138,20 +133,12 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
     isMasterToggle: true,
     defaultEnabled: true,
   },
-  // Products
-  {
-    id: 'items',
-    name: 'Products',
-    description: 'Product explorer',
-    isMasterToggle: true,
-    defaultEnabled: true,
-  },
   // Change Control
   {
     id: 'change-control',
     name: 'Change Control',
     description: 'ECRs, ECOs, and deviations',
-    isMasterToggle: true,
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   // Supply Chain (parent group)
@@ -159,7 +146,7 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
     id: 'supply-chain',
     name: 'Supply Chain',
     description: 'Suppliers and orders',
-    isMasterToggle: true,
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   {
@@ -183,7 +170,7 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
     id: 'integrations',
     name: 'Integrations',
     description: 'External service connections',
-    isMasterToggle: true,
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   // System
@@ -259,13 +246,6 @@ export const MODULES: ModuleDefinition[] = [
   // PRODUCTS
   // ============================================
   {
-    id: 'products',
-    name: 'Product Explorer',
-    group: 'items',
-    icon: 'Package',
-    defaultEnabled: true,
-  },
-  {
     id: 'items',
     name: 'Item Browser',
     group: 'quality',
@@ -278,13 +258,6 @@ export const MODULES: ModuleDefinition[] = [
   // CHANGE CONTROL
   // ============================================
   {
-    id: 'ecr',
-    name: 'ECRs / Issues',
-    group: 'change-control',
-    icon: 'AlertCircle',
-    defaultEnabled: true,
-  },
-  {
     id: 'eco',
     name: 'ECOs',
     group: 'change-control',
@@ -296,20 +269,6 @@ export const MODULES: ModuleDefinition[] = [
     name: 'Deviations',
     group: 'change-control',
     icon: 'FileWarning',
-    defaultEnabled: true,
-  },
-  {
-    id: 'release-schedule',
-    name: 'Release Schedule',
-    group: 'change-control',
-    icon: 'Calendar',
-    defaultEnabled: true,
-  },
-  {
-    id: 'process',
-    name: 'Process Editor',
-    group: 'change-control',
-    icon: 'Network',
     defaultEnabled: true,
   },
 
@@ -391,7 +350,7 @@ export const MODULES_MOVED_TO_EXTENSIONS: readonly string[] = ['customers']
 // Default section dividers (groups provide visual separation, so minimal dividers)
 export const DEFAULT_DIVIDERS: SectionDivider[] = [
   // Divider before integrations/system
-  { id: 'divider-1', enabled: true, position: 14 }, // After Orders
+  { id: 'divider-1', enabled: true, position: 10 }, // After Orders
 ]
 
 // Default module order
@@ -402,23 +361,18 @@ export const DEFAULT_MODULE_ORDER: ModuleId[] = [
   'history',
   'workflows',
   'trash',
-  // Products
-  'products', // 5
   // Change Control
-  'ecr', // 6
-  'eco',
+  'eco', // 5
   'deviations',
-  'release-schedule',
-  'process',
   // Supply Chain - Suppliers
-  'supplier-database', // 11
+  'supplier-database', // 7
   'supplier-portal',
   // Quality (single top-level entry; opens the Item Browser)
-  'items', // 13
+  'items', // 9
   // Supply Chain - Orders (single top-level entry)
-  'orders', // 14
+  'orders', // 10
   // Integrations
-  'google-drive', // 15
+  'google-drive', // 11
   // System (reviews and settings at bottom)
   'terminal',
   'reviews',
@@ -454,19 +408,11 @@ export const DEFAULT_CUSTOM_GROUPS: CustomGroup[] = [
     enabled: true,
   },
   {
-    id: 'group-products',
-    name: 'Products',
-    icon: 'Package',
-    iconColor: null,
-    position: 5,
-    enabled: true,
-  },
-  {
     id: 'group-change-control',
     name: 'Change Control',
     icon: 'GitPullRequest',
     iconColor: null,
-    position: 6,
+    position: 5,
     enabled: true,
   },
   {
@@ -474,7 +420,7 @@ export const DEFAULT_CUSTOM_GROUPS: CustomGroup[] = [
     name: 'Supply Chain',
     icon: 'Truck',
     iconColor: null,
-    position: 11,
+    position: 7,
     enabled: true,
   },
 ]
@@ -487,14 +433,9 @@ export const DEFAULT_MODULE_PARENT_MAP: Record<ModuleId, ParentId> = {
   history: 'group-source-files',
   workflows: 'group-source-files',
   trash: 'group-source-files',
-  // Products group (after Source Files)
-  products: 'group-products',
   // Change Control group
-  ecr: 'group-change-control',
   eco: 'group-change-control',
   deviations: 'group-change-control',
-  'release-schedule': 'group-change-control',
-  process: 'group-change-control',
   // Supply Chain group
   'supplier-database': 'group-supply-chain',
   'supplier-portal': 'group-supply-chain',
