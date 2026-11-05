@@ -36,7 +36,7 @@ import { supabase } from './supabase'
 
 // The schema version this app version expects
 // Increment this when releasing app updates that require schema changes
-export const EXPECTED_SCHEMA_VERSION = 514
+export const EXPECTED_SCHEMA_VERSION = 515
 
 // 5.0 renamed the schema (supabase/rename-map-5.0.json), so no 5.x app can run against a 4.x
 // database at all: anything below this is a hard block (src/features/dbUpgrade), never a warning.
@@ -78,6 +78,8 @@ export const VERSION_DESCRIPTIONS: Record<number, string> = {
     "Supply orders. supply_order is a numbered order (quote or purchase) for a supplier row or a named supplier; supply_order_line pins a checked-in file version and configuration, optionally its drawing version, with a quantity and the output kinds to send, and snapshots the file's name, part number, description, revision and version. Orders are readable by members with the orders module; a line only with its vaults, and line_count counts every line. The supply_order_* functions are the only writers: lines change in draft only, and sending records the outputs that went out (or refuses MISSING_OUTPUTS). can_read_vault_object() reads a sent line's outputs; check_release_residue() covers both tables; server backups export them and supply_order_number_counter, which only goes up.",
   514:
     "Review comment notifications. A new comment or reply in an open review notifies its requester and current-round reviewers who are not withdrawn and can read the vault, never the commenter, at most once per recipient per review per hour (review_comment). file_comment_list_resolvable() returns the comments the caller may resolve, by file_comment_set_resolved()'s rule. review_list_queue() package rows add reviewers_owing and reviewers_withdrawn.",
+  515:
+    "Orders follow-ups. version_output_request asks for an output a version lacks (pdf, step, iges, stl, dxf): version_output_request_create() requests the kinds the file can have, version_output_request_claim() hands them to a desktop with explorer edit and the vault (a claim older than 15 minutes is taken again), version_output_request_finish() and _cancel() close them, and recording the output marks its requests done. supply_order_count_hidden_lines() says per vault how many lines of an order the caller cannot read. A version a released version references is never deleted while that release is live (REFERENCED_BY_RELEASE). RFQs are imported as quote orders (supply_order.imported_from_rfq_id); the rfq tables stay.",
 }
 
 export interface SchemaVersionInfo {
