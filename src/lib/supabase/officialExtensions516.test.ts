@@ -47,7 +47,7 @@ const MIGRATION_FILES = [
   '0512_comment_resolve.sql',
   '0513_supply_orders.sql',
   '0514_review_comment_notify.sql',
-  '0515_TBD_orders.sql', // 5.13.0 (Orders): set the real name after the rebase
+  '0515_orders_followups.sql',
   MIGRATION,
 ]
 
@@ -229,11 +229,21 @@ describe('the install state', () => {
 
 describe('writes while Reviews is uninstalled', () => {
   beforeAll(async () => {
+    // Clients have no write policy on the review tables: their writes come from SECURITY DEFINER
+    // RPCs. This one stands in for them (made after the stamp test, which would
+    // flag them as unregistered).
+    await actAsOwner(db)
+    await db.exec(`
+      CREATE FUNCTION test_rename_review(p_id uuid, p_title text) RETURNS void
+        LANGUAGE sql SECURITY DEFINER SET search_path = public
+        AS $$ UPDATE review SET title = p_title WHERE id = p_id $$;
+      GRANT EXECUTE ON FUNCTION test_rename_review(uuid, text) TO authenticated;
+    `)
     expect((await setInstalled(ADMIN, 'blueplm.reviews', false)).success).toBe(true)
   })
 
-  it("refuses a signed-in caller's write to a review table", async () => {
-    expect(await hintOf(ADMIN, `UPDATE review SET title = 'Renamed' WHERE id = $1`, [RV])).toBe('EXTENSION_NOT_INSTALLED')
+  it("refuses a write to a review table that a signed-in caller's RPC makes", async () => {
+    expect(await hintOf(ADMIN, `SELECT test_rename_review($1, 'Renamed')`, [RV])).toBe('EXTENSION_NOT_INSTALLED')
   })
 
   it('refuses a new comment that names a review, not a plain comment or an edit of an old one', async () => {
@@ -255,14 +265,22 @@ describe('writes while Reviews is uninstalled', () => {
     expect(await hintOf(null, `UPDATE review SET title = 'By the server' WHERE id = $1`, [RV])).toBeNull()
   })
 
-  it('lets housekeeping from other triggers write: a reviewer who loses the vault is withdrawn', async () => {
-    expect(await hintOf(ADMIN, `DELETE FROM vault_access WHERE vault_id = $1 AND user_id = $2`, [VA1, REVIEWER])).toBeNull()
+  // The housekeeping that writes review rows (lost-reviewer withdrawal from statement triggers on
+  // app_user, team_member and the vault grants; the re-settle when a purged file deletes an item)
+  // always runs from another trigger. This one stands in for them.
+  it('lets a write that comes from another trigger through', async () => {
     await actAsOwner(db)
-    const r = await db.query<{ withdrawn_at: string | null }>(
-      'SELECT withdrawn_at::text FROM review_response WHERE review_id = $1 AND reviewer_id = $2',
-      [RV, REVIEWER],
-    )
-    expect(r.rows[0].withdrawn_at).not.toBeNull()
+    await db.exec(`
+      CREATE TABLE test_bump (review_id uuid NOT NULL);
+      GRANT INSERT ON test_bump TO authenticated;
+      CREATE FUNCTION trg_test_bump() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+        AS $$ BEGIN UPDATE review SET title = 'From a trigger' WHERE id = NEW.review_id; RETURN NEW; END $$;
+      CREATE TRIGGER trg_test_bump AFTER INSERT ON test_bump FOR EACH ROW EXECUTE FUNCTION trg_test_bump();
+    `)
+    expect(await hintOf(ADMIN, `INSERT INTO test_bump (review_id) VALUES ($1)`, [RV])).toBeNull()
+    await actAsOwner(db)
+    const r = await db.query<{ title: string }>('SELECT title FROM review WHERE id = $1', [RV])
+    expect(r.rows[0].title).toBe('From a trigger')
   })
 
   it('never refuses a delete', async () => {
@@ -271,6 +289,6 @@ describe('writes while Reviews is uninstalled', () => {
 
   it('takes review writes again after a reinstall', async () => {
     expect((await setInstalled(ADMIN, 'blueplm.reviews', true)).success).toBe(true)
-    expect(await hintOf(ADMIN, `UPDATE review SET title = 'Renamed' WHERE id = $1`, [RV])).not.toBe('EXTENSION_NOT_INSTALLED')
+    expect(await hintOf(ADMIN, `SELECT test_rename_review($1, 'Renamed')`, [RV])).toBeNull()
   })
 })
