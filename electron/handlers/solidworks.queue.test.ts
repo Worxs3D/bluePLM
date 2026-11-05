@@ -402,6 +402,36 @@ describe('queue order', () => {
     ])
   })
 
+  it("runs check-in's read-only switch ahead of queued background exports", async () => {
+    const child = await startService()
+    child.responder = holdAll()
+
+    const blocker = invoke('solidworks:get-properties-document-manager', 'C:/Vault/blocker.sldprt')
+    await settle()
+
+    const queued = [
+      invoke('solidworks:export-pdf', 'C:/Stage/a.slddrw', { outputPath: 'C:/Stage/out/a.pdf' }),
+      invoke('solidworks:get-references', 'C:/Vault/bg.sldasm'),
+      invoke('solidworks:set-document-readonly', 'C:/Vault/checkin.sldprt', true),
+    ]
+    await settle()
+
+    const order: string[] = []
+    let answered = child.commands.length
+    child.reply(child.commands[answered - 1].requestId, { success: true, data: {} })
+    for (let i = 0; i < queued.length; i++) {
+      await settle()
+      const next = child.commands[answered]
+      expect(next, `command ${i} was dispatched`).toBeDefined()
+      order.push(String(next.action))
+      answered++
+      child.reply(next.requestId, { success: true, data: {} })
+    }
+
+    await Promise.all([blocker, ...queued])
+    expect(order).toEqual(['setDocumentReadOnly', 'exportPdf', 'getReferences'])
+  })
+
   it('defaults a reference read without an origin to background', async () => {
     const child = await startService()
     child.responder = (command) => (command.action === 'ping' ? defaultResponder(command) : { success: true, data: {} })

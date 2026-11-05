@@ -4,6 +4,15 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+### Fixed
+
+- **Check-in and check-out no longer wait behind background exports.** Making an open SOLIDWORKS
+  document read-only ran at background priority on the service's one-command queue, so it waited
+  for every PDF/STEP export and reference read an earlier check-in had queued. It now runs ahead
+  of them. A single export already running still finishes first.
+
 ## [5.12.0] - 2026-11-05
 
 Schema 514 (`0514_review_comment_notify.sql`). No API or SolidWorks service change. 5.11.0 keeps
