@@ -91,7 +91,9 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
       functions: ['review_request', 'review_item_respond', 'review_settle', 'review_advance_items'],
     },
     contributes: {
-      modules: ['reviews'],
+      // Not the Reviews view: it is also where workflow gate approvals (core) are decided, so it
+      // stays without the extension and shows only those.
+      modules: [],
       settingsTabs: [],
       contextMenuEntries: ['reviews'],
       commands: ['download-review-package', 'generate-review-pdfs'],
@@ -99,7 +101,7 @@ export const OFFICIAL_EXTENSIONS: readonly OfficialExtensionManifest[] = [
       surfaceKeys: ['reviewsAddsView', 'reviewsAddsMenu', 'reviewsAddsPane', 'reviewsAddsStages'],
       hooks: ['release gate (RELEASE_NOT_REVIEWED)', 'review stages (File workflows)', 'review comments'],
     },
-    uninstallEffectKeys: ['reviewsEffectRelease', 'reviewsEffectStages'],
+    uninstallEffectKeys: ['reviewsEffectRelease', 'reviewsEffectStages', 'reviewsEffectGates'],
   },
   {
     id: 'blueplm.inspection',

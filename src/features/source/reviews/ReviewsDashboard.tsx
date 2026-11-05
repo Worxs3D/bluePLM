@@ -11,6 +11,7 @@
  * selects all, Escape clears the selection.
  */
 
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { RefreshCw, Search } from 'lucide-react'
 
@@ -99,13 +100,19 @@ export function ReviewsDashboard() {
   const listRef = useRef<HTMLDivElement>(null)
 
   const queue = useReviewQueue(bucket, bucket === 'my_teams' ? teamId : null, search)
+  // Without the Reviews extension the view holds workflow gate approvals only (core).
+  const packagesOn = useOfficialExtensionInstalled('blueplm.reviews')
+  const queueRows = useMemo(
+    () => (packagesOn ? queue.rows : queue.rows.filter((row) => row.kind === 'gate')),
+    [packagesOn, queue.rows],
+  )
   const summary = useReviewSummary(!!user && !!organization)
   const userId = user?.id ?? null
 
-  const liveSelection = useMemo(() => pruneSelection(selected, queue.rows), [selected, queue.rows])
+  const liveSelection = useMemo(() => pruneSelection(selected, queueRows), [selected, queueRows])
   const selectedRows = useMemo(
-    () => queue.rows.filter((r) => liveSelection.has(r.id)),
-    [queue.rows, liveSelection],
+    () => queueRows.filter((r) => liveSelection.has(r.id)),
+    [queueRows, liveSelection],
   )
 
   const toggleSelected = useCallback((id: string) => {
@@ -132,15 +139,15 @@ export function ReviewsDashboard() {
   }
 
   const focusRow = (index: number) => {
-    const clamped = Math.max(0, Math.min(queue.rows.length - 1, index))
+    const clamped = Math.max(0, Math.min(queueRows.length - 1, index))
     setFocusIndex(clamped)
-    const row = queue.rows[clamped]
+    const row = queueRows[clamped]
     if (row)
       listRef.current?.querySelector<HTMLElement>(`[id="queue-row-${row.kind}-${row.id}"]`)?.focus()
   }
 
   const onListKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    const row = queue.rows[focusIndex]
+    const row = queueRows[focusIndex]
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       focusRow(focusIndex + 1)
@@ -152,7 +159,7 @@ export function ReviewsDashboard() {
       focusRow(0)
     } else if (event.key === 'End') {
       event.preventDefault()
-      focusRow(queue.rows.length - 1)
+      focusRow(queueRows.length - 1)
     } else if (
       (event.key === 'x' || event.key === 'X') &&
       !event.ctrlKey &&
@@ -163,7 +170,7 @@ export function ReviewsDashboard() {
       toggleSelected(row.id)
     } else if (event.key === 'a' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
-      setSelected(new Set(queue.rows.map((r) => r.id)))
+      setSelected(new Set(queueRows.map((r) => r.id)))
     } else if (event.key === 'Escape' && liveSelection.size > 0) {
       event.preventDefault()
       setSelected(new Set())
@@ -191,7 +198,7 @@ export function ReviewsDashboard() {
         title={t(`reviewQueue.empty.${bucket}`)}
         description={t(`reviewQueue.emptyHint.${bucket}`)}
         actions={
-          bucket === 'requested_by_me' ? (
+          bucket === 'requested_by_me' && packagesOn ? (
             <Button size="sm" onClick={() => setReviewPackagePaneOpen(true)}>
               {t('reviewQueue.startReview')}
             </Button>
@@ -276,9 +283,9 @@ export function ReviewsDashboard() {
               }
             />
           </div>
-        ) : queue.loading && queue.rows.length === 0 ? (
+        ) : queue.loading && queueRows.length === 0 ? (
           <p className="px-3 py-3 text-[13px] text-ui-fg-secondary">{t('reviewQueue.loading')}</p>
-        ) : queue.rows.length === 0 ? (
+        ) : queueRows.length === 0 ? (
           <div className="p-3">{emptyState()}</div>
         ) : (
           <>
@@ -289,14 +296,14 @@ export function ReviewsDashboard() {
               aria-multiselectable
               className="divide-y divide-ui-divider"
             >
-              {queue.rows.map((row, index) => (
+              {queueRows.map((row, index) => (
                 <QueueRow
                   key={`${row.kind}-${row.id}`}
                   row={row}
                   bucket={bucket}
                   userId={userId}
                   optionId={`queue-row-${row.kind}-${row.id}`}
-                  focusable={index === Math.min(focusIndex, queue.rows.length - 1)}
+                  focusable={index === Math.min(focusIndex, queueRows.length - 1)}
                   active={row.kind === 'gate' ? row.id === activeGateId : row.id === activeReviewId}
                   checked={liveSelection.has(row.id)}
                   checkboxesVisible={liveSelection.size > 0}

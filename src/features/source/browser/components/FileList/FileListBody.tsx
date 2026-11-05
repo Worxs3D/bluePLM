@@ -36,6 +36,7 @@ import { childSelectionParent } from '@/features/source/outputs/preview/childPre
 import { hasDesktop } from '@/lib/platform'
 import { isDrawingFile } from '@/lib/outputs/kinds'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { FileRow } from './FileRow'
 import type {
   ConfigBomVirtualRow,
@@ -48,6 +49,9 @@ import type {
   FileVirtualRow,
   SelectableRow,
 } from './rowTypes'
+
+/** No drawings to read reports for (Inspection uninstalled). */
+const NO_REPORT_DRAWINGS: ReadonlySet<string> = new Set()
 
 // Slim props interface - state comes from context
 /** Listed drawings whose outputs and reports the Outputs column reads (within the store bounds). */
@@ -198,7 +202,10 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     } = useFilePaneContext()
     const { savingConfigsToSW } = useFilePaneHandlers()
     const checkoutHydration = usePDMStore((s) => s.checkoutHydration)
-    const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
+    // Inspection report rows under drawings only while Inspection is installed (Settings > Extensions).
+    const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
+    const loadedInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
+    const drawingInspectionReports = inspectionInstalled ? loadedInspectionReports : undefined
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
     const childSelectedUnder = usePDMStore((s) => childSelectionParent(s.childSelection, s.selectedFiles))
     // The Outputs column reads the outputs and reports of the listed drawings too (the first
@@ -216,7 +223,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
       () => (columnPaths.size === 0 ? expandedDrawingRefs : new Set([...expandedDrawingRefs, ...columnPaths])),
       [columnPaths, expandedDrawingRefs],
     )
-    useDrawingReportsLoader(displayFiles, reportDrawings)
+    useDrawingReportsLoader(displayFiles, inspectionInstalled ? reportDrawings : NO_REPORT_DRAWINGS)
     useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles, columnPaths)
     useModelSectionsLoader(displayFiles, expandedConfigFiles)
     const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)

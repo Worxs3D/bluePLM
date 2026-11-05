@@ -2,6 +2,7 @@
  * Change State submenu - shows the workflow transitions available from a file's
  * current state and executes the chosen transition through the workflow engine.
  */
+import { reviewPackagesInstalled } from '@/stores/slices/reviewsSlice'
 import React, { useEffect, useState } from 'react'
 import { Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 
@@ -151,7 +152,7 @@ export function ChangeStateSubmenu({
     const target = await readTargetState(transition.to_state_id)
     // Into a review stage: put the file in the review draft; the toast's button opens the pane so
     // its reviewers can be chosen. The review's approval later moves it on (Settings > File Workflows).
-    if (target.isReviewStage)
+    if (target.isReviewStage && reviewPackagesInstalled(usePDMStore.getState()))
       void addFilesToReviewPackage([targetFile], {
         openPane: false,
         actionLabel: t('reviewBuilder.toast.chooseReviewers'),
@@ -168,7 +169,9 @@ export function ChangeStateSubmenu({
       version: targetFile.pdmData?.version ?? null,
       count: 1,
       // The dialog's other way out: send the drawing for review instead of forcing it.
-      onRequestReview: () => void addFilesToReviewPackage([targetFile]),
+      onRequestReview: reviewPackagesInstalled(usePDMStore.getState())
+        ? () => void addFilesToReviewPackage([targetFile])
+        : undefined,
     })
     if (!reason) return
     const outcome = await forceTransition(targetFile, transition.transition_id, reason)

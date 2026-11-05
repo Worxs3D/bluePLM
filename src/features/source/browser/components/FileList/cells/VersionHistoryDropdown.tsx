@@ -37,6 +37,7 @@ import { log } from '@/lib/logger'
 import { describeVersion } from '@/lib/files/versionDisplay'
 import { AddVersionToPackageButton } from '@/features/source/reviewPackage/components/AddVersionToPackageButton'
 import { AddVersionToOrderButton } from '@/features/orders/AddVersionToOrderButton'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { releaseOfVersionRow } from '@/features/source/releases/releaseModel'
 import { OpenWithReferencesButton } from '@/features/source/versionOpen/OpenWithReferencesButton'
 import { ReferencesFrozenMark } from '@/features/source/versionOpen/ReferencesFrozenMark'
@@ -64,6 +65,7 @@ interface VersionHistoryDropdownProps {
 }
 
 export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
+  const reviewsInstalled = useOfficialExtensionInstalled('blueplm.reviews')
   const [isOpen, setIsOpen] = useState(false)
   const [versions, setVersions] = useState<VersionEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -579,11 +581,13 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
 
                           {/* Actions */}
                           <div className="ml-auto flex items-center gap-1">
-                            <AddVersionToPackageButton
-                              file={file}
-                              version={version}
-                              latestVersion={serverVersion}
-                            />
+                            {reviewsInstalled && (
+                              <AddVersionToPackageButton
+                                file={file}
+                                version={version}
+                                latestVersion={serverVersion}
+                              />
+                            )}
                             <AddVersionToOrderButton file={file} version={version} />
                             <OpenWithReferencesButton fileName={file.name} version={version} />
                             {!hasDesktop() && version.content_hash && (

@@ -4,12 +4,13 @@ export const fr: OfficialExtensionsDict = {
   reviewsName: 'Revues',
   reviewsDescription:
     'Envoyez des plans et des modèles en revue, décidez fichier par fichier et suivez les commentaires jusqu’à une décision.',
-  reviewsAddsView: 'la vue Revues',
+  reviewsAddsView: 'les paquets de revue de la vue Revues',
   reviewsAddsMenu: 'le sous-menu Revues du menu contextuel',
   reviewsAddsPane: 'le panneau de revue',
   reviewsAddsStages: 'les étapes de revue des workflows de fichiers',
   reviewsEffectRelease: 'Les plans sont publiés sans revue approuvée.',
   reviewsEffectStages: 'Les étapes de revue des workflows de fichiers se comportent comme des états ordinaires.',
+  reviewsEffectGates: 'La vue Revues ne garde que les approbations de workflow.',
   inspectionName: 'Inspection',
   inspectionDescription:
     'Ajoutez des bulles aux plans, conservez les tableaux d’inspection par version et remplissez des rapports Excel.',

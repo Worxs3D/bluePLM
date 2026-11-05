@@ -26,6 +26,7 @@ import { outputJobKey } from '@/stores/slices/outputsSlice'
 import type { VersionOutputKind } from '@/types/versionOutputs'
 
 import { outdatedReportVersion, reportHeads } from '../childRowStatus'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import type { CellRendererBaseProps } from './types'
 
 type SlotState = 'current' | 'stale' | 'missing' | 'busy'
@@ -90,6 +91,8 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
   const versionOutputs = usePDMStore((s) => s.versionOutputs)
   const jobs = usePDMStore((s) => s.outputJobs)
   const reports = usePDMStore((s) => (fileId ? s.drawingInspectionReports.get(fileId) : undefined))
+  // The report slot is Inspection's (Settings > Extensions).
+  const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
   const versionOf = usePDMStore((s) => s.reportVersionNumbers)
   const regenerating = usePDMStore((s) => s.regeneratingReportIds)
   const canGenerate = usePDMStore(
@@ -206,7 +209,7 @@ export const OutputsCell = memo(function OutputsCell({ file }: CellRendererBaseP
     <div className="flex items-center gap-0.5">
       {outputSlot('pdf')}
       {outputSlot('step')}
-      {reportSlot()}
+      {inspectionInstalled && reportSlot()}
     </div>
   )
 })

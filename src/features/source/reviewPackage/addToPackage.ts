@@ -17,7 +17,7 @@ import {
 } from '@/lib/supabase/reviews'
 import { describeReviewError } from '@/features/source/reviews/lib/reviewErrors'
 import { usePDMStore } from '@/stores/pdmStore'
-import { selectReviewPackageDraft } from '@/stores/slices/reviewsSlice'
+import { reviewPackagesInstalled, selectReviewPackageDraft } from '@/stores/slices/reviewsSlice'
 import type { LocalFile } from '@/stores/types'
 import type { ReviewPackageDraftItem } from '@/types/reviewPackageDraft'
 import type { OpenReviewForFiles } from '@/types/reviews'
@@ -64,7 +64,8 @@ export async function addFileIdsToReviewPackage(
   options?: AddToPackageOptions,
 ): Promise<void> {
   const state = usePDMStore.getState()
-  if (!state.user) return
+  // Review packages are the Reviews extension's (Settings > Extensions).
+  if (!state.user || !reviewPackagesInstalled(state)) return
   const unique = Array.from(new Set(fileIds))
   if (unique.length === 0) {
     state.addToast('info', t('reviewBuilder.toast.nothingReviewable'))
@@ -127,7 +128,7 @@ export function addVersionToReviewPackage(
   options?: AddToPackageOptions,
 ): void {
   const fileId = file.pdmData?.id
-  if (!fileId) return
+  if (!fileId || !reviewPackagesInstalled(usePDMStore.getState())) return
   const state = usePDMStore.getState()
   const previous = selectReviewPackageDraft(state).items.find((i) => i.fileId === fileId)
   const outcome = state.addReviewPackageItems([
@@ -166,6 +167,7 @@ export async function requestAddToOpenReview(
   review: OpenReviewForFiles,
 ): Promise<void> {
   const state = usePDMStore.getState()
+  if (!reviewPackagesInstalled(state)) return
   const contained = new Set(review.containedFileIds)
   const fileIds = reviewableFiles(files)
     .map((f) => f.pdmData?.id)

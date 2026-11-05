@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import type { LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
@@ -198,6 +199,7 @@ export function RightPanelTabContent({
   childTarget,
   onNavigate,
 }: RightPanelTabContentProps) {
+  const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
   const ext = file.extension?.toLowerCase() || ''
   switch (tab) {
     case 'properties':
@@ -215,7 +217,7 @@ export function RightPanelTabContent({
     case 'orders':
       return file.isDirectory ? null : <FileOrdersTab file={file} />
     case 'inspection':
-      return ext === '.slddrw' ? <InspectionTab file={file} /> : null
+      return ext === '.slddrw' && inspectionInstalled ? <InspectionTab file={file} /> : null
     default:
       return null
   }

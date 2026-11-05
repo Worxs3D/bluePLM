@@ -3,6 +3,7 @@ import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { useShallow } from 'zustand/react/shallow'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
@@ -134,6 +135,7 @@ function DetailsPanelIcon({ file, size = 32 }: { file: LocalFile; size?: number 
 }
 
 export function DetailsPanel() {
+  const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
   const {
     selectedFiles,
     getSelectedFileObjects,
@@ -661,6 +663,8 @@ export function DetailsPanel() {
 
   // Inspection tables are drawing-only
   const isDrawingFile = !!file && file.extension?.toLowerCase() === '.slddrw'
+  // The Inspection tab is the Inspection extension's (Settings > Extensions).
+  const showInspection = isDrawingFile && inspectionInstalled
 
   // The orders whose lines pin this file (5.13.0), where the Orders module is available.
   const ordersTab: { id: DetailsPanelTab; label: string }[] =
@@ -674,7 +678,7 @@ export function DetailsPanel() {
           { id: 'whereused', label: 'Where Used' },
           { id: 'vendors', label: 'Vendors' },
           ...ordersTab,
-          ...(isDrawingFile ? [{ id: 'inspection' as const, label: 'Inspection' }] : []),
+          ...(showInspection ? [{ id: 'inspection' as const, label: 'Inspection' }] : []),
         ]
       : [
           { id: 'preview', label: 'Preview' },
@@ -727,10 +731,10 @@ export function DetailsPanel() {
 
   // Inspection tab is drawing-only; switch away if a non-drawing becomes selected
   useEffect(() => {
-    if (detailsPanelTab === 'inspection' && !isDrawingFile) {
+    if (detailsPanelTab === 'inspection' && !showInspection) {
       setDetailsPanelTab('preview')
     }
-  }, [detailsPanelTab, isDrawingFile, setDetailsPanelTab])
+  }, [detailsPanelTab, showInspection, setDetailsPanelTab])
 
   // Check file types for preview
   const ext = file?.extension?.toLowerCase() || ''
@@ -1109,7 +1113,7 @@ export function DetailsPanel() {
 
               {detailsPanelTab === 'orders' && ordersAvailable && !isFolder && <FileOrdersTab file={file} />}
 
-              {detailsPanelTab === 'inspection' && isDrawingFile && <InspectionTab file={file} />}
+              {detailsPanelTab === 'inspection' && showInspection && <InspectionTab file={file} />}
             </>
           )
         )}

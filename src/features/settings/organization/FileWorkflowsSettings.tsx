@@ -7,6 +7,7 @@
  * and `review_settle` / `advance_reviewed_files` apply the review-stage rules.
  */
 
+import { officialExtensionInstalled } from '@/lib/officialExtensions'
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -76,6 +77,7 @@ export function FileWorkflowsSettings() {
 
   const isAdmin = getEffectiveRole() === 'admin'
   const enabled = fileWorkflowsEnabled(organization)
+  const reviewsInstalled = officialExtensionInstalled(organization, 'blueplm.reviews')
   const onApproval = organization?.settings?.review_stage_on_approval ?? 'hold'
   const packagePolicy = organization?.settings?.review_stage_package_policy ?? 'together'
   const disabled = !isAdmin || saving
@@ -155,7 +157,8 @@ export function FileWorkflowsSettings() {
         </SettingsGroup>
       </SettingsSection>
 
-      {enabled && (
+      {/* Review stages are Reviews' (Settings > Extensions). */}
+      {enabled && reviewsInstalled && (
         <>
           <SettingsSection
             title={t('workflows.settings.onApprovalTitle')}

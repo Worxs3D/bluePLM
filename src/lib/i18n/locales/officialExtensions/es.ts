@@ -4,12 +4,13 @@ export const es: OfficialExtensionsDict = {
   reviewsName: 'Revisiones',
   reviewsDescription:
     'Envíe planos y modelos a revisión, decida por archivo y siga los comentarios hasta una decisión.',
-  reviewsAddsView: 'la vista Revisiones',
+  reviewsAddsView: 'los paquetes de revisión de la vista Revisiones',
   reviewsAddsMenu: 'el submenú Revisiones del menú contextual',
   reviewsAddsPane: 'el panel de revisión',
   reviewsAddsStages: 'las etapas de revisión en los flujos de archivos',
   reviewsEffectRelease: 'Los planos se liberan sin una revisión aprobada.',
   reviewsEffectStages: 'Las etapas de revisión de los flujos de archivos funcionan como estados normales.',
+  reviewsEffectGates: 'La vista Revisiones conserva solo las aprobaciones de flujos.',
   inspectionName: 'Inspección',
   inspectionDescription:
     'Añada globos a los planos, guarde tablas de inspección por versión y rellene informes de inspección en Excel.',

@@ -18,6 +18,7 @@ import { StateCreator } from 'zustand'
 import type { ReviewPackageDraft, ReviewPackageDraftItem } from '../../types/reviewPackageDraft'
 import type { ReviewerSkipReason, ReviewQueueBucket } from '../../types/reviews'
 import type { PDMStoreState } from '../types'
+import { officialExtensionInstalled } from '../../lib/officialExtensions'
 import {
   addDraftItems,
   emptyReviewPackageDraft,
@@ -160,6 +161,14 @@ export function rightPanelHasNoOtherContent(state: PDMStoreState): boolean {
 }
 
 /**
+ * Whether review packages (the Reviews official extension) are installed for the organization. The
+ * Reviews view itself stays without them, for workflow gate approvals.
+ */
+export function reviewPackagesInstalled(state: Pick<PDMStoreState, 'organization'>): boolean {
+  return officialExtensionInstalled(state.organization, 'blueplm.reviews')
+}
+
+/**
  * Whether the review package pane is on screen. It lives in the right panel, so the top bar's
  * right-pane toggle hides and shows it like any other right-panel content; the draft is in the
  * store, so hiding loses nothing. It shows when it was opened (a context menu or the toggle), and
@@ -167,7 +176,7 @@ export function rightPanelHasNoOtherContent(state: PDMStoreState): boolean {
  * empty pane.
  */
 export function selectReviewPackagePaneShown(state: PDMStoreState): boolean {
-  if (!state.rightPanelVisible) return false
+  if (!state.rightPanelVisible || !reviewPackagesInstalled(state)) return false
   return state.reviewPackagePaneOpen || rightPanelHasNoOtherContent(state)
 }
 
@@ -185,7 +194,7 @@ export type RightPaneContent = 'comments' | 'reviewDraft' | 'reviewsPane' | 'pan
 export function rightPaneContent(state: PDMStoreState): RightPaneContent {
   const reviewOpen = state.activeView === 'reviews' && !!state.activeReviewId
   if (reviewOpen && !state.reviewPackagePaneOpen) return 'comments'
-  if (state.reviewPackagePaneOpen || rightPanelHasNoOtherContent(state)) {
+  if (reviewPackagesInstalled(state) && (state.reviewPackagePaneOpen || rightPanelHasNoOtherContent(state))) {
     const hasDraft = selectReviewPackageDraft(state).items.length > 0
     return hasDraft && !state.reviewPackageLastSent ? 'reviewDraft' : 'reviewsPane'
   }
@@ -290,6 +299,8 @@ export const createReviewsSlice: StateCreator<
     restoreReviewPackageDraft: (draft) => updateDraft(() => draft),
     setReviewPackageLastSent: (reviewPackageLastSent) => set({ reviewPackageLastSent }),
     setReviewPackagePaneOpen: (reviewPackagePaneOpen) => {
+      // The pane is the Reviews extension's; without it nothing opens it.
+      if (reviewPackagePaneOpen && !reviewPackagesInstalled(get())) return
       set({ reviewPackagePaneOpen })
       // Opening asks for the pane explicitly, so a hidden right panel comes back with it.
       if (reviewPackagePaneOpen && !get().rightPanelVisible) get().toggleRightPanel()

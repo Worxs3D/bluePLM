@@ -7,6 +7,7 @@ import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPan
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { ArrowLeft } from 'lucide-react'
 import { canPopOutTabs, isPopoutTab } from '../panelPopout/panelPopout'
 import { PanelTabMenu, PoppedOutPlaceholder } from '../panelPopout/PanelTabMenu'
@@ -16,8 +17,8 @@ export function RightPanel() {
   const {
     getSelectedFileObjects,
     rightPanelWidth,
-    rightPanelTab,
-    rightPanelTabs,
+    rightPanelTab: storedTab,
+    rightPanelTabs: storedTabs,
     setRightPanelTab,
     moveTabToBottom,
     moveTabToRight,
@@ -39,6 +40,11 @@ export function RightPanel() {
     })),
   )
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
+  // The Inspection tab is the Inspection extension's: without it the tab is left out here, and the
+  // layout keeps it for a reinstall.
+  const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
+  const rightPanelTabs = inspectionInstalled ? storedTabs : storedTabs.filter((tab) => tab !== 'inspection')
+  const rightPanelTab = storedTab && rightPanelTabs.includes(storedTab) ? storedTab : (rightPanelTabs[0] ?? null)
   const poppedOutTabs = usePDMStore((s) => s.poppedOutTabs)
   const [tabMenu, setTabMenu] = useState<{
     tab: DetailsPanelTab

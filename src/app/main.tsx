@@ -11,13 +11,18 @@ import '@/index.css'
 import { hasDesktop } from '@/lib/platform'
 import { registerCheckoutEndListener } from '@/lib/commands/checkoutLifecycle'
 import { log } from '@/lib/logger'
+import { officialExtensionInstalled } from '@/lib/officialExtensions'
+import { usePDMStore } from '@/stores/pdmStore'
 
 // Lets index.css style the browser build (BluePLM Web) where it differs from the desktop.
 if (!hasDesktop()) document.documentElement.dataset.host = 'web'
 
 // Inspection reports of a checked-out copy move to the checked-in version, or go with a discard
-// (workingCopyPin.ts). Loaded on first use: the reports module pulls in the workbook engine.
+// (workingCopyPin.ts). Loaded on first use: the reports module pulls in the workbook engine. Only
+// while Inspection is installed for the organization (Settings > Extensions): without it the
+// server refuses report writes, and a working copy waits for a reinstall.
 registerCheckoutEndListener((end, files, after) => {
+  if (!officialExtensionInstalled(usePDMStore.getState().organization, 'blueplm.inspection')) return
   void import('@/features/integrations/solidworks/inspection/reports/workingCopyPin')
     .then((m) => m.onCheckoutEnd(end, files, after))
     .catch((err: unknown) =>

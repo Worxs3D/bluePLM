@@ -93,10 +93,11 @@ describe('manifests', () => {
 
 describe('gates', () => {
   it('deny the modules of uninstalled extensions to everyone', () => {
+    // The Reviews view stays without Reviews: workflow gate approvals are decided there.
     const modules = modulesOfUninstalledExtensions(['blueplm.reviews', 'blueplm.orders'])
-    expect(modules.sort()).toEqual(['orders', 'reviews'])
+    expect(modules).toEqual(['orders'])
     const denied = computeDeniedModules([], true, true, modules)
-    expect(denied.has('reviews')).toBe(true)
+    expect(denied.has('reviews')).toBe(false)
     expect(denied.has('orders')).toBe(true)
     expect(denied.has('explorer')).toBe(false)
     expect(computeDeniedModules([], true, true, []).size).toBe(0)
@@ -131,5 +132,26 @@ describe('dependency plans', () => {
 
   it('install just the extension when its dependencies are core only', () => {
     expect(planInstall('blueplm.orders', (id) => id !== 'blueplm.orders').install).toEqual(['blueplm.orders'])
+  })
+})
+
+describe('review packages without Reviews', () => {
+  it('never show the review pane, even as the right panel fallback', async () => {
+    const { reviewPackagesInstalled, selectReviewPackagePaneShown } = await import('@/stores/slices/reviewsSlice')
+    type State = Parameters<typeof selectReviewPackagePaneShown>[0]
+    const base = {
+      rightPanelVisible: true,
+      reviewPackagePaneOpen: true,
+      activeView: 'explorer',
+      rightPanelTabs: [],
+      extensionRightPanel: null,
+      extensionWorkspaces: [],
+    }
+    const on = { ...base, organization: org() } as unknown as State
+    const off = { ...base, organization: org({ 'blueplm.reviews': { installed: false } }) } as unknown as State
+    expect(reviewPackagesInstalled(on)).toBe(true)
+    expect(selectReviewPackagePaneShown(on)).toBe(true)
+    expect(reviewPackagesInstalled(off)).toBe(false)
+    expect(selectReviewPackagePaneShown(off)).toBe(false)
   })
 })

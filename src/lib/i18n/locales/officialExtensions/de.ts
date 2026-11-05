@@ -4,12 +4,13 @@ export const de: OfficialExtensionsDict = {
   reviewsName: 'Prüfungen',
   reviewsDescription:
     'Zeichnungen und Modelle zur Prüfung senden, je Datei entscheiden und Kommentare bis zur Entscheidung verfolgen.',
-  reviewsAddsView: 'die Ansicht Prüfungen',
+  reviewsAddsView: 'Prüfpakete in der Ansicht Prüfungen',
   reviewsAddsMenu: 'das Untermenü Prüfungen im Kontextmenü',
   reviewsAddsPane: 'den Prüfungsbereich',
   reviewsAddsStages: 'Prüfstufen in Datei-Workflows',
   reviewsEffectRelease: 'Zeichnungen werden ohne genehmigte Prüfung freigegeben.',
   reviewsEffectStages: 'Prüfstufen in Datei-Workflows verhalten sich wie normale Zustände.',
+  reviewsEffectGates: 'Die Ansicht Prüfungen zeigt nur noch Workflow-Freigaben.',
   inspectionName: 'Inspektion',
   inspectionDescription:
     'Zeichnungen mit Ballons versehen, Prüftabellen je Version führen und Excel-Prüfberichte ausfüllen.',
