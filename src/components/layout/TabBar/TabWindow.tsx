@@ -34,29 +34,23 @@ const TerminalView = lazy(() =>
 const ECOView = lazy(() =>
   import('@/features/change-control/eco').then((m) => ({ default: m.ECOView })),
 )
-const ECRView = lazy(() =>
-  import('@/features/change-control/ecr').then((m) => ({ default: m.ECRView })),
-)
 const DeviationsView = lazy(() =>
   import('@/features/change-control/deviations').then((m) => ({ default: m.DeviationsView })),
 )
-const ProductsView = lazy(() =>
-  import('@/features/items/products').then((m) => ({ default: m.ProductsView })),
-)
 const ItemBrowserView = lazy(() =>
   import('@/features/items/itemBrowser').then((m) => ({ default: m.ItemBrowserView })),
-)
-const ProcessView = lazy(() =>
-  import('@/features/change-control/process').then((m) => ({ default: m.ProcessView })),
-)
-const ScheduleView = lazy(() =>
-  import('@/features/change-control/schedule').then((m) => ({ default: m.ScheduleView })),
 )
 const SuppliersView = lazy(() =>
   import('@/features/supply-chain/suppliers').then((m) => ({ default: m.SuppliersView })),
 )
 const SupplierPortalView = lazy(() =>
   import('@/features/supply-chain/portal').then((m) => ({ default: m.SupplierPortalView })),
+)
+const OrdersPane = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrdersPane })),
+)
+const OrderDetailView = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrderDetailView })),
 )
 const SettingsContent = lazy(() =>
   import('@/features/settings').then((m) => ({ default: m.SettingsContent })),
@@ -145,7 +139,7 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
     if (!CORE_VIEW_IDS.has(view)) return <ExtensionNotLoaded />
 
     // Views that have both sidebar and main content
-    const mainContentViews: SidebarView[] = ['explorer', 'google-drive', 'settings']
+    const mainContentViews: SidebarView[] = ['explorer', 'google-drive', 'settings', 'orders']
 
     if (mainContentViews.includes(view)) {
       switch (view) {
@@ -164,6 +158,21 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
               <div className="flex-1 overflow-hidden">
                 <Suspense fallback={<ViewLoading />}>
                   <FilePane onRefresh={() => {}} />
+                </Suspense>
+              </div>
+            </div>
+          )
+        case 'orders':
+          return (
+            <div className="flex-1 flex overflow-hidden">
+              <div className="w-72 border-r border-ui-border overflow-auto bg-ui-nav">
+                <Suspense fallback={<ViewLoading />}>
+                  <OrdersPane />
+                </Suspense>
+              </div>
+              <div className="flex-1 flex overflow-hidden">
+                <Suspense fallback={<ViewLoading />}>
+                  <OrderDetailView />
                 </Suspense>
               </div>
             </div>
@@ -227,40 +236,16 @@ export function TabWindow({ view, title, customData }: TabWindowProps) {
             <ECOView />
           </Suspense>
         )
-      case 'ecr':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ECRView />
-          </Suspense>
-        )
       case 'deviations':
         return (
           <Suspense fallback={<ViewLoading />}>
             <DeviationsView />
           </Suspense>
         )
-      case 'products':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ProductsView />
-          </Suspense>
-        )
       case 'items':
         return (
           <Suspense fallback={<ViewLoading />}>
             <ItemBrowserView />
-          </Suspense>
-        )
-      case 'process':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ProcessView />
-          </Suspense>
-        )
-      case 'release-schedule':
-        return (
-          <Suspense fallback={<ViewLoading />}>
-            <ScheduleView />
           </Suspense>
         )
       case 'supplier-database':

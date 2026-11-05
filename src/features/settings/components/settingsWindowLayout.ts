@@ -1,6 +1,5 @@
 /**
- * Geometry and document plumbing for Settings as a window: the desktop's own OS window
- * (`SettingsWindow`) and the floating panel used where there is none (`SettingsFloating`).
+ * Geometry and document plumbing for Settings in a window of its own (`SettingsWindow`).
  */
 
 /** `window.open` target name of the settings window; `electron/settingsWindow.ts` matches it. */
@@ -9,6 +8,12 @@ export const SETTINGS_WINDOW_FRAME = 'blueplm-settings'
 /** Marks the settings window's root (and scopes its quirks-mode fixes in `index.css`). */
 export const SETTINGS_WINDOW_ATTR = 'data-settings-window'
 
+/**
+ * Height of the settings window's own title bar, which the system's window controls overlay.
+ * Must equal `TITLE_BAR_HEIGHT` in `electron/settingsWindow.ts`.
+ */
+export const SETTINGS_TITLE_BAR_HEIGHT = 40
+
 export interface Rect {
   x: number
   y: number
@@ -16,20 +21,11 @@ export interface Rect {
   height: number
 }
 
-export interface Edges {
-  left?: boolean
-  right?: boolean
-  top?: boolean
-  bottom?: boolean
-}
-
 export const MIN_WIDTH = 640
 export const MIN_HEIGHT = 420
 const MARGIN = 16
-/** Height of the floating panel's header: it must stay on screen so the panel can be dragged back. */
-const HEADER = 46
 
-/** The size the modal used to have, centred in the viewport. */
+/** The modal's size, centred in the given area: where the window first opens. */
 export function defaultRect(viewWidth: number, viewHeight: number): Rect {
   const width = Math.max(Math.min(1200, viewWidth - 2 * MARGIN), Math.min(MIN_WIDTH, viewWidth))
   const height = Math.max(Math.min(880, viewHeight - 2 * MARGIN), Math.min(MIN_HEIGHT, viewHeight))
@@ -39,54 +35,6 @@ export function defaultRect(viewWidth: number, viewHeight: number): Rect {
     width,
     height,
   }
-}
-
-/**
- * Keeps the panel reachable: no larger than the viewport, the header fully below the top edge
- * and at least a strip of it inside the other edges.
- */
-export function clampRect(rect: Rect, viewWidth: number, viewHeight: number): Rect {
-  const width = Math.min(Math.max(rect.width, Math.min(MIN_WIDTH, viewWidth)), viewWidth)
-  const height = Math.min(Math.max(rect.height, Math.min(MIN_HEIGHT, viewHeight)), viewHeight)
-  const keep = Math.min(120, width)
-  const x = Math.min(Math.max(rect.x, keep - width), viewWidth - keep)
-  const y = Math.min(Math.max(rect.y, 0), viewHeight - HEADER)
-  return { x, y, width, height }
-}
-
-export function moveRect(
-  rect: Rect,
-  dx: number,
-  dy: number,
-  viewWidth: number,
-  viewHeight: number,
-): Rect {
-  return clampRect({ ...rect, x: rect.x + dx, y: rect.y + dy }, viewWidth, viewHeight)
-}
-
-/** Drags the given edges by (dx, dy); an edge stops where the panel would get smaller than the minimum. */
-export function resizeRect(
-  rect: Rect,
-  edges: Edges,
-  dx: number,
-  dy: number,
-  viewWidth: number,
-  viewHeight: number,
-): Rect {
-  let { x, y, width, height } = rect
-  if (edges.right) width = Math.max(MIN_WIDTH, width + dx)
-  if (edges.bottom) height = Math.max(MIN_HEIGHT, height + dy)
-  if (edges.left) {
-    const next = Math.max(MIN_WIDTH, width - dx)
-    x += width - next
-    width = next
-  }
-  if (edges.top) {
-    const next = Math.max(MIN_HEIGHT, height - dy)
-    y += height - next
-    height = next
-  }
-  return clampRect({ x, y, width, height }, viewWidth, viewHeight)
 }
 
 /** Window features for `window.open`; the main process replaces the bounds with the saved ones. */

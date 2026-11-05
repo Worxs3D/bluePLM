@@ -15,7 +15,11 @@ import { outputFileName, SAMPLE_OUTPUT_NAME_VALUES } from '@/lib/outputs/fileNam
 import { hasDesktop } from '@/lib/platform'
 import { supabase } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
-import { ExportSettings as ExportSettingsType, DEFAULT_EXPORT_SETTINGS } from '@/types/pdm'
+import {
+  ExportSettings as ExportSettingsType,
+  DEFAULT_EXPORT_SETTINGS,
+  type OrgSettings,
+} from '@/types/pdm'
 
 import { SettingRow, SettingsGroup, SettingsPage, SettingsSection } from '../components/ui'
 import { AutoOutputSettingsSection } from './AutoOutputSettings'
@@ -262,22 +266,29 @@ export function ExportSettings() {
 
     setSaving(true)
     try {
-      // Get current settings and merge
-      const currentSettings = organization.settings || {}
-      const newSettings = {
-        ...currentSettings,
-        export_settings: settings,
-      }
-
-      const { error } = await (supabase.from('organization') as any) // TODO: type this
-        .update({ settings: newSettings })
+      // Read the stored settings first and change only export_settings, so a concurrent change
+      // to another key (made in another window or by another admin) is not overwritten.
+      const { data: current, error: readError } = await supabase
+        .from('organization')
+        .select('settings')
         .eq('id', organization.id)
-        .select()
+        .single()
+      if (readError) throw readError
+      const base = (current?.settings ?? {}) as unknown as OrgSettings
+      const newSettings: OrgSettings = { ...base, export_settings: settings }
+
+      const { data, error } = await supabase
+        .from('organization')
+        .update({ settings: newSettings as never })
+        .eq('id', organization.id)
+        .select('settings')
+        .single()
 
       if (error) {
         log.error('[ExportSettings]', 'Supabase error', { error })
         throw error
       }
+      if (!data) throw new Error('No permission to change the organization settings')
 
       // Update local state
       updateOrganization({ settings: newSettings } as any) // TODO: type this

@@ -36,26 +36,17 @@ const TerminalView = lazy(() =>
 const ECOView = lazy(() =>
   import('@/features/change-control/eco').then((m) => ({ default: m.ECOView })),
 )
-const ECRView = lazy(() =>
-  import('@/features/change-control/ecr').then((m) => ({ default: m.ECRView })),
-)
 const DeviationsView = lazy(() =>
   import('@/features/change-control/deviations').then((m) => ({ default: m.DeviationsView })),
-)
-const ProductsView = lazy(() =>
-  import('@/features/items/products').then((m) => ({ default: m.ProductsView })),
-)
-const ProcessView = lazy(() =>
-  import('@/features/change-control/process').then((m) => ({ default: m.ProcessView })),
-)
-const ScheduleView = lazy(() =>
-  import('@/features/change-control/schedule').then((m) => ({ default: m.ScheduleView })),
 )
 const SuppliersView = lazy(() =>
   import('@/features/supply-chain/suppliers').then((m) => ({ default: m.SuppliersView })),
 )
 const SupplierPortalView = lazy(() =>
   import('@/features/supply-chain/portal').then((m) => ({ default: m.SupplierPortalView })),
+)
+const OrdersPane = lazy(() =>
+  import('@/features/orders').then((m) => ({ default: m.OrdersPane })),
 )
 const GoogleDriveView = lazy(() =>
   import('@/features/integrations/google-drive').then((m) => ({ default: m.GoogleDriveView })),
@@ -202,27 +193,9 @@ export function Sidebar() {
       // Note: 'items' (Quality / Item Browser) renders full-width in MainContent,
       // not in the sidebar. See MainContent.tsx.
 
-      case 'products':
-        return isEnabled ? (
-          <Suspense fallback={<ViewLoading />}>
-            <ProductsView />
-          </Suspense>
-        ) : (
-          <ModuleDisabled moduleName={moduleName} />
-        )
-
       // ============================================
       // CHANGE CONTROL
       // ============================================
-      case 'ecr':
-        return isEnabled ? (
-          <Suspense fallback={<ViewLoading />}>
-            <ECRView />
-          </Suspense>
-        ) : (
-          <ModuleDisabled moduleName={moduleName} />
-        )
-
       case 'eco':
         return isEnabled ? (
           <Suspense fallback={<ViewLoading />}>
@@ -236,24 +209,6 @@ export function Sidebar() {
         return isEnabled ? (
           <Suspense fallback={<ViewLoading />}>
             <DeviationsView />
-          </Suspense>
-        ) : (
-          <ModuleDisabled moduleName={moduleName} />
-        )
-
-      case 'release-schedule':
-        return isEnabled ? (
-          <Suspense fallback={<ViewLoading />}>
-            <ScheduleView />
-          </Suspense>
-        ) : (
-          <ModuleDisabled moduleName={moduleName} />
-        )
-
-      case 'process':
-        return isEnabled ? (
-          <Suspense fallback={<ViewLoading />}>
-            <ProcessView />
           </Suspense>
         ) : (
           <ModuleDisabled moduleName={moduleName} />
@@ -280,6 +235,17 @@ export function Sidebar() {
           <ModuleDisabled moduleName={moduleName} />
         )
 
+      // ============================================
+      // SUPPLY CHAIN - ORDERS (the open order renders in MainContent)
+      // ============================================
+      case 'orders':
+        return isEnabled ? (
+          <Suspense fallback={<ViewLoading />}>
+            <OrdersPane />
+          </Suspense>
+        ) : (
+          <ModuleDisabled moduleName={moduleName} />
+        )
 
       // ============================================
       // INTEGRATIONS

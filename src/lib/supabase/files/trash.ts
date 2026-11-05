@@ -1,6 +1,7 @@
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { escapeLikePattern, folderPrefixLikePattern } from '@/lib/utils/likePattern'
+import { isReferencedByRelease, referencedByReleaseMessage } from '@/lib/versionOpen/deleteRefusal'
 
 import { processWithConcurrency, CONCURRENT_OPERATIONS } from '../../concurrency'
 import { getSupabaseClient } from '../client'
@@ -266,26 +267,17 @@ export async function permanentlyDeleteFile(
     return { success: false, error: 'File must be in trash before permanent deletion' }
   }
 
-  // Log activity BEFORE delete
-  try {
-    await client.from('activity').insert({
-      org_id: file.org_id,
-      file_id: null, // Set to null since file will be deleted
-      user_id: userId,
-      user_email: '',
-      action: 'delete' as const,
-      details: {
-        file_name: file.file_name,
-        file_path: file.file_path,
-        permanent: true,
-      },
-    })
-  } catch {
-    // Activity logging is non-critical
+  // Delete file versions. Schema 515 refuses (hint REFERENCED_BY_RELEASE) while a released
+  // version's closure references one of them; stop before the references go too.
+  const { error: versionsError } = await client.from('file_version').delete().eq('file_id', fileId)
+  if (versionsError) {
+    return {
+      success: false,
+      error: isReferencedByRelease(versionsError)
+        ? referencedByReleaseMessage(file.file_name)
+        : versionsError.message,
+    }
   }
-
-  // Delete file versions
-  await client.from('file_version').delete().eq('file_id', fileId)
 
   // Delete file references
   await client
@@ -297,7 +289,29 @@ export async function permanentlyDeleteFile(
   const { error } = await client.from('file').delete().eq('id', fileId)
 
   if (error) {
-    return { success: false, error: error.message }
+    return {
+      success: false,
+      error: isReferencedByRelease(error) ? referencedByReleaseMessage(file.file_name) : error.message,
+    }
+  }
+
+  // Log the permanent delete only once it happened: schema 515 refuses deleting a version a
+  // release still references, and a refused delete must not read as done in the history.
+  try {
+    await client.from('activity').insert({
+      org_id: file.org_id,
+      file_id: null, // The file row is gone
+      user_id: userId,
+      user_email: '',
+      action: 'delete' as const,
+      details: {
+        file_name: file.file_name,
+        file_path: file.file_path,
+        permanent: true,
+      },
+    })
+  } catch {
+    // Activity logging is non-critical
   }
 
   return { success: true }

@@ -9,7 +9,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { PGlite } from '@electric-sql/pglite'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   checksumOf,
@@ -66,6 +66,15 @@ ${VERIFY_FN(112, ['organizations', 'files'])}`,
 
 const dirs: string[] = []
 const dbs: PGlite[] = []
+
+// The first PGlite in a process pays a one-time start-up (about 3 s more than later ones), which
+// under a full-suite run can outlast the first test's 5 s budget. Pay it once here, so every test
+// measures only its own work.
+beforeAll(async () => {
+  const warm = new PGlite()
+  await warm.query('select 1')
+  await warm.close()
+}, 60_000)
 
 afterEach(async () => {
   for (const db of dbs.splice(0)) await db.close()

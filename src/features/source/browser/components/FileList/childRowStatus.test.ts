@@ -28,6 +28,13 @@ describe('outdatedReportVersion', () => {
     expect(outdatedReportVersion(report('c', 'v2', 'fai'), [], versions, null)).toBeNull()
   })
 
+  it('never flags a report of a checked-out copy, nor counts one as newer', () => {
+    const copy = { ...report('w', 'v2', 'fai', '2026-02-01'), workingCopy: true }
+    expect(outdatedReportVersion(copy, [copy], versions, 3)).toBeNull()
+    const fai = report('a', 'v2', 'fai')
+    expect(outdatedReportVersion(fai, [fai, copy], versions, 3)).toBe(3)
+  })
+
   it('does not flag a report superseded by a newer one of the same type', () => {
     const old = report('a', 'v1', 'fai')
     const newer = report('b', 'v2', 'fai')

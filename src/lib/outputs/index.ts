@@ -47,6 +47,7 @@ export {
   type AutoOutputSettings,
 } from './kinds'
 export {
+  appOutputQueueSize,
   AUTO_OUTPUT_MAX_BATCH,
   AUTO_OUTPUT_MAX_QUEUED,
   checkinCandidates,
@@ -64,3 +65,27 @@ export {
   type OutputQueueDeps,
   type PlannedOutputJob,
 } from './autoQueue'
+export {
+  cancelOutputRequests,
+  canGenerateRequestedOutputs,
+  claimOutputRequests,
+  createOutputRequestWorker,
+  finishOutputRequest,
+  handleOutputRequestEvent,
+  listOutputRequests,
+  onOutputRequestChange,
+  OUTPUT_REQUEST_CLAIM_LIMIT,
+  OUTPUT_REQUEST_POLL_MS,
+  outputRequestWorkerEnabled,
+  releaseOutputRequest,
+  requestOutcome,
+  requestOutputs,
+  touchOutputRequest,
+  setOutputRequestWorkerEnabled,
+  startOutputRequestWorker,
+  wakeOutputRequestWorker,
+  type OutputRequestWorker,
+  type OutputRequestWorkerDeps,
+  type RequestOutcome,
+} from './requests'
+export { generationLockBusy, withGenerationLock } from './generationLock'

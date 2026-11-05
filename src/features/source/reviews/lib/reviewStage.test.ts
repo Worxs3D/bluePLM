@@ -41,6 +41,7 @@ describe('summarizeReviewStage', () => {
     expect(s.approvedWaiting).toBe(1)
     expect(s.packageReady).toBe(false)
     expect(s.nextStates).toEqual(['Released'])
+    expect(s.stages).toEqual(['In Review'])
     expect(s.relevant).toBe(true)
   })
 
@@ -48,6 +49,30 @@ describe('summarizeReviewStage', () => {
     const items = [item('a', { outcome: 'approved' }), item('b', { outcome: 'approved' })]
     expect(summarizeReviewStage(status(items), 'approved').packageReady).toBe(true)
     expect(summarizeReviewStage(status(items), 'changes_requested').packageReady).toBe(false)
+  })
+
+  it('offers a partial move only when the organization moves approved files one by one', () => {
+    const items = [item('a', { outcome: 'approved' }), item('b', { outcome: 'changes_requested' })]
+    const together = summarizeReviewStage(status(items), 'changes_requested')
+    expect(together.partialMoveAllowed).toBe(false)
+    expect(together.heldForPackage).toBe(true)
+
+    const each = summarizeReviewStage(
+      status(items, { packagePolicy: 'approved_only' }),
+      'changes_requested',
+    )
+    expect(each.partialMoveAllowed).toBe(true)
+    expect(each.heldForPackage).toBe(false)
+
+    // Nothing partial about an approved package, and nothing moves out of a cancelled review.
+    const all = [item('a', { outcome: 'approved' }), item('b', { outcome: 'approved' })]
+    const approved = summarizeReviewStage(status(all, { packagePolicy: 'approved_only' }), 'approved')
+    expect(approved.partialMoveAllowed).toBe(false)
+    expect(approved.heldForPackage).toBe(false)
+    expect(
+      summarizeReviewStage(status(items, { packagePolicy: 'approved_only' }), 'cancelled')
+        .partialMoveAllowed,
+    ).toBe(false)
   })
 
   it('groups moved files by the state they went to and stops counting them as waiting', () => {

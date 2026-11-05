@@ -75,5 +75,6 @@ reports/mutation/
 # Staging Supabase credentials (5.0 rehearsal)
 .env.staging
 
-# ui-look screenshots (scripts/ui-look)
+# ui-look screenshots and own perf builds (scripts/ui-look, --dist)
 ui-look-out/
+.ui-look/

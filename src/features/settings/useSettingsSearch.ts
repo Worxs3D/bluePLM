@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { hasDesktop } from '@/lib/platform'
 import { useTranslation } from '@/lib/i18n'
+import { parseExtensionIds, uninstalledOfficialExtensions } from '@/lib/officialExtensions'
 import { isSettingsTabAvailable, settingsCatalogFor, settingsSections } from './settingsCatalog'
 import {
   buildSettingsSearchIndex,
@@ -27,12 +28,14 @@ function runSearch(
   desktop: boolean,
   language: string,
   t: (key: string) => string,
+  uninstalledKey: string,
 ): SettingsSearchState {
-  const key = `${language}\u0000${isAdmin ? 1 : 0}${desktop ? 1 : 0}\u0000${query}`
+  const key = `${language}\u0000${isAdmin ? 1 : 0}${desktop ? 1 : 0}${uninstalledKey}\u0000${query}`
   if (cache?.key === key) return cache.value
+  const uninstalled = parseExtensionIds(uninstalledKey)
   const sections = settingsSections(t).map((section) => ({
     ...section,
-    items: section.items.filter((item) => isSettingsTabAvailable(item, isAdmin, desktop)),
+    items: section.items.filter((item) => isSettingsTabAvailable(item, isAdmin, desktop, uninstalled)),
   }))
   const groups = query.trim()
     ? searchSettings(buildSettingsSearchIndex(sections, settingsCatalogFor(desktop)), query)
@@ -48,8 +51,10 @@ export function useSettingsSearch(): SettingsSearchState {
   const isAdmin = usePDMStore((s) => s.getEffectiveRole() === 'admin')
   const desktop = hasDesktop()
   const { t, language } = useTranslation()
+  // A comma-joined key: a store selector must return a stable value.
+  const uninstalledKey = usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(','))
   return useMemo(
-    () => runSearch(query, isAdmin, desktop, language, t),
-    [query, isAdmin, desktop, language, t],
+    () => runSearch(query, isAdmin, desktop, language, t, uninstalledKey),
+    [query, isAdmin, desktop, language, t, uninstalledKey],
   )
 }

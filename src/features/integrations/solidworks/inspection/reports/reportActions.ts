@@ -3,8 +3,9 @@
  * download a report, read a returned workbook and record its results.
  *
  * A report's inputs are immutable (the version's inspection snapshot and its stored drawing PDF),
- * so the same version and template give the same report. Nothing here reads the live table or a
- * local copy of the drawing.
+ * so the same version and template give the same report. The one exception is a report of the
+ * user's checked-out copy (`workingCopy`, `workingCopyReport.ts`): live table and local drawing,
+ * recorded with `working_copy` and pinned to its version at check-in (`workingCopyPin.ts`).
  */
 import {
   analyzeTemplate,
@@ -62,6 +63,7 @@ import {
   type VersionInfo,
 } from './reportModel'
 import type { ReportLogo } from './reportSources'
+import { workingCopyDrawingPages, type WorkingCopySource } from './workingCopyReport'
 import {
   faiReasonKey,
   includedRows,
@@ -105,6 +107,16 @@ export interface GenerateReportParams {
    * are printed in the workbook instead of a new id and the next number. Only with `localOnly`.
    */
   reuse?: { reportId: string; reportNumber: string | null }
+  /**
+   * Build from the user's checked-out copy (live table, local drawing) instead of the version's
+   * snapshot and stored PDF; `version` is the version it is based on. Recorded as a working copy.
+   */
+  workingCopy?: WorkingCopySource
+  /**
+   * Export the drawing pages from this local drawing instead of the version's stored PDF (a
+   * working-copy report rebuilt for the version its check-in just made from that same file).
+   */
+  localDrawingPath?: string
   onPhase?: (phase: GeneratePhase) => void
 }
 
@@ -178,6 +190,8 @@ export interface LocalReportOutcome extends Omit<GenerateReportOutcome, 'report'
   templateHash: string
   drawingPdfHash: string | null
   characteristicCount: number
+  /** The included characteristics as recorded (null = every row). */
+  characteristicIds: string[] | null
   /** Lot reports: part columns the workbook was laid out with; null otherwise. */
   sampleColumns: number | null
 }
@@ -271,8 +285,13 @@ export async function generateReport(
       }
     : params.type
 
+  const { workingCopy } = params
+  const localDrawing = workingCopy?.drawingPath ?? params.localDrawingPath
+
   onPhase?.('rows')
-  const rows = await rowsAtVersion(fileId, version.id)
+  const rows = workingCopy
+    ? { rows: workingCopy.rows, exact: true, sourceVersion: null }
+    : await rowsAtVersion(fileId, version.id)
   if (rows.rows.length === 0) throw new ReportHasNoRowsError(version.version)
 
   // Partial FAI: the characteristics changed since the baseline version's snapshot. Without a
@@ -322,7 +341,9 @@ export async function generateReport(
   }
 
   onPhase?.('drawing')
-  const drawing = await drawingPages(orgId, version.id)
+  const drawing = localDrawing
+    ? { ...(await workingCopyDrawingPages(localDrawing)), pdfHash: null }
+    : await drawingPages(orgId, version.id)
 
   const generatedAt = new Date()
   const values = reportNumberValues(identity, params.drawingName, version.version, generatedAt, request.reportType)
@@ -368,7 +389,9 @@ export async function generateReport(
         REVISION: identity.revision ?? '',
         DESCRIPTION: identity.description ?? '',
         DRAWING_NAME: params.drawingName,
-        DRAWING_VERSION: String(version.version),
+        DRAWING_VERSION: workingCopy
+          ? t('source.inspection.rptWorkingCopyVersion', { version: version.version })
+          : String(version.version),
         REPORT_NUMBER: reportNumber,
         ORG_NAME: params.orgName,
       },
@@ -391,6 +414,7 @@ export async function generateReport(
         templateHash: template.hash,
         drawingPdfHash: drawing.pdfHash,
         characteristicCount: selection.rows.length,
+        characteristicIds: fields.characteristicIds ?? null,
         sampleColumns: fields.sampleColumns ?? null,
         rowsExact: rows.exact,
         rowsSourceVersion: rows.exact ? null : rows.sourceVersion,
@@ -422,6 +446,7 @@ export async function generateReport(
         characteristicCount: selection.rows.length,
         drawingPdfHash: drawing.pdfHash,
         supersedesReportId: params.supersedesReportId ?? null,
+        workingCopy: !!workingCopy,
         type: fields,
       })
     } catch (err) {

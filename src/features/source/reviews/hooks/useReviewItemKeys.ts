@@ -7,7 +7,11 @@
 
 import { useShortcuts } from '@/lib/keybindings'
 
-export function useReviewItemKeys(enabled: boolean, onNext: () => void, onPrevious: () => void): void {
+export function useReviewItemKeys(
+  enabled: boolean,
+  onNext: () => void,
+  onPrevious: () => void,
+): void {
   useShortcuts(
     'reviews',
     {

@@ -9,20 +9,24 @@ import type {
   Language,
 } from '../types'
 import { withBindings, withoutOverride } from '../../lib/keybindings/bindings'
+import {
+  isContextMenuPrefsKey,
+  sanitizeUserContextMenuPrefs,
+} from '../../lib/contextMenu/sanitize'
 import { supabase } from '../../lib/supabase'
 import { IS_WEB_BUILD } from '../../lib/platform'
 
 const defaultColumns: ColumnConfig[] = [
-  // PDF, STEP and inspection report of each drawing (OutputsCell); first, left of the name.
-  { id: 'outputs', label: 'Outputs', width: 72, visible: true, sortable: false },
   { id: 'name', label: 'Name', width: 280, visible: true, sortable: true },
   { id: 'fileStatus', label: 'File Status', width: 100, visible: false, sortable: true },
   { id: 'checkedOutBy', label: 'Checked Out By', width: 150, visible: false, sortable: true },
   { id: 'version', label: 'Ver', width: 60, visible: true, sortable: true },
+  // PDF, STEP and inspection report of each drawing (OutputsCell).
+  { id: 'outputs', label: 'Outputs', width: 72, visible: true, sortable: false },
   { id: 'itemNumber', label: 'Item Number', width: 120, visible: true, sortable: true },
   { id: 'tabNumber', label: 'Tab', width: 80, visible: false, sortable: true },
-  { id: 'description', label: 'Description', width: 200, visible: true, sortable: true },
   { id: 'revision', label: 'Rev', width: 50, visible: true, sortable: true },
+  { id: 'description', label: 'Description', width: 200, visible: true, sortable: true },
   { id: 'state', label: 'State', width: 130, visible: true, sortable: true },
   { id: 'ecoTags', label: 'ECOs', width: 120, visible: true, sortable: true },
   { id: 'extension', label: 'Type', width: 70, visible: true, sortable: true },
@@ -52,6 +56,7 @@ export const createSettingsSlice: StateCreator<
 > = (set, get) => ({
   // Initial state - Preview & Topbar
   cadPreviewMode: 'thumbnail',
+  modelPreview3d: false,
   topbarConfig: {
     showFps: false,
     showZoom: true,
@@ -94,6 +99,7 @@ export const createSettingsSlice: StateCreator<
   language: 'en',
   shortcutOverrides: {},
   quickExportFolder: null,
+  contextMenuPrefs: {},
 
   // Initial state - Tree Filtering
   hideCloudOnlyFolders: false, // Show all folders by default
@@ -156,6 +162,7 @@ export const createSettingsSlice: StateCreator<
 
   // Actions - Preview & Topbar
   setCadPreviewMode: (cadPreviewMode) => set({ cadPreviewMode }),
+  setModelPreview3d: (modelPreview3d) => set({ modelPreview3d }),
   setTopbarConfig: (config) => set((s) => ({ topbarConfig: { ...s.topbarConfig, ...config } })),
 
   // Actions - SolidWorks
@@ -194,6 +201,16 @@ export const createSettingsSlice: StateCreator<
   resetAllShortcuts: () => set({ shortcutOverrides: {} }),
   replaceShortcutOverrides: (shortcutOverrides) => set({ shortcutOverrides }),
   setQuickExportFolder: (quickExportFolder) => set({ quickExportFolder }),
+  setContextMenuPrefs: (orgKey, prefs) =>
+    set((state) => {
+      if (!isContextMenuPrefsKey(orgKey)) return {}
+      const { [orgKey]: _previous, ...rest } = state.contextMenuPrefs
+      const clean = prefs ? sanitizeUserContextMenuPrefs(prefs) : null
+      if (!clean) return { contextMenuPrefs: rest }
+      // A change with no time is stamped now, so an admin's later force compares correctly.
+      if (!clean.updatedAt) clean.updatedAt = new Date().toISOString()
+      return { contextMenuPrefs: { ...rest, [orgKey]: clean } }
+    }),
 
   // Actions - Tree Filtering
   setHideCloudOnlyFolders: (hideCloudOnlyFolders) => set({ hideCloudOnlyFolders }),

@@ -6,6 +6,8 @@ export interface DesktopLifecycleAPI {
   setTitleBarOverlay: (options: {
     color: string
     symbolColor: string
+    /** 'settings': the settings window's controls instead of the calling window's. */
+    target?: 'settings'
   }) => Promise<{ success: boolean; error?: string }>
   getZoomFactor: () => Promise<number>
   setZoomFactor: (factor: number) => Promise<{ success: boolean; factor?: number; error?: string }>
@@ -33,4 +35,15 @@ export interface DesktopLifecycleAPI {
 
   // Window controls
   close: () => void
+
+  /**
+   * The quit handshake for review decisions still in their undo window: the window says whether it
+   * holds any, and the main process asks it to send them before the app quits
+   * (`installReviewDecisionQuitBridge` in src/lib/reviewDecisionFlush.ts).
+   */
+  reviewDecisions: {
+    setPending: (pending: boolean) => void
+    onFlushRequest: (callback: (requestId: string) => void) => () => void
+    flushDone: (requestId: string) => void
+  }
 }

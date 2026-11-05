@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useHiddenDetailsTabs } from '@/hooks/useOfficialExtensionInstalled'
 import type { LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
@@ -14,6 +15,7 @@ import {
   type ChildPreviewTarget,
 } from '@/features/source/outputs/preview/childPreviewModel'
 import { VendorsTab } from '@/features/source/details/VendorsTab'
+import { FileOrdersTab } from '@/features/orders/FileOrdersTab'
 import { FileBox, Layers, File, Loader2, FilePen } from 'lucide-react'
 
 // Component to load OS icon for files
@@ -197,6 +199,8 @@ export function RightPanelTabContent({
   childTarget,
   onNavigate,
 }: RightPanelTabContentProps) {
+  const hiddenTabs = useHiddenDetailsTabs()
+  if (hiddenTabs.has(tab)) return null
   const ext = file.extension?.toLowerCase() || ''
   switch (tab) {
     case 'properties':
@@ -211,6 +215,8 @@ export function RightPanelTabContent({
       return <WhereUsedTab file={file} onNavigate={onNavigate} />
     case 'vendors':
       return <VendorsTab file={file} />
+    case 'orders':
+      return file.isDirectory ? null : <FileOrdersTab file={file} />
     case 'inspection':
       return ext === '.slddrw' ? <InspectionTab file={file} /> : null
     default:

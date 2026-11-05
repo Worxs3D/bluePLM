@@ -128,7 +128,6 @@ describe('output rows', () => {
       'file-section',
       'file-section',
       'file-section',
-      'file-generate',
     ])
     const sections = rows.flatMap((r) => (r.type === 'file-section' ? [[r.section, r.count, r.isExpanded]] : []))
     expect(sections).toEqual([
@@ -137,8 +136,8 @@ describe('output rows', () => {
       ['usedIn', null, false],
       ['exports', 0, true],
     ])
-    const generate = rows[6]
-    expect(generate.type === 'file-generate' && generate.kinds).toEqual(['step', 'iges', 'stl'])
+    const exportsRow = rows[5]
+    expect(exportsRow.type === 'file-section' && exportsRow.generateKinds).toEqual(['step', 'iges', 'stl'])
   })
 
   it('after a new check-in, shows the older PDF as one stale row with the queued job on it', () => {
@@ -173,9 +172,10 @@ describe('output rows', () => {
       }),
     )
     const outs = rows.flatMap((r) => (r.type === 'file-output' ? [r] : []))
-    // A missing STEP has no row of its own: Generate… offers it.
+    // A missing STEP has no row of its own: a right-click on the Exports header offers it.
     expect(outs.map((r) => [r.entry.kind, r.entry.state, r.entry.stale, r.version])).toEqual([['pdf', 'ready', true, 3]])
-    expect(rows[rows.length - 1].type).toBe('file-generate')
+    const exportsRow = rows.find((r) => r.type === 'file-section' && r.section === 'exports')
+    expect(exportsRow?.type === 'file-section' && exportsRow.generateKinds).toEqual(['pdf', 'dxf', 'step'])
     expect(outs[0].entry.job?.status).toBe('queued')
   })
 

@@ -270,7 +270,7 @@ export const createFilesSlice: StateCreator<
   // Initial state - Search
   searchQuery: '',
   searchType: 'all',
-  searchScope: 'current-folder',
+  searchScope: 'all-folders',
   searchResults: [],
   isSearching: false,
   recentSearches: [],

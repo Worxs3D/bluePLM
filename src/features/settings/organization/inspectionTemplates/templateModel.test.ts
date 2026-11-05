@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { ROW_FIELDS, SCALAR_NAMES, type TemplateLayout } from '@/lib/inspection/excel'
 import type { Json } from '@/types/supabase'
 
-import { analysisStatus, layoutSummary, nameFromFileName, parseLayout, tokenReference } from './templateModel'
+import {
+  analysisStatus,
+  folderRelativeToVault,
+  layoutSummary,
+  nameFromFileName,
+  normalizeFolderPath,
+  parseLayout,
+  tokenReference,
+} from './templateModel'
 
 const layout: TemplateLayout = {
   version: 1,
@@ -72,5 +80,25 @@ describe('templateModel', () => {
     for (const special of ['{{DRAWING}}', '{{VERDICT}}', '{{ENTRY:<name>}}', '{{INPUT:<name>}}', '{{PROP:<name>}}']) {
       expect(tokens).toContain(special)
     }
+  })
+})
+
+describe('templates folder paths', () => {
+  it('stores a vault-relative path with forward slashes and no outer slashes', () => {
+    expect(normalizeFolderPath(' \\_templates\\Inspection\\ ')).toBe('_templates/Inspection')
+    expect(normalizeFolderPath('_templates//Inspection/./FAI')).toBe('_templates/Inspection/FAI')
+  })
+
+  it('refuses a path that is empty or leaves the vault', () => {
+    for (const bad of ['', '  /  ', '../x', 'a/../../b', 'C:\\Vault\\x', '\\\\server\\share']) {
+      expect(normalizeFolderPath(bad)).toBeNull()
+    }
+  })
+
+  it('turns a folder picked inside the vault into its relative path', () => {
+    expect(folderRelativeToVault('C:\\Vaults\\Main\\', 'c:\\vaults\\main\\_templates\\Inspection')).toBe('_templates/Inspection')
+    expect(folderRelativeToVault('C:\\Vaults\\Main', 'C:\\Vaults\\Main')).toBeNull()
+    expect(folderRelativeToVault('C:\\Vaults\\Main', 'C:\\Vaults\\Mainline\\x')).toBeNull()
+    expect(folderRelativeToVault('C:\\Vaults\\Main', 'D:\\Other')).toBeNull()
   })
 })

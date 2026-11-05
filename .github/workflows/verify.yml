@@ -435,6 +435,51 @@ jobs:
         if: failure()
         run: docker compose logs db | Select-Object -Last 200
 
+  # The numbered migrations on real Postgres, and the concurrency PGlite cannot show (it has one
+  # connection). Same harness as the sql job; then scripts/sql-concurrency.mjs applies every
+  # migration above 500 in its own transaction (as the app's runner does), requires
+  # verify_and_stamp_schema() to stamp, and races several connections in a throwaway organization:
+  # order numbers created at the same moment must be unique and gap-free (schema 513), and workers
+  # claiming output requests at once must never claim one twice (schema 515). Its own job so the
+  # sql job's negative controls keep running against the baseline they were written for.
+  sql-concurrency:
+    name: SQL migrations and concurrency (real Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: harness
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.fast.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Only `pg` is used; no install script needs to run for it.
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci --ignore-scripts
+
+      - name: Start harness and install the 5.0 baseline
+        run: ./reset.ps1 -NoSeed
+
+      - name: Apply migrations, verify, and race orders and output requests
+        working-directory: .
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:55432/postgres
+        run: node scripts/sql-concurrency.mjs --apply-migrations
+
+      - name: Database log on failure
+        if: failure()
+        run: docker compose logs db | Select-Object -Last 200
+
   # The upgrade lane: a seeded 4.10 database (schema 112) upgraded by
   # supabase/migrations/0500_from_4x.sql the way the in-app runner applies it, then verified. Every
   # table's row count must be unchanged. The automated twin of the staging rehearsal: a release has

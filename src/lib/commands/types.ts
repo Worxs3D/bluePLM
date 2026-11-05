@@ -559,10 +559,10 @@ export interface MatchGhostFileParams {
  * Parameters for the reconcile-moved-paths command.
  *
  * Writes the current local path of `diffStatus === 'moved'` files to their server records. Omitted
- * `fileIds` is vault-wide — the terminal and Resolve Moved Files still run that way, because a
- * partially reconciled vault is what those entry points exist to fix. A caller that has already
- * named specific files (Re-align's per-file keep-local choices) passes `fileIds` so the write
- * cannot spill onto a file the user left on keep-server, or left unresolved.
+ * `fileIds` is vault-wide, which only the terminal uses. Every dialog names its files: Resolve
+ * Pending Moves passes the rows in its scope the user ticked (or the one row whose button was
+ * clicked), Re-align its per-file keep-local choices, so the write cannot spill onto a file
+ * outside what the user was looking at.
  */
 export interface ReconcileMovedPathsParams {
   /**
@@ -602,10 +602,9 @@ export interface ReconcileMovedPathsParams {
  *
  * The inverse of `reconcile-moved-paths`: renames `diffStatus === 'moved'` files on disk back
  * to the path their server row already records. Writes only to the local disk and the local
- * sync index - no RPC, no `files` or `folders` write. Omitted `fileIds` is vault-wide, matching
- * the terminal and Resolve Moved Files. A caller that has already named specific files
- * (Re-align's per-file keep-server choices) passes `fileIds` so the rename cannot spill onto a
- * file the user left on keep-local, or left unresolved.
+ * sync index - no RPC, no `files` or `folders` write. Omitted `fileIds` is vault-wide, which only
+ * the terminal uses. Resolve Pending Moves passes its ticked rows (or one row) and Re-align its
+ * per-file keep-server choices, so the rename cannot spill onto a file outside that selection.
  */
 export interface AdoptServerPathsParams {
   /**

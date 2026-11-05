@@ -24,6 +24,7 @@ import {
   Crown,
 } from 'lucide-react'
 import { log } from '@/lib/logger'
+import { flushPendingReviewDecisions } from '@/lib/reviewDecisionFlush'
 import { usePDMStore, ThemeMode, Language } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { getSupabaseClient, endRemoteSession } from '@/lib/supabase'
@@ -209,6 +210,8 @@ export function AccountSettings() {
   }, [user])
 
   const handleSignOut = async () => {
+    // Queued review decisions go out while this user is still signed in.
+    await flushPendingReviewDecisions()
     await getBackend().auth.signOut()
     setUser(null)
     setOrganization(null)

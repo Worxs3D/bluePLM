@@ -149,7 +149,8 @@ export type EnsureDrawingPdfResult =
     }
   | { status: 'needs_solidworks'; reason: PdfUnavailableReason }
   | { status: 'not_a_drawing' }
-  | { status: 'failed'; error: string; errorCode?: string }
+  /** `openDocuments`: with SAME_NAME_OPEN, the open SOLIDWORKS documents (full paths) in the way. */
+  | { status: 'failed'; error: string; errorCode?: string; openDocuments?: string[] }
 
 export interface PdfProgress {
   phase: 'checking' | 'staging' | 'retargeting' | 'exporting' | 'uploading' | 'recording'

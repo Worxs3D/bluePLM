@@ -1,9 +1,14 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // Simplified Chinese translations (简体中文)
 export const zhCN: TranslationDict = {
@@ -35,10 +40,15 @@ export const zhCN: TranslationDict = {
     openInEDrawingsFailed: '无法在 eDrawings 中打开此文件。',
   },
   ...reviewsUiStrings.zhCN,
+  ...contextMenuCustomizerStrings.zhCN,
   reviewPackage: reviewPackageStrings.zhCN,
   dbUpgrade: dbUpgradeStrings.zhCN,
   releases: releasesStrings.zhCN,
+  orders: ordersStrings.zhCN,
+  versionOpen: versionOpenStrings.zhCN,
+  officialExtensions: officialExtensionsStrings.zhCN,
   securityMonitoring: securityMonitoringStrings.zhCN,
+  supplierPortal: supplierPortalStrings.zhCN,
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在加载签出者',
@@ -752,7 +762,6 @@ export const zhCN: TranslationDict = {
     scopeFile: '此文件',
     scopeFolder: '此文件夹',
     scopeVault: '整个库',
-    vaultWideNote: '解决操作始终会处理库中所有待处理的移动，而不仅仅是上面显示的这些。',
 
     listHeading_one: '已显示 {{count}} 个待处理的移动',
     listHeading_other: '已显示 {{count}} 个待处理的移动',
@@ -784,6 +793,32 @@ export const zhCN: TranslationDict = {
     runAdopt: '还原本地文件',
 
     contextMenuItem: '解决已移动的文件…',
+
+    selectionNote: '只会解决此列表中勾选的移动，列表以外的不受影响。',
+    selectAll: '全选',
+    selectedCount_one: '已选 {{count}} 个',
+    selectedCount_other: '已选 {{count}} 个',
+    vaultLabel: '库中',
+    diskLabel: '本机磁盘',
+    vaultMovedBy: '库路径由 {{name}} 设置，{{date}}',
+    vaultNeverMoved: '自首次签入以来库路径未变，{{date}}',
+    lastChanged: '库中最后更改于 {{date}}',
+    lastChangedBy: '库中最后由 {{name}} 更改，{{date}}',
+    versionLabel: '版本 {{version}}',
+    diskModified: '磁盘上修改于 {{date}}',
+    checkedOutBy: '由 {{name}} 签出',
+    checkedOutByYou: '由您签出',
+    historyUnavailable: '无法读取移动历史。',
+    rowConflictVault: '更新库：库中在磁盘路径处已有文件。',
+    rowConflictDisk: '还原：磁盘上库路径处已有内容。',
+    rowUnverified: '自上次签入以来内容已更改。请签入以记录新位置及更改。',
+    rowHeldVault: '更新库：由 {{name}} 签出。',
+    rowUpdateVault: '更新库',
+    rowRestore: '还原',
+    rowUpdateVaultHint: '将此文件的磁盘路径写入库',
+    rowRestoreHint: '将磁盘上的此文件重命名回库路径',
+    noneSelected: '请至少勾选一个移动。',
+    you: '您',
   },
 
   // Not yet translated — served from the English dictionary via getTranslation's per-key

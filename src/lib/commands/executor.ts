@@ -13,6 +13,8 @@ import { usePDMStore } from '../../stores/pdmStore'
 import type { Command, CommandContext, CommandResult, CommandId, CommandMap } from './types'
 import { logUserAction } from '../userActionLogger'
 import { log } from '../logger'
+import { t } from '../i18n'
+import { extensionOfCommand, getOfficialExtension, officialExtensionInstalled } from '../officialExtensions'
 // NOTE: checkFilesForSizeWarning is imported dynamically below to avoid circular dependency
 // (useUploadSizeWarning → @/lib/commands → executor.ts → useUploadSizeWarning)
 
@@ -311,6 +313,16 @@ export async function executeCommand<K extends CommandId>(
   }
 
   const ctx = buildCommandContext(options?.onRefresh, undefined, options?.silent)
+
+  // A command an official extension adds runs only while it is installed (Settings > Extensions).
+  const extension = extensionOfCommand(commandId)
+  if (extension && !officialExtensionInstalled(ctx.organization, extension)) {
+    const message = t('officialExtensions.notInstalled', {
+      name: t(`officialExtensions.${getOfficialExtension(extension).nameKey}`),
+    })
+    ctx.addToast('warning', message)
+    return { success: false, message, total: 0, succeeded: 0, failed: 0 }
+  }
 
   // Validate before queuing
   const validationError = command.validate(params, ctx)

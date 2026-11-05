@@ -383,6 +383,17 @@ namespace BluePLM.SolidWorksService
             return result;
         }
 
+        /// <summary>
+        /// How close (metres, each axis) an old balloon must be to the position the pre-1.30.0 placer
+        /// computed for it to count as never moved by hand. 0.01 mm: far below any drag a user makes,
+        /// far above the rounding of a position saved and read back.
+        /// </summary>
+        public const double LegacyPositionToleranceM = 1e-5;
+
+        /// <summary>True when an old balloon still sits where <see cref="BalloonPositions"/> put it.</summary>
+        internal static bool AtLegacyPosition(OldBalloon old, (double X, double Y) legacy) =>
+            Math.Abs(old.X - legacy.X) <= LegacyPositionToleranceM && Math.Abs(old.Y - legacy.Y) <= LegacyPositionToleranceM;
+
         /// <summary>A BluePLM balloon found on the drawing before it is replaced.</summary>
         internal sealed class OldBalloon
         {
@@ -700,5 +711,8 @@ namespace BluePLM.SolidWorksService
         /// <summary>True when the run changed nothing (no delete, no insert, no layer change), so the
         /// drawing was not saved (1.29.0).</summary>
         [JsonProperty("unchanged")] public bool Unchanged { get; set; }
+        /// <summary>Kept balloons still where the pre-1.30.0 placer put them (never moved by hand),
+        /// moved to the laid-out position (1.30.0). Not counted in <see cref="Kept"/>.</summary>
+        [JsonProperty("relaid")] public int Relaid { get; set; }
     }
 }

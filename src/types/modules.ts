@@ -11,16 +11,14 @@ export type ModuleId =
   | 'trash'
   // Items
   | 'items'
-  | 'products'
   // Change Control
-  | 'ecr'
   | 'eco'
   | 'deviations'
-  | 'release-schedule'
-  | 'process'
   // Supply Chain - Suppliers
   | 'supplier-database'
   | 'supplier-portal'
+  // Supply Chain - Orders
+  | 'orders'
   // Integrations
   | 'google-drive'
   // System
@@ -30,7 +28,6 @@ export type ModuleId =
 // Module group identifiers
 export type ModuleGroupId =
   | 'source-files'
-  | 'items'
   | 'change-control'
   | 'supply-chain'
   | 'supply-chain-suppliers'
@@ -136,28 +133,20 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
     isMasterToggle: true,
     defaultEnabled: true,
   },
-  // Products
-  {
-    id: 'items',
-    name: 'Products',
-    description: 'Product explorer',
-    isMasterToggle: true,
-    defaultEnabled: true,
-  },
   // Change Control
   {
     id: 'change-control',
     name: 'Change Control',
     description: 'ECRs, ECOs, and deviations',
-    isMasterToggle: true,
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   // Supply Chain (parent group)
   {
     id: 'supply-chain',
     name: 'Supply Chain',
-    description: 'Suppliers',
-    isMasterToggle: true,
+    description: 'Suppliers and orders',
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   {
@@ -181,7 +170,7 @@ export const MODULE_GROUPS: ModuleGroupDefinition[] = [
     id: 'integrations',
     name: 'Integrations',
     description: 'External service connections',
-    isMasterToggle: true,
+    isMasterToggle: false,
     defaultEnabled: true,
   },
   // System
@@ -257,13 +246,6 @@ export const MODULES: ModuleDefinition[] = [
   // PRODUCTS
   // ============================================
   {
-    id: 'products',
-    name: 'Product Explorer',
-    group: 'items',
-    icon: 'Package',
-    defaultEnabled: true,
-  },
-  {
     id: 'items',
     name: 'Item Browser',
     group: 'quality',
@@ -276,13 +258,6 @@ export const MODULES: ModuleDefinition[] = [
   // CHANGE CONTROL
   // ============================================
   {
-    id: 'ecr',
-    name: 'ECRs / Issues',
-    group: 'change-control',
-    icon: 'AlertCircle',
-    defaultEnabled: true,
-  },
-  {
     id: 'eco',
     name: 'ECOs',
     group: 'change-control',
@@ -294,20 +269,6 @@ export const MODULES: ModuleDefinition[] = [
     name: 'Deviations',
     group: 'change-control',
     icon: 'FileWarning',
-    defaultEnabled: true,
-  },
-  {
-    id: 'release-schedule',
-    name: 'Release Schedule',
-    group: 'change-control',
-    icon: 'Calendar',
-    defaultEnabled: true,
-  },
-  {
-    id: 'process',
-    name: 'Process Editor',
-    group: 'change-control',
-    icon: 'Network',
     defaultEnabled: true,
   },
 
@@ -327,6 +288,16 @@ export const MODULES: ModuleDefinition[] = [
     name: 'Supplier Portal',
     group: 'supply-chain-suppliers',
     icon: 'Globe',
+    defaultEnabled: true,
+    implemented: true,
+  },
+  {
+    // Version-pinned outputs (PDF, STEP, ...) grouped for a supplier (schema 513). Top level in
+    // the default sidebar, right after the Item Browser.
+    id: 'orders',
+    name: 'Orders',
+    group: 'supply-chain',
+    icon: 'ShoppingCart',
     defaultEnabled: true,
     implemented: true,
   },
@@ -379,7 +350,7 @@ export const MODULES_MOVED_TO_EXTENSIONS: readonly string[] = ['customers']
 // Default section dividers (groups provide visual separation, so minimal dividers)
 export const DEFAULT_DIVIDERS: SectionDivider[] = [
   // Divider before integrations/system
-  { id: 'divider-1', enabled: true, position: 13 }, // After the Item Browser
+  { id: 'divider-1', enabled: true, position: 10 }, // After Orders
 ]
 
 // Default module order
@@ -390,21 +361,18 @@ export const DEFAULT_MODULE_ORDER: ModuleId[] = [
   'history',
   'workflows',
   'trash',
-  // Products
-  'products', // 5
   // Change Control
-  'ecr', // 6
-  'eco',
+  'eco', // 5
   'deviations',
-  'release-schedule',
-  'process',
   // Supply Chain - Suppliers
-  'supplier-database', // 11
+  'supplier-database', // 7
   'supplier-portal',
   // Quality (single top-level entry; opens the Item Browser)
-  'items', // 13
+  'items', // 9
+  // Supply Chain - Orders (single top-level entry)
+  'orders', // 10
   // Integrations
-  'google-drive', // 14
+  'google-drive', // 11
   // System (reviews and settings at bottom)
   'terminal',
   'reviews',
@@ -440,19 +408,11 @@ export const DEFAULT_CUSTOM_GROUPS: CustomGroup[] = [
     enabled: true,
   },
   {
-    id: 'group-products',
-    name: 'Products',
-    icon: 'Package',
-    iconColor: null,
-    position: 5,
-    enabled: true,
-  },
-  {
     id: 'group-change-control',
     name: 'Change Control',
     icon: 'GitPullRequest',
     iconColor: null,
-    position: 6,
+    position: 5,
     enabled: true,
   },
   {
@@ -460,7 +420,7 @@ export const DEFAULT_CUSTOM_GROUPS: CustomGroup[] = [
     name: 'Supply Chain',
     icon: 'Truck',
     iconColor: null,
-    position: 11,
+    position: 7,
     enabled: true,
   },
 ]
@@ -473,19 +433,16 @@ export const DEFAULT_MODULE_PARENT_MAP: Record<ModuleId, ParentId> = {
   history: 'group-source-files',
   workflows: 'group-source-files',
   trash: 'group-source-files',
-  // Products group (after Source Files)
-  products: 'group-products',
   // Change Control group
-  ecr: 'group-change-control',
   eco: 'group-change-control',
   deviations: 'group-change-control',
-  'release-schedule': 'group-change-control',
-  process: 'group-change-control',
   // Supply Chain group
   'supplier-database': 'group-supply-chain',
   'supplier-portal': 'group-supply-chain',
   // Quality: single top-level entry (Item Browser)
   items: null,
+  // Orders: single top-level entry
+  orders: null,
   // Top-level (no parent)
   'google-drive': null,
   terminal: null,
@@ -558,6 +515,64 @@ export function mergeModuleOrder(
   })
 
   return result
+}
+
+/**
+ * `mergeModuleOrder` for a whole saved layout: modules missing from the saved order are put back
+ * next to their default neighbour, and the divider and group-header positions (indexes into the
+ * order) move with the modules they belong to, so a new module joins its neighbour's section
+ * instead of landing on the far side of a divider or inside the next group.
+ *
+ * A divider's position is the index of the module it sits after; a group header's the index of
+ * the module it sits before. A module put after neighbour `a` keeps a divider that followed `a`
+ * after itself and stays before a group that started right after `a`. A module put before
+ * neighbour `b` joins `b`'s group and stays before a divider that followed `b`.
+ */
+export function mergeModuleLayout<D extends { position: number }, G extends { position: number }>(
+  saved: { moduleOrder: ModuleId[]; dividers: D[]; customGroups: G[] },
+  defaults: ModuleId[] = DEFAULT_MODULE_ORDER,
+): { moduleOrder: ModuleId[]; dividers: D[]; customGroups: G[] } {
+  const order = [...saved.moduleOrder]
+  let dividers = [...saved.dividers]
+  let customGroups = [...saved.customGroups]
+  const present = new Set(order)
+
+  const shift = <T extends { position: number }>(items: T[], test: (p: number) => boolean): T[] =>
+    items.map((item) => (test(item.position) ? { ...item, position: item.position + 1 } : item))
+
+  defaults.forEach((moduleId, defaultIndex) => {
+    if (present.has(moduleId)) return
+    present.add(moduleId)
+
+    let after: number | null = null
+    for (let i = defaultIndex - 1; i >= 0 && after === null; i--) {
+      const idx = order.indexOf(defaults[i])
+      if (idx >= 0) after = idx
+    }
+    let before: number | null = null
+    if (after === null) {
+      for (let i = defaultIndex + 1; i < defaults.length && before === null; i++) {
+        const idx = order.indexOf(defaults[i])
+        if (idx >= 0) before = idx
+      }
+    }
+
+    if (after !== null) {
+      const a = after
+      order.splice(a + 1, 0, moduleId)
+      dividers = shift(dividers, (p) => p >= a)
+      customGroups = shift(customGroups, (p) => p > a)
+    } else if (before !== null) {
+      const b = before
+      order.splice(b, 0, moduleId)
+      dividers = shift(dividers, (p) => p >= b)
+      customGroups = shift(customGroups, (p) => p > b)
+    } else {
+      order.push(moduleId)
+    }
+  })
+
+  return { moduleOrder: order, dividers, customGroups }
 }
 
 /**
@@ -788,15 +803,17 @@ const NO_DENIED_MODULES: ReadonlySet<ModuleId> = new Set()
 /**
  * The full set of denied modules: the admin-managed denials, plus File Workflows when the
  * organization switched them off, plus the desktop-only modules when `desktop` is false (BluePLM
- * Web, see hasDesktop()). Returns one shared empty Set when nothing is denied, so the common case
- * allocates nothing and memo dependencies downstream stay stable.
+ * Web, see hasDesktop()), plus the modules of official extensions the organization uninstalled
+ * (`modulesOfUninstalledExtensions`, schema 516). Returns one shared empty Set when nothing is
+ * denied, so the common case allocates nothing and memo dependencies downstream stay stable.
  */
 export function computeDeniedModules(
   deniedModules: readonly ModuleId[],
   workflowsOn: boolean,
   desktop: boolean,
+  extensionModules: readonly ModuleId[] = [],
 ): ReadonlySet<ModuleId> {
-  const extra: ModuleId[] = []
+  const extra: ModuleId[] = [...extensionModules]
   if (!workflowsOn) extra.push('workflows')
   if (!desktop) extra.push(...DESKTOP_ONLY_MODULES)
   if (deniedModules.length === 0 && extra.length === 0) return NO_DENIED_MODULES

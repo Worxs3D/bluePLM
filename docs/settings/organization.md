@@ -185,12 +185,11 @@ picks Use BluePLM for the whole file. Lines whose file or values no longer match
 pick both sides for one file, are listed as skipped and change nothing. Pasting only selects:
 nothing is written until the write button is pressed.
 
-## RFQ Settings
+## RFQs are quote orders
 
-Configure request-for-quote workflow:
-- Email templates
-- Approval workflow
-- Supplier settings
+Since 5.13.0 there is no RFQ settings page. A request for quote is an order with the purpose Quote, made and
+sent from Orders (see [Orders](../orders.md)). The upgrade to schema 515 turned every existing RFQ into a quote
+order.
 
 ## Backups
 

@@ -15,8 +15,13 @@ import { resolve } from 'node:path'
 
 import { normalizePath, type Plugin } from 'vite'
 
-/** Written by `npx tsx scripts/render-perf/emitSchemaShape.ts`. */
-export const PERF_SCHEMA_SHAPE_FILE = 'node_modules/.cache/blueplm-perf/schema-shape.json'
+/**
+ * Written by `npx tsx scripts/render-perf/emitSchemaShape.ts`; inside BLUEPLM_PERF_OUT when a build
+ * has its own folder, so parallel builds never read each other's half-written file.
+ */
+export const PERF_SCHEMA_SHAPE_FILE = process.env.BLUEPLM_PERF_OUT
+  ? resolve(process.env.BLUEPLM_PERF_OUT, 'schema-shape.json')
+  : 'node_modules/.cache/blueplm-perf/schema-shape.json'
 
 const VIRTUAL_SCHEMA = 'virtual:perf-schema-shape'
 const RESOLVED_SCHEMA = '\0perf-schema-shape'

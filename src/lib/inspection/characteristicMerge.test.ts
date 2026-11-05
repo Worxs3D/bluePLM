@@ -323,6 +323,7 @@ describe('sheet context: general tolerances and zones', () => {
       linear: null,
       fractional: null,
       angular: null,
+      angularDecimal: [],
       iso2768: null,
     },
     grid,

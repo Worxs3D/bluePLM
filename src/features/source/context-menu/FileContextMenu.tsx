@@ -1,5 +1,15 @@
-// src/features/source/context-menu/FileContextMenu.tsx
-import { useRef } from 'react'
+/**
+ * The explorer tree's right-click menu.
+ *
+ * Each entry hook (`items/*`, and the file list's Generate, Reviews, folder visibility and vault
+ * transfer hooks) says which of its entries apply to the selection and draws them;
+ * `CustomizableMenu` lays them out from the person's layout (own, organization template or the
+ * app default, `useContextMenuLayout`), the same layout as the file list's menu. The tree's
+ * entries keep their own conditions and labels. Dialogs are driven by `useContextMenuState` and
+ * rendered beside the menu, never inside it, so moving or hiding an entry cannot unmount one.
+ */
+import { useOrdersEntries } from '@/features/orders/contextMenu/OrdersEntry'
+import { useRef, type ReactNode } from 'react'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -11,25 +21,30 @@ import {
 } from '@/lib/commands'
 import { watchFile, unwatchFile, createShareLink } from '@/lib/supabase'
 import { copyToClipboard } from '@/lib/clipboard'
-import { AuditFolderMenuItem, FolderVisibilityMenuItem } from '@/components/shared/HiddenFolder'
 
 // Import from local modules
 import { useMenuPosition, useContextMenuState } from './hooks'
 import { getCountLabel } from '@/lib/utils'
-import { hasDesktop } from '@/lib/platform'
 
-// Menu item components
-import { ClipboardItems } from './items/ClipboardItems'
-import { FileOperationItems } from './items/FileOperationItems'
-import { PDMItems } from './items/PDMItems'
-import { CollaborationItems } from './items/CollaborationItems'
-import { NavigationItems } from './items/NavigationItems'
-import { AdminItems } from './items/AdminItems'
-import { DeleteItems } from './items/DeleteItems'
-import { MovedFileItems } from './items/MovedFileItems'
-import { VaultTransferMenuItems } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
-import { ReviewsSubmenu } from '@/features/source/reviewPackage/components/ReviewsSubmenu'
-import { GenerateSubmenu } from '@/features/source/browser/components/ContextMenu/actions/GenerateSubmenu'
+// Entry hooks
+import {
+  useTreeAdminEntries,
+  useTreeClipboardEntries,
+  useTreeCollaborationEntries,
+  useTreeDeleteEntries,
+  useTreeFileOperationEntries,
+  useTreeMovedFileEntries,
+  useTreeNavigationEntries,
+  useTreePDMEntries,
+} from './items'
+import {
+  useFolderVisibilityEntries,
+  useGenerateEntries,
+  useReviewsEntries,
+} from '@/features/source/browser/components/ContextMenu/actions'
+import { CustomizableMenu } from '@/features/source/browser/components/ContextMenu/customizable/CustomizableMenu'
+import { useVaultTransferEntries } from '@/features/source/vaultTransferMenu/VaultTransferMenuItems'
+import type { TreeMenuEntryId } from './treeEntries'
 
 // Dialog components
 import { DeleteConfirmDialog } from './dialogs'
@@ -59,7 +74,13 @@ function folderHasLocalContent(folderPath: string, files: LocalFile[]): boolean 
   })
 }
 
-export function FileContextMenu({
+export function FileContextMenu(props: FileContextMenuProps) {
+  // Nothing selected: no menu (every entry hook below expects a first file)
+  if (props.contextFiles.length === 0) return null
+  return <TreeFileContextMenu {...props} />
+}
+
+function TreeFileContextMenu({
   x,
   y,
   files,
@@ -104,15 +125,12 @@ export function FileContextMenu({
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Use custom hooks
-  const { position, submenuPosition } = useMenuPosition(x, y, menuRef)
+  const { position } = useMenuPosition(x, y, menuRef)
   const state = useContextMenuState({
     userId: user?.id,
     organizationId: organization?.id,
     contextFiles,
   })
-
-  // Early return if no files selected
-  if (contextFiles.length === 0) return null
 
   // Computed values
   const currentVault = connectedVaults.find((v) => v.id === activeVaultId)
@@ -303,6 +321,144 @@ export function FileContextMenu({
     executeCommand('match-ghost-file', { ghostFile, targetFile: selectedCandidate }, { onRefresh })
   }
 
+  // ============================================
+  // Entries
+  // ============================================
+
+  const base = { contextFiles, multiSelect, firstFile, onClose }
+
+  const pdm = useTreePDMEntries({
+    files,
+    contextFiles,
+    syncedFilesInSelection,
+    unsyncedFilesInSelection,
+    anySynced,
+    anyUnsynced,
+    anyCloudOnly,
+    allCloudOnly,
+    allCheckedOut,
+    allCheckedIn,
+    checkoutableCount,
+    checkinableCount,
+    discardableCount,
+    allFolders,
+    multiSelect,
+    countLabel,
+    cloudOnlyCount,
+    userId: user?.id,
+    checkForDifferentMachineCheckout: state.checkForDifferentMachineCheckout,
+    openDialog: state.openDialog,
+    setMatchGhostFile: state.setMatchGhostFile,
+    setMatchGhostCandidates: state.setMatchGhostCandidates,
+    onClose,
+    onRefresh,
+  })
+  const generate = useGenerateEntries(base)
+  const reviews = useReviewsEntries(base)
+  const orders = useOrdersEntries(base)
+  const fileOperations = useTreeFileOperationEntries({
+    firstFile,
+    multiSelect,
+    isFolder,
+    platform: state.platform,
+    userId: user?.id,
+    onRename,
+    onNewFolder,
+    onClose,
+    onRefresh,
+  })
+  const navigation = useTreeNavigationEntries({
+    firstFile,
+    files,
+    multiSelect,
+    isFolder,
+    activeVaultId,
+    currentVaultName,
+    pinnedFolders,
+    onClose,
+    onRefresh,
+    openDialog: state.openDialog,
+    setFolderSize: state.setFolderSize,
+    setIsCalculatingSize: state.setIsCalculatingSize,
+    addToast,
+    pinFolder,
+    unpinFolder,
+  })
+  // Clipboard and Copy / Move to another connected vault (hidden when there is none to go to)
+  // both move files on disk, so not on BluePLM Web (each hook checks)
+  const clipboardEntries = useTreeClipboardEntries({ clipboard, onCopy, onCut, onPaste, onClose })
+  const vaultTransfer = useVaultTransferEntries(contextFiles, onClose)
+  const collaboration = useTreeCollaborationEntries({
+    firstFile,
+    multiSelect,
+    isFolder,
+    anySynced,
+    userId: user?.id,
+    isWatching: state.isWatching,
+    isTogglingWatch: state.isTogglingWatch,
+    isCreatingShareLink: state.isCreatingShareLink,
+    onToggleWatch: handleToggleWatch,
+    onQuickShareLink: handleQuickShareLink,
+    openDialog: state.openDialog,
+    onClose,
+    addToast,
+  })
+  // Hide folder from non-admins (cosmetic decluttering, not access control), audit its metadata
+  const folderVisibility = useFolderVisibilityEntries(base)
+  // Resolve Moved Files - for a single file that is 'moved' or 'moved_away' (desktop only)
+  const moved = useTreeMovedFileEntries({ firstFile, multiSelect, openDialog: state.openDialog })
+  const admin = useTreeAdminEntries({
+    contextFiles,
+    isAdmin,
+    checkedOutByOthersCount,
+    onClose,
+    onRefresh,
+  })
+  const deletion = useTreeDeleteEntries({
+    files,
+    contextFiles,
+    syncedFilesInSelection,
+    unsyncedFilesInSelection,
+    cloudOnlyFilesInSelection,
+    anySynced,
+    anyUnsynced,
+    allCloudOnly,
+    isFolder,
+    multiSelect,
+    folderCount,
+    hasLocalFolders,
+    hasFoldersOnServer,
+    activeVaultId,
+    userId: user?.id,
+    onClose,
+    onRefresh,
+    openDialog: state.openDialog,
+    setDeleteConfirmFiles: state.setDeleteConfirmFiles,
+    setDeleteServerKeepLocal: state.setDeleteServerKeepLocal,
+    setDeleteLocalCheckedOutFiles: state.setDeleteLocalCheckedOutFiles,
+    addIgnorePattern,
+    getIgnorePatterns,
+    addToast,
+    firstFile,
+  })
+
+  // Every id the tree offers (`TREE_MENU_ENTRY_IDS`): the compiler holds the hooks to it.
+  const entries: Record<TreeMenuEntryId, ReactNode | null> = {
+    ...pdm.entries,
+    ...generate.entries,
+    ...reviews.entries,
+    ...orders.entries,
+    ...fileOperations.entries,
+    ...navigation.entries,
+    ...clipboardEntries.entries,
+    ...vaultTransfer.entries,
+    ...collaboration.entries,
+    ...folderVisibility.entries,
+    ...moved.entries,
+    ...admin.entries,
+    ...deletion.entries,
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -321,162 +477,8 @@ export function FileContextMenu({
         className="context-menu z-[60]"
         style={{ left: position.x, top: position.y }}
       >
-        {/* PDM Items (Download at top for cloud-only) */}
-        <PDMItems
-          files={files}
-          contextFiles={contextFiles}
-          syncedFilesInSelection={syncedFilesInSelection}
-          unsyncedFilesInSelection={unsyncedFilesInSelection}
-          anySynced={anySynced}
-          anyUnsynced={anyUnsynced}
-          anyCloudOnly={anyCloudOnly}
-          allCloudOnly={allCloudOnly}
-          allCheckedOut={allCheckedOut}
-          allCheckedIn={allCheckedIn}
-          checkoutableCount={checkoutableCount}
-          checkinableCount={checkinableCount}
-          discardableCount={discardableCount}
-          allFolders={allFolders}
-          multiSelect={multiSelect}
-          countLabel={countLabel}
-          cloudOnlyCount={cloudOnlyCount}
-          userId={user?.id}
-          checkForDifferentMachineCheckout={state.checkForDifferentMachineCheckout}
-          openDialog={state.openDialog}
-          setMatchGhostFile={state.setMatchGhostFile}
-          setMatchGhostCandidates={state.setMatchGhostCandidates}
-          onClose={onClose}
-          onRefresh={onRefresh}
-        />
-
-        {/* Generate submenu (On server / Local), then Reviews */}
-        <GenerateSubmenu contextFiles={contextFiles} multiSelect={multiSelect} firstFile={firstFile} onClose={onClose} />
-
-        {/* Reviews submenu (new review, add to / remove from a review, view reviews) */}
-        <ReviewsSubmenu contextFiles={contextFiles} onClose={onClose} />
-
-        {/* File Operation Items */}
-        <FileOperationItems
-          firstFile={firstFile}
-          multiSelect={multiSelect}
-          isFolder={isFolder}
-          platform={state.platform}
-          userId={user?.id}
-          onRename={onRename}
-          onNewFolder={onNewFolder}
-          onClose={onClose}
-          onRefresh={onRefresh}
-        />
-
-        {/* Navigation Items */}
-        <NavigationItems
-          firstFile={firstFile}
-          files={files}
-          multiSelect={multiSelect}
-          isFolder={isFolder}
-          activeVaultId={activeVaultId}
-          currentVaultName={currentVaultName}
-          pinnedFolders={pinnedFolders}
-          onClose={onClose}
-          onRefresh={onRefresh}
-          openDialog={state.openDialog}
-          setFolderSize={state.setFolderSize}
-          setIsCalculatingSize={state.setIsCalculatingSize}
-          addToast={addToast}
-          pinFolder={pinFolder}
-          unpinFolder={unpinFolder}
-        />
-
-        {/* Clipboard Items and Copy / Move to another connected vault (hidden when there is none
-            to go to): both move files on disk, so not on BluePLM Web */}
-        {hasDesktop() && (
-          <>
-            <ClipboardItems
-              contextFiles={contextFiles}
-              clipboard={clipboard}
-              userId={user?.id}
-              onCopy={onCopy}
-              onCut={onCut}
-              onPaste={onPaste}
-              onClose={onClose}
-            />
-
-            <VaultTransferMenuItems contextFiles={contextFiles} onClose={onClose} />
-          </>
-        )}
-
-        {/* Collaboration Items */}
-        <CollaborationItems
-          contextFiles={contextFiles}
-          firstFile={firstFile}
-          multiSelect={multiSelect}
-          isFolder={isFolder}
-          anySynced={anySynced}
-          userId={user?.id}
-          isWatching={state.isWatching}
-          isTogglingWatch={state.isTogglingWatch}
-          isCreatingShareLink={state.isCreatingShareLink}
-          onToggleWatch={handleToggleWatch}
-          onQuickShareLink={handleQuickShareLink}
-          openDialog={state.openDialog}
-          onClose={onClose}
-          addToast={addToast}
-        />
-
-        {/* Hide folder from non-admins (cosmetic decluttering, not access control) */}
-        <FolderVisibilityMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
-        <AuditFolderMenuItem folder={firstFile} multiSelect={multiSelect} onClose={onClose} />
-
-        {/* Resolve Moved Files - for a single file that is 'moved' or 'moved_away' (desktop only) */}
-        {hasDesktop() && (
-          <MovedFileItems
-            firstFile={firstFile}
-            multiSelect={multiSelect}
-            openDialog={state.openDialog}
-          />
-        )}
-
-        {/* Admin Items */}
-        <AdminItems
-          contextFiles={contextFiles}
-          isAdmin={isAdmin}
-          checkedOutByOthersCount={checkedOutByOthersCount}
-          onClose={onClose}
-          onRefresh={onRefresh}
-        />
-
-        {/* Delete Items */}
-        <DeleteItems
-          files={files}
-          contextFiles={contextFiles}
-          syncedFilesInSelection={syncedFilesInSelection}
-          unsyncedFilesInSelection={unsyncedFilesInSelection}
-          cloudOnlyFilesInSelection={cloudOnlyFilesInSelection}
-          anySynced={anySynced}
-          anyUnsynced={anyUnsynced}
-          allCloudOnly={allCloudOnly}
-          isFolder={isFolder}
-          multiSelect={multiSelect}
-          folderCount={folderCount}
-          hasLocalFolders={hasLocalFolders}
-          hasFoldersOnServer={hasFoldersOnServer}
-          activeVaultId={activeVaultId}
-          userId={user?.id}
-          showIgnoreSubmenu={state.showIgnoreSubmenu}
-          submenuPosition={submenuPosition}
-          handleIgnoreSubmenuEnter={state.handleIgnoreSubmenuEnter}
-          handleIgnoreSubmenuLeave={state.handleIgnoreSubmenuLeave}
-          onClose={onClose}
-          onRefresh={onRefresh}
-          openDialog={state.openDialog}
-          setDeleteConfirmFiles={state.setDeleteConfirmFiles}
-          setDeleteServerKeepLocal={state.setDeleteServerKeepLocal}
-          setDeleteLocalCheckedOutFiles={state.setDeleteLocalCheckedOutFiles}
-          addIgnorePattern={addIgnorePattern}
-          getIgnorePatterns={getIgnorePatterns}
-          addToast={addToast}
-          firstFile={firstFile}
-        />
+        {/* Keyed by the click, so each opening starts with "More actions" and every flyout closed */}
+        <CustomizableMenu key={`${x},${y},${firstFile.path}`} entries={entries} onClose={onClose} />
       </div>
 
       {/* ============================================ */}

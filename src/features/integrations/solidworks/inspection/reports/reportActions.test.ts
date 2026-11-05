@@ -47,6 +47,9 @@ vi.mock('@/lib/supabase', () => ({
   }),
 }))
 vi.mock('@/lib/supabase/reviews', () => ({ getDrawingPdf: vi.fn(async () => null) }))
+vi.mock('./workingCopyReport', () => ({
+  workingCopyDrawingPages: vi.fn(async () => ({ pages: [], omitted: null })),
+}))
 vi.mock('@/lib/reviewPackage', () => ({ ensureDrawingPdf: vi.fn() }))
 vi.mock('@/lib/platform', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/platform')>()),
@@ -93,6 +96,8 @@ import {
   type GenerateReportParams,
 } from './reportActions'
 import { DEFAULT_REPORT_NAMING } from './reportModel'
+import { getInspectionRowsAtVersion } from '@/lib/supabase'
+import { workingCopyDrawingPages } from './workingCopyReport'
 
 function params(over: Partial<GenerateReportParams> = {}): GenerateReportParams {
   const version = {
@@ -391,5 +396,47 @@ describe('generateReport', () => {
       LOT_SIZE: '',
     })
     expect(mocks.samples).toEqual([null])
+  })
+})
+
+describe('generateReport of a checked-out copy', () => {
+  const workingCopy = { rows: [{ id: 'live1' }, { id: 'live2' }] as never, drawingPath: 'C:/vault/BRK.SLDDRW' }
+
+  it('builds from the live rows and the local drawing, and records nothing', async () => {
+    mocks.rows = []
+    vi.mocked(getInspectionRowsAtVersion).mockClear()
+    vi.mocked(workingCopyDrawingPages).mockClear()
+    const outcome = await generateReport({ ...params(), localOnly: true, workingCopy })
+    expect(getInspectionRowsAtVersion).not.toHaveBeenCalled()
+    expect(workingCopyDrawingPages).toHaveBeenCalledWith('C:/vault/BRK.SLDDRW')
+    expect(mocks.generatedRows[0]?.map((r) => r.id)).toEqual(expect.arrayContaining(['live1', 'live2']))
+    expect(mocks.scalars[0]?.DRAWING_VERSION).not.toBe('2')
+    expect(mocks.scalars[0]?.DRAWING_VERSION).toContain('2')
+    expect(outcome.drawingPdfHash).toBeNull()
+    expect(outcome.characteristicCount).toBe(2)
+    expect(mocks.created).toHaveLength(0)
+  })
+
+  it('records a report of a checked-out copy as a working copy naming the live rows', async () => {
+    const outcome = await generateReport({ ...params(), workingCopy })
+    expect(mocks.created).toHaveLength(1)
+    expect(mocks.created[0]).toMatchObject({ workingCopy: true, drawingPdfHash: null, fileVersionId: 'v2' })
+    expect(mocks.created[0].type?.characteristicIds).toEqual(expect.arrayContaining(['live1', 'live2']))
+    expect(outcome.report.workingCopy).toBe(true)
+  })
+
+  it('takes the drawing pages from a local drawing when asked, with the version rows', async () => {
+    vi.mocked(workingCopyDrawingPages).mockClear()
+    vi.mocked(getInspectionRowsAtVersion).mockClear()
+    await generateReport({ ...params(), localOnly: true, localDrawingPath: 'C:/vault/BRK.SLDDRW' })
+    expect(getInspectionRowsAtVersion).toHaveBeenCalled()
+    expect(workingCopyDrawingPages).toHaveBeenCalledWith('C:/vault/BRK.SLDDRW')
+    expect(mocks.scalars[0]?.DRAWING_VERSION).toBe('2')
+  })
+
+  it('refuses a copy without inspection rows', async () => {
+    await expect(
+      generateReport({ ...params(), localOnly: true, workingCopy: { ...workingCopy, rows: [] } }),
+    ).rejects.toBeInstanceOf(ReportHasNoRowsError)
   })
 })

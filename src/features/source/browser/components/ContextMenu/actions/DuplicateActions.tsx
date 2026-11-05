@@ -1,5 +1,5 @@
 /**
- * Duplicate actions for context menu
+ * Duplicate entry for the context menu (`duplicate.partAndDrawing`)
  *
  * Provides "Duplicate part and drawing" for SolidWorks parts. Unlike copy/paste, the duplicated
  * drawing is repointed at the duplicated part rather than staying bound to the original.
@@ -14,13 +14,18 @@ import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useDuplicatePartAndDrawing, getBaseName } from '@/features/integrations/solidworks/hooks'
 import { DuplicatePartDialog } from '../../Dialogs'
+import { hasDesktop } from '@/lib/platform'
+import type { EntryHookResult } from '../customizable/types'
 
 /** Suggest "PART-001_Copy" as a starting point, which the user can overwrite */
 function suggestBaseName(partName: string): string {
   return `${getBaseName(partName)}_Copy`
 }
 
-export function DuplicateActions({ contextFiles, onClose }: ActionComponentProps) {
+export function useDuplicateEntries({
+  contextFiles,
+  onClose,
+}: ActionComponentProps): EntryHookResult<'duplicate.partAndDrawing'> {
   const [isPreparing, setIsPreparing] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [pendingDrawing, setPendingDrawing] = useState<LocalFile | null>(null)
@@ -92,12 +97,8 @@ export function DuplicateActions({ contextFiles, onClose }: ActionComponentProps
     onClose()
   }
 
-  if (!target || !solidworksEnabled) {
-    return null
-  }
-
-  return (
-    <>
+  const row =
+    !target || !solidworksEnabled || !hasDesktop() ? null : (
       <div
         className="context-menu-item"
         onClick={(e) => {
@@ -112,22 +113,24 @@ export function DuplicateActions({ contextFiles, onClose }: ActionComponentProps
             ? 'Duplicate part and drawing'
             : 'Duplicate part'}
       </div>
+    )
 
-      {showDialog && (
-        <DuplicatePartDialog
-          partName={target.part.name}
-          drawingName={pendingDrawing?.name ?? null}
-          partExtension={target.part.extension}
-          drawingExtension={pendingDrawing?.extension ?? null}
-          initialBaseName={suggestBaseName(target.part.name)}
-          checkConflict={checkConflict}
-          onConfirm={handleConfirm}
-          onCancel={() => {
-            setShowDialog(false)
-            onClose()
-          }}
-        />
-      )}
-    </>
-  )
+  const overlays =
+    showDialog && target ? (
+      <DuplicatePartDialog
+        partName={target.part.name}
+        drawingName={pendingDrawing?.name ?? null}
+        partExtension={target.part.extension}
+        drawingExtension={pendingDrawing?.extension ?? null}
+        initialBaseName={suggestBaseName(target.part.name)}
+        checkConflict={checkConflict}
+        onConfirm={handleConfirm}
+        onCancel={() => {
+          setShowDialog(false)
+          onClose()
+        }}
+      />
+    ) : null
+
+  return { entries: { 'duplicate.partAndDrawing': row }, overlays }
 }

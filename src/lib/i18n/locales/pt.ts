@@ -1,9 +1,14 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // Portuguese translations (Português)
 export const pt: TranslationDict = {
@@ -38,10 +43,15 @@ export const pt: TranslationDict = {
     openInEDrawingsFailed: 'Não foi possível abrir o ficheiro no eDrawings.',
   },
   ...reviewsUiStrings.pt,
+  ...contextMenuCustomizerStrings.pt,
   reviewPackage: reviewPackageStrings.pt,
   dbUpgrade: dbUpgradeStrings.pt,
   releases: releasesStrings.pt,
+  orders: ordersStrings.pt,
+  versionOpen: versionOpenStrings.pt,
+  officialExtensions: officialExtensionsStrings.pt,
   securityMonitoring: securityMonitoringStrings.pt,
+  supplierPortal: supplierPortalStrings.pt,
   checkoutDisplay: {
     you: 'Você',
     loadingOwner: 'A carregar o proprietário do checkout',
@@ -782,8 +792,6 @@ export const pt: TranslationDict = {
     scopeFile: 'Este arquivo',
     scopeFolder: 'Esta pasta',
     scopeVault: 'Todo o cofre',
-    vaultWideNote:
-      'Resolver sempre processa todas as movimentações pendentes do cofre, não apenas as mostradas acima.',
 
     listHeading_one: '{{count}} movimentação pendente exibida',
     listHeading_other: '{{count}} movimentações pendentes exibidas',
@@ -819,6 +827,32 @@ export const pt: TranslationDict = {
     runAdopt: 'Restaurar arquivos locais',
 
     contextMenuItem: 'Resolver arquivos movidos…',
+
+    selectionNote: 'Só as movimentações marcadas nesta lista são resolvidas. As demais não são alteradas.',
+    selectAll: 'Selecionar tudo',
+    selectedCount_one: '{{count}} selecionado',
+    selectedCount_other: '{{count}} selecionados',
+    vaultLabel: 'No cofre',
+    diskLabel: 'No seu disco',
+    vaultMovedBy: 'Caminho do cofre definido por {{name}}, {{date}}',
+    vaultNeverMoved: 'Caminho do cofre inalterado desde o primeiro check-in, {{date}}',
+    lastChanged: 'Última alteração no cofre {{date}}',
+    lastChangedBy: 'Última alteração no cofre por {{name}}, {{date}}',
+    versionLabel: 'Versão {{version}}',
+    diskModified: 'Modificado no disco {{date}}',
+    checkedOutBy: 'Em check-out por {{name}}',
+    checkedOutByYou: 'Em check-out por você',
+    historyUnavailable: 'Não foi possível ler o histórico de movimentações.',
+    rowConflictVault: 'Atualizar o cofre: o cofre já tem um arquivo no caminho do disco.',
+    rowConflictDisk: 'Restaurar: já existe algo no caminho do cofre no disco.',
+    rowUnverified: 'O conteúdo mudou desde o último check-in. Faça o check-in para registrar o novo local com as alterações.',
+    rowHeldVault: 'Atualizar o cofre: em check-out por {{name}}.',
+    rowUpdateVault: 'Atualizar cofre',
+    rowRestore: 'Restaurar',
+    rowUpdateVaultHint: 'Gravar no cofre o caminho deste arquivo no disco',
+    rowRestoreHint: 'Renomear este arquivo no disco de volta para o caminho do cofre',
+    noneSelected: 'Marque pelo menos uma movimentação.',
+    you: 'você',
   },
 
   // Not yet translated — served from the English dictionary via getTranslation's per-key

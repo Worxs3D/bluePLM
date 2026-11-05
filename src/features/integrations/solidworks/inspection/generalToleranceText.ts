@@ -11,7 +11,9 @@ export function generalToleranceRuleText(basis: GeneralToleranceBasis): string {
     case 'fractional':
       return t('source.inspection.gtRuleFractional', { tolerance: basis.tolerance })
     case 'angular':
-      return t('source.inspection.gtRuleAngular', { tolerance: basis.tolerance })
+      return basis.places === undefined
+        ? t('source.inspection.gtRuleAngular', { tolerance: basis.tolerance })
+        : t('source.inspection.gtRuleAngularDecimal', { places: basis.places, tolerance: basis.tolerance })
     case 'iso2768': {
       const { over, upTo } = basis.rangeMm
       const range =

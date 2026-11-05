@@ -10,6 +10,10 @@ import { thirdPartyLicenses } from './web/src/app/thirdPartyLicenses'
 // The render-performance build (CI only, .github/workflows/render-perf.yml): `perf.html` instead of
 // `index.html`, with the fake backends of src/perf/app wired in. A release build never sets this.
 const perfBuild = process.env.BLUEPLM_PERF_BUILD === '1'
+// A perf build into its own folder (`<out>/dist`, `<out>/dist-electron`), so several ui-look runs
+// (scripts/ui-look/look.ts --dist <dir>) can build and run side by side without clobbering dist/.
+const perfOut = perfBuild && process.env.BLUEPLM_PERF_OUT ? resolve(__dirname, process.env.BLUEPLM_PERF_OUT) : null
+const electronOutDir = perfOut ? resolve(perfOut, 'dist-electron') : 'dist-electron'
 
 export default defineConfig({
   define: {
@@ -27,7 +31,7 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: 'dist-electron',
+            outDir: electronOutDir,
             lib: {
               entry: 'electron/main.ts',
               formats: ['cjs'],
@@ -51,7 +55,7 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: 'dist-electron',
+            outDir: electronOutDir,
             lib: {
               entry: 'electron/preload.ts',
               formats: ['cjs'],
@@ -78,6 +82,7 @@ export default defineConfig({
     keepNames: true,
   },
   build: {
+    ...(perfOut ? { outDir: resolve(perfOut, 'dist'), emptyOutDir: true } : {}),
     // The perf build maps its frames back to source for the heap report (scripts/render-perf).
     sourcemap: perfBuild,
     rollupOptions: {

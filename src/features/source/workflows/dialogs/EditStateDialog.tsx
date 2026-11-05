@@ -1,4 +1,5 @@
 // Edit State Dialog Component
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { useState, useEffect } from 'react'
 import { BadgeCheck, CheckCircle } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -21,6 +22,7 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
   // requires_checkout is now auto-set to match is_editable (simplified UX)
   const [autoRev, setAutoRev] = useState(state.is_revision_auto_incremented)
   const [requiredRoles, setRequiredRoles] = useState<string[]>(state.required_workflow_roles || [])
+  const reviewsInstalled = useOfficialExtensionInstalled('blueplm.reviews')
   const [isReviewStage, setIsReviewStage] = useState(state.is_review_stage === true)
   const [releasesVersion, setReleasesVersion] = useState(state.releases_version === true)
   const [approvedStateId, setApprovedStateId] = useState<string | null>(
@@ -276,7 +278,9 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
             <p className="text-[10px] text-plm-fg-muted">{t('releases.stateReleasesHint')}</p>
           </div>
 
-          {/* Review stage: files entering it go to a review; an approval moves them on */}
+          {/* Review stage: files entering it go to a review; an approval moves them on. Reviews'
+              (Settings > Extensions): without it the flag is kept but not offered. */}
+          {reviewsInstalled && (
           <div className="space-y-2 border-t border-plm-border pt-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -317,6 +321,7 @@ export function EditStateDialog({ state, onClose, onSave }: EditStateDialogProps
               </div>
             )}
           </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 mt-4">

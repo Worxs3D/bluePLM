@@ -17,8 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Tables a snapshot holds, in restore order (parents first). Must match the
- * CASE in the latest `backup_list_org_rows()` (migration 0505);
- * `src/lib/supabase/versionOutputs505.test.ts` checks both lists agree.
+ * CASE in the latest `backup_list_org_rows()` (migration 0513);
+ * `src/lib/supabase/supplyOrders513.test.ts` checks both lists agree.
  */
 export const BACKUP_TABLES = [
   'organization',
@@ -68,6 +68,9 @@ export const BACKUP_TABLES = [
   'inspection_report',
   'supplier',
   'part_supplier',
+  'supply_order',
+  'supply_order_line',
+  'supply_order_number_counter',
   'activity',
   'backup_history',
 ] as const
@@ -141,7 +144,7 @@ export class SupabaseBackupSource implements BackupSource {
     })
     if (error) {
       // A database one release behind this worker raises 22023 for a table its
-      // backup_list_org_rows() does not know yet (file_version_output on 504): the table is not
+      // backup_list_org_rows() does not know yet (supply_order on 512): the table is not
       // installed there, which is what "missing" means.
       if (isUnknownTableError(error)) return { missing: true }
       throw new SourceError(`Could not export ${table}: ${error.message}`)

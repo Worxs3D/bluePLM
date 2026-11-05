@@ -6,16 +6,18 @@ export { FileContextMenu } from './FileContextMenu'
 // Types
 export * from './types'
 
-// Items
+// Entry hooks and the ids they produce
 export {
-  ClipboardItems,
-  FileOperationItems,
-  PDMItems,
-  CollaborationItems,
-  NavigationItems,
-  AdminItems,
-  DeleteItems,
+  useTreeClipboardEntries,
+  useTreeFileOperationEntries,
+  useTreePDMEntries,
+  useTreeCollaborationEntries,
+  useTreeNavigationEntries,
+  useTreeAdminEntries,
+  useTreeDeleteEntries,
+  useTreeMovedFileEntries,
 } from './items'
+export { TREE_MENU_ENTRY_IDS, type TreeMenuEntryId } from './treeEntries'
 
 // Dialogs
 export {

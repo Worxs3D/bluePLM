@@ -41,6 +41,9 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   // ui-look: the inspection scenes' project folder (a ballooned drawing, its part, its outputs).
   const lookFixtures = look ? await import('./lookInspectionFixtures') : null
   lookFixtures?.prepareLookInspectionVault(vault, FIXTURE_VAULT_ROOT, FIXTURE_USER_ID, LOOK_OTHER_USER_ID)
+  // ui-look: the review scenes' project folder (drawings, parts, an assembly; lookReviewFixtures.ts).
+  const reviewFixtures = look ? await import('./lookReviewFixtures') : null
+  reviewFixtures?.prepareLookReviewVault(vault, FIXTURE_VAULT_ROOT, FIXTURE_USER_ID, reviewFixtures.LOOK_REVIEW_PEOPLE.sam.id)
   const misses: Misses = new Map()
 
   const real = (window as Window & { electronAPIReal?: NonNullable<Window['electronAPI']> }).electronAPIReal
@@ -60,6 +63,20 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
     vaultId: PERF_VAULT_ID,
     userId: FIXTURE_USER_ID,
     otherUserId: LOOK_OTHER_USER_ID,
+  })
+  // ui-look: the review RPCs (stateful, lookReviewModel.ts) and the review PDFs' downloads.
+  const reviews = look
+    ? await (await import('./lookReviewBackend')).installLookReviews(backend, {
+        orgId: PERF_ORG_ID,
+        vaultId: PERF_VAULT_ID,
+        userId: FIXTURE_USER_ID,
+      })
+    : null
+  electronHooks.setDownloadSource?.(async (url) => {
+    const prefix = 'fake-storage://vault/'
+    if (!url.startsWith(prefix)) return null
+    const { data } = await backend.db.client.storage.from('vault').download(url.slice(prefix.length))
+    return data ? new Uint8Array(await data.arrayBuffer()) : null
   })
   installPerfSupabaseClient(backend.client)
   window.fetch = createRestFetch(backend.client, misses)
@@ -91,7 +108,7 @@ export async function installPerfBoot(fileCount = 30_000): Promise<void> {
   }
   if (look) {
     const { installLook } = await import('./look')
-    installLook(usePDMStore, backend)
+    await installLook(usePDMStore, backend, reviews)
   }
   stage('installed')
 }

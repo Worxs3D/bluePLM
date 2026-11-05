@@ -28,13 +28,15 @@ import { ConfigRow } from './ConfigRow'
 import { DrawingRefRow } from './DrawingRefRow'
 import { DrawingReportMoreRow, DrawingReportRow } from './DrawingReportRow'
 import { FileOutputRow } from './FileOutputRow'
-import { FileGenerateRow, FileSectionRow } from './FileSectionRow'
+import { childTargetsUnder } from './childRowOrder'
+import { FileSectionRow } from './FileSectionRow'
 import { useModelSectionsLoader } from './useModelSectionsLoader'
 import { useFileOutputsLoader } from '@/features/source/outputs/useFileOutputsLoader'
 import { childSelectionParent } from '@/features/source/outputs/preview/childPreviewModel'
 import { hasDesktop } from '@/lib/platform'
 import { isDrawingFile } from '@/lib/outputs/kinds'
 import { useDrawingReportsLoader } from '../../hooks/useDrawingReportsLoader'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { FileRow } from './FileRow'
 import type {
   ConfigBomVirtualRow,
@@ -47,6 +49,9 @@ import type {
   FileVirtualRow,
   SelectableRow,
 } from './rowTypes'
+
+/** No drawings to read reports for (Inspection uninstalled). */
+const NO_REPORT_DRAWINGS: ReadonlySet<string> = new Set()
 
 // Slim props interface - state comes from context
 /** Listed drawings whose outputs and reports the Outputs column reads (within the store bounds). */
@@ -197,7 +202,10 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
     } = useFilePaneContext()
     const { savingConfigsToSW } = useFilePaneHandlers()
     const checkoutHydration = usePDMStore((s) => s.checkoutHydration)
-    const drawingInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
+    // Inspection report rows under drawings only while Inspection is installed (Settings > Extensions).
+    const inspectionInstalled = useOfficialExtensionInstalled('blueplm.inspection')
+    const loadedInspectionReports = usePDMStore((s) => s.drawingInspectionReports)
+    const drawingInspectionReports = inspectionInstalled ? loadedInspectionReports : undefined
     const reportVersionNumbers = usePDMStore((s) => s.reportVersionNumbers)
     const childSelectedUnder = usePDMStore((s) => childSelectionParent(s.childSelection, s.selectedFiles))
     // The Outputs column reads the outputs and reports of the listed drawings too (the first
@@ -215,7 +223,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
       () => (columnPaths.size === 0 ? expandedDrawingRefs : new Set([...expandedDrawingRefs, ...columnPaths])),
       [columnPaths, expandedDrawingRefs],
     )
-    useDrawingReportsLoader(displayFiles, reportDrawings)
+    useDrawingReportsLoader(displayFiles, inspectionInstalled ? reportDrawings : NO_REPORT_DRAWINGS)
     useFileOutputsLoader(displayFiles, expandedDrawingRefs, expandedConfigFiles, columnPaths)
     useModelSectionsLoader(displayFiles, expandedConfigFiles)
     const fileOutputVersions = usePDMStore((s) => s.fileOutputVersions)
@@ -325,6 +333,17 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
       ],
     )
 
+    // Child rows read the list when clicked (Shift-click ranges) through one stable callback.
+    const rowsRef = useRef(virtualRows)
+    useEffect(() => {
+      rowsRef.current = virtualRows
+    }, [virtualRows])
+    const childOrder = useCallback(
+      (filePath: string) =>
+        childTargetsUnder(rowsRef.current, filePath, usePDMStore.getState().reportVersionNumbers),
+      [],
+    )
+
     useEffect(() => {
       onSelectableRowsChange(selectableRows)
     }, [onSelectableRowsChange, selectableRows])
@@ -352,7 +371,6 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
           case 'drawing-report-more':
           case 'file-output':
           case 'file-section':
-          case 'file-generate':
             return configBomRowHeight
           case 'config-drawing':
             return configBomRowHeight
@@ -839,6 +857,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                   versionNumber={reportVersionNumbers.get(row.report.fileVersionId) ?? null}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
+                  childOrder={childOrder}
                 />
               )
             case 'file-output':
@@ -850,6 +869,7 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                   version={row.version}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
+                  childOrder={childOrder}
                 />
               )
             case 'file-section':
@@ -857,16 +877,6 @@ export const FileListBody = forwardRef<HTMLTableSectionElement, FileListBodyProp
                 <FileSectionRow
                   key={`file-section::${row.file.path}::${row.section}`}
                   row={row}
-                  rowHeight={configBomRowHeight}
-                  visibleColumns={visibleColumns}
-                />
-              )
-            case 'file-generate':
-              return (
-                <FileGenerateRow
-                  key={`file-generate::${row.file.path}`}
-                  file={row.file}
-                  kinds={row.kinds}
                   rowHeight={configBomRowHeight}
                   visibleColumns={visibleColumns}
                 />

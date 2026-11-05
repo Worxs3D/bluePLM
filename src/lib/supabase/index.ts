@@ -170,6 +170,7 @@ export type { TeamReviewerRow } from './teams'
 export {
   getUserVaultAccess,
   getOrgVaultAccess,
+  getVaultGrants,
   grantVaultAccess,
   revokeVaultAccess,
   setUserVaultAccess,
@@ -181,7 +182,8 @@ export {
 // ============================================
 // Activity exports
 // ============================================
-export { getRecentActivity, getFileActivity } from './activity'
+export { getRecentActivity, getFileActivity, getLatestFileMoves } from './activity'
+export type { FileMoveRecord } from './activity'
 
 // ============================================
 // Review exports
@@ -299,6 +301,9 @@ export {
 
 export type { CreateAnnotationParams } from './annotations'
 
+export { setCommentResolved } from './commentResolve'
+export type { CommentResolveErrorCode, CommentResolveResult } from './commentResolve'
+
 // ============================================
 // Inspection templates and reports (schema 504)
 // ============================================
@@ -311,7 +316,10 @@ export {
   setDefaultInspectionTemplate,
   archiveInspectionTemplate,
   deleteInspectionTemplate,
+  syncInspectionTemplateFolder,
+  templateFolderSyncChanged,
 } from './inspectionTemplates'
+export type { TemplateFolderSyncResult } from './inspectionTemplates'
 
 export {
   listInspectionReports,
@@ -321,6 +329,7 @@ export {
   createInspectionReport,
   updateInspectionReport,
   deleteInspectionReport,
+  pinInspectionReport,
   InspectionReportNumberTakenError,
   getInspectionRowsAtVersion,
   uploadInspectionContent,

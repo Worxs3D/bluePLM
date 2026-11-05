@@ -18,7 +18,6 @@ const settingsFiles = [
   'organization/MetadataColumnEditor.tsx',
   'organization/MetadataColumnDialogs.tsx',
   'system/ExportSettings.tsx',
-  'system/RFQSettings.tsx',
   'system/SerializationSettingsPresentation.tsx',
 ]
 const usedKeys = new Set(

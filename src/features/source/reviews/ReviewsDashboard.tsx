@@ -1,27 +1,79 @@
 /**
- * Reviews sidebar: the review queue.
+ * Reviews sidebar: the review queue, in the settings-navigation idiom.
  *
- * Buckets come from the server (`list_review_queue`): Awaiting me (the default; package items I
- * owe and workflow gates I may decide), Requested by me, My teams and Done. The server filters,
- * sorts (overdue first, then priority, due date, age) and pages; the list keeps its order. A row
- * opens in the main area; checkboxes drive the bulk actions.
+ * Search, then the lists (Waiting on me, My requests, My teams with its teams, Done) as nav items
+ * with counts, then the rows of the chosen list as a listbox: whose move each review is, due
+ * dates, gates beside package reviews. The list, team and search live in the store
+ * (`reviewQueueView`), so leaving the Reviews view keeps them. The server filters, sorts (overdue
+ * first, then priority, due date, age) and pages; the list keeps its order.
+ *
+ * Keyboard in the list: Up/Down move, Enter/Space open, X toggles the row's checkbox, Ctrl+A
+ * selects all, Escape clears the selection.
  */
 
-import { useCallback, useMemo, useState } from 'react'
-import { Inbox, Loader2, RefreshCw, Search } from 'lucide-react'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { RefreshCw, Search } from 'lucide-react'
 
+import { Button, EmptyState, IconButton, TextInput } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { usePDMStore } from '@/stores/pdmStore'
-import type { ReviewQueueBucket } from '@/types/reviews'
+import { DEFAULT_REVIEW_QUEUE_VIEW } from '@/stores/slices/reviewsSlice'
+import type { ReviewQueueBucket, ReviewQueueRow } from '@/types/reviews'
 
 import { BulkActionBar } from './components/BulkActionBar'
-import { GateQueueRow } from './components/GateQueueRow'
 import { QueueRow } from './components/QueueRow'
 import { useReviewQueue } from './hooks/useReviewQueue'
+import { useReviewSummary } from './hooks/useReviewSummary'
 import { pruneSelection } from './lib/bulk'
-import { localDateString } from './lib/queueChips'
 
 const BUCKETS: ReviewQueueBucket[] = ['awaiting_me', 'requested_by_me', 'my_teams', 'done']
+
+/**
+ * The viewer the queue's list, team and search were chosen by. Another user or organization
+ * (sign-out, switching organization) starts from the defaults, never with someone else's filter.
+ */
+let queueViewOwner: string | null = null
+
+function NavItem({
+  label,
+  count,
+  selected,
+  indent = false,
+  dot,
+  onSelect,
+}: {
+  label: string
+  count?: number
+  selected: boolean
+  indent?: boolean
+  dot?: string
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      onClick={onSelect}
+      className={`flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ui-accent/50 ${
+        indent ? 'pl-7 text-[13px]' : 'text-[14px]'
+      } ${selected ? 'bg-ui-selected font-medium text-ui-fg' : 'text-ui-fg hover:bg-ui-hover'}`}
+    >
+      {dot && (
+        <span
+          className="h-2 w-2 flex-shrink-0 rounded-full"
+          style={{ backgroundColor: dot }}
+          aria-hidden
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="flex-shrink-0 text-[13px] tabular-nums text-ui-fg-secondary">{count}</span>
+      )}
+    </button>
+  )
+}
 
 export function ReviewsDashboard() {
   const user = usePDMStore((s) => s.user)
@@ -29,20 +81,38 @@ export function ReviewsDashboard() {
   const userTeams = usePDMStore((s) => s.userTeams)
   const badge = usePDMStore((s) => s.pendingReviewCount)
   const activeReviewId = usePDMStore((s) => s.activeReviewId)
-  const setActiveReviewId = usePDMStore((s) => s.setActiveReviewId)
+  const activeGateId = usePDMStore((s) => s.activeGateReviewId)
+  const openReview = usePDMStore((s) => s.openReview)
+  const setActiveGateReviewId = usePDMStore((s) => s.setActiveGateReviewId)
+  const view = usePDMStore((s) => s.reviewQueueView)
+  const setView = usePDMStore((s) => s.setReviewQueueView)
+  const setReviewPackagePaneOpen = usePDMStore((s) => s.setReviewPackagePaneOpen)
 
-  const [bucket, setBucket] = useState<ReviewQueueBucket>('awaiting_me')
-  const [teamId, setTeamId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
+  const { bucket, teamId, search } = view
+  const viewer = user && organization ? `${user.id}:${organization.id}` : null
+  useEffect(() => {
+    if (!viewer) return
+    if (queueViewOwner && queueViewOwner !== viewer) setView(DEFAULT_REVIEW_QUEUE_VIEW)
+    queueViewOwner = viewer
+  }, [viewer, setView])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [focusIndex, setFocusIndex] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const queue = useReviewQueue(bucket, bucket === 'my_teams' ? teamId : null, search)
-  const today = localDateString()
+  // Without the Reviews extension the view holds workflow gate approvals only (core).
+  const packagesOn = useOfficialExtensionInstalled('blueplm.reviews')
+  const queueRows = useMemo(
+    () => (packagesOn ? queue.rows : queue.rows.filter((row) => row.kind === 'gate')),
+    [packagesOn, queue.rows],
+  )
+  const summary = useReviewSummary(!!user && !!organization)
+  const userId = user?.id ?? null
 
-  const liveSelection = useMemo(() => pruneSelection(selected, queue.rows), [selected, queue.rows])
+  const liveSelection = useMemo(() => pruneSelection(selected, queueRows), [selected, queueRows])
   const selectedRows = useMemo(
-    () => queue.rows.filter((r) => liveSelection.has(r.id)),
-    [queue.rows, liveSelection],
+    () => queueRows.filter((r) => liveSelection.has(r.id)),
+    [queueRows, liveSelection],
   )
 
   const toggleSelected = useCallback((id: string) => {
@@ -53,153 +123,211 @@ export function ReviewsDashboard() {
       return next
     })
   }, [])
-  const openReview = useCallback((id: string) => setActiveReviewId(id), [setActiveReviewId])
+
+  const open = useCallback(
+    (row: ReviewQueueRow) => {
+      if (row.kind === 'gate') setActiveGateReviewId(row.id)
+      else openReview(row.id)
+    },
+    [openReview, setActiveGateReviewId],
+  )
 
   const chooseBucket = (next: ReviewQueueBucket) => {
-    setBucket(next)
+    setView({ bucket: next })
     setSelected(new Set())
+    setFocusIndex(0)
+  }
+
+  const focusRow = (index: number) => {
+    const clamped = Math.max(0, Math.min(queueRows.length - 1, index))
+    setFocusIndex(clamped)
+    const row = queueRows[clamped]
+    if (row)
+      listRef.current?.querySelector<HTMLElement>(`[id="queue-row-${row.kind}-${row.id}"]`)?.focus()
+  }
+
+  const onListKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const row = queueRows[focusIndex]
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusRow(focusIndex + 1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusRow(focusIndex - 1)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      focusRow(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      focusRow(queueRows.length - 1)
+    } else if (
+      (event.key === 'x' || event.key === 'X') &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      row
+    ) {
+      event.preventDefault()
+      toggleSelected(row.id)
+    } else if (event.key === 'a' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault()
+      setSelected(new Set(queueRows.map((r) => r.id)))
+    } else if (event.key === 'Escape' && liveSelection.size > 0) {
+      event.preventDefault()
+      setSelected(new Set())
+    }
   }
 
   if (!user || !organization) {
     return (
-      <div className="p-4 text-xs text-plm-fg-muted text-center">{t('reviewQueue.signIn')}</div>
+      <div className="p-4">
+        <EmptyState title={t('reviewQueue.signIn')} />
+      </div>
+    )
+  }
+
+  const counts: Partial<Record<ReviewQueueBucket, number>> = {
+    awaiting_me: badge,
+    requested_by_me: summary.counts.needAction,
+  }
+
+  const emptyState = () => {
+    if (search.trim())
+      return <EmptyState title={t('reviewQueue.emptySearch', { search: search.trim() })} />
+    return (
+      <EmptyState
+        title={t(`reviewQueue.empty.${bucket}`)}
+        description={t(`reviewQueue.emptyHint.${bucket}`)}
+        actions={
+          bucket === 'requested_by_me' && packagesOn ? (
+            <Button size="sm" onClick={() => setReviewPackagePaneOpen(true)}>
+              {t('reviewQueue.startReview')}
+            </Button>
+          ) : undefined
+        }
+      />
     )
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Buckets */}
-      <div className="px-2 pt-2 pb-1.5 border-b border-plm-border space-y-1.5">
-        <div className="grid grid-cols-2 gap-1">
-          {BUCKETS.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => chooseBucket(b)}
-              className={`flex items-center justify-between px-2 py-1 text-[11px] rounded text-left ${
-                bucket === b
-                  ? 'bg-plm-accent/20 text-plm-accent'
-                  : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-              }`}
-            >
-              <span className="truncate">{t(`reviewQueue.bucket.${b}`)}</span>
-              {b === 'awaiting_me' && badge > 0 && (
-                <span className="ml-1 px-1.5 rounded-full bg-plm-accent text-white text-[10px] tabular-nums">
-                  {badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {bucket === 'my_teams' && userTeams && userTeams.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setTeamId(null)}
-              className={`px-2 py-0.5 text-[10px] rounded-full whitespace-nowrap border ${
-                teamId === null
-                  ? 'bg-plm-accent/20 text-plm-accent border-plm-accent/40'
-                  : 'text-plm-fg-muted border-plm-border hover:text-plm-fg'
-              }`}
-            >
-              {t('reviewQueue.allTeams')}
-            </button>
-            {userTeams.map((team) => (
-              <button
-                key={team.id}
-                type="button"
-                onClick={() => setTeamId(teamId === team.id ? null : team.id)}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full whitespace-nowrap border ${
-                  teamId === team.id
-                    ? 'bg-plm-accent/20 text-plm-accent border-plm-accent/40'
-                    : 'text-plm-fg-muted border-plm-border hover:text-plm-fg'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: team.color }} />
-                {team.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center gap-1">
-          <div className="relative flex-1">
-            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-plm-fg-muted" />
-            <input
-              type="text"
+    <div className="flex h-full min-h-0 flex-col bg-ui-nav font-ui">
+      <div className="flex-shrink-0 space-y-3 px-3 pb-2 pt-3">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ui-fg-secondary"
+              aria-hidden
+            />
+            <TextInput
+              type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => setView({ search: e.target.value })}
               placeholder={t('reviewQueue.search')}
-              className="w-full pl-6 pr-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent"
+              aria-label={t('reviewQueue.search')}
+              className="bg-ui-search pl-8"
             />
           </div>
-          <button
-            type="button"
+          <IconButton
+            label={t('reviewQueue.refresh')}
+            icon={<RefreshCw size={14} className={queue.loading ? 'animate-spin' : ''} />}
             onClick={queue.refresh}
-            className="p-1 rounded text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light"
-            title={t('reviewQueue.refresh')}
-          >
-            <RefreshCw size={12} className={queue.loading ? 'animate-spin' : ''} />
-          </button>
+          />
+        </div>
+
+        <div
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label={t('reviewQueue.bucketsLabel')}
+          className="space-y-0.5"
+        >
+          {BUCKETS.map((b) => (
+            <div key={b}>
+              <NavItem
+                label={t(`reviewQueue.bucket.${b}`)}
+                count={counts[b]}
+                selected={bucket === b && (b !== 'my_teams' || teamId === null)}
+                onSelect={() => {
+                  chooseBucket(b)
+                  if (b === 'my_teams') setView({ teamId: null })
+                }}
+              />
+              {b === 'my_teams' && bucket === 'my_teams' && (userTeams?.length ?? 0) > 0 && (
+                <div className="mt-0.5 space-y-0.5">
+                  {userTeams?.map((team) => (
+                    <NavItem
+                      key={team.id}
+                      indent
+                      dot={team.color}
+                      label={team.name}
+                      selected={teamId === team.id}
+                      onSelect={() => setView({ teamId: teamId === team.id ? null : team.id })}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-ui-border">
         {queue.error ? (
-          <div className="p-4 text-center space-y-2">
-            <p className="text-xs text-plm-error">{queue.error}</p>
-            <button
-              type="button"
-              onClick={queue.refresh}
-              className="text-xs text-plm-accent hover:underline"
-            >
-              {t('reviewQueue.retry')}
-            </button>
+          <div className="p-3">
+            <EmptyState
+              title={t('reviewQueue.errorTitle')}
+              description={queue.error}
+              actions={
+                <Button size="sm" onClick={queue.refresh}>
+                  {t('reviewQueue.retry')}
+                </Button>
+              }
+            />
           </div>
-        ) : queue.loading && queue.rows.length === 0 ? (
-          <div className="flex justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-plm-fg-muted" />
-          </div>
-        ) : queue.rows.length === 0 ? (
-          <div className="flex flex-col items-center py-10 px-4 text-center">
-            <Inbox size={28} className="text-plm-fg-muted/40 mb-2" />
-            <p className="text-xs text-plm-fg-muted">{t(`reviewQueue.empty.${bucket}`)}</p>
-          </div>
+        ) : queue.loading && queueRows.length === 0 ? (
+          <p className="px-3 py-3 text-[13px] text-ui-fg-secondary">{t('reviewQueue.loading')}</p>
+        ) : queueRows.length === 0 ? (
+          <div className="p-3">{emptyState()}</div>
         ) : (
-          <div className="space-y-1.5 p-2">
-            {queue.rows.map((row) =>
-              row.kind === 'gate' ? (
-                <GateQueueRow
-                  key={`gate-${row.id}`}
-                  row={row}
-                  selected={liveSelection.has(row.id)}
-                  onToggleSelected={toggleSelected}
-                />
-              ) : (
+          <>
+            <div
+              ref={listRef}
+              role="listbox"
+              aria-label={t('reviewQueue.listLabel')}
+              aria-multiselectable
+              className="divide-y divide-ui-divider"
+            >
+              {queueRows.map((row, index) => (
                 <QueueRow
-                  key={row.id}
+                  key={`${row.kind}-${row.id}`}
                   row={row}
-                  today={today}
-                  active={row.id === activeReviewId}
-                  selected={liveSelection.has(row.id)}
-                  onOpen={openReview}
-                  onToggleSelected={toggleSelected}
+                  bucket={bucket}
+                  userId={userId}
+                  optionId={`queue-row-${row.kind}-${row.id}`}
+                  focusable={index === Math.min(focusIndex, queueRows.length - 1)}
+                  active={row.kind === 'gate' ? row.id === activeGateId : row.id === activeReviewId}
+                  checked={liveSelection.has(row.id)}
+                  checkboxesVisible={liveSelection.size > 0}
+                  onOpen={open}
+                  onToggleChecked={toggleSelected}
+                  onFocusRow={() => setFocusIndex(index)}
+                  onKeyDown={onListKeyDown}
                 />
-              ),
-            )}
+              ))}
+            </div>
             {queue.hasMore && (
-              <button
-                type="button"
-                onClick={queue.loadMore}
-                disabled={queue.loadingMore}
-                className="w-full py-1.5 text-xs text-plm-accent hover:underline disabled:opacity-50"
-              >
-                {queue.loadingMore ? t('reviewQueue.loading') : t('reviewQueue.loadMore')}
-              </button>
+              <div className="p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  loading={queue.loadingMore}
+                  onClick={queue.loadMore}
+                >
+                  {queue.loadingMore ? t('reviewQueue.loading') : t('reviewQueue.loadMore')}
+                </Button>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
 

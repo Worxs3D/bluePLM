@@ -1,4 +1,7 @@
-// src/features/source/context-menu/items/NavigationItems.tsx
+/**
+ * The explorer tree's navigation entries: `fileActions.pin`, `nav.showDeleted`,
+ * `nav.refreshVault` and `collab.properties`.
+ */
 import { Pin, Trash2, Info, RefreshCw } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { usePDMStore } from '@/stores/pdmStore'
@@ -6,8 +9,9 @@ import type { DialogName } from '../types'
 import type { ToastType } from '@/stores/types'
 import { getFilesInFolder } from '@/lib/commands'
 import { isPathWithinDirectory } from '@/lib/utils'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface NavigationItemsProps {
+export interface NavigationEntriesProps {
   firstFile: LocalFile
   files: LocalFile[]
   multiSelect: boolean
@@ -25,7 +29,9 @@ interface NavigationItemsProps {
   unpinFolder: (path: string) => void
 }
 
-export function NavigationItems({
+type NavigationEntryId = 'fileActions.pin' | 'nav.showDeleted' | 'nav.refreshVault' | 'collab.properties'
+
+export function useTreeNavigationEntries({
   firstFile,
   files,
   multiSelect,
@@ -41,7 +47,7 @@ export function NavigationItems({
   addToast,
   pinFolder,
   unpinFolder,
-}: NavigationItemsProps) {
+}: NavigationEntriesProps): EntryHookResult<NavigationEntryId> {
   const isPinned =
     activeVaultId &&
     pinnedFolders.some((p) => p.path === firstFile.relativePath && p.vaultId === activeVaultId)
@@ -74,68 +80,70 @@ export function NavigationItems({
     }
   }
 
-  return (
-    <>
-      {/* Pin/Unpin - for files and folders */}
-      {!multiSelect && activeVaultId && (
+  return {
+    entries: {
+      // Pin/Unpin - for files and folders
+      'fileActions.pin':
+        !multiSelect && activeVaultId ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              if (isPinned) {
+                unpinFolder(firstFile.relativePath)
+                addToast('info', `Unpinned ${firstFile.name}`)
+              } else {
+                pinFolder(
+                  firstFile.relativePath,
+                  activeVaultId,
+                  currentVaultName,
+                  firstFile.isDirectory,
+                )
+                addToast('success', `Pinned ${firstFile.name}`)
+              }
+              onClose()
+            }}
+          >
+            <Pin size={14} className={isPinned ? 'fill-plm-accent text-plm-accent' : ''} />
+            {isPinned ? 'Unpin' : `Pin ${isFolder ? 'Folder' : 'File'}`}
+          </div>
+        ) : null,
+
+      // Show Deleted Files - for folders
+      'nav.showDeleted':
+        !multiSelect && isFolder ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              const { setActiveView, setTrashFolderFilter } = usePDMStore.getState()
+              setTrashFolderFilter(firstFile.relativePath)
+              setActiveView('trash')
+              onClose()
+            }}
+          >
+            <Trash2 size={14} />
+            Show Deleted Files
+          </div>
+        ) : null,
+
+      'nav.refreshVault': (
         <div
           className="context-menu-item"
           onClick={() => {
-            if (isPinned) {
-              unpinFolder(firstFile.relativePath)
-              addToast('info', `Unpinned ${firstFile.name}`)
-            } else {
-              pinFolder(
-                firstFile.relativePath,
-                activeVaultId,
-                currentVaultName,
-                firstFile.isDirectory,
-              )
-              addToast('success', `Pinned ${firstFile.name}`)
-            }
             onClose()
+            onRefresh(false, true)
           }}
         >
-          <Pin size={14} className={isPinned ? 'fill-plm-accent text-plm-accent' : ''} />
-          {isPinned ? 'Unpin' : `Pin ${isFolder ? 'Folder' : 'File'}`}
+          <RefreshCw size={14} />
+          Refresh Vault
         </div>
-      )}
+      ),
 
-      <div className="context-menu-separator" />
-
-      {/* Show Deleted Files - for folders */}
-      {!multiSelect && isFolder && (
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            const { setActiveView, setTrashFolderFilter } = usePDMStore.getState()
-            setTrashFolderFilter(firstFile.relativePath)
-            setActiveView('trash')
-            onClose()
-          }}
-        >
-          <Trash2 size={14} />
-          Show Deleted Files
+      'collab.properties': (
+        <div className="context-menu-item" onClick={handlePropertiesClick}>
+          <Info size={14} />
+          Properties
         </div>
-      )}
-
-      {/* Refresh Vault */}
-      <div
-        className="context-menu-item"
-        onClick={() => {
-          onClose()
-          onRefresh(false, true)
-        }}
-      >
-        <RefreshCw size={14} />
-        Refresh Vault
-      </div>
-
-      {/* Properties */}
-      <div className="context-menu-item" onClick={handlePropertiesClick}>
-        <Info size={14} />
-        Properties
-      </div>
-    </>
-  )
+      ),
+    },
+  }
 }

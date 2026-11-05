@@ -1,5 +1,6 @@
 /**
- * File system actions for context menu (copy path, show in explorer, pin, rename)
+ * File entries for the context menu (in the default layout under File Actions):
+ * `fileActions.showInExplorer`, `copyName`, `copyPath`, `copyFolderPath`, `pin`, `rename`.
  */
 import { Copy, FolderOpen, Pencil, Star } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
@@ -9,14 +10,23 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { buildFullPath } from '@/lib/utils/path'
 import { hasDesktop } from '@/lib/platform'
 import type { ActionComponentProps } from './types'
+import type { EntryHookResult } from '../customizable/types'
 
-interface FileSystemActionsProps extends ActionComponentProps {
+export interface FileSystemEntriesProps extends ActionComponentProps {
   platform: string
   startRenaming: (file: LocalFile) => void
   userId: string | undefined
 }
 
-export function FileSystemActions({
+type FileSystemEntryId =
+  | 'fileActions.showInExplorer'
+  | 'fileActions.copyName'
+  | 'fileActions.copyPath'
+  | 'fileActions.copyFolderPath'
+  | 'fileActions.pin'
+  | 'fileActions.rename'
+
+export function useFileSystemEntries({
   contextFiles,
   multiSelect,
   firstFile,
@@ -24,7 +34,7 @@ export function FileSystemActions({
   platform,
   startRenaming,
   userId,
-}: FileSystemActionsProps) {
+}: FileSystemEntriesProps): EntryHookResult<FileSystemEntryId> {
   const {
     files,
     activeVaultId,
@@ -75,7 +85,16 @@ export function FileSystemActions({
   // For cloud-only files, and on BluePLM Web (no paths on disk, no rename without checkout), only
   // show Copy Name
   if (allCloudOnly || !hasDesktop()) {
-    return copyNameItem
+    return {
+      entries: {
+        'fileActions.showInExplorer': null,
+        'fileActions.copyName': copyNameItem,
+        'fileActions.copyPath': null,
+        'fileActions.copyFolderPath': null,
+        'fileActions.pin': null,
+        'fileActions.rename': null,
+      },
+    }
   }
 
   // Check rename eligibility
@@ -107,98 +126,96 @@ export function FileSystemActions({
     : false
   const currentVault = activeVaultId ? connectedVaults.find((v) => v.id === activeVaultId) : null
 
-  return (
-    <>
-      {/* Show in Explorer/Finder - a moved_away stub has nothing on disk at its own path,
-          so reveal its real, current location instead. */}
-      <div
-        className="context-menu-item"
-        onClick={() => {
-          const targetPath =
-            isMovedAway && firstFile.movedToRelativePath && vaultPath
-              ? buildFullPath(vaultPath, firstFile.movedToRelativePath)
-              : firstFile.path
-          window.electronAPI?.openInExplorer(targetPath)
-          onClose()
-        }}
-      >
-        <FolderOpen size={14} />
-        {platform === 'darwin' ? 'Reveal in Finder' : 'Show in Explorer'}
-      </div>
-
-      {/* Copy Name(s) - always available */}
-      {copyNameItem}
-
-      {/* Copy Path(s) */}
-      <div
-        className="context-menu-item"
-        onClick={async () => {
-          const paths = contextFiles.map((f) => f.path).join('\n')
-          const result = await copyToClipboard(paths)
-          if (result.success) {
-            addToast(
-              'success',
-              `Copied ${contextFiles.length > 1 ? contextFiles.length + ' paths' : 'path'} to clipboard`,
-            )
-          }
-          onClose()
-        }}
-      >
-        <Copy size={14} />
-        Copy Path{multiSelect ? 's' : ''}
-      </div>
-
-      {/* Copy Folder Path - for files only, copies the directory portion */}
-      {!firstFile.isDirectory && !multiSelect && (
+  return {
+    entries: {
+      // Show in Explorer/Finder - a moved_away stub has nothing on disk at its own path,
+      // so reveal its real, current location instead.
+      'fileActions.showInExplorer': (
+        <div
+          className="context-menu-item"
+          onClick={() => {
+            const targetPath =
+              isMovedAway && firstFile.movedToRelativePath && vaultPath
+                ? buildFullPath(vaultPath, firstFile.movedToRelativePath)
+                : firstFile.path
+            window.electronAPI?.openInExplorer(targetPath)
+            onClose()
+          }}
+        >
+          <FolderOpen size={14} />
+          {platform === 'darwin' ? 'Reveal in Finder' : 'Show in Explorer'}
+        </div>
+      ),
+      // Copy Name(s) - always available
+      'fileActions.copyName': copyNameItem,
+      'fileActions.copyPath': (
         <div
           className="context-menu-item"
           onClick={async () => {
-            // Extract directory path by removing the filename
-            const sep = platform === 'win32' ? '\\' : '/'
-            const lastSepIndex = firstFile.path.lastIndexOf(sep)
-            const folderPath =
-              lastSepIndex > 0 ? firstFile.path.substring(0, lastSepIndex) : firstFile.path
-            const result = await copyToClipboard(folderPath)
+            const paths = contextFiles.map((f) => f.path).join('\n')
+            const result = await copyToClipboard(paths)
             if (result.success) {
-              addToast('success', 'Copied folder path to clipboard')
+              addToast(
+                'success',
+                `Copied ${contextFiles.length > 1 ? contextFiles.length + ' paths' : 'path'} to clipboard`,
+              )
             }
             onClose()
           }}
         >
           <Copy size={14} />
-          Copy Folder Path
+          Copy Path{multiSelect ? 's' : ''}
         </div>
-      )}
-
-      <div className="context-menu-separator" />
-
-      {/* Pin/Unpin - single item only */}
-      {!multiSelect && activeVaultId && (
-        <div
-          className="context-menu-item"
-          onClick={() => {
-            if (isPinned) {
-              unpinFolder(firstFile.relativePath)
-              addToast('info', `Unpinned ${firstFile.name}`)
-            } else {
-              pinFolder(
-                firstFile.relativePath,
-                activeVaultId,
-                currentVault?.name || 'Vault',
-                firstFile.isDirectory,
-              )
-              addToast('success', `Pinned ${firstFile.name}`)
-            }
-            onClose()
-          }}
-        >
-          <Star size={14} className={isPinned ? 'fill-plm-warning text-plm-warning' : ''} />
-          {isPinned ? 'Unpin' : `Pin ${isFolder ? 'Folder' : 'File'}`}
-        </div>
-      )}
-
-      {/* Rename - single item, not cloud only */}
-      {!multiSelect && (
+      ),
+      // Copy Folder Path - for files only, copies the directory portion
+      'fileActions.copyFolderPath':
+        !firstFile.isDirectory && !multiSelect ? (
+          <div
+            className="context-menu-item"
+            onClick={async () => {
+              // Extract directory path by removing the filename
+              const sep = platform === 'win32' ? '\\' : '/'
+              const lastSepIndex = firstFile.path.lastIndexOf(sep)
+              const folderPath =
+                lastSepIndex > 0 ? firstFile.path.substring(0, lastSepIndex) : firstFile.path
+              const result = await copyToClipboard(folderPath)
+              if (result.success) {
+                addToast('success', 'Copied folder path to clipboard')
+              }
+              onClose()
+            }}
+          >
+            <Copy size={14} />
+            Copy Folder Path
+          </div>
+        ) : null,
+      // Pin/Unpin - single item only
+      'fileActions.pin':
+        !multiSelect && activeVaultId ? (
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              if (isPinned) {
+                unpinFolder(firstFile.relativePath)
+                addToast('info', `Unpinned ${firstFile.name}`)
+              } else {
+                pinFolder(
+                  firstFile.relativePath,
+                  activeVaultId,
+                  currentVault?.name || 'Vault',
+                  firstFile.isDirectory,
+                )
+                addToast('success', `Pinned ${firstFile.name}`)
+              }
+              onClose()
+            }}
+          >
+            <Star size={14} className={isPinned ? 'fill-plm-warning text-plm-warning' : ''} />
+            {isPinned ? 'Unpin' : `Pin ${isFolder ? 'Folder' : 'File'}`}
+          </div>
+        ) : null,
+      // Rename - single item, not cloud only
+      'fileActions.rename': !multiSelect ? (
         <div
           className={`context-menu-item ${!canRename ? 'disabled' : ''}`}
           onClick={() => {
@@ -224,7 +241,7 @@ export function FileSystemActions({
             </span>
           )}
         </div>
-      )}
-    </>
-  )
+      ) : null,
+    },
+  }
 }

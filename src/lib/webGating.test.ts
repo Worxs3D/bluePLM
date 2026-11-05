@@ -26,7 +26,6 @@ const WEB_HIDDEN_TABS: readonly SettingsTab[] = [
   'preferences',
   'supabase',
   'backup',
-  'extensions',
   'solidworks',
   'performance',
   'logs',
@@ -61,7 +60,7 @@ describe('modules on the web', () => {
     const web = computeDeniedModules([], true, hasDesktop())
     for (const id of DESKTOP_ONLY_MODULES) expect(web.has(id)).toBe(true)
     // Server-side modules stay available.
-    for (const id of ['explorer', 'history', 'reviews', 'trash', 'eco', 'settings'] as const) {
+    for (const id of ['explorer', 'history', 'reviews', 'trash', 'eco', 'orders', 'settings'] as const) {
       expect(web.has(id)).toBe(false)
     }
 

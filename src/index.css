@@ -47,6 +47,8 @@
  * dark values; the light theme has its own.
  */
 :root {
+  /* Native controls (checkboxes, scrollbars, date pickers) follow the theme, not the OS. */
+  color-scheme: dark;
   --ui-bg: #1f1f1f;
   --ui-nav: #181818;
   --ui-scrim: rgb(0 0 0 / 0.62);
@@ -71,6 +73,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --ui-bg: #ffffff;
   --ui-nav: #f7f7f7;
   --ui-scrim: rgb(0 0 0 / 0.32);
@@ -979,6 +982,40 @@ html, body, #root {
   color: #ca8a04 !important;
 }
 
+/* Fallback avatars (AVATAR_COLORS in src/lib/utils/avatar.ts): the -300 initials are made for a
+   dark page and vanish on a light one. Scoped to the pair, so other -300 text is untouched. */
+[data-theme="light"] .bg-blue-500\/40.text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .bg-emerald-500\/40.text-emerald-300 {
+  color: #047857 !important;
+}
+
+[data-theme="light"] .bg-amber-500\/40.text-amber-300 {
+  color: #b45309 !important;
+}
+
+[data-theme="light"] .bg-rose-500\/40.text-rose-300 {
+  color: #be123c !important;
+}
+
+[data-theme="light"] .bg-violet-500\/40.text-violet-300 {
+  color: #6d28d9 !important;
+}
+
+[data-theme="light"] .bg-cyan-500\/40.text-cyan-300 {
+  color: #0e7490 !important;
+}
+
+[data-theme="light"] .bg-orange-500\/40.text-orange-300 {
+  color: #c2410c !important;
+}
+
+[data-theme="light"] .bg-pink-500\/40.text-pink-300 {
+  color: #be185d !important;
+}
+
 /* Light mode background colors - increase visibility */
 [data-theme="light"] .bg-amber-500\/20,
 [data-theme="light"] .bg-amber-400\/20 {
@@ -1585,6 +1622,10 @@ input::placeholder {
 .context-menu {
   position: fixed;
   min-width: 180px;
+  /* A long customised menu scrolls instead of running off the window. Flyouts are position:
+     fixed (ContextSubmenu), so this overflow does not clip them. */
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
   background: var(--plm-bg-lighter);
   border: 1px solid var(--plm-border);
   border-radius: 6px;

@@ -29,6 +29,7 @@ import {
 } from '../types/modules'
 import type { SettingsTab } from '../types/settings'
 import { restorePersistedShortcuts } from '../lib/keybindings/bindings'
+import { sanitizeContextMenuPrefsByOrg } from '../lib/contextMenu/sanitize'
 import type {
   PDMStoreState,
   Tab,
@@ -86,6 +87,7 @@ import {
   createReviewsSlice,
   createInspectionReportsSlice,
   createOutputsSlice,
+  createOrdersSlice,
   createDbUpgradeSlice,
 } from './slices'
 import { defaultCardViewFields } from './slices/settingsSlice'
@@ -247,6 +249,7 @@ export const usePDMStore = create<PDMStoreState>()(
       ...createReviewsSlice(...a),
       ...createInspectionReportsSlice(...a),
       ...createOutputsSlice(...a),
+      ...createOrdersSlice(...a),
       ...createDbUpgradeSlice(...a),
     })),
     {
@@ -316,6 +319,8 @@ export const usePDMStore = create<PDMStoreState>()(
         inspectionShowFilters: state.inspectionShowFilters,
         inspectionAutoSync: state.inspectionAutoSync,
         inspectionDrawingSync: state.inspectionDrawingSync,
+        // Output requests (5.13.0): this machine generates other users' requests (default on).
+        outputRequestWorkerEnabled: state.outputRequestWorkerEnabled,
 
         // ═══════════════════════════════════════════════════════════════
         // Theme & Appearance
@@ -376,9 +381,11 @@ export const usePDMStore = create<PDMStoreState>()(
         onboardingComplete: state.onboardingComplete,
         logSharingEnabled: state.logSharingEnabled,
         cadPreviewMode: state.cadPreviewMode,
+        modelPreview3d: state.modelPreview3d,
         topbarConfig: state.topbarConfig,
         shortcutOverrides: state.shortcutOverrides,
         quickExportFolder: state.quickExportFolder,
+        contextMenuPrefs: state.contextMenuPrefs,
         pinnedFolders: state.pinnedFolders,
         pinnedSectionExpanded: state.pinnedSectionExpanded,
         colorSwatches: state.colorSwatches,
@@ -513,6 +520,7 @@ export const usePDMStore = create<PDMStoreState>()(
           cadPreviewMode: isCadPreviewMode(persisted.cadPreviewMode)
             ? persisted.cadPreviewMode
             : 'thumbnail',
+          modelPreview3d: persisted.modelPreview3d === true,
           // Merge topbarConfig over defaults so newly added toggles (e.g. showSolidworks)
           // aren't left undefined for users with a pre-existing persisted config.
           topbarConfig: {
@@ -585,6 +593,8 @@ export const usePDMStore = create<PDMStoreState>()(
           // migrated to overrides once.
           shortcutOverrides: restorePersistedShortcuts(persisted.shortcutOverrides, persisted.keybindings),
           quickExportFolder: (persisted.quickExportFolder as string | null | undefined) ?? null,
+          // Untrusted local storage: unknown ids, bad keys and broken layouts are dropped.
+          contextMenuPrefs: sanitizeContextMenuPrefsByOrg(persisted.contextMenuPrefs),
           // Ensure onboarding state has defaults
           onboardingComplete: (persisted.onboardingComplete as boolean) || false,
           logSharingEnabled: (persisted.logSharingEnabled as boolean) || false,
@@ -602,8 +612,8 @@ export const usePDMStore = create<PDMStoreState>()(
             (persisted.christmasSleighDirection as 'push' | 'pull') || 'push',
           // Restore columns in the user's saved order (not the default order),
           // merging in any fixed fields (label/sortable) from the current defaults.
-          // Widths/visibility come from the persisted config; new built-in columns
-          // added since the user last saved are appended at the end.
+          // Widths/visibility come from the persisted config; a built-in column
+          // added since the user last saved goes after its predecessor in the defaults.
           columns: (() => {
             const persistedColumns =
               (persisted.columns as typeof currentState.columns) || []
@@ -614,13 +624,12 @@ export const usePDMStore = create<PDMStoreState>()(
                 return defaultCol ? { ...defaultCol, ...persistedCol } : null
               })
               .filter((c): c is (typeof currentState.columns)[number] => c !== null)
-            for (const defaultCol of currentState.columns) {
-              if (!persistedIds.has(defaultCol.id)) {
-                // The Outputs column goes left of everything, as in the defaults.
-                if (defaultCol.id === 'outputs') ordered.unshift(defaultCol)
-                else ordered.push(defaultCol)
-              }
-            }
+            currentState.columns.forEach((defaultCol, index) => {
+              if (persistedIds.has(defaultCol.id)) return
+              const previousId = currentState.columns[index - 1]?.id
+              const at = ordered.findIndex((c) => c.id === previousId)
+              ordered.splice(at + 1, 0, defaultCol)
+            })
             return ordered.length > 0 ? ordered : currentState.columns
           })(),
           // Ensure cardViewFields have all fields (merge persisted with defaults for new fields)

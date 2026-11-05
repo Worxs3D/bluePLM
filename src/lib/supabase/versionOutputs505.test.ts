@@ -159,8 +159,11 @@ describe('supabase/migrations/0505_version_outputs.sql', () => {
     expect(tables('0505_version_outputs.sql')).toEqual(
       [...tables('0504_inspection_tables.sql'), 'file_version_output'].sort(),
     )
-    // The API's backup worker exports exactly what the latest definition knows.
-    expect([...BACKUP_TABLES].sort()).toEqual(tables('0505_version_outputs.sql'))
+    // The API's backup worker exports everything 0505 knows (supplyOrders513.test.ts holds it to
+    // the latest definition exactly).
+    expect(
+      tables('0505_version_outputs.sql').filter((t) => !(BACKUP_TABLES as readonly string[]).includes(t)),
+    ).toEqual([])
     await actAsOwner(db)
     await db.exec('SET ROLE service_role')
     const r = await db.query<{ p: { missing: boolean } }>(

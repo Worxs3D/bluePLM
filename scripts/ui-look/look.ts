@@ -12,6 +12,11 @@
  * Steps (any number, in order):
  *   --scene <name>          put the app into a named scene (--list prints them)
  *   --click <selector>      click a Playwright selector (`text=Run`, `role=button[name="Run"]`, css)
+ *   --rclick <selector>     right-click (opens context menus)
+ *   --ctrlclick <selector>  Ctrl+click (add to a selection)
+ *   --dblclick <selector>   double-click
+ *   --drag <x1>,<y1>,<x2>,<y2>  press, move and release the mouse (window px; markups on a PDF)
+ *   --as <person>           act as another user (`__blueplmLook.actAs`; review scenes: author, sam, alex, olive)
  *   --fill <selector>=<v>   fill an input
  *   --press <key>           press a key (Enter, Escape, ArrowDown)
  *   --hover <selector>      hover an element
@@ -19,11 +24,18 @@
  *   --eval <js>             evaluate in the page (`__blueplmLook.store` is the app store)
  *   --shot <name>[@<sel>]   screenshot the window, or only the element <sel>
  *
+ * A steps file (`--steps <file>`, e.g. scripts/ui-look/flows/review-full.steps) holds the same steps,
+ * one per line as `--kind value` (no quoting; `#` starts a comment line), and runs where it stands.
+ *
  * Options: --out <dir> (default ui-look-out), --size <w>x<h> (default 1440x900), --build (rebuild
- * the perf app first; it is built automatically when dist/perf.html is missing), --list.
+ * the perf app first; it is built automatically when dist/perf.html is missing), --list,
+ * --theme dark|light (the app theme for every shot),
+ * --dist <dir> (build into and run from <dir>/dist and <dir>/dist-electron instead of the shared
+ * dist/, so agents can build and run side by side; keep <dir> inside the repo, e.g. .ui-look/<name>,
+ * so the main process resolves node_modules).
  */
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -35,7 +47,35 @@ import type {} from '../../src/perf/app/look'
 
 type Step = { kind: string; value: string }
 
-const STEP_FLAGS = new Set(['--scene', '--click', '--fill', '--press', '--hover', '--wait', '--eval', '--shot'])
+const STEP_FLAGS = new Set([
+  '--scene',
+  '--click',
+  '--rclick',
+  '--ctrlclick',
+  '--dblclick',
+  '--drag',
+  '--as',
+  '--fill',
+  '--press',
+  '--hover',
+  '--wait',
+  '--eval',
+  '--shot',
+])
+
+/** Steps from a file: one `--kind value` per line, blank lines and `#` comments skipped. */
+function readSteps(file: string): Step[] {
+  return readFileSync(file, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => {
+      const space = line.indexOf(' ')
+      const flag = space < 0 ? line : line.slice(0, space)
+      if (!STEP_FLAGS.has(flag)) throw new Error(`${file}: unknown step ${flag}`)
+      return { kind: flag.slice(2), value: space < 0 ? '' : line.slice(space + 1).trim() }
+    })
+}
 
 function parseArgs(argv: string[]) {
   const steps: Step[] = []
@@ -43,24 +83,36 @@ function parseArgs(argv: string[]) {
   let size = { width: 1440, height: 900 }
   let build = false
   let list = false
+  let dist: string | null = process.env.BLUEPLM_PERF_OUT ?? null
+  let theme: 'dark' | 'light' | null = null
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--build') build = true
     else if (arg === '--list') list = true
     else if (arg === '--out') out = argv[++i]
+    else if (arg === '--dist') dist = argv[++i]
+    else if (arg === '--steps') steps.push(...readSteps(argv[++i]))
+    else if (arg === '--theme') {
+      const value = argv[++i]
+      if (value !== 'dark' && value !== 'light') throw new Error('--theme takes dark or light')
+      theme = value
+    }
     else if (arg === '--size') {
       const [width, height] = argv[++i].split('x').map(Number)
       size = { width, height }
     } else if (STEP_FLAGS.has(arg)) steps.push({ kind: arg.slice(2), value: argv[++i] ?? '' })
     else throw new Error(`unknown argument ${arg}`)
   }
-  return { steps, out: resolve(out), size, build, list }
+  return { steps, out: resolve(out), size, build, list, dist: dist ? resolve(dist) : null, theme }
 }
 
-function buildPerfApp(): void {
-  console.log('ui-look: building the perf app (once; --build rebuilds)')
-  execSync('npx tsx scripts/render-perf/emitSchemaShape.ts', { stdio: 'inherit' })
-  execSync('npx vite build', { stdio: 'inherit', env: { ...process.env, BLUEPLM_PERF_BUILD: '1' } })
+/** Build the perf app into dist/ (shared) or into `<dist>/dist` + `<dist>/dist-electron` (own copy). */
+function buildPerfApp(dist: string | null): void {
+  console.log(`ui-look: building the perf app into ${dist ?? 'dist/'} (once; --build rebuilds)`)
+  const env = { ...process.env, BLUEPLM_PERF_BUILD: '1', ...(dist ? { BLUEPLM_PERF_OUT: dist } : {}) }
+  if (!dist) delete env.BLUEPLM_PERF_OUT
+  execSync('npx tsx scripts/render-perf/emitSchemaShape.ts', { stdio: 'inherit', env })
+  execSync('npx vite build', { stdio: 'inherit', env })
 }
 
 async function appWindow(app: ElectronApplication): Promise<Page> {
@@ -74,10 +126,31 @@ async function appWindow(app: ElectronApplication): Promise<Page> {
 }
 
 /**
+ * Let a hidden window catch up before a screenshot. It produces frames only when asked, and
+ * IntersectionObserver callbacks, rAF work and canvas paints wait for frames: a lazily rendered
+ * PDF page could still be a blank sheet in the shot. A few forced frames deliver them.
+ */
+async function settle(app: ElectronApplication, page: Page): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.invalidate())
+    await page
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve())
+            setTimeout(resolve, 250)
+          }),
+      )
+      .catch(() => null)
+  }
+}
+
+/**
  * A hidden window does not always produce a new frame, and a screenshot waits for one. Asking for
  * a repaint first and retrying covers it.
  */
 async function shoot(app: ElectronApplication, page: Page, path: string, selector?: string): Promise<void> {
+  await settle(app, page)
   if (!selector) {
     // The whole window through Electron's own capture: Playwright's page screenshot of a hidden
     // window now and then came back as a magnified crop of the page.
@@ -107,12 +180,14 @@ async function shoot(app: ElectronApplication, page: Page, path: string, selecto
 }
 
 async function main(): Promise<void> {
-  const { steps, out, size, build, list } = parseArgs(process.argv.slice(2))
-  if (build || !existsSync('dist/perf.html')) buildPerfApp()
+  const { steps, out, size, build, list, dist, theme } = parseArgs(process.argv.slice(2))
+  const perfHtml = dist ? join(dist, 'dist', 'perf.html') : 'dist/perf.html'
+  if (build || !existsSync(perfHtml)) buildPerfApp(dist)
   mkdirSync(out, { recursive: true })
 
   const app = await _electron.launch({
-    args: ['.'],
+    // An own build runs its own main process; the shared one is the package's (`.`).
+    args: [dist ? join(dist, 'dist-electron', 'main.js') : '.'],
     env: {
       ...process.env,
       BLUEPLM_PERF_BOOT: '1',
@@ -136,7 +211,24 @@ async function main(): Promise<void> {
     await page.setViewportSize(size).catch(() => {})
     // Let the resize settle, or the first screenshot can catch the window mid-change.
     await page.waitForTimeout(500)
-    await page.waitForFunction(() => window.__blueplmPerf?.loaded != null, null, { timeout: 120_000 })
+    await page.waitForFunction(() => window.__blueplmPerf?.loaded != null, null, { timeout: 120_000 }).catch(async (error: unknown) => {
+      // Say how far the boot got: a failed boot leaves its error on the title (src/perf/app/main.ts).
+      const where = await page
+        .evaluate(() => `stage ${document.documentElement.dataset.perfBootStage ?? '?'}; title ${document.title}`)
+        .catch(() => 'page unreachable')
+      throw new Error(`the perf boot never reported the vault loaded (${where}): ${String(error)}`)
+    })
+
+    // A hidden window produces frames only when asked, and a CSS transition advances only with
+    // frames: a colour change (the activity bar's lit item after a scene's setActiveView) could
+    // stay at its first value in the shot while the DOM already said otherwise. Transitions end at
+    // once here, so a shot shows the state the app settles in (the visible app runs them in 100ms).
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet()
+      sheet.replaceSync('*, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; }')
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+    })
+    if (theme) await page.evaluate((t) => window.__blueplmLook!.theme(t), theme)
 
     if (list) {
       console.log((await page.evaluate(() => window.__blueplmLook?.scenes() ?? [])).join('\n'))
@@ -153,6 +245,31 @@ async function main(): Promise<void> {
         case 'click':
           await page.locator(step.value).first().click()
           await page.waitForTimeout(250)
+          break
+        case 'rclick':
+          await page.locator(step.value).first().click({ button: 'right' })
+          await page.waitForTimeout(250)
+          break
+        case 'ctrlclick':
+          await page.locator(step.value).first().click({ modifiers: ['Control'] })
+          await page.waitForTimeout(250)
+          break
+        case 'drag': {
+          const [x1, y1, x2, y2] = step.value.split(',').map(Number)
+          await page.mouse.move(x1, y1)
+          await page.mouse.down()
+          await page.mouse.move(x2, y2, { steps: 8 })
+          await page.mouse.up()
+          await page.waitForTimeout(300)
+          break
+        }
+        case 'dblclick':
+          await page.locator(step.value).first().dblclick()
+          await page.waitForTimeout(250)
+          break
+        case 'as':
+          await page.evaluate((who) => window.__blueplmLook!.actAs(who), step.value)
+          await page.waitForTimeout(400)
           break
         case 'fill': {
           const at = step.value.indexOf('=', step.value.indexOf(']') + 1)

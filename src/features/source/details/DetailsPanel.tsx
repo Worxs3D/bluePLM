@@ -3,6 +3,7 @@ import { deriveCheckoutDisplay } from '@/lib/checkout/checkoutDisplay'
 import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { usePDMStore, LocalFile, DetailsPanelTab } from '@/stores/pdmStore'
+import { useHiddenDetailsTabs } from '@/hooks/useOfficialExtensionInstalled'
 import { useShallow } from 'zustand/react/shallow'
 import { buildThumbnailUrl } from '@/lib/thumbnailUrl'
 import { useRetryableImage } from '@/hooks/useRetryableImage'
@@ -33,6 +34,8 @@ import type { PendingMetadataEdit } from '@/stores/types'
 import { WhereUsedTab, SWPropertiesTab } from '@/features/integrations/solidworks'
 import { InspectionTab } from '@/features/integrations/solidworks'
 import { VendorsTab } from './VendorsTab'
+import { FileOrdersTab } from '@/features/orders/FileOrdersTab'
+import { useOrdersAvailable } from '@/features/orders/hooks/useOrdersAvailable'
 import { CadFilePreview } from './components/CadFilePreview'
 import { hasDesktop } from '@/lib/platform'
 import { PdfAnnotationViewer } from './components/PdfAnnotationViewer'
@@ -132,6 +135,8 @@ function DetailsPanelIcon({ file, size = 32 }: { file: LocalFile; size?: number 
 }
 
 export function DetailsPanel() {
+  // Tabs of uninstalled official extensions (Inspection, Vendors, Orders: Settings > Extensions).
+  const hiddenTabs = useHiddenDetailsTabs()
   const {
     selectedFiles,
     getSelectedFileObjects,
@@ -183,6 +188,7 @@ export function DetailsPanel() {
   const selectedFileObjects = getSelectedFileObjects()
   const file = selectedFileObjects.length === 1 ? selectedFileObjects[0] : null
   const isFolder = file?.isDirectory || false
+  const ordersAvailable = useOrdersAvailable()
   const checkoutDisplay = deriveCheckoutDisplay(
     file,
     user,
@@ -658,6 +664,12 @@ export function DetailsPanel() {
 
   // Inspection tables are drawing-only
   const isDrawingFile = !!file && file.extension?.toLowerCase() === '.slddrw'
+  // The Inspection tab is the Inspection extension's (Settings > Extensions).
+  const showInspection = isDrawingFile && !hiddenTabs.has('inspection')
+
+  // The orders whose lines pin this file (5.13.0), where the Orders module is available.
+  const ordersTab: { id: DetailsPanelTab; label: string }[] =
+    ordersAvailable && !isFolder ? [{ id: 'orders', label: t('source.details.popoutTabOrders') }] : []
 
   // For SolidWorks files, use Preview tab (metadata is edited inline in the file tree)
   const allTabs: { id: DetailsPanelTab; label: string }[] =
@@ -666,17 +678,19 @@ export function DetailsPanel() {
           { id: 'preview', label: 'Preview' },
           { id: 'whereused', label: 'Where Used' },
           { id: 'vendors', label: 'Vendors' },
-          ...(isDrawingFile ? [{ id: 'inspection' as const, label: 'Inspection' }] : []),
+          ...ordersTab,
+          ...(showInspection ? [{ id: 'inspection' as const, label: 'Inspection' }] : []),
         ]
       : [
           { id: 'preview', label: 'Preview' },
           { id: 'properties', label: 'Properties' },
           { id: 'whereused', label: 'Where Used' },
           { id: 'vendors', label: 'Vendors' },
+          ...ordersTab,
         ]
 
   // Filter out tabs that are in the right panel, then sort by custom order
-  const filteredTabs = allTabs.filter((tab) => !rightPanelTabs.includes(tab.id))
+  const filteredTabs = allTabs.filter((tab) => !rightPanelTabs.includes(tab.id) && !hiddenTabs.has(tab.id))
   const tabs =
     bottomPanelTabOrder.length > 0
       ? [...filteredTabs].sort((a, b) => {
@@ -718,10 +732,10 @@ export function DetailsPanel() {
 
   // Inspection tab is drawing-only; switch away if a non-drawing becomes selected
   useEffect(() => {
-    if (detailsPanelTab === 'inspection' && !isDrawingFile) {
+    if ((detailsPanelTab === 'inspection' && !showInspection) || hiddenTabs.has(detailsPanelTab)) {
       setDetailsPanelTab('preview')
     }
-  }, [detailsPanelTab, isDrawingFile, setDetailsPanelTab])
+  }, [detailsPanelTab, showInspection, hiddenTabs, setDetailsPanelTab])
 
   // Check file types for preview
   const ext = file?.extension?.toLowerCase() || ''
@@ -1096,9 +1110,11 @@ export function DetailsPanel() {
 
               {detailsPanelTab === 'whereused' && <WhereUsedTab file={file} />}
 
-              {detailsPanelTab === 'vendors' && <VendorsTab file={file} />}
+              {detailsPanelTab === 'vendors' && !hiddenTabs.has('vendors') && <VendorsTab file={file} />}
 
-              {detailsPanelTab === 'inspection' && isDrawingFile && <InspectionTab file={file} />}
+              {detailsPanelTab === 'orders' && ordersAvailable && !isFolder && <FileOrdersTab file={file} />}
+
+              {detailsPanelTab === 'inspection' && showInspection && <InspectionTab file={file} />}
             </>
           )
         )}

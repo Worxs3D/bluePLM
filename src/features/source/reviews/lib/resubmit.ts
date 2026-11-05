@@ -41,6 +41,26 @@ export function defaultResubmitSelection(
   return selection
 }
 
+/**
+ * The selection after the versions were (re)loaded: a pick the author already made stays while it
+ * is still one of the item's newer versions; anything else takes the default. Seeding the dialog
+ * again on every detail reload would throw the author's picks away.
+ */
+export function keepResubmitSelection(
+  previous: Readonly<Record<string, string | null>>,
+  items: readonly ReviewItemDetail[],
+  versionsByFile: Readonly<Record<string, readonly VersionOption[]>>,
+): Record<string, string | null> {
+  const next = defaultResubmitSelection(items, versionsByFile)
+  for (const item of itemsNeedingNewVersion(items)) {
+    const picked = previous[item.id]
+    if (!picked) continue
+    const options = newerVersionOptions(item, versionsByFile[item.fileId] ?? [])
+    if (options.some((v) => v.fileVersionId === picked)) next[item.id] = picked
+  }
+  return next
+}
+
 export interface ResubmitPlan {
   ready: boolean
   /** Items still without a newer version picked. */

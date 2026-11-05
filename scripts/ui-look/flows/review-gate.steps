@@ -1,0 +1,35 @@
+# A workflow gate decided three ways: kick back (and cancel it), approve once the required
+# checklist item is ticked (with the Undo window), and reject.
+#   npx tsx scripts/ui-look/look.ts --dist .ui-look/<you> --theme dark --out <dir> --steps scripts/ui-look/flows/review-gate.steps
+# The gate waits on the author: releasing PMP-2004.SLDDRW needs Quality's sign-off.
+
+--scene gate-detail
+--wait 1200
+--shot 01-gate
+--click button:has-text('Kick back')
+--wait 300
+--fill #gate-comment=The flange drawing still shows the old bolt circle.
+--shot 02-kickback-prompt
+--press Escape
+--wait 300
+--shot 03-approve-needs-checklist
+--click label:has-text('First article inspection attached') input
+--wait 300
+--shot 04-approve-ready
+--click button:text-is('Approve')
+--wait 400
+--press Control+Enter
+--wait 1200
+--shot 05-approve-undo
+--wait 5800
+--shot 06-approved
+
+--scene gate-detail
+--wait 1200
+--click button:has-text('Reject')
+--wait 300
+--fill #gate-comment=Wrong flange: this is the 6061 part, the order is for 316.
+--shot 07-reject-prompt
+--press Control+Enter
+--wait 5800
+--shot 08-rejected

@@ -43,6 +43,8 @@ export interface OutputJob {
   status: OutputJobStatus
   /** Why it was skipped or failed (an error code or message), for the tooltip and the log. */
   detail: string | null
+  /** With `detail` SAME_NAME_OPEN: the file names open in SOLIDWORKS that block it. */
+  openDocuments?: readonly string[]
   /** Started from a check-in (true) or by the user. */
   auto: boolean
   updatedAt: number
@@ -92,6 +94,12 @@ export interface OutputsSlice {
   /** part/assembly file id -> the assemblies that reference it (the Used in section). Bounded. */
   modelUsedIn: Map<string, DrawingRefItem[]>
   setModelUsedIn: (byFile: ReadonlyMap<string, DrawingRefItem[]>) => void
+  /**
+   * "Generate requested outputs on this machine" (5.13.0, `src/lib/outputs/requests.ts`): whether
+   * this desktop picks up output requests. Per machine (persisted), on by default.
+   */
+  outputRequestWorkerEnabled: boolean
+  setOutputRequestWorkerEnabled: (enabled: boolean) => void
 }
 
 export function outputJobKey(fileId: string, kind: VersionOutputKind, configuration: string | null): string {
@@ -193,4 +201,6 @@ export const createOutputsSlice: StateCreator<
     set((state) => ({ modelDrawings: mergeFileOutputVersions(state.modelDrawings, byFile) })),
   modelUsedIn: new Map(),
   setModelUsedIn: (byFile) => set((state) => ({ modelUsedIn: mergeFileOutputVersions(state.modelUsedIn, byFile) })),
+  outputRequestWorkerEnabled: true,
+  setOutputRequestWorkerEnabled: (outputRequestWorkerEnabled) => set({ outputRequestWorkerEnabled }),
 })

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, ArchiveRestore, Download, FileSpreadsheet, FileUp, Loader2, Pencil, RefreshCw, ScanSearch, Star, StarOff, Upload } from 'lucide-react'
+import { Archive, ArchiveRestore, Download, FileSpreadsheet, FileUp, FolderTree, Loader2, Pencil, RefreshCw, ScanSearch, Star, StarOff, Upload } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/core/Dialog'
 import { ActionBar, Badge, Button, Switch, type BadgeTone, type ToolbarAction } from '@/components/core/ui'
@@ -14,8 +14,11 @@ import {
   downloadInspectionContent,
   listInspectionTemplates,
   setDefaultInspectionTemplate,
+  syncInspectionTemplateFolder,
+  templateFolderSyncChanged,
   updateInspectionTemplate,
   uploadInspectionContent,
+  type TemplateFolderSyncResult,
 } from '@/lib/supabase'
 import { usePDMStore } from '@/stores/pdmStore'
 import { INSPECTION_REPORT_TYPES, type InspectionReportType, type InspectionTemplate } from '@/types/inspectionReports'
@@ -24,6 +27,7 @@ import type { Json } from '@/types/supabase'
 
 import { SettingsGroup, SettingsPage, SettingsSection } from '../../components/ui'
 import { ReportNamingSettings } from './ReportNamingSettings'
+import { TemplateFolderSettings } from './TemplateFolderSettings'
 import { TemplateEditor, type EditorMode, type EditorValues } from './TemplateEditor'
 import { TemplateTokenReference } from './TemplateTokenReference'
 import { TemplateTypeChips } from './TemplateTypeChips'
@@ -59,6 +63,8 @@ function layoutJson(value: unknown): Json {
 /**
  * Settings > Inspection templates: the organization's Excel report templates. Administrators
  * upload, analyse, rename, replace, set the default, archive and download; members see the list.
+ * Templates from the organization's templates folder (schema 511) are synced first; their workbook
+ * and archive state follow the vault, so Replace, Archive and Restore are not offered for them.
  * Without any template, report generation still offers the built-in starters.
  */
 export function InspectionTemplatesSettings() {
@@ -75,6 +81,9 @@ export function InspectionTemplatesSettings() {
   const [editor, setEditor] = useState<EditorMode | null>(null)
   const [saving, setSaving] = useState(false)
   const [archiving, setArchiving] = useState<InspectionTemplate | null>(null)
+  const [lastSync, setLastSync] = useState<TemplateFolderSyncResult | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const hasFolder = !!organization?.settings?.inspection_reports?.templates_folder
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -89,9 +98,53 @@ export function InspectionTemplatesSettings() {
     }
   }, [orgId, showArchived, addToast])
 
+  /**
+   * Analyse folder templates the sync added or replaced (it clears their analysis, since the
+   * database cannot read a workbook). Administrators only: the analysis is saved on the row.
+   */
+  const analyseFolderTemplates = useCallback(async (): Promise<boolean> => {
+    if (!orgId || !isAdmin) return false
+    const pending = (await listInspectionTemplates(orgId)).filter((x) => x.sourcePath && !parseLayout(x.layout))
+    for (const template of pending) {
+      try {
+        const layout = await analyzeTemplate(await downloadInspectionContent(orgId, template.storageHash))
+        await updateInspectionTemplate(template.id, { layout: layoutJson(layout) })
+      } catch (err) {
+        log.warn('[InspectionTemplates]', 'Analysing a folder template failed', { id: template.id, error: errorText(err) })
+      }
+    }
+    return pending.length > 0
+  }, [orgId, isAdmin])
+
+  /**
+   * Sync the library with the templates folder, then load it. Also runs right after the folder is
+   * cleared (`force`), so the folder's templates are archived at once.
+   */
+  const syncAndLoad = useCallback(
+    async (force = false) => {
+      if (!orgId) return
+      if (hasFolder || force) {
+        setSyncing(true)
+        try {
+          const result = await syncInspectionTemplateFolder()
+          setLastSync(result)
+          if (templateFolderSyncChanged(result)) log.info('[InspectionTemplates]', 'Templates folder synced', { ...result })
+        } catch (err) {
+          log.warn('[InspectionTemplates]', 'Templates folder sync failed', { error: errorText(err) })
+          addToast('warning', t('source.inspection.tfSyncFailed', { error: errorText(err) }))
+        } finally {
+          setSyncing(false)
+        }
+      }
+      await load()
+      if (await analyseFolderTemplates()) await load()
+    },
+    [orgId, hasFolder, load, analyseFolderTemplates, addToast],
+  )
+
   useEffect(() => {
-    void load()
-  }, [load])
+    void syncAndLoad()
+  }, [syncAndLoad])
 
   const act = useCallback(
     async (id: string, action: () => Promise<void>) => {
@@ -227,8 +280,8 @@ export function InspectionTemplatesSettings() {
               variant="ghost"
               size="sm"
               icon={<RefreshCw size={14} />}
-              onClick={() => void load()}
-              disabled={loading}
+              onClick={() => void syncAndLoad()}
+              disabled={loading || syncing}
               title={t('common.refresh')}
               aria-label={t('common.refresh')}
             />
@@ -307,6 +360,7 @@ export function InspectionTemplatesSettings() {
                 disabled: busy,
                 title: t('source.inspection.tplDownload'),
               }
+              const fromFolder = template.sourcePath !== null
               const live = isAdmin && !template.archivedAt
               const next = !live ? null : status === 'unknown' ? analyseAction : !template.isDefault ? defaultAction : null
               const actions: ToolbarAction[] = [...(next ? [next] : []), downloadAction]
@@ -327,21 +381,26 @@ export function InspectionTemplatesSettings() {
                       }),
                     disabled: busy || !!editor,
                   },
-                  {
-                    id: 'replace',
-                    label: t('source.inspection.tplReplace'),
-                    icon: <FileUp size={13} />,
-                    onClick: () => startReplace(template),
-                    disabled: busy || !!editor,
-                  },
-                  {
-                    id: 'archive',
-                    label: t('source.inspection.tplArchive'),
-                    icon: <Archive size={13} />,
-                    onClick: () => setArchiving(template),
-                    disabled: busy,
-                  },
                 )
+                // A folder template's workbook and archive state follow its vault file.
+                if (!fromFolder) {
+                  actions.push(
+                    {
+                      id: 'replace',
+                      label: t('source.inspection.tplReplace'),
+                      icon: <FileUp size={13} />,
+                      onClick: () => startReplace(template),
+                      disabled: busy || !!editor,
+                    },
+                    {
+                      id: 'archive',
+                      label: t('source.inspection.tplArchive'),
+                      icon: <Archive size={13} />,
+                      onClick: () => setArchiving(template),
+                      disabled: busy,
+                    },
+                  )
+                }
               }
               if (live) {
                 // Default per type: one template per type for the organization (the database moves it).
@@ -365,7 +424,7 @@ export function InspectionTemplatesSettings() {
                   })
                 }
               }
-              if (isAdmin && template.archivedAt) {
+              if (isAdmin && template.archivedAt && !fromFolder) {
                 actions.push({
                   id: 'restore',
                   label: t('source.inspection.tplRestore'),
@@ -393,6 +452,17 @@ export function InspectionTemplatesSettings() {
                           {t('source.inspection.tplDefault')}
                         </Badge>
                       )}
+                      {fromFolder && (
+                        <Badge
+                          icon={<FolderTree size={11} />}
+                          title={t('source.inspection.tfSourceTitle', {
+                            path: template.sourcePath ?? '',
+                            version: template.sourceVersion ?? '',
+                          })}
+                        >
+                          {t('source.inspection.tfSourceBadge')}
+                        </Badge>
+                      )}
                       {template.archivedAt && <Badge>{t('source.inspection.tplArchived')}</Badge>}
                       <Badge
                         tone={STATUS_TONE[status]}
@@ -416,7 +486,7 @@ export function InspectionTemplatesSettings() {
                             })
                           : null,
                         template.description,
-                        template.originalFilename,
+                        template.sourcePath ?? template.originalFilename,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
@@ -454,6 +524,8 @@ export function InspectionTemplatesSettings() {
           </label>
         </SettingsGroup>
       </SettingsSection>
+
+      <TemplateFolderSettings lastSync={lastSync} syncing={syncing} onSync={syncAndLoad} />
 
       <ReportNamingSettings />
 

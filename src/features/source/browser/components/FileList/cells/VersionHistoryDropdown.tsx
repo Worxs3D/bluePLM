@@ -10,6 +10,8 @@
  * - Version notes (editable when file is checked out)
  * - Pending local version display with checkin note editing
  * - Download links for previous versions
+ * - Open with references (desktop): the version with the exact versions it references, read-only
+ * - "References frozen" on a released version whose closure is exact
  */
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -34,7 +36,11 @@ import { t } from '@/lib/i18n'
 import { log } from '@/lib/logger'
 import { describeVersion } from '@/lib/files/versionDisplay'
 import { AddVersionToPackageButton } from '@/features/source/reviewPackage/components/AddVersionToPackageButton'
+import { AddVersionToOrderButton } from '@/features/orders/AddVersionToOrderButton'
+import { useOfficialExtensionInstalled } from '@/hooks/useOfficialExtensionInstalled'
 import { releaseOfVersionRow } from '@/features/source/releases/releaseModel'
+import { OpenWithReferencesButton } from '@/features/source/versionOpen/OpenWithReferencesButton'
+import { ReferencesFrozenMark } from '@/features/source/versionOpen/ReferencesFrozenMark'
 import { VersionReleaseBadge } from './VersionReleaseBadge'
 import { useVersionStateNames } from './useVersionStateNames'
 
@@ -59,6 +65,7 @@ interface VersionHistoryDropdownProps {
 }
 
 export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
+  const reviewsInstalled = useOfficialExtensionInstalled('blueplm.reviews')
   const [isOpen, setIsOpen] = useState(false)
   const [versions, setVersions] = useState<VersionEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -529,6 +536,7 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
                     // Rollback rewrites the working copy, which only the desktop has.
                     const canSwitch = !isLocalVersion && isCheckedOutByMe && hasDesktop()
                     const isRollForward = version.version > activeVersion
+                    const release = releaseOfVersionRow(version as unknown as Record<string, unknown>)
 
                     return (
                       <div
@@ -563,20 +571,25 @@ export function VersionHistoryDropdown({ file }: VersionHistoryDropdownProps) {
                             </span>
                           )}
                           <VersionReleaseBadge
-                            release={releaseOfVersionRow(version as unknown as Record<string, unknown>)}
+                            release={release}
                             stateName={
                               (version.workflow_state_id && stateNames.get(version.workflow_state_id)) ||
                               null
                             }
                           />
+                          <ReferencesFrozenMark fileVersionId={version.id} released={release !== null} />
 
                           {/* Actions */}
                           <div className="ml-auto flex items-center gap-1">
-                            <AddVersionToPackageButton
-                              file={file}
-                              version={version}
-                              latestVersion={serverVersion}
-                            />
+                            {reviewsInstalled && (
+                              <AddVersionToPackageButton
+                                file={file}
+                                version={version}
+                                latestVersion={serverVersion}
+                              />
+                            )}
+                            <AddVersionToOrderButton file={file} version={version} />
+                            <OpenWithReferencesButton fileName={file.name} version={version} />
                             {!hasDesktop() && version.content_hash && (
                               <button
                                 onClick={() => void handleDownloadVersion(version)}

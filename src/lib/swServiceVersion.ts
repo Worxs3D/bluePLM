@@ -143,6 +143,17 @@
  *                   attachment and position survive), only unmatched balloons are deleted and only
  *                   missing ones inserted. data.kept counts kept balloons; data.unchanged is true
  *                   when nothing changed, and the drawing is then not saved
+ * - Version 1.29.1: Hand over from the hidden SolidWorks the service launched to one the user
+ *                   starts later (between commands), and close the hidden one. The cached hidden
+ *                   handle used to hide every document the user opened, so checkout never cleared
+ *                   SolidWorks' read-only state on them
+ * - Version 1.30.0: applyInspectionBalloons lays new balloons out on the sheet instead of a fixed
+ *                   offset from each annotation: it reads every annotation's text and lines, view
+ *                   edges and hatching and the sheet format, then places each balloon next to its
+ *                   own text, clear of text and other balloons, off lines where it can, and nearer
+ *                   its own characteristic than any other (BalloonLayout.cs). Balloons still exactly
+ *                   where an older service put them are moved to the new layout; data.relaid
+ *                   counts them. Hand-moved balloons stay where they are
  *
  * When making service changes:
  * 1. Increment SERVICE_VERSION in Program.cs
@@ -152,7 +163,7 @@
 
 // The SolidWorks service version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_SW_SERVICE_VERSION = '1.29.0'
+export const EXPECTED_SW_SERVICE_VERSION = '1.30.0'
 
 // Minimum service version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -229,6 +240,10 @@ export const SW_SERVICE_VERSION_DESCRIPTIONS: Record<string, string> = {
     'Balloons now show up in PDFs of a drawing: each time BluePLM balloons a drawing it makes the "BluePLM Inspection" layer visible and printable, so drawing PDFs and inspection reports include the balloon numbers',
   '1.29.0':
     'Running Balloon again no longer redoes the balloons you already have: a balloon whose number is still in the table stays exactly as you left it, with its leader, size and position, and only new numbers are added and removed numbers deleted. When nothing needs to change, the drawing is not touched or saved',
+  '1.29.1':
+    'Checking out a file you have open in SOLIDWORKS makes it editable there again when you opened SOLIDWORKS after BluePLM: BluePLM now switches from its own hidden SOLIDWORKS to yours and closes the hidden one, instead of staying blind to the documents you have open',
+  '1.30.0':
+    'Balloons land where a person would put them: each one sits right next to its own dimension, never on top of text or another balloon, off the part lines where there is room, and closer to its own dimension than to any other. Balloons an older version placed and you never moved are tidied into the new layout; balloons you moved stay put',
 }
 
 /**

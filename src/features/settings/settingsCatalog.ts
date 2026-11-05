@@ -1,9 +1,9 @@
+import { extensionOfSettingsTab, type OfficialExtensionId } from '@/lib/officialExtensions'
 import {
   ArrowUpCircle,
   Box,
   Braces,
   Building2,
-  ClipboardList,
   Cloud,
   Columns3,
   DatabaseBackup,
@@ -17,8 +17,10 @@ import {
   Info,
   Keyboard,
   KeyRound,
+  LayoutList,
   LifeBuoy,
   MonitorSmartphone,
+  MousePointerClick,
   Palette,
   PanelLeft,
   Plug,
@@ -26,6 +28,7 @@ import {
   ScrollText,
   ShieldAlert,
   ShieldCheck,
+  ShoppingCart,
   SlidersHorizontal,
   Tags,
   User,
@@ -115,6 +118,14 @@ export const settingsSections = (t?: (key: string) => string): SettingsSection[]
         keywords: ['keybindings', 'shortcuts', 'hotkeys', 'keyboard'],
       },
       {
+        id: 'context-menu',
+        label: 'Right-click menu',
+        icon: MousePointerClick,
+        description: 'The order of the file and folder menu: pin what you use, hide what you do not.',
+        layout: 'wide',
+        keywords: ['context menu', 'right click', 'right-click', 'export', 'pin', 'hide', 'menu order', 'customize'],
+      },
+      {
         id: 'modules',
         label: 'Sidebar',
         icon: PanelLeft,
@@ -179,6 +190,15 @@ export const settingsSections = (t?: (key: string) => string): SettingsSection[]
         keywords: ['inspection', 'report', 'excel', 'xlsx', 'template', 'fai', 'first article', 'report naming'],
       },
       {
+        id: 'context-menu-templates',
+        label: 'Menu templates',
+        icon: LayoutList,
+        description: 'Layouts of the right-click menu that people in your organization follow.',
+        layout: 'wide',
+        adminOnly: true,
+        keywords: ['context menu', 'right click', 'right-click', 'menu template', 'default menu', 'export', 'pin'],
+      },
+      {
         id: 'backup',
         label: 'Backups',
         icon: DatabaseBackup,
@@ -236,11 +256,11 @@ export const settingsSections = (t?: (key: string) => string): SettingsSection[]
         keywords: ['pdf', 'step', 'dxf', 'export options'],
       },
       {
-        id: 'rfq',
-        label: 'RFQ',
-        icon: ClipboardList,
-        description: 'What goes on the requests for quote you send to suppliers.',
-        keywords: ['quote', 'request for quote', 'rfq settings'],
+        id: 'orders',
+        label: 'Orders',
+        icon: ShoppingCart,
+        description: 'Order numbers, the outputs a new line starts with, and requested outputs.',
+        keywords: ['order number', 'prefix', 'supplier', 'purchase', 'quote', 'rfq', 'request for quote', 'output requests'],
       },
     ],
   },
@@ -288,10 +308,9 @@ export const settingsSections = (t?: (key: string) => string): SettingsSection[]
         id: 'extensions',
         label: 'Extensions',
         icon: Puzzle,
-        description: 'Extensions installed for your organization.',
+        description: 'Reviews, Inspection, Orders and the other extensions your organization installs.',
         layout: 'wide',
-        desktopOnly: true,
-        keywords: ['plugins', 'install', 'bpx', 'organization'],
+        keywords: ['plugins', 'install', 'uninstall', 'bpx', 'organization', 'reviews', 'inspection', 'orders'],
       },
     ],
   },
@@ -470,7 +489,7 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Contribution History', keywords: ['activity', 'stats', 'contributions'] },
     { label: 'Recent Activity', keywords: ['history', 'log'] },
     { label: 'My ECOs', keywords: ['eco', 'engineering change', 'changes'] },
-    { label: 'My RFQs', keywords: ['rfq', 'quotes', 'purchasing'] },
+    { label: 'Orders', keywords: ['my orders', 'quotes', 'rfq', 'purchasing'] },
     { label: 'Emergency Admin Recovery', keywords: ['recovery', 'admin', 'lockout'] },
     { label: 'Recovery Code', keywords: ['code', 'admin access'] },
     { label: 'Delete account', keywords: ['remove', 'close account', 'delete my account'] },
@@ -506,6 +525,17 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Sign out', keywords: ['logout', 'sign out this device'] },
   ],
   keybindings: shortcutCatalogEntries(),
+  'context-menu': [
+    { label: 'Menu to follow', keywords: ['template', 'organization default', 'layout'] },
+    { label: 'Pinned to top', keywords: ['pin', 'first', 'export first', 'favourite', 'favorite'] },
+    { label: 'Hidden', keywords: ['hide', 'remove', 'declutter'] },
+    { label: 'Customize everything', keywords: ['reorder', 'group', 'separator', 'drag', 'arrange'] },
+    { label: 'Preview', keywords: ['preview menu'] },
+  ],
+  'context-menu-templates': [
+    { label: 'Templates', keywords: ['menu template', 'default', 'organization'] },
+    { label: 'Apply to everyone now', keywords: ['force', 'push', 'reset everyone', 'override'] },
+  ],
   modules: [
     { label: 'Modules', keywords: ['features', 'enable', 'disable'] },
     { label: 'Sidebar Order', keywords: ['reorder', 'arrange'] },
@@ -621,20 +651,6 @@ export const settingsCatalog: SettingsCatalog = {
     },
     { label: 'Token Reference', keywords: ['tokens', 'help'] },
   ],
-  rfq: [
-    { label: 'RFQ Template Defaults', keywords: ['quote', 'template'] },
-    { label: 'Payment Terms', keywords: ['net 30', 'payment'] },
-    { label: 'Incoterms', keywords: ['shipping terms', 'fob'] },
-    { label: 'Quote Valid (days)', keywords: ['validity', 'expiry'] },
-    { label: 'RFQ Document Columns', keywords: ['columns', 'document'] },
-    { label: 'Show company logo', keywords: ['logo'] },
-    { label: 'Show revision column', keywords: ['revision'] },
-    { label: 'Show material column', keywords: ['material'] },
-    { label: 'Show finish column', keywords: ['finish'] },
-    { label: 'Show notes column', keywords: ['notes'] },
-    { label: 'Terms and Conditions', keywords: ['legal', 't&c'] },
-    { label: 'Footer Text', keywords: ['footer'] },
-  ],
   'security-monitoring': [
     { label: 'Monitor this organization', keywords: ['security', 'alerts'] },
     { label: 'Files permanently deleted', keywords: ['purge', 'threshold'] },
@@ -643,6 +659,18 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Members who join through an email domain', keywords: ['domain', 'join'] },
     { label: 'Backup alerts', keywords: ['backup', 'overdue'] },
     { label: 'Daily summary', keywords: ['summary', 'digest'] },
+  ],
+  orders: [
+    { label: 'Order number prefix', keywords: ['prefix', 'numbering', 'ord-'] },
+    { label: 'Next order number', keywords: ['preview', 'sequence'] },
+    { label: 'Part or assembly with a drawing', keywords: ['default outputs', 'pdf', 'step'] },
+    { label: 'Part or assembly without a drawing', keywords: ['default outputs', 'step'] },
+    { label: 'Drawing on its own', keywords: ['default outputs', 'pdf', 'drawing only'] },
+    {
+      label: 'Generate outputs others request on this machine',
+      keywords: ['output requests', 'requested outputs', 'worker', 'solidworks'],
+      desktopOnly: true,
+    },
   ],
   'file-workflows': [
     { label: 'Use file workflows', keywords: ['enable workflows', 'states'] },
@@ -669,6 +697,13 @@ export const settingsCatalog: SettingsCatalog = {
     { label: 'Push to All Users', keywords: ['push', 'everyone'] },
   ],
   'item-designations': [{ label: 'Add designation', keywords: ['new designation', 'item type'] }],
+  extensions: [
+    { label: 'BluePLM extensions', keywords: ['official', 'built in', 'install', 'uninstall'] },
+    { label: 'Reviews', keywords: ['drawing review', 'approval', 'uninstall reviews'] },
+    { label: 'Inspection', keywords: ['balloon', 'inspection report', 'fai', 'uninstall inspection'] },
+    { label: 'Orders', keywords: ['supplier order', 'purchase', 'uninstall orders'] },
+    { label: 'Organization extensions', keywords: ['bpx', 'native', 'package', 'install for organization'], desktopOnly: true },
+  ],
   'inspection-templates': [
     { label: 'Upload template', keywords: ['xlsx', 'excel', 'add template'] },
     {
@@ -820,13 +855,20 @@ export const settingsCatalog: SettingsCatalog = {
   ],
 }
 
-/** Whether a settings tab shows for this user on this host (admin-only and desktop-only gates). */
+/**
+ * Whether a settings tab shows for this user on this host: the admin-only and desktop-only gates,
+ * and a tab an official extension adds (Inspection templates) only while it is installed.
+ */
 export function isSettingsTabAvailable(
-  item: Pick<SettingsNavigationItem, 'adminOnly' | 'desktopOnly'>,
+  item: Pick<SettingsNavigationItem, 'id' | 'adminOnly' | 'desktopOnly'>,
   isAdmin: boolean,
   desktop: boolean,
+  uninstalled: readonly OfficialExtensionId[] = [],
 ): boolean {
-  return (!item.adminOnly || isAdmin) && (!item.desktopOnly || desktop)
+  if (item.adminOnly && !isAdmin) return false
+  if (item.desktopOnly && !desktop) return false
+  const extension = extensionOfSettingsTab(item.id)
+  return !extension || !uninstalled.includes(extension)
 }
 
 /** True for a tab that only the desktop app shows (marked `desktopOnly` in settingsSections). */

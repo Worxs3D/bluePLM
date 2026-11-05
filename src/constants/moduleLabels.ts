@@ -17,16 +17,14 @@ export const MODULE_LABELS: Record<CoreSidebarView, string> = {
   trash: 'Trash',
   // Items
   items: 'Item Browser',
-  products: 'Products',
   // Change Control
-  ecr: 'ECRs / Issues',
   eco: 'ECOs',
   deviations: 'Deviations',
-  'release-schedule': 'Release Schedule',
-  process: 'Process Editor',
   // Supply Chain - Suppliers
   'supplier-database': 'Supplier Database',
   'supplier-portal': 'Supplier Portal',
+  // Supply Chain - Orders
+  orders: 'Orders',
   // Integrations
   'google-drive': 'Google Drive',
   // System

@@ -1,9 +1,9 @@
-// src/features/source/context-menu/items/AdminItems.tsx
 import { Unlock } from 'lucide-react'
 import type { LocalFile } from '@/stores/pdmStore'
 import { executeCommand } from '@/lib/commands'
+import type { EntryHookResult } from '@/features/source/browser/components/ContextMenu/customizable/types'
 
-interface AdminItemsProps {
+interface AdminEntriesProps {
   contextFiles: LocalFile[]
   isAdmin: boolean
   checkedOutByOthersCount: number
@@ -11,28 +11,32 @@ interface AdminItemsProps {
   onRefresh: (silent?: boolean) => void
 }
 
-export function AdminItems({
+/** `checkout.forceRelease`: an admin releases checkouts held by others. */
+export function useTreeAdminEntries({
   contextFiles,
   isAdmin,
   checkedOutByOthersCount,
   onClose,
   onRefresh,
-}: AdminItemsProps) {
-  if (!isAdmin || checkedOutByOthersCount === 0) return null
-
+}: AdminEntriesProps): EntryHookResult<'checkout.forceRelease'> {
   const handleForceRelease = () => {
     onClose()
     executeCommand('force-release', { files: contextFiles }, { onRefresh })
   }
 
-  return (
-    <div
-      className="context-menu-item text-plm-error"
-      onClick={handleForceRelease}
-      title="Admin: Immediately release checkout. User's unsaved changes will be orphaned."
-    >
-      <Unlock size={14} />
-      Force Release {checkedOutByOthersCount > 1 ? `(${checkedOutByOthersCount})` : ''}
-    </div>
-  )
+  return {
+    entries: {
+      'checkout.forceRelease':
+        isAdmin && checkedOutByOthersCount > 0 ? (
+          <div
+            className="context-menu-item text-plm-error"
+            onClick={handleForceRelease}
+            title="Admin: Immediately release checkout. User's unsaved changes will be orphaned."
+          >
+            <Unlock size={14} />
+            Force Release {checkedOutByOthersCount > 1 ? `(${checkedOutByOthersCount})` : ''}
+          </div>
+        ) : null,
+    },
+  }
 }

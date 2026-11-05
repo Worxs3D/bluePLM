@@ -1,9 +1,14 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // Traditional Chinese translations (繁體中文)
 export const zhTW: TranslationDict = {
@@ -35,10 +40,15 @@ export const zhTW: TranslationDict = {
     openInEDrawingsFailed: '無法在 eDrawings 中開啟此檔案。',
   },
   ...reviewsUiStrings.zhTW,
+  ...contextMenuCustomizerStrings.zhTW,
   reviewPackage: reviewPackageStrings.zhTW,
   dbUpgrade: dbUpgradeStrings.zhTW,
   releases: releasesStrings.zhTW,
+  orders: ordersStrings.zhTW,
+  versionOpen: versionOpenStrings.zhTW,
+  officialExtensions: officialExtensionsStrings.zhTW,
   securityMonitoring: securityMonitoringStrings.zhTW,
+  supplierPortal: supplierPortalStrings.zhTW,
   checkoutDisplay: {
     you: '你',
     loadingOwner: '正在載入簽出者',
@@ -752,7 +762,6 @@ export const zhTW: TranslationDict = {
     scopeFile: '此檔案',
     scopeFolder: '此資料夾',
     scopeVault: '整個庫',
-    vaultWideNote: '解決操作始終會處理庫中所有待處理的移動，而不僅僅是上面顯示的這些。',
 
     listHeading_one: '已顯示 {{count}} 個待處理的移動',
     listHeading_other: '已顯示 {{count}} 個待處理的移動',
@@ -784,6 +793,32 @@ export const zhTW: TranslationDict = {
     runAdopt: '還原本機檔案',
 
     contextMenuItem: '解決已移動的檔案…',
+
+    selectionNote: '只會解決此清單中勾選的移動，清單以外的不受影響。',
+    selectAll: '全選',
+    selectedCount_one: '已選 {{count}} 個',
+    selectedCount_other: '已選 {{count}} 個',
+    vaultLabel: '庫中',
+    diskLabel: '本機磁碟',
+    vaultMovedBy: '庫路徑由 {{name}} 設定，{{date}}',
+    vaultNeverMoved: '自首次簽入以來庫路徑未變，{{date}}',
+    lastChanged: '庫中最後變更於 {{date}}',
+    lastChangedBy: '庫中最後由 {{name}} 變更，{{date}}',
+    versionLabel: '版本 {{version}}',
+    diskModified: '磁碟上修改於 {{date}}',
+    checkedOutBy: '由 {{name}} 簽出',
+    checkedOutByYou: '由您簽出',
+    historyUnavailable: '無法讀取移動歷史。',
+    rowConflictVault: '更新庫：庫中在磁碟路徑處已有檔案。',
+    rowConflictDisk: '還原：磁碟上庫路徑處已有內容。',
+    rowUnverified: '自上次簽入以來內容已變更。請簽入以記錄新位置及變更。',
+    rowHeldVault: '更新庫：由 {{name}} 簽出。',
+    rowUpdateVault: '更新庫',
+    rowRestore: '還原',
+    rowUpdateVaultHint: '將此檔案的磁碟路徑寫入庫',
+    rowRestoreHint: '將磁碟上的此檔案重新命名回庫路徑',
+    noneSelected: '請至少勾選一個移動。',
+    you: '您',
   },
 
   // Not yet translated — served from the English dictionary via getTranslation's per-key

@@ -1,45 +1,76 @@
 /**
- * Pick reviewers: people and teams. A team is sent as a team and expanded on the server by its
- * reviewer rules; the picker only previews who that reaches, so selecting a team can never drop
- * members the way the old file-list modal did (audit C4).
+ * Pick reviewers: one search field for people and teams together. A team is sent as a team and
+ * expanded on the server by its reviewer rules; the picker only previews who that reaches, so
+ * selecting a team can never drop members the way the old file-list modal did (audit C4).
+ *
+ * Keys in the field: Up/Down move through the results, Enter adds or removes the highlighted one,
+ * Escape closes the results, Backspace in an empty field removes the last reviewer.
  */
 
-import { useMemo, useState } from 'react'
-import { Search, User, Users, X } from 'lucide-react'
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Check, Search, User, Users, X } from 'lucide-react'
 
+import { Button, IconButton, ListRow, RowGroup, StatusText, TextInput } from '@/components/core/ui'
 import { t } from '@/lib/i18n'
 import { expandReviewerSelection, type TeamWithMembers } from '@/lib/supabase/reviewTeams'
 import type { OrgUser } from '@/types/database'
+
+import {
+  lastSelected,
+  reviewerResults,
+  teamMembersWithoutAccess,
+  userLabel,
+  type ReviewerResult,
+} from '../lib/reviewerSearch'
 
 interface ReviewerPickerProps {
   users: OrgUser[]
   teams: TeamWithMembers[]
   loading: boolean
+  error: string | null
+  onRetry: () => void
   requesterId: string | null
   reviewerIds: string[]
   teamIds: string[]
   onToggleReviewer: (userId: string) => void
   onToggleTeam: (teamId: string) => void
+  /**
+   * People who cannot read a vault of the draft's files: shown unavailable with the reason, never
+   * added (the server refuses a review naming them, and skips them in a team).
+   */
+  noVaultAccessIds?: ReadonlySet<string>
+  disabled?: boolean
 }
 
-type PickerTab = 'people' | 'teams'
+const NONE: ReadonlySet<string> = new Set()
 
-function userLabel(user: Pick<OrgUser, 'full_name' | 'email'>): string {
-  return user.full_name || user.email
+function TeamDot({ color }: { color: string }) {
+  return (
+    <span className="flex h-4 w-4 items-center justify-center">
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+    </span>
+  )
 }
 
 export function ReviewerPicker({
   users,
   teams,
   loading,
+  error,
+  onRetry,
   requesterId,
   reviewerIds,
   teamIds,
   onToggleReviewer,
   onToggleTeam,
+  noVaultAccessIds = NONE,
+  disabled = false,
 }: ReviewerPickerProps) {
-  const [tab, setTab] = useState<PickerTab>('people')
+  const listId = useId()
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
 
   const expanded = useMemo(
     () => expandReviewerSelection({ reviewerIds, teamIds }, teams, requesterId),
@@ -47,156 +78,252 @@ export function ReviewerPicker({
   )
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users])
   const teamById = useMemo(() => new Map(teams.map((tm) => [tm.id, tm])), [teams])
+  const results = useMemo(
+    () => reviewerResults(users, teams, query, requesterId),
+    [users, teams, query, requesterId],
+  )
+  const activeIndex = Math.min(active, Math.max(results.length - 1, 0))
 
-  const q = query.trim().toLowerCase()
-  const visibleUsers = useMemo(
-    () =>
-      users.filter(
-        (u) =>
-          u.id !== requesterId &&
-          (!q || userLabel(u).toLowerCase().includes(q) || u.email.toLowerCase().includes(q)),
-      ),
-    [users, requesterId, q],
-  )
-  const visibleTeams = useMemo(
-    () => teams.filter((tm) => !q || tm.name.toLowerCase().includes(q)),
-    [teams, q],
-  )
+  const isSelected = (r: ReviewerResult) =>
+    r.kind === 'user' ? reviewerIds.includes(r.id) : teamIds.includes(r.id)
+  /** Cannot be added (removing an already added one stays possible). */
+  const isUnavailable = (r: ReviewerResult) =>
+    r.kind === 'user' && noVaultAccessIds.has(r.id) && !isSelected(r)
+  const toggle = (r: ReviewerResult) => {
+    if (isUnavailable(r)) return
+    // Adding from a search is done with that search: the next name starts from an empty field.
+    if (query && !isSelected(r)) {
+      setQuery('')
+      setActive(0)
+    }
+    if (r.kind === 'user') onToggleReviewer(r.id)
+    else onToggleTeam(r.id)
+  }
+
+  const teamReach = (team: TeamWithMembers) => {
+    const count = expandReviewerSelection({ reviewerIds: [], teamIds: [team.id] }, teams, requesterId)
+      .userIds.length
+    const reach =
+      team.reviewerConfigs.length > 0
+        ? t('reviewBuilder.reviewers.teamRuleCount', { count })
+        : count === 1
+          ? t('reviewBuilder.reviewers.teamMemberCountOne')
+          : t('reviewBuilder.reviewers.teamMemberCount', { count })
+    const skipped = teamMembersWithoutAccess(team, noVaultAccessIds, requesterId)
+    return skipped > 0
+      ? `${reach} · ${t('reviewBuilder.reviewers.teamNoVaultAccess', { count: skipped })}`
+      : reach
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen(true)
+      setActive((i) => Math.min(i + 1, results.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      const r = results[activeIndex]
+      if (open && r) {
+        e.preventDefault()
+        toggle(r)
+      }
+    } else if (e.key === 'Escape') {
+      if (open) {
+        e.preventDefault()
+        e.stopPropagation()
+        setOpen(false)
+      }
+    } else if (e.key === 'Backspace' && query === '') {
+      const last = lastSelected(reviewerIds, teamIds)
+      if (last) {
+        e.preventDefault()
+        if (last.kind === 'user') onToggleReviewer(last.id)
+        else onToggleTeam(last.id)
+      }
+    }
+  }
+
+  const hasSelection = reviewerIds.length > 0 || teamIds.length > 0
+  const optionId = (i: number) => `${listId}-opt-${i}`
 
   return (
-    <div className="space-y-2">
-      {/* Selected chips */}
-      {(reviewerIds.length > 0 || teamIds.length > 0) && (
-        <div className="flex flex-wrap gap-1">
+    <div
+      ref={wrapRef}
+      onBlur={(e) => {
+        if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false)
+      }}
+    >
+      {error && (
+        <div className="flex items-center justify-between gap-3 py-2">
+          <StatusText tone="danger">{t('reviewBuilder.reviewers.loadFailed')}</StatusText>
+          <Button size="sm" variant="ghost" onClick={onRetry}>
+            {t('reviewBuilder.reviewers.retry')}
+          </Button>
+        </div>
+      )}
+
+      <div className="relative pt-2">
+        <Search
+          size={14}
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-[calc(50%+4px)] -translate-y-1/2 text-ui-fg-secondary"
+        />
+        <TextInput
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={open && results.length > 0 ? optionId(activeIndex) : undefined}
+          value={query}
+          disabled={disabled}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setActive(0)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder={t('reviewBuilder.reviewers.search')}
+          spellCheck={false}
+          autoComplete="off"
+          className="pl-8"
+        />
+      </div>
+
+      {open && !disabled && (
+        <div
+          id={listId}
+          role="listbox"
+          aria-label={t('reviewBuilder.reviewers.resultsLabel')}
+          aria-multiselectable="true"
+          className="-mx-1 mt-1 max-h-60 overflow-y-auto rounded-lg border border-ui-border bg-ui-bg py-1 shadow-lg"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {loading ? (
+            <p className="px-3 py-2 text-[13px] text-ui-fg-secondary">{t('reviewBuilder.reviewers.loading')}</p>
+          ) : results.length === 0 ? (
+            <p className="px-3 py-2 text-[13px] text-ui-fg-secondary">{t('reviewBuilder.reviewers.none')}</p>
+          ) : (
+            results.map((r, i) => {
+              const selected = isSelected(r)
+              const unavailable = isUnavailable(r)
+              const firstTeam = r.kind === 'team' && (i === 0 || results[i - 1].kind === 'user')
+              return (
+                <div key={`${r.kind}-${r.id}`}>
+                  {firstTeam && i > 0 && <div className="mx-3 my-1 border-t border-ui-divider" />}
+                  <ListRow
+                    id={optionId(i)}
+                    role="option"
+                    shape="rounded"
+                    className={`mx-1 py-1.5 ${i === activeIndex ? 'bg-ui-hover' : ''}`}
+                    selected={false}
+                    disabled={unavailable}
+                    onActivate={() => {
+                      setActive(i)
+                      toggle(r)
+                    }}
+                    leading={
+                      r.kind === 'user' ? <User size={14} /> : <TeamDot color={r.team.color} />
+                    }
+                    title={r.kind === 'user' ? userLabel(r.user) : r.team.name}
+                    secondary={
+                      r.kind === 'user'
+                        ? noVaultAccessIds.has(r.id)
+                          ? t('reviewBuilder.reviewers.noVaultAccess')
+                          : r.user.full_name
+                            ? r.user.email
+                            : undefined
+                        : teamReach(r.team)
+                    }
+                    trailing={
+                      selected ? (
+                        <span className="flex items-center gap-1 text-ui-fg">
+                          <Check size={13} aria-hidden />
+                          {t('reviewBuilder.reviewers.added')}
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {hasSelection && (
+        <RowGroup className="-mx-3 mt-2">
           {teamIds.map((id) => {
             const team = teamById.get(id)
             return (
-              <button
+              <ListRow
                 key={`team-${id}`}
-                type="button"
-                onClick={() => onToggleTeam(id)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded bg-plm-accent/15 text-plm-accent hover:bg-plm-accent/25"
-                title={t('reviewBuilder.reviewers.remove')}
-              >
-                <Users size={10} />
-                {team?.name ?? t('reviewBuilder.reviewers.unknownTeam')}
-                <span className="text-plm-fg-muted">({expanded.byTeam[id]?.length ?? 0})</span>
-                <X size={10} />
-              </button>
+                leading={team ? <TeamDot color={team.color} /> : <Users size={14} />}
+                title={team?.name ?? t('reviewBuilder.reviewers.unknownTeam')}
+                secondary={team ? teamReach(team) : undefined}
+                actionsVisible
+                actions={
+                  disabled ? undefined : (
+                    <IconButton
+                      size="sm"
+                      label={t('reviewBuilder.reviewers.remove', {
+                        name: team?.name ?? t('reviewBuilder.reviewers.unknownTeam'),
+                      })}
+                      icon={<X size={14} />}
+                      onClick={() => onToggleTeam(id)}
+                    />
+                  )
+                }
+              />
             )
           })}
           {reviewerIds.map((id) => {
             const user = userById.get(id)
+            const name = user ? userLabel(user) : t('reviewBuilder.reviewers.unknownUser')
+            const noAccess = noVaultAccessIds.has(id)
             return (
-              <button
+              <ListRow
                 key={`user-${id}`}
-                type="button"
-                onClick={() => onToggleReviewer(id)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded bg-plm-bg-light text-plm-fg hover:bg-plm-highlight border border-plm-border"
-                title={t('reviewBuilder.reviewers.remove')}
-              >
-                <User size={10} />
-                {user ? userLabel(user) : t('reviewBuilder.reviewers.unknownUser')}
-                <X size={10} />
-              </button>
+                leading={<User size={14} />}
+                title={name}
+                secondary={
+                  noAccess ? (
+                    <StatusText tone="warning">
+                      {t('reviewBuilder.reviewers.noVaultAccessAdded')}
+                    </StatusText>
+                  ) : user?.full_name ? (
+                    user.email
+                  ) : undefined
+                }
+                actionsVisible
+                actions={
+                  disabled ? undefined : (
+                    <IconButton
+                      size="sm"
+                      label={t('reviewBuilder.reviewers.remove', { name })}
+                      icon={<X size={14} />}
+                      onClick={() => onToggleReviewer(id)}
+                    />
+                  )
+                }
+              />
             )
           })}
+        </RowGroup>
+      )}
+
+      {expanded.emptyTeamIds.length > 0 && (
+        <div className="pt-1">
+          <StatusText tone="warning">
+            {t('reviewBuilder.reviewers.emptyTeams', {
+              names: expanded.emptyTeamIds.map((id) => teamById.get(id)?.name ?? id).join(', '),
+            })}
+          </StatusText>
         </div>
       )}
-
-      <p className="text-[11px] text-plm-fg-muted">
-        {t('reviewBuilder.reviewers.reaches', { count: expanded.userIds.length })}
-      </p>
-      {expanded.emptyTeamIds.length > 0 && (
-        <p className="text-[11px] text-plm-warning">
-          {t('reviewBuilder.reviewers.emptyTeams', {
-            names: expanded.emptyTeamIds.map((id) => teamById.get(id)?.name ?? id).join(', '),
-          })}
-        </p>
-      )}
-
-      {/* Tabs + search */}
-      <div className="flex items-center gap-1">
-        {(['people', 'teams'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`px-2 py-0.5 text-[11px] rounded ${
-              tab === key
-                ? 'bg-plm-accent/20 text-plm-accent'
-                : 'text-plm-fg-muted hover:text-plm-fg hover:bg-plm-bg-light'
-            }`}
-          >
-            {t(`reviewBuilder.pickerTab.${key}`)}
-          </button>
-        ))}
-      </div>
-      <div className="relative">
-        <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-plm-fg-muted" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('reviewBuilder.reviewers.search')}
-          className="w-full pl-6 pr-2 py-1 text-xs bg-plm-bg-light border border-plm-border rounded focus:outline-none focus:border-plm-accent"
-        />
-      </div>
-
-      <div className="max-h-48 overflow-y-auto border border-plm-border rounded divide-y divide-plm-border/50">
-        {loading ? (
-          <p className="px-2 py-3 text-xs text-plm-fg-muted">{t('reviewBuilder.reviewers.loading')}</p>
-        ) : tab === 'people' ? (
-          visibleUsers.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-plm-fg-muted">{t('reviewBuilder.reviewers.none')}</p>
-          ) : (
-            visibleUsers.map((u) => (
-              <label
-                key={u.id}
-                className="flex items-center gap-2 px-2 py-1 text-xs cursor-pointer hover:bg-plm-highlight"
-              >
-                <input
-                  type="checkbox"
-                  checked={reviewerIds.includes(u.id)}
-                  onChange={() => onToggleReviewer(u.id)}
-                  className="w-3 h-3"
-                />
-                <span className="truncate text-plm-fg">{userLabel(u)}</span>
-                {u.full_name && <span className="truncate text-plm-fg-muted">{u.email}</span>}
-              </label>
-            ))
-          )
-        ) : visibleTeams.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-plm-fg-muted">{t('reviewBuilder.reviewers.noTeams')}</p>
-        ) : (
-          visibleTeams.map((team) => {
-            const reach = expandReviewerSelection({ reviewerIds: [], teamIds: [team.id] }, teams, requesterId)
-            return (
-              <label
-                key={team.id}
-                className="flex items-center gap-2 px-2 py-1 text-xs cursor-pointer hover:bg-plm-highlight"
-              >
-                <input
-                  type="checkbox"
-                  checked={teamIds.includes(team.id)}
-                  onChange={() => onToggleTeam(team.id)}
-                  className="w-3 h-3"
-                />
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: team.color }}
-                />
-                <span className="truncate text-plm-fg">{team.name}</span>
-                <span className="ml-auto text-plm-fg-muted">
-                  {team.reviewerConfigs.length > 0
-                    ? t('reviewBuilder.reviewers.teamRuleCount', { count: reach.userIds.length })
-                    : t('reviewBuilder.reviewers.teamMemberCount', { count: reach.userIds.length })}
-                </span>
-              </label>
-            )
-          })
-        )}
-      </div>
     </div>
   )
 }

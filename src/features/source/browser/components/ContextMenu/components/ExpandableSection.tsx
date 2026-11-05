@@ -1,9 +1,10 @@
 /**
  * Expandable section for context menu
- * Shows a "More Actions" button that expands to reveal additional options
+ * Shows a "More actions" row that expands to reveal additional options
  */
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { t } from '@/lib/i18n'
 
 interface ExpandableSectionProps {
   expanded: boolean
@@ -11,6 +12,8 @@ interface ExpandableSectionProps {
   children: ReactNode
   /** Number of hidden items to show in the label */
   hiddenCount?: number
+  /** Draw a separator above the toggle (default). Off when the menu already ends in one. */
+  separator?: boolean
 }
 
 export function ExpandableSection({
@@ -18,11 +21,12 @@ export function ExpandableSection({
   onToggle,
   children,
   hiddenCount,
+  separator = true,
 }: ExpandableSectionProps) {
   return (
     <>
       {/* Expand/Collapse toggle */}
-      <div className="context-menu-separator" />
+      {separator && <div className="context-menu-separator" />}
       <div
         className="context-menu-expand-toggle"
         onClick={(e) => {
@@ -33,12 +37,12 @@ export function ExpandableSection({
         {expanded ? (
           <>
             <ChevronUp size={14} />
-            <span>Less Actions</span>
+            <span>{t('contextMenuCustomizer.menu.lessActions')}</span>
           </>
         ) : (
           <>
             <ChevronDown size={14} />
-            <span>More Actions{hiddenCount ? ` (${hiddenCount})` : ''}</span>
+            <span>{t('contextMenuCustomizer.menu.moreActions', { count: hiddenCount ?? 0 })}</span>
           </>
         )}
       </div>

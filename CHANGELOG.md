@@ -4,6 +4,283 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+## [5.14.0] - 2026-11-05
+
+SolidWorks service 1.30.0. No schema or API change (schema 515, as 5.13.0).
+
+### Added
+
+- **Full-resolution CAD previews.** The Preview tab used to show only the small bitmap SOLIDWORKS
+  embeds in each file, blurry at any zoom. A drawing now shows its PDF of the version on disk (the
+  one check-in generates), sharp at every zoom, with the thumbnail shown until it has loaded. A part
+  or assembly gets a **3D** button that shows its stored STL or STEP export of that version; the
+  choice is remembered. An edited, new or older local copy, or a version with no export yet, keeps
+  the thumbnail, since only the thumbnail shows what is actually on disk. BluePLM Web, which had no
+  CAD preview at all, shows the same PDFs and 3D views.
+
+### Fixed
+
+- **General tolerance tables with LINEAR and ANGLE columns are read.** A title block that gives
+  tolerances per decimal place in two columns (`LINEAR` | `ANGLE` over rows like `X. ±0.2` |
+  `X. ±1`) now gives untoleranced dimensions the linear rule for their decimal places, and
+  untoleranced angles the angle rule for theirs. Before, the angle column was dropped or read as
+  lengths, and `X.` (whole numbers) was not recognised. Each entry belongs to the column header it
+  sits under, whether the block is one note or a grid of cells.
+- **Balloons no longer land on top of dimensions (SolidWorks service 1.30.0).** Balloons were
+  dropped at a fixed offset from each annotation's anchor point, so they often covered the
+  dimension's own text, a neighbour's text or the part. The service now reads what is on each sheet
+  (every annotation's text and lines, view edges and hatching, the sheet format) and lays the
+  balloons out together: each sits right next to its own characteristic, never on text or another
+  balloon, off lines where there is room, and closer to its own characteristic than to any other.
+  The layout is deterministic, so the same drawing always gets the same balloons. Balloons an older
+  service placed that were never moved are moved into the new layout (`relaid`); hand-moved
+  balloons stay where they are. Not yet confirmed in a real SOLIDWORKS session (R27-R31 in
+  `SolidWorksAPI.BalloonScene.cs`): if the drawing data cannot be read, placement falls back to
+  estimated text boxes and view outlines, and the service log says so per sheet.
+
+## [5.13.0] - 2026-11-05
+
+Schema 515 (`0515_orders_followups.sql`). No API or SolidWorks service change.
+
+### Added
+
+- **Request missing outputs.** On BluePLM Web, or on a computer without SOLIDWORKS, an order's
+  missing PDFs and STEPs can be requested instead of generated. Any desktop with SOLIDWORKS that can
+  read the vault makes them in the background, one at a time and never alongside your own exports,
+  and the lines update when they are ready. A requested output shows "Requested" and can be
+  cancelled. Turn it off for one computer under Settings > Orders.
+- **Settings > Orders.** The order number prefix with a preview of the next number, the outputs a
+  new line starts with (part with a drawing, part without, drawing on its own), and the switch for
+  generating outputs others request on this computer.
+- **Orders on a file.** A new Orders tab in the file details shows every order that pins the file,
+  with the version it pins; click one to open it.
+- **Drag files onto an order.** Drop files from the file list or the tree onto a draft order in the
+  list or onto the open order. Hold the drag over the Orders icon to open the page.
+- **Choose drawing.** When several drawings show a part, pick the one that goes with the line, or
+  none.
+- **Open with references.** From a file's version history, open any checked-in version of a part,
+  assembly or drawing exactly as it was: its referenced files are staged at the versions it was
+  checked in with, read-only, and opened in SOLIDWORKS, so an old assembly opens with nothing
+  broken. Staged copies are reused and cleaned up automatically.
+- **References frozen.** A released version whose references are exact is marked "References
+  frozen". A version a release depends on can no longer be deleted, and releasing a file whose
+  references are only approximate (checked in before BluePLM recorded them) asks first.
+
+### Changed
+
+- **RFQs are now quote orders.** Existing RFQs are imported once as orders with the purpose
+  Quote, their lines pinned to each file's newest checked-in version; internal notes stay on the old
+  RFQ and are not exported. The RFQ screens, their local release-files folder and the RFQ settings
+  are gone. The Supplier Portal now shows your quote orders.
+- **Bigger exports.** An order's zip on the desktop streams straight to disk with ZIP64 (up to
+  50 GB). On the web, Save files to folder works in browsers that can pick a folder.
+- **Hidden lines name their vaults.** An order with lines in vaults you cannot see says which
+  vaults, so you know whom to ask.
+
+### Fixed
+
+- Emptying the trash no longer logs "permanently deleted" for a file whose delete was refused.
+- **Check-in and check-out no longer wait behind background exports.** Making an open SOLIDWORKS
+  document read-only ran at background priority on the service's one-command queue, so it waited
+  for every PDF/STEP export and reference read an earlier check-in had queued. It now runs ahead
+  of them. A single export already running still finishes first.
+
+## [5.12.0] - 2026-11-05
+
+Schema 514 (`0514_review_comment_notify.sql`). No API or SolidWorks service change. 5.11.0 keeps
+working against it: it shows the new comment notifications as ordinary review notifications.
+
+### Added
+
+- **Review comments notify the people on the review (schema 514).** A comment or reply on an
+  open or sent-back review notifies its requester and the current round's reviewers who can see
+  the vault, never the person who wrote it, at most once per person per review per hour, so a
+  markup session is one notification, not ten. **Open** goes straight to the review, the file and
+  the comment's thread.
+- **A review in the queue can say "Nobody left to decide"** when every reviewer still owing a
+  decision was withdrawn.
+
+### Fixed
+
+- **Quitting no longer drops a review decision still in its Undo window.** File > Exit, Alt+F4,
+  Cmd+Q, closing the last window, installing an update and a system shutdown or sign-out now send
+  queued decisions first, waiting at most 5 seconds. A Windows sign-out that cannot be held starts
+  the sends without waiting.
+- **Resolve on a comment appears only where it will work.** It used to show for anyone with edit
+  rights in any vault and was then refused; it now follows the server's rule
+  (`file_comment_list_resolvable()`): the comment's author, the review's requester and reviewers,
+  administrators, or, outside a review, edit rights on that file's vault.
+- **The reviewer search greys out people who cannot see the files' vault**, with the reason,
+  instead of the request being refused after you send it.
+- **Light-theme avatars show their initials again.**
+
+## [5.11.0] - 2026-11-04
+
+Schema 513 (`0513_supply_orders.sql`) and API 4.2.3 (server backups include orders). No SolidWorks
+service change. Apply the schema and redeploy the API; the release pipeline does both.
+
+### Added
+
+- **Orders.** A new Orders page in the left column, on by default (Supply Chain group). An order
+  is a named list of parts for a supplier, for a quote or a purchase: each line pins a checked-in
+  version of a part or assembly, the drawing that goes with it, a quantity and the files to send
+  (drawing PDF, STEP, IGES, STL, DXF or the native file). The files are the version's own outputs,
+  stored with the version, so nothing has to be exported into a local release folder first.
+  - Add files from the file list (right-click > Orders: add to a recent draft, or New order with
+    these files), or a single version from its history. A drawing brings its part, a part brings its
+    drawing. "With referenced parts" adds an assembly and every part it uses, at the versions it
+    references.
+  - Each line shows which files are ready and which are missing; Generate missing makes them on a
+    machine with SOLIDWORKS. A newer checked-in version shows "Update to vN".
+  - Export zip (or Save files to folder) writes the files, a CSV of the lines and an `order.json`
+    with every file's hash, checked as they download.
+  - Mark sent freezes the lines and records the exact files that went out, so the order can be
+    exported again later even after a newer output replaces one. Then Received, Closed, or Cancel;
+    Duplicate starts a new draft from any order.
+  - Numbers are `ORD-0001` onward per organization (`organization.settings.orders.number_prefix`
+    changes the prefix) and are never reused. Lines in vaults you cannot see stay hidden, and the
+    order says how many. Works on BluePLM Web, except generating outputs and saving to a folder.
+  - Guide: `docs/orders.md`.
+
+### Changed
+
+- A sidebar layout saved by an organization or team before a new module shipped now places the new
+  module in its own section, keeping dividers and group headers where they were.
+
+## [5.10.0] - 2026-11-04
+
+Schemas 510 (`0510_inspection_working_copy_reports.sql`), 511
+(`0511_inspection_template_folder.sql`) and 512 (`0512_comment_resolve.sql`). SolidWorks service
+1.29.1; no API change.
+
+### Added
+
+- **Drawing reviews, redesigned end to end, in the settings look.**
+  - *Starting a review.* The review pane opens on a home with **Start a review** (from the
+    selected files), **Waiting on you** and **Your requests**. A draft lists its files compactly
+    and only mentions problems, finds people and teams in one search, sends with Ctrl+Enter, says
+    why the server refused and offers the fix, confirms who was left out once sent, and can be
+    discarded with Undo. The Reviews submenu reads **Start a review**, **Add to draft**, **Add to
+    open review** (which now asks first and names the versions), **Remove from** and **Show
+    reviews of this file**; the forced-release warning offers **Request a review instead**.
+  - *The Reviews page.* The queue says whose move each review is, with due dates and priority, and
+    works from the keyboard. A review shows each reviewer's status in words, a banner only when the
+    state needs one (what to fix, rejected, nobody left to decide, approved, cancelled, what
+    changed in round 2), its files grouped by what they need, and an activity timeline per round.
+    When you have decided everything you owe, **Next review** (N) takes you on.
+  - *Decisions.* A decision is held 5 seconds with Undo before it is sent, and is sent before you
+    move on, sign out, switch organization or close the window. Disabled buttons say why (already
+    decided, decided by someone else, carried forward). **Approve remaining** approves exactly the
+    files it names. Bulk approve asks first, counts the files you have not opened, and leaves out
+    workflow gates with required checklist items. Workflow gates open in the main area with their
+    checklist, and each decision sends only its own comment.
+  - *Kickbacks and rounds.* After changes are requested, the author sees what to fix with the
+    reviewers' comments and **Show in vault** / **Check out**. Resubmit keeps the chosen versions,
+    says when a file has no newer version yet, checks the new versions' PDFs, and its note is shown
+    to reviewers. Files approved in an earlier round are not decided again.
+  - *Comments.* Numbered pins on the drawing match the comment list; comments from earlier rounds
+    stay visible in the next one; Comment (M) toggles markup. **Move approved files** is offered
+    only where the organization's package policy allows it, and says why otherwise.
+- **Resolving review comments (schema 512).** The author of a drawing, the requester and reviewers
+  of the review a comment was made in, and administrators can resolve and reopen it
+  (`file_comment_set_resolved()`); before, only the comment's author could, and anyone else's
+  Resolve was refused and rolled back. Vault access is still required.
+
+- **Right-click menu customizer.** Settings > Right-click menu lets each person arrange the file
+  and folder menu (file list and explorer tree): pin actions to the top (Export STEP first, say),
+  hide the ones they never use, or customize everything (reorder by drag or keyboard, make groups as
+  a submenu, a section or a "More" expander, add separators), with a live preview for a part,
+  assembly, drawing, folder or several files in any state, undo, and import/export to a file. The
+  layout is saved on this computer per organization, like keyboard shortcuts. Administrators keep
+  named templates under Settings > Menu templates (`organization.settings.context_menu`), pick the
+  organization default, and can apply it to everyone. The menu still decides per file whether an
+  action applies, so a layout only rearranges; hiding is not a permission. Every menu ends with
+  "Customize this menu…". The explorer tree now uses the same order and groups as the file list.
+  No schema or API change.
+- **Inspection templates folder (schema 511).** An administrator can pick a vault folder under
+  Settings > Inspection templates > Templates folder, the same way as the SOLIDWORKS template
+  folders. Every checked-in Excel workbook in it, subfolders included, is an organization template:
+  check one in to add it, check in a new version to update it (its revision goes up), move it out
+  or delete it to archive it. Names, report types and defaults are still set on the page. The
+  library syncs when the page opens and before each report is generated
+  (`inspection_template_sync_folder()`), and a folder template's workbook can only change through
+  the vault. Members without the folder's vault keep the templates as last synced. New guide:
+  `docs/settings/inspection-templates.md`, covering how to build a template and every token.
+
+### Changed
+
+- **Dialogs and toasts take the settings look**, and Enter in a confirmation confirms it (focus
+  moves into the dialog) instead of clicking the button that opened it again. File names in
+  review screens follow the lowercase-extensions preference, and a thumbnail that fails to load
+  shows the file-type icon instead of a broken image.
+- **Settings opens as a modal again.** It sits centred over the blurred app and cannot be moved
+  or resized; click outside it or press Esc to close it. On the desktop, the button at its top
+  right opens it in a separate window you can move, resize and put on another screen. That window
+  has its own title bar with the BluePLM mark and a button that puts Settings back in the main
+  window. Closing Settings forgets the choice. The web's draggable floating panel is gone.
+
+- **Inspection reports of a checked-out drawing.** Extract, balloon and generate the report without
+  checking the drawing in first. When you have the drawing checked out and its inspection table or
+  file has changed since the last version, Generate builds the report from your copy (the live table
+  and a PDF of the local drawing, balloons included) and attaches it under the drawing, marked
+  "Checked-out copy". Nothing opens. When you check the drawing in, the report moves to the new
+  version: its workbook is rebuilt with that version's rows, keeping its number. Discarding the
+  checkout removes it. Results can be imported once the drawing is checked in. A report of an older
+  version still uses that checked-in version.
+
+### Fixed
+
+- **The top-bar right-pane button never opens an empty pane.** With nothing else for the right
+  panel (no file tabs, the Workflows view, or the Reviews view with no review open) it shows the
+  review pane, and closing the pane hides the panel.
+- **A checked-out file opened in SOLIDWORKS no longer stays read-only (SolidWorks service
+  1.29.1).** When no SOLIDWORKS was running at startup, BluePLM launched a hidden one and kept
+  talking to it for the rest of the session, so a SOLIDWORKS opened later was invisible: checkout
+  saw none of its documents and never made the open file writable, however often it was checked
+  out and in. Between commands, the service now attaches to the user's SOLIDWORKS as soon as one is
+  running and closes its hidden instance.
+- **Resolve Pending Moves stays inside what you are looking at.** Opened from a folder (or a file),
+  Update the Vault and Restore Local Files used to act on every pending move in the vault, and the
+  confirmation listed them all. They now act only on the moves in the chosen scope that are ticked.
+- **Resolve Pending Moves shows the whole story per file.** Each move lists both full paths with the
+  part that differs highlighted, who last set the vault path and when (from the activity log), the
+  last vault change, the version, the modified time on disk, who has it checked out, and why a
+  direction would skip it. Every row has its own Update vault and Restore buttons, and rows can be
+  ticked or unticked for the bulk actions.
+- **Generate PDF / STEP no longer spins for ten minutes when SOLIDWORKS has a same-named file
+  open.** SOLIDWORKS cannot open two files of the same name, so an output cannot be made while the
+  drawing, or a part or assembly it shows, is open there (on its own or inside an open assembly).
+  A Generate you click used to wait and retry every minute, ten times, behind a spinner, and only
+  then fail. It now fails at once and names the files to close. Check-in's automatic outputs still
+  wait, and their row's tooltip now says what they are waiting for.
+
+## [5.9.1] - 2026-11-03
+
+Renderer only. No schema, API or SolidWorks service change (schema 509, API 4.2.2, SolidWorks
+service 1.29.0).
+
+### Changed
+
+- **Default column order.** Name, Ver, Outputs, Item Number, Rev, Description, then the rest. Saved
+  layouts are kept; a column added by a release now lands next to its neighbour in the defaults.
+- **Parent.** A drawing's models section is called Parent (Parents for more than one).
+- **Generate from the Exports header.** The Generate… line at the end of Exports is gone; right-click
+  the Exports header to generate a kind.
+
+### Fixed
+
+- **Search finds item numbers and descriptions from any folder.** Search defaulted to the open
+  folder only, so searching an item number from a subfolder found nothing. It now searches the
+  whole vault by default, and the old default is reset once.
+
+### Added
+
+- **Select several exports and reports.** Under a file's chevron, Ctrl-click toggles a row and
+  Shift-click selects a range. Right-click the selection to save them next to the file or delete
+  them (asks first, and leaves out the ones you may not delete).
+
 ## [5.9.0] - 2026-11-03
 
 Schemas 508 and 509. No API or SolidWorks service change (API 4.2.2, SolidWorks service 1.29.0).

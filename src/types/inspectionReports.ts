@@ -128,6 +128,16 @@ export interface InspectionTemplate {
   /** Output of `analyzeTemplate()` (src/lib/inspection/excel). */
   layout: Json
   archivedAt: string | null
+  /**
+   * Schema 511: the vault file of the organization's templates folder this template comes from
+   * (null once that file is hard-deleted). The folder owns the workbook and whether the template is
+   * live; only `inspection_template_sync_folder()` changes them.
+   */
+  sourceFileId: string | null
+  /** Vault path of the folder file at the last sync; null for an uploaded template. */
+  sourcePath: string | null
+  /** The file version whose bytes the template holds. */
+  sourceVersion: number | null
   createdBy: string | null
   createdAt: string
   updatedBy: string | null
@@ -210,6 +220,12 @@ export interface InspectionReport extends InspectionReportTypeFields {
    * insert; null when it replaces nothing or the replaced report was deleted.
    */
   supersedesReportId: string | null
+  /**
+   * Built from the creator's checked-out copy of the drawing (live inspection table, local
+   * drawing), based on `fileVersionId`; it becomes a report of the version the check-in makes
+   * (`inspection_report_pin()`, schema 510). Its `characteristicIds` are live row ids.
+   */
+  workingCopy: boolean
 }
 
 export interface InspectionReportCreate {
@@ -240,6 +256,8 @@ export interface InspectionReportCreate {
   type?: Partial<InspectionReportTypeFields>
   /** The report of the same drawing this one replaces (schema 508). */
   supersedesReportId?: string | null
+  /** A report of the creator's checked-out copy (schema 510). */
+  workingCopy?: boolean
 }
 
 /**

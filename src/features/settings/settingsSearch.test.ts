@@ -35,7 +35,7 @@ describe('searchSettings', () => {
 
   it('matches multi-word queries across label and tab', () => {
     expect(top('solidworks thumbnail')).toMatchObject({ tab: 'solidworks' })
-    expect(top('rfq logo')).toMatchObject({ tab: 'rfq', label: 'Show company logo' })
+    expect(top('serialization keepout')).toMatchObject({ tab: 'serialization', label: 'Keepout Zones' })
   })
 
   it('lists every setting of a tab whose name matches, under one group', () => {

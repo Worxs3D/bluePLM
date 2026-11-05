@@ -43,8 +43,21 @@ export function useRetryableImage(url: string | null): RetryableImage {
 
   const onError = useCallback(() => setFailedAttempt(attempt), [attempt])
 
-  const exhausted = failedAttempt !== null && failedAttempt >= MAX_RETRY_ATTEMPTS
-  if (url === null || exhausted) return { src: null, onError }
+  return { src: retryableImageSrc(url, attempt, failedAttempt), onError }
+}
 
-  return { src: attempt === 0 ? url : `${url}&a=${attempt}`, onError }
+/**
+ * The `src` for an attempt, or null for the caller's fallback icon: no URL, retries exhausted, or
+ * the current attempt failed and the next one is still waiting. Keeping a failed `src` on screen
+ * during that wait showed the browser's broken-image glyph for up to six seconds.
+ */
+export function retryableImageSrc(
+  url: string | null,
+  attempt: number,
+  failedAttempt: number | null,
+): string | null {
+  if (url === null) return null
+  if (failedAttempt !== null && failedAttempt >= MAX_RETRY_ATTEMPTS) return null
+  if (failedAttempt === attempt) return null
+  return attempt === 0 ? url : `${url}&a=${attempt}`
 }

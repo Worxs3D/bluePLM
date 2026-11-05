@@ -70,6 +70,53 @@ export async function getOrgVaultAccess(orgId: string): Promise<{
   return { accessMap }
 }
 
+/** Rows per request when reading grants; PostgREST caps a response (1000 on hosted projects). */
+export const VAULT_GRANT_PAGE_SIZE = 1000
+
+/**
+ * Who may read the given vaults: direct grants (`vault_access`, vault -> user ids) and team grants
+ * (`team_vault_access`, vault -> team ids). Both tables are readable by every member of the
+ * organization. Only these vaults are read, page by page, so a large organization is never cut
+ * off at the server's row cap (which would silently drop real grants).
+ */
+export async function getVaultGrants(vaultIds: readonly string[]): Promise<{
+  users: Record<string, string[]>
+  teams: Record<string, string[]>
+  error?: string
+}> {
+  const users: Record<string, string[]> = {}
+  const teams: Record<string, string[]> = {}
+  const ids = [...new Set(vaultIds)]
+  if (ids.length === 0) return { users, teams }
+  const client = getSupabaseClient()
+
+  for (let from = 0; ; from += VAULT_GRANT_PAGE_SIZE) {
+    const { data, error } = await client
+      .from('vault_access')
+      .select('id, vault_id, user_id')
+      .in('vault_id', ids)
+      .order('id')
+      .range(from, from + VAULT_GRANT_PAGE_SIZE - 1)
+    if (error) return { users: {}, teams: {}, error: error.message }
+    const rows = data ?? []
+    for (const row of rows) (users[row.vault_id] ??= []).push(row.user_id)
+    if (rows.length < VAULT_GRANT_PAGE_SIZE) break
+  }
+  for (let from = 0; ; from += VAULT_GRANT_PAGE_SIZE) {
+    const { data, error } = await client
+      .from('team_vault_access')
+      .select('id, vault_id, team_id')
+      .in('vault_id', ids)
+      .order('id')
+      .range(from, from + VAULT_GRANT_PAGE_SIZE - 1)
+    if (error) return { users: {}, teams: {}, error: error.message }
+    const rows = data ?? []
+    for (const row of rows) (teams[row.vault_id] ??= []).push(row.team_id)
+    if (rows.length < VAULT_GRANT_PAGE_SIZE) break
+  }
+  return { users, teams }
+}
+
 /**
  * Grant a user access to a vault (admin only)
  */

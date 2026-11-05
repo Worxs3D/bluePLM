@@ -38,7 +38,7 @@ import { usePDMStore } from '../stores/pdmStore'
 
 // The API version this app version expects
 // Uses semver: MAJOR.MINOR.PATCH
-export const EXPECTED_API_VERSION = '4.2.2'
+export const EXPECTED_API_VERSION = '4.2.3'
 
 // Minimum API version that will still work (for soft warnings vs hard errors)
 // Breaking changes should bump the major version and update this
@@ -95,6 +95,7 @@ export const API_VERSION_DESCRIPTIONS: Record<string, string> = {
   '4.2.1':
     'Server backups include inspection templates and inspection reports (schema 504).',
   '4.2.2': 'Server backups include version outputs (file_version_output, schema 505).',
+  '4.2.3': 'Server backups include supply orders and their lines (supply_order, supply_order_line, schema 513).',
 }
 
 export interface ApiVersionCheckResult {

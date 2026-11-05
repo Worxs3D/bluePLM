@@ -760,6 +760,10 @@ Audit trail for ECO checklist changes.
 
 Supplier management, RFQs, and quoting.
 
+Since 5.13.0 (schema 515) the app no longer reads or writes the `rfq*` tables. They and their data are kept, and
+the 515 migration imported every RFQ and its items as a quote order (`supply_order.purpose = 'quote'`,
+`supply_order.imported_from_rfq_id`). Quotes are made and sent as orders now (`docs/orders.md`).
+
 ### Enums
 
 | Enum | Values | Purpose |

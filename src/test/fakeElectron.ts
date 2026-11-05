@@ -554,6 +554,7 @@ export function createFakeElectron(
           keptPositions: 0,
           kept,
           unchanged,
+          relaid: 0,
           saved: !unchanged,
         },
       }

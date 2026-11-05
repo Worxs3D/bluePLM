@@ -6,11 +6,12 @@ import { SettingsSearchResults } from './SettingsSearchResults'
 import { findSettingElement, flashSettingElement } from '../revealSetting'
 import { findSettingsItem, isDesktopOnlySettingsTab } from '../settingsCatalog'
 import { hasDesktop } from '@/lib/platform'
+import { extensionOfSettingsTab, officialExtensionInstalled } from '@/lib/officialExtensions'
 
 // Lazy loaded settings panels - only loaded when the tab is selected
 // This saves memory by not loading all settings components upfront
-const OrgExtensionsPanel = lazy(() =>
-  import('@/features/nativeExtensions/OrgExtensionsPanel').then((m) => ({ default: m.OrgExtensionsPanel })),
+const ExtensionsSettings = lazy(() =>
+  import('../organization/extensions/ExtensionsSettings').then((m) => ({ default: m.ExtensionsSettings })),
 )
 const ProfileSettings = lazy(() =>
   import('../account/ProfileSettings').then((m) => ({ default: m.ProfileSettings })),
@@ -26,6 +27,14 @@ const PreferencesSettings = lazy(() =>
 )
 const KeybindingsSettings = lazy(() =>
   import('../account/KeybindingsSettings').then((m) => ({ default: m.KeybindingsSettings })),
+)
+const ContextMenuSettings = lazy(() =>
+  import('../account/contextMenu/ContextMenuSettings').then((m) => ({ default: m.ContextMenuSettings })),
+)
+const ContextMenuTemplatesSettings = lazy(() =>
+  import('../organization/contextMenuTemplates/ContextMenuTemplatesSettings').then((m) => ({
+    default: m.ContextMenuTemplatesSettings,
+  })),
 )
 const ModulesSettings = lazy(() =>
   import('../organization/ModulesSettings').then((m) => ({ default: m.ModulesSettings })),
@@ -55,8 +64,8 @@ const SerializationSettings = lazy(() =>
 const ExportSettings = lazy(() =>
   import('../system/ExportSettings').then((m) => ({ default: m.ExportSettings })),
 )
-const RFQSettings = lazy(() =>
-  import('../system/RFQSettings').then((m) => ({ default: m.RFQSettings })),
+const OrdersSettings = lazy(() =>
+  import('../organization/OrdersSettings').then((m) => ({ default: m.OrdersSettings })),
 )
 const FileWorkflowsSettings = lazy(() =>
   import('../organization/FileWorkflowsSettings').then((m) => ({
@@ -175,6 +184,10 @@ function useRevealSearchedSetting(activeTab: SettingsTab) {
 
 export function SettingsContent({ activeTab }: SettingsContentProps) {
   const searchQuery = usePDMStore((s) => s.settingsSearchQuery)
+  // Pages that hold an organization's state in their own (drafts, selection) start over on an
+  // organization switch or once the organization has loaded.
+  const orgKey = usePDMStore((s) => s.organization?.id ?? 'no-org')
+  const organization = usePDMStore((s) => s.organization)
   const containerRef = useRevealSearchedSetting(activeTab)
 
   // Each page opens at its top, not at the previous page's scroll position.
@@ -185,6 +198,9 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
   const renderContent = () => {
     // A desktop-only tab (persisted or deep-linked) never renders on the web.
     if (!hasDesktop() && isDesktopOnlySettingsTab(activeTab)) return <ProfileSettings />
+    // A tab of an uninstalled official extension opens Extensions, where an admin can install it.
+    const extension = extensionOfSettingsTab(activeTab)
+    if (extension && !officialExtensionInstalled(organization, extension)) return <ExtensionsSettings />
     switch (activeTab) {
       case 'profile':
         return <ProfileSettings />
@@ -196,6 +212,10 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SessionsSettings />
       case 'keybindings':
         return <KeybindingsSettings />
+      case 'context-menu':
+        return <ContextMenuSettings key={orgKey} />
+      case 'context-menu-templates':
+        return <ContextMenuTemplatesSettings key={orgKey} />
       case 'modules':
         return <ModulesSettings />
       case 'vaults':
@@ -212,8 +232,8 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         return <SerializationSettings />
       case 'export':
         return <ExportSettings />
-      case 'rfq':
-        return <RFQSettings />
+      case 'orders':
+        return <OrdersSettings key={orgKey} />
       case 'metadata-columns':
         return <MetadataColumnsSettings />
       case 'file-workflows':
@@ -254,7 +274,7 @@ export function SettingsContent({ activeTab }: SettingsContentProps) {
         // Account deletion is the last section of Profile; old links land there.
         return <ProfileSettings />
       case 'extensions':
-        return <OrgExtensionsPanel />
+        return <ExtensionsSettings />
       default:
         return <ProfileSettings />
     }

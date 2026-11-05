@@ -39,6 +39,7 @@ describe('user session reset', () => {
     const clearStagedCheckins = vi.fn()
     const clearMissingStorageFiles = vi.fn()
     const clearPendingLargeUpload = vi.fn()
+    const resetOrders = vi.fn()
 
     store = {
       ...userSlice,
@@ -55,6 +56,7 @@ describe('user session reset', () => {
       clearStagedCheckins,
       clearMissingStorageFiles,
       clearPendingLargeUpload,
+      resetOrders,
       vaultPath: 'C:\\vault-a',
       connectedVaults: [
         {
@@ -129,6 +131,18 @@ describe('user session reset', () => {
     expect(store.setActiveReviewId).toHaveBeenCalledWith(null)
     expect(store.activeReviewId).toBeNull()
     expect(store.reviewPackagePaneOpen).toBe(false)
+    // Orders are org-wide: the list and the open order go with the session.
+    expect(store.resetOrders).toHaveBeenCalled()
+  })
+
+  it('resets orders when the organization changes, not when it is set again', () => {
+    const org = { id: 'org-a', name: 'A' } as unknown as Parameters<PDMStoreState['setOrganization']>[0]
+    store.setOrganization(org)
+    expect(store.resetOrders).toHaveBeenCalledTimes(1)
+    store.setOrganization(org)
+    expect(store.resetOrders).toHaveBeenCalledTimes(1)
+    store.setOrganization({ id: 'org-b', name: 'B' } as unknown as Parameters<PDMStoreState['setOrganization']>[0])
+    expect(store.resetOrders).toHaveBeenCalledTimes(2)
   })
 
   it('can keep the vault connected across an account switch', () => {

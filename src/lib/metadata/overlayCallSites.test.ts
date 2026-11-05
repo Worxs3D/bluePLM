@@ -44,7 +44,7 @@
  *   that - an untyped JSON column - which is why the two reserved configuration-map keys are still
  *   matched by name, and why that one rule also matches their declarations and writes.
  * - A row whose columns land in an anonymous type rather than in `PDMFile`: a Supabase select with
- *   its own shape, the file rows nested inside an RFQ or a review. Those were measured and left
+ *   its own shape, the file rows nested inside a review. Those were measured and left
  *   out on purpose - there is no local file beside them and so no pending side to overlay, and the
  *   row is the whole answer.
  * - Test files, which are not scanned at all. A test that quotes the bad shape is documenting it.
@@ -1013,6 +1013,12 @@ const DELIBERATE: readonly Allowance[] = [
     symbols: ['loadedFileMetadata'],
     reason:
       'Names an output generated from a checked-in version, recorded on the server for everyone. A pending edit is not in that version.',
+  },
+  {
+    file: 'features/orders/actions.ts',
+    symbols: ['addFilesToOrder', 'addVersionToOrder'],
+    reason:
+      'Titles a new order after the checked-in versions it pins (the lines snapshot their committed part numbers on the server). A pending edit is not in those versions.',
   },
   {
     file: 'stores/slices/filesSlice.ts',

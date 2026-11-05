@@ -33,6 +33,7 @@ import type { ModelOutputKind, VersionOutput, VersionOutputKind } from '@/types/
 
 import { baseNameOf, outputFileName } from './fileName'
 import { isDrawingFile, kindTakesConfiguration, outputExtension, supportsOutputKind } from './kinds'
+import { withGenerationLock } from './generationLock'
 import { orgExportFilenamePattern } from './naming'
 
 /** The staging subfolder exports are written to, next to the staged vault tree. */
@@ -76,7 +77,7 @@ export type EnsureVersionOutputResult =
    * the same name is open in SOLIDWORKS; try again once it is closed), RETARGET_FAILED,
    * EXPORT_FAILED, READ_FAILED, UPLOAD_FAILED, OUTPUT_EXISTS, NOT_UPLOADER, NO_EDIT_PERMISSION.
    */
-  | { status: 'failed'; error: string; errorCode?: string }
+  | { status: 'failed'; error: string; errorCode?: string; openDocuments?: string[] }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64)
@@ -128,7 +129,7 @@ async function ensurePdf(
     case 'needs_solidworks':
       return { status: 'needs_solidworks', reason: result.reason }
     case 'failed':
-      return { status: 'failed', error: result.error, errorCode: result.errorCode }
+      return { status: 'failed', error: result.error, errorCode: result.errorCode, openDocuments: result.openDocuments }
   }
 }
 
@@ -165,7 +166,8 @@ export async function ensureVersionOutput(
     const unavailable = await pdfRenderUnavailableReason()
     if (unavailable) return { status: 'needs_solidworks', reason: unavailable }
 
-    return await exportAndRecord(fileVersionId, kind, configuration, closure, options)
+    // One export pipeline at a time across the app (queue, orders, reviews, the request worker).
+    return await withGenerationLock(() => exportAndRecord(fileVersionId, kind, configuration, closure, options))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.warn('[Outputs]', 'Version output failed', { fileVersionId, kind, error: message })
@@ -246,7 +248,7 @@ async function exportAndRecord(
       stagingDir,
     )
     if (clashes.length > 0) {
-      return { status: 'failed', errorCode: 'SAME_NAME_OPEN', error: clashes.join(', ') }
+      return { status: 'failed', errorCode: 'SAME_NAME_OPEN', error: clashes.join(', '), openDocuments: clashes }
     }
 
     const staged = await stageFiles(closure.files, stagingDir, {

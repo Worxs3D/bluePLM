@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { flushPendingReviewDecisions } from '@/lib/reviewDecisionFlush'
 import { usePDMStore } from '@/stores/pdmStore'
 import { setAnalyticsUser, clearAnalyticsUser } from '@/lib/analytics'
 import { setLoadFilesSessionContext } from '@/hooks/loadFilesCoordination'
@@ -176,6 +177,8 @@ export function useAuth() {
 
   // Handle user wanting to change organization (go back to setup)
   const handleChangeOrg = useCallback(async () => {
+    // Queued review decisions go out while this user and organization are still signed in.
+    await flushPendingReviewDecisions()
     advanceSession('SIGNED_OUT', null)
     // Sign out first if user is signed in
     await getBackend().auth.signOut()

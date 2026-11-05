@@ -22,7 +22,21 @@ const PLAIN = [
   'resolveMoves.scopeFile',
   'resolveMoves.scopeFolder',
   'resolveMoves.scopeVault',
-  'resolveMoves.vaultWideNote',
+  'resolveMoves.selectionNote',
+  'resolveMoves.selectAll',
+  'resolveMoves.vaultLabel',
+  'resolveMoves.diskLabel',
+  'resolveMoves.checkedOutByYou',
+  'resolveMoves.historyUnavailable',
+  'resolveMoves.rowConflictVault',
+  'resolveMoves.rowConflictDisk',
+  'resolveMoves.rowUnverified',
+  'resolveMoves.rowUpdateVault',
+  'resolveMoves.rowRestore',
+  'resolveMoves.rowUpdateVaultHint',
+  'resolveMoves.rowRestoreHint',
+  'resolveMoves.noneSelected',
+  'resolveMoves.you',
   'resolveMoves.noMovesInScope',
   'resolveMoves.reconcileOptionTitle',
   'resolveMoves.reconcileOptionDescription',
@@ -52,7 +66,21 @@ const COUNTED = [
   'resolveMoves.unverifiedCount_other',
   'resolveMoves.skipCheckedOutLabel_other',
   'resolveMoves.forceLabel_other',
+  'resolveMoves.selectedCount_one',
+  'resolveMoves.selectedCount_other',
 ] as const
+
+/** Keys that take named values, each with the placeholders it must substitute. */
+const NAMED: Array<[string, Record<string, string | number>]> = [
+  ['resolveMoves.vaultMovedBy', { name: 'Sam', date: 'D-42' }],
+  ['resolveMoves.vaultNeverMoved', { date: 'D-42' }],
+  ['resolveMoves.lastChanged', { date: 'D-42' }],
+  ['resolveMoves.lastChangedBy', { name: 'Sam', date: 'D-42' }],
+  ['resolveMoves.versionLabel', { version: 42 }],
+  ['resolveMoves.diskModified', { date: 'D-42' }],
+  ['resolveMoves.checkedOutBy', { name: 'Sam' }],
+  ['resolveMoves.rowHeldVault', { name: 'Sam' }],
+]
 
 describe('resolveMoves.* keys exist in every locale', () => {
   it.each(LOCALES)('%s resolves every plain key to a sentence rather than the key', (locale) => {
@@ -68,6 +96,17 @@ describe('resolveMoves.* keys exist in every locale', () => {
       const text = getTranslation(locale, key, { count: 42 })
       expect(text, `${locale}: ${key}`).not.toBe(key)
       expect(text, `${locale}: ${key}`).toContain('42')
+      expect(text, `${locale}: ${key}`).not.toMatch(/\{\{\w+\}\}/)
+    }
+  })
+
+  it.each(LOCALES)('%s substitutes every named value', (locale) => {
+    for (const [key, params] of NAMED) {
+      const text = getTranslation(locale, key, params)
+      expect(text, `${locale}: ${key}`).not.toBe(key)
+      for (const value of Object.values(params)) {
+        expect(text, `${locale}: ${key}`).toContain(String(value))
+      }
       expect(text, `${locale}: ${key}`).not.toMatch(/\{\{\w+\}\}/)
     }
   })

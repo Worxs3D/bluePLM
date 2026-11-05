@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react'
+import {
+  installReviewDecisionQuitBridge,
+  installReviewDecisionUnloadGuard,
+} from '@/lib/reviewDecisionFlush'
 import { usePDMStore } from '@/stores/pdmStore'
 import { useShallow } from 'zustand/react/shallow'
 import { log } from '@/lib/logger'
@@ -276,6 +280,24 @@ export function App() {
       sessionGeneration,
     }
   }, [sessionGeneration, user?.id])
+
+  // Closing the window with review decisions still in their undo window sends them first.
+  // Quitting the application skips beforeunload: there the main process asks (desktop only).
+  useEffect(() => {
+    const offUnload = installReviewDecisionUnloadGuard(() => window.close())
+    // Checked member by member: a preload from before the handshake (or a test double) lacks it.
+    const bridge = window.electronAPI?.reviewDecisions
+    const offQuit =
+      typeof bridge?.setPending === 'function' &&
+      typeof bridge.onFlushRequest === 'function' &&
+      typeof bridge.flushDone === 'function'
+        ? installReviewDecisionQuitBridge(bridge)
+        : null
+    return () => {
+      offUnload()
+      offQuit?.()
+    }
+  }, [])
 
   useSessionHeartbeat(user, organization)
   useBackupHeartbeat(organization?.id)

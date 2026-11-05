@@ -175,6 +175,14 @@ export function ReportRow(props: ReportRowProps) {
                 {report.reportNumber || t('source.inspection.rptUntitled')}
               </span>
               <Badge tone={statusTone(report.status)}>{t(statusKey(report.status))}</Badge>
+              {report.workingCopy && (
+                <Badge
+                  tone="warning"
+                  title={t('source.inspection.rptWorkingCopyTitle', { version: props.versionNumberOf(report.fileVersionId) ?? '' })}
+                >
+                  {t('source.inspection.rptWorkingCopyBadge')}
+                </Badge>
+              )}
             </div>
             <div
               className="truncate text-[12px] text-ui-fg-secondary"
@@ -187,7 +195,7 @@ export function ReportRow(props: ReportRowProps) {
                 t('source.inspection.rptCharacteristicsShort', {
                   count: report.characteristicCount,
                 }),
-                report.drawingPdfHash ? null : t('source.inspection.rptWithoutDrawing'),
+                report.drawingPdfHash || report.workingCopy ? null : t('source.inspection.rptWithoutDrawing'),
               ]
                 .filter(Boolean)
                 .join(' · ')}

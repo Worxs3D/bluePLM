@@ -7,6 +7,7 @@ import { ItemBomPanel } from '@/features/items/itemBrowser/components/ItemBomPan
 import { ExtensionRightPanelView } from '@/features/nativeExtensions/ExtensionViews'
 import { ReviewPackagePane } from '@/features/source/reviewPackage'
 import { selectReviewPackagePaneShown } from '@/stores/slices/reviewsSlice'
+import { useHiddenDetailsTabs } from '@/hooks/useOfficialExtensionInstalled'
 import { ArrowLeft } from 'lucide-react'
 import { canPopOutTabs, isPopoutTab } from '../panelPopout/panelPopout'
 import { PanelTabMenu, PoppedOutPlaceholder } from '../panelPopout/PanelTabMenu'
@@ -16,8 +17,8 @@ export function RightPanel() {
   const {
     getSelectedFileObjects,
     rightPanelWidth,
-    rightPanelTab,
-    rightPanelTabs,
+    rightPanelTab: storedTab,
+    rightPanelTabs: storedTabs,
     setRightPanelTab,
     moveTabToBottom,
     moveTabToRight,
@@ -39,6 +40,11 @@ export function RightPanel() {
     })),
   )
   const reviewPackagePaneShown = usePDMStore(selectReviewPackagePaneShown)
+  // Tabs of uninstalled official extensions (Inspection, Vendors, Orders) are left out here; the
+  // layout keeps them for a reinstall.
+  const hiddenTabs = useHiddenDetailsTabs()
+  const rightPanelTabs = hiddenTabs.size === 0 ? storedTabs : storedTabs.filter((tab) => !hiddenTabs.has(tab))
+  const rightPanelTab = storedTab && rightPanelTabs.includes(storedTab) ? storedTab : (rightPanelTabs[0] ?? null)
   const poppedOutTabs = usePDMStore((s) => s.poppedOutTabs)
   const [tabMenu, setTabMenu] = useState<{
     tab: DetailsPanelTab
@@ -82,12 +88,13 @@ export function RightPanel() {
   // An output or report row selected under the file: Preview shows it instead of the file.
   const childTarget = usePDMStore((s) => activeChildSelection(s.childSelection, s.selectedFiles))
 
-  // The review package builder, opened from a file or version context menu, wins over the
-  // view's own panel until it is closed: the user asked for it explicitly.
+  // The review pane, opened from a file or version context menu, wins over the view's own panel
+  // until it is closed (the user asked for it explicitly), and fills the slot when the view has
+  // nothing else to put there.
   if (reviewPackagePaneShown) {
     return (
       <div
-        className="bg-plm-panel border-l border-plm-border flex flex-col"
+        className="h-full bg-ui-bg border-l border-ui-border flex flex-col font-ui"
         style={{ width: rightPanelWidth }}
       >
         <ReviewPackagePane />

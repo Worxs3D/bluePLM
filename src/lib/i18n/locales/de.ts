@@ -1,9 +1,14 @@
 import type { TranslationDict } from '../types'
 import { reviewsUiStrings } from './reviewsUi'
+import { contextMenuCustomizerStrings } from './contextMenuCustomizer'
 import { reviewPackageStrings } from './reviewPackage'
 import { dbUpgradeStrings } from './dbUpgrade'
 import { releasesStrings } from './releases'
+import { ordersStrings } from './orders'
+import { versionOpenStrings } from './versionOpen'
+import { officialExtensionsStrings } from './officialExtensions'
 import { securityMonitoringStrings } from './securityMonitoring'
+import { supplierPortalStrings } from './supplierPortal'
 
 // German translations
 export const de: TranslationDict = {
@@ -38,10 +43,15 @@ export const de: TranslationDict = {
     openInEDrawingsFailed: 'Die Datei konnte nicht in eDrawings geöffnet werden.',
   },
   ...reviewsUiStrings.de,
+  ...contextMenuCustomizerStrings.de,
   reviewPackage: reviewPackageStrings.de,
   dbUpgrade: dbUpgradeStrings.de,
   releases: releasesStrings.de,
+  orders: ordersStrings.de,
+  versionOpen: versionOpenStrings.de,
+  officialExtensions: officialExtensionsStrings.de,
   securityMonitoring: securityMonitoringStrings.de,
+  supplierPortal: supplierPortalStrings.de,
   checkoutDisplay: {
     you: 'Du',
     loadingOwner: 'Checkout-Besitzer wird geladen',
@@ -788,8 +798,6 @@ export const de: TranslationDict = {
     scopeFile: 'Diese Datei',
     scopeFolder: 'Dieser Ordner',
     scopeVault: 'Gesamter Tresor',
-    vaultWideNote:
-      'Das Lösen verarbeitet immer alle ausstehenden Verschiebungen im Tresor, nicht nur die oben angezeigten.',
 
     listHeading_one: '{{count}} ausstehende Verschiebung angezeigt',
     listHeading_other: '{{count}} ausstehende Verschiebungen angezeigt',
@@ -825,6 +833,32 @@ export const de: TranslationDict = {
     runAdopt: 'Lokale Dateien wiederherstellen',
 
     contextMenuItem: 'Verschobene Dateien lösen…',
+
+    selectionNote: 'Nur die angehakten Verschiebungen in dieser Liste werden gelöst. Alles außerhalb bleibt unverändert.',
+    selectAll: 'Alle auswählen',
+    selectedCount_one: '{{count}} ausgewählt',
+    selectedCount_other: '{{count}} ausgewählt',
+    vaultLabel: 'Im Tresor',
+    diskLabel: 'Auf Ihrem Datenträger',
+    vaultMovedBy: 'Tresorpfad gesetzt von {{name}}, {{date}}',
+    vaultNeverMoved: 'Tresorpfad seit dem ersten Einchecken unverändert, {{date}}',
+    lastChanged: 'Zuletzt im Tresor geändert {{date}}',
+    lastChangedBy: 'Zuletzt im Tresor geändert von {{name}}, {{date}}',
+    versionLabel: 'Version {{version}}',
+    diskModified: 'Auf dem Datenträger geändert {{date}}',
+    checkedOutBy: 'Ausgecheckt von {{name}}',
+    checkedOutByYou: 'Von Ihnen ausgecheckt',
+    historyUnavailable: 'Der Verschiebungsverlauf konnte nicht gelesen werden.',
+    rowConflictVault: 'Tresor aktualisieren: Der Tresor hat bereits eine Datei am Pfad auf dem Datenträger.',
+    rowConflictDisk: 'Wiederherstellen: Am Tresorpfad liegt auf dem Datenträger bereits etwas.',
+    rowUnverified: 'Der Inhalt hat sich seit dem letzten Einchecken geändert. Checken Sie die Datei ein, um den neuen Ort mit den Änderungen zu speichern.',
+    rowHeldVault: 'Tresor aktualisieren: ausgecheckt von {{name}}.',
+    rowUpdateVault: 'Tresor aktualisieren',
+    rowRestore: 'Wiederherstellen',
+    rowUpdateVaultHint: 'Den Pfad dieser Datei auf dem Datenträger in den Tresor schreiben',
+    rowRestoreHint: 'Diese Datei auf dem Datenträger zurück auf den Tresorpfad umbenennen',
+    noneSelected: 'Haken Sie mindestens eine Verschiebung an.',
+    you: 'Ihnen',
   },
 
   realign: {

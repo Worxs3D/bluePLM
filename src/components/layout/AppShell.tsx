@@ -11,6 +11,7 @@ import { Toast } from '@/components/core'
 import { ChristmasEffects, HalloweenEffects, WeatherEffects } from '@/components/effects/seasonal'
 import { ImpersonationBanner } from '@/components/shared/ImpersonationBanner'
 import { SettingsModal } from '@/features/settings'
+import { ReviewAddConfirmDialog } from '@/features/source/reviewPackage/components/ReviewAddConfirmDialog'
 import {
   UpdateModal,
   OrphanedCheckoutsContainer,
@@ -101,9 +102,10 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
   /**
    * Views that own the main area also own the right panel: they open it for
    * their own detail context rather than the file-based tabs, so the generic
-   * tab condition must not apply to them.
+   * tab condition must not apply to them. Reviews owns its right-hand slot too: an open review's
+   * comment sidebar or the review pane, never the file tabs beside it (two right-hand panes).
    */
-  const detailOwningViews = ['items', 'workflows']
+  const detailOwningViews = ['items', 'workflows', 'reviews']
   const rightPanelOpen =
     reviewPackagePaneShown ||
     extensionPanelOpen ||
@@ -232,6 +234,9 @@ export function AppShell({ showWelcome, isSignInScreen, handleChangeOrg }: AppSh
       </div>
 
       <Toast />
+
+      {/* "Add files to <open review>?" from the file menus, which close before it opens */}
+      {!isSignInScreen && <ReviewAddConfirmDialog />}
 
       {/* Settings: its own window (desktop) or a floating panel, opened through openSettings() */}
       {!isSignInScreen && <SettingsModal />}

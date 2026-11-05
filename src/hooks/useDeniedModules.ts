@@ -1,5 +1,10 @@
 import { useMemo } from 'react'
 import { fileWorkflowsEnabled } from '@/lib/fileWorkflows'
+import {
+  modulesOfUninstalledExtensions,
+  parseExtensionIds,
+  uninstalledOfficialExtensions,
+} from '@/lib/officialExtensions'
 import { hasDesktop } from '@/lib/platform'
 import { usePDMStore } from '@/stores/pdmStore'
 import { computeDeniedModules, type ModuleId } from '@/types/modules'
@@ -17,16 +22,27 @@ import { computeDeniedModules, type ModuleId } from '@/types/modules'
  * deny the Workflows view to everyone, admins included, so every surface that
  * honours module access hides it too.
  *
+ * An official extension the organization uninstalled (Settings > Extensions, schema 516) denies its
+ * modules (Reviews, Orders) to everyone the same way.
+ *
  * On BluePLM Web (no Electron bridge, `hasDesktop()` false) the desktop-only modules
  * (Pending Changes, Google Drive, Terminal: `desktopOnly` in MODULES) are denied the same way.
  */
 export function useDeniedModules(): ReadonlySet<ModuleId> {
   const deniedModules = usePDMStore((s) => s.deniedModules)
   const workflowsOn = usePDMStore((s) => fileWorkflowsEnabled(s.organization))
+  // Selected as a joined string: a selector must return a stable value, and an array is new each call.
+  const uninstalledKey = usePDMStore((s) => uninstalledOfficialExtensions(s.organization).join(','))
   const desktop = hasDesktop()
 
   return useMemo(
-    () => computeDeniedModules(deniedModules, workflowsOn, desktop),
-    [deniedModules, workflowsOn, desktop],
+    () =>
+      computeDeniedModules(
+        deniedModules,
+        workflowsOn,
+        desktop,
+        modulesOfUninstalledExtensions(parseExtensionIds(uninstalledKey)),
+      ),
+    [deniedModules, workflowsOn, desktop, uninstalledKey],
   )
 }

@@ -23,7 +23,6 @@ const SETTINGS_NAVIGATION_KEYS = [
   'settings.exportOptions',
   'settings.fileMetadata',
   'settings.itemDesignations',
-  'settings.rfqSettings',
   'settings.recoveryCodes',
   'settings.extensions',
   'settings.extensionStore',
