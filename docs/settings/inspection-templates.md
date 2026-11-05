@@ -1,5 +1,7 @@
 # Inspection Templates
 
+::: v-pre
+
 Settings → Inspection templates. An inspection report is an Excel workbook built from a template: BluePLM opens
 the template, fills in the tokens you typed into its cells, repeats the table row once per characteristic and adds
 the ballooned drawing. Any workbook can be a template. You lay it out in Excel the way your company wants it, and
@@ -62,3 +64,5 @@ access to the folder's vault keeps getting the templates as they were last synce
 
 Each template can be limited to some report types (FAI, production, receiving, reinspection) and be the default
 for some of them. One template per type is the default, and setting a new one moves it.
+
+:::
