@@ -15,7 +15,13 @@ import { t } from '@/lib/i18n'
 import { expandReviewerSelection, type TeamWithMembers } from '@/lib/supabase/reviewTeams'
 import type { OrgUser } from '@/types/database'
 
-import { lastSelected, reviewerResults, userLabel, type ReviewerResult } from '../lib/reviewerSearch'
+import {
+  lastSelected,
+  reviewerResults,
+  teamMembersWithoutAccess,
+  userLabel,
+  type ReviewerResult,
+} from '../lib/reviewerSearch'
 
 interface ReviewerPickerProps {
   users: OrgUser[]
@@ -28,8 +34,15 @@ interface ReviewerPickerProps {
   teamIds: string[]
   onToggleReviewer: (userId: string) => void
   onToggleTeam: (teamId: string) => void
+  /**
+   * People who cannot read a vault of the draft's files: shown unavailable with the reason, never
+   * added (the server refuses a review naming them, and skips them in a team).
+   */
+  noVaultAccessIds?: ReadonlySet<string>
   disabled?: boolean
 }
+
+const NONE: ReadonlySet<string> = new Set()
 
 function TeamDot({ color }: { color: string }) {
   return (
@@ -50,6 +63,7 @@ export function ReviewerPicker({
   teamIds,
   onToggleReviewer,
   onToggleTeam,
+  noVaultAccessIds = NONE,
   disabled = false,
 }: ReviewerPickerProps) {
   const listId = useId()
@@ -72,7 +86,11 @@ export function ReviewerPicker({
 
   const isSelected = (r: ReviewerResult) =>
     r.kind === 'user' ? reviewerIds.includes(r.id) : teamIds.includes(r.id)
+  /** Cannot be added (removing an already added one stays possible). */
+  const isUnavailable = (r: ReviewerResult) =>
+    r.kind === 'user' && noVaultAccessIds.has(r.id) && !isSelected(r)
   const toggle = (r: ReviewerResult) => {
+    if (isUnavailable(r)) return
     // Adding from a search is done with that search: the next name starts from an empty field.
     if (query && !isSelected(r)) {
       setQuery('')
@@ -85,11 +103,16 @@ export function ReviewerPicker({
   const teamReach = (team: TeamWithMembers) => {
     const count = expandReviewerSelection({ reviewerIds: [], teamIds: [team.id] }, teams, requesterId)
       .userIds.length
-    return team.reviewerConfigs.length > 0
-      ? t('reviewBuilder.reviewers.teamRuleCount', { count })
-      : count === 1
-        ? t('reviewBuilder.reviewers.teamMemberCountOne')
-        : t('reviewBuilder.reviewers.teamMemberCount', { count })
+    const reach =
+      team.reviewerConfigs.length > 0
+        ? t('reviewBuilder.reviewers.teamRuleCount', { count })
+        : count === 1
+          ? t('reviewBuilder.reviewers.teamMemberCountOne')
+          : t('reviewBuilder.reviewers.teamMemberCount', { count })
+    const skipped = teamMembersWithoutAccess(team, noVaultAccessIds, requesterId)
+    return skipped > 0
+      ? `${reach} · ${t('reviewBuilder.reviewers.teamNoVaultAccess', { count: skipped })}`
+      : reach
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -186,6 +209,7 @@ export function ReviewerPicker({
           ) : (
             results.map((r, i) => {
               const selected = isSelected(r)
+              const unavailable = isUnavailable(r)
               const firstTeam = r.kind === 'team' && (i === 0 || results[i - 1].kind === 'user')
               return (
                 <div key={`${r.kind}-${r.id}`}>
@@ -196,6 +220,7 @@ export function ReviewerPicker({
                     shape="rounded"
                     className={`mx-1 py-1.5 ${i === activeIndex ? 'bg-ui-hover' : ''}`}
                     selected={false}
+                    disabled={unavailable}
                     onActivate={() => {
                       setActive(i)
                       toggle(r)
@@ -205,7 +230,13 @@ export function ReviewerPicker({
                     }
                     title={r.kind === 'user' ? userLabel(r.user) : r.team.name}
                     secondary={
-                      r.kind === 'user' ? (r.user.full_name ? r.user.email : undefined) : teamReach(r.team)
+                      r.kind === 'user'
+                        ? noVaultAccessIds.has(r.id)
+                          ? t('reviewBuilder.reviewers.noVaultAccess')
+                          : r.user.full_name
+                            ? r.user.email
+                            : undefined
+                        : teamReach(r.team)
                     }
                     trailing={
                       selected ? (
@@ -252,12 +283,21 @@ export function ReviewerPicker({
           {reviewerIds.map((id) => {
             const user = userById.get(id)
             const name = user ? userLabel(user) : t('reviewBuilder.reviewers.unknownUser')
+            const noAccess = noVaultAccessIds.has(id)
             return (
               <ListRow
                 key={`user-${id}`}
                 leading={<User size={14} />}
                 title={name}
-                secondary={user?.full_name ? user.email : undefined}
+                secondary={
+                  noAccess ? (
+                    <StatusText tone="warning">
+                      {t('reviewBuilder.reviewers.noVaultAccessAdded')}
+                    </StatusText>
+                  ) : user?.full_name ? (
+                    user.email
+                  ) : undefined
+                }
                 actionsVisible
                 actions={
                   disabled ? undefined : (

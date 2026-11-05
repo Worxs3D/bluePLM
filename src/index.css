@@ -982,6 +982,40 @@ html, body, #root {
   color: #ca8a04 !important;
 }
 
+/* Fallback avatars (AVATAR_COLORS in src/lib/utils/avatar.ts): the -300 initials are made for a
+   dark page and vanish on a light one. Scoped to the pair, so other -300 text is untouched. */
+[data-theme="light"] .bg-blue-500\/40.text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .bg-emerald-500\/40.text-emerald-300 {
+  color: #047857 !important;
+}
+
+[data-theme="light"] .bg-amber-500\/40.text-amber-300 {
+  color: #b45309 !important;
+}
+
+[data-theme="light"] .bg-rose-500\/40.text-rose-300 {
+  color: #be123c !important;
+}
+
+[data-theme="light"] .bg-violet-500\/40.text-violet-300 {
+  color: #6d28d9 !important;
+}
+
+[data-theme="light"] .bg-cyan-500\/40.text-cyan-300 {
+  color: #0e7490 !important;
+}
+
+[data-theme="light"] .bg-orange-500\/40.text-orange-300 {
+  color: #c2410c !important;
+}
+
+[data-theme="light"] .bg-pink-500\/40.text-pink-300 {
+  color: #be185d !important;
+}
+
 /* Light mode background colors - increase visibility */
 [data-theme="light"] .bg-amber-500\/20,
 [data-theme="light"] .bg-amber-400\/20 {

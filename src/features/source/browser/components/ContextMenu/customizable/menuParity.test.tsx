@@ -37,6 +37,7 @@ const { installDomShims, lenientElectron, signedInVault } = await import('@/test
 const { CONTEXT_MENU_ENTRIES, CONTEXT_MENU_GROUPS } = await import('@/lib/contextMenu/entries')
 const { orgKey } = await import('@/lib/contextMenu/effective')
 const { LIST_MENU_ENTRY_IDS } = await import('./listEntries')
+const { MAX_USER_GROUPS } = await import('@/lib/contextMenu/types')
 
 import type { ContextMenuEntryId, ContextMenuGroupId } from '@/lib/contextMenu/entries'
 import type { LayoutNode, MenuLayout } from '@/lib/contextMenu/types'
@@ -474,6 +475,44 @@ describe('every entry that applies draws a row', () => {
     { name: 'folder, admin', folder: '', target: 'Parts', admin: true },
   ]
 
+  /**
+   * Every list entry, each alone in an inline group named after its id, in a few layouts: the
+   * menu is opened once per layout instead of once per entry. A group whose entry does not apply
+   * is dropped with it (`resolveLayout`), so the headings are the entries that apply, and the rows
+   * between a heading and the next are exactly what that entry draws (separators aside). A layout
+   * keeps at most `MAX_USER_GROUPS` groups (`sanitize` dissolves the rest), hence the chunks.
+   */
+  const probeLayouts: MenuLayout[] = []
+  for (let i = 0; i < LIST_MENU_ENTRY_IDS.length; i += MAX_USER_GROUPS) {
+    probeLayouts.push(
+      onlyLayout(
+        LIST_MENU_ENTRY_IDS.slice(i, i + MAX_USER_GROUPS).map((id): LayoutNode => ({
+          kind: 'group',
+          id: `probe-${id}`,
+          label: `probe:${id}`,
+          display: 'inline',
+          children: [{ kind: 'entry', id }],
+        })),
+      ),
+    )
+  }
+
+  /** The rows each probe heading is followed by, by entry id. */
+  function rowsByEntry(): Map<string, string[]> {
+    const byEntry = new Map<string, string[]>()
+    let current: string[] | null = null
+    for (const line of menuShape()) {
+      const probe = /^\[heading\] probe:(.+)$/.exec(line)
+      if (probe) {
+        current = []
+        byEntry.set(probe[1], current)
+      } else if (current && line !== '---') {
+        current.push(line)
+      }
+    }
+    return byEntry
+  }
+
   it.each(fixtures)('$name', async ({ folder, target, selected, admin }) => {
     if (admin)
       usePDMStore.setState((s) => ({ user: s.user ? { ...s.user, role: 'admin' } : s.user }))
@@ -481,24 +520,24 @@ describe('every entry that applies draws a row', () => {
       folder,
       (selected ?? []).map((p) => h.absolute(p)),
     )
+    const applied: string[] = []
+    const headings: string[] = []
     const silent: string[] = []
-    let applied = 0
-    for (const id of LIST_MENU_ENTRY_IDS) {
-      setLayout(onlyLayout([{ kind: 'entry', id }]))
+    for (const layout of probeLayouts) {
+      setLayout(layout)
       await openMenu(target)
       const ids = resolvedIds()
-      if (ids.length > 0) {
-        applied++
-        if (menuShape().filter((r) => r !== '---').length === 0) silent.push(id)
-      }
+      const rows = rowsByEntry()
       await closeMenu()
+      applied.push(...ids)
+      headings.push(...rows.keys())
+      silent.push(...ids.filter((id) => (rows.get(id) ?? []).length === 0))
     }
+    // One heading per entry that applies, in the layout's order, and each draws a row.
+    expect(headings).toEqual(applied)
     expect(silent).toEqual([])
-    expect(applied).toBeGreaterThan(3)
-    // Opens and closes the menu once per registry entry (about 60 renders), about 3 s alone and
-    // past the 5 s default under the full suite's parallel load: a budget for the loop, not a
-    // looser assertion.
-  }, 20_000)
+    expect(applied.length).toBeGreaterThan(3)
+  })
 })
 
 describe('the file list produces every list entry of the registry', () => {

@@ -24,10 +24,11 @@ import type { LocalFile } from '@/stores/types'
 import type { ReviewPackageDraft } from '@/types/reviewPackageDraft'
 
 import { addFilesToReviewPackage } from '../addToPackage'
+import { useDraftVaultGrants } from '../hooks/useDraftVaultGrants'
 import { usePackageItemInfo } from '../hooks/usePackageItemInfo'
 import type { ReviewerDirectory } from '../hooks/useReviewerDirectory'
 import { localCopyWarnings } from '../lib/localCopy'
-import { userLabel } from '../lib/reviewerSearch'
+import { userLabel, usersWithoutVaultAccess } from '../lib/reviewerSearch'
 import { PackageItemRow } from './PackageItemRow'
 import { PackageMetaFields } from './PackageMetaFields'
 import { ReviewerPicker } from './ReviewerPicker'
@@ -81,11 +82,26 @@ export function DraftView({ draft, directory, selection, submitting, setSubmitti
   const notInDraft = selection.filter((f) => f.pdmData?.id && !inDraft.has(f.pdmData.id))
   const missingPdfItems = draft.items.filter((i) => info[i.fileVersionId]?.pdf === 'missing')
   const blocker = draftBlocker(draft)
+  // People who cannot read a vault of the draft's files: the picker shows them unavailable, the
+  // server would refuse them by name or skip them in a team.
+  const draftVaultIds = useMemo(() => draft.items.map((i) => i.vaultId), [draft.items])
+  const grants = useDraftVaultGrants(draftVaultIds)
+  const noVaultAccessIds = useMemo(() => {
+    if (!grants || directory.loading || directory.error) return new Set<string>()
+    const people = new Set(directory.users.map((u) => u.id))
+    for (const team of directory.teams) for (const m of team.members) people.add(m.id)
+    return usersWithoutVaultAccess(
+      [...people],
+      draftVaultIds,
+      { ...grants, adminIds: directory.adminIds },
+      directory.teams,
+    )
+  }, [grants, directory.loading, directory.error, directory.users, directory.teams, directory.adminIds, draftVaultIds])
   const reach = expandReviewerSelection(
     { reviewerIds: draft.reviewerIds, teamIds: draft.teamIds },
     directory.teams,
     userId,
-  ).userIds.length
+  ).userIds.filter((id) => !noVaultAccessIds.has(id)).length
 
   const handleGeneratePdfs = async () => {
     if (missingPdfItems.length === 0) return
@@ -267,6 +283,7 @@ export function DraftView({ draft, directory, selection, submitting, setSubmitti
             teamIds={draft.teamIds}
             onToggleReviewer={actions.toggleReviewer}
             onToggleTeam={actions.toggleTeam}
+            noVaultAccessIds={noVaultAccessIds}
             disabled={submitting}
           />
         </Section>

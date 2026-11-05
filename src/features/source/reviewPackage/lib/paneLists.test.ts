@@ -22,6 +22,8 @@ function row(id: string, patch: Partial<ReviewQueueRow> = {}): ReviewQueueRow {
     itemCount: 3,
     itemsDecided: 0,
     itemsOwedByMe: 0,
+    reviewersOwing: null,
+    reviewersWithdrawn: null,
     preview: null,
     gate: null,
     cursor: id,
