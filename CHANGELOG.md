@@ -4,6 +4,17 @@ All notable changes to BluePLM will be documented in this file.
 
 ![1774273238438](image/CHANGELOG/1774273238438.png)
 
+## [Unreleased]
+
+### Fixed
+
+- **General tolerance tables with LINEAR and ANGLE columns are read.** A title block that gives
+  tolerances per decimal place in two columns (`LINEAR` | `ANGLE` over rows like `X. ±0.2` |
+  `X. ±1`) now gives untoleranced dimensions the linear rule for their decimal places, and
+  untoleranced angles the angle rule for theirs. Before, the angle column was dropped or read as
+  lengths, and `X.` (whole numbers) was not recognised. Each entry belongs to the column header it
+  sits under, whether the block is one note or a grid of cells.
+
 ## [5.13.0] - 2026-11-05
 
 Schema 515 (`0515_orders_followups.sql`). No API or SolidWorks service change.

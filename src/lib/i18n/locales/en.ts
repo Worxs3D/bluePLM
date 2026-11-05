@@ -915,6 +915,7 @@ export const en: TranslationDict = {
       gtRuleLinear: 'all values ±{{tolerance}}',
       gtRuleFractional: 'fractions ±{{tolerance}}',
       gtRuleAngular: 'angles ±{{tolerance}}',
+      gtRuleAngularDecimal: '{{places}}-place angles ±{{tolerance}}',
       gtRuleIso: 'ISO 2768-{{cls}}, Table {{table}}, {{range}} mm: ±{{tolerance}} mm',
       gtRangeFirst: '{{over}} up to {{upTo}}',
       gtRangeOver: 'over {{over}} up to {{upTo}}',
