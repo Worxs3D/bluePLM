@@ -1248,5 +1248,7 @@ export const de: TranslationDict = {
     bufferSizeLabel: 'Puffergröße',
     samples: 'Samples',
     telemetryData: 'Telemetriedaten',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} s',
   },
 }

@@ -171,17 +171,37 @@ describe('telemetry configuration restore', () => {
     telemetry.stop()
   })
 
-  it('keeps start and stop usable when browser storage cannot be written', async () => {
+  it('notifies graph controls when recording is stopped elsewhere', async () => {
+    const { telemetry } = await import('./telemetry')
+    const states: boolean[] = []
+    const unsubscribe = telemetry.subscribeState((running) => states.push(running))
+
+    telemetry.start()
+    telemetry.stop()
+
+    expect(states).toEqual([true, false])
+    unsubscribe()
+  })
+
+  it('keeps live configuration and sampling changes usable when browser storage cannot be written', async () => {
     vi.stubGlobal('localStorage', {
       getItem: () => null,
       setItem: () => {
         throw new Error('storage unavailable')
       },
     })
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval')
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval')
     const { telemetry } = await import('./telemetry')
 
     expect(() => telemetry.start()).not.toThrow()
     expect(telemetry.isRunning()).toBe(true)
+    expect(() => telemetry.configure({ sampleRateHz: 20 })).not.toThrow()
+    expect(telemetry.isRunning()).toBe(true)
+    expect(telemetry.getConfig().sampleRateHz).toBe(20)
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1)
+    expect(intervalSpy).toHaveBeenCalledTimes(2)
+    expect(intervalSpy.mock.calls[1]?.[1]).toBeCloseTo(1000 / 20)
     expect(() => telemetry.stop()).not.toThrow()
     expect(telemetry.isRunning()).toBe(false)
   })

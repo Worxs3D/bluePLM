@@ -36,6 +36,10 @@ const PLAIN_KEYS = [
 const COUNTED_KEYS = ['performanceTelemetry.bufferSize', 'performanceTelemetry.secondsAgo'] as const
 
 const RATE_KEY = 'performanceTelemetry.recordingAt'
+const VALUE_KEYS = [
+  ['performanceTelemetry.sampleRateValue', { rate: 30 }],
+  ['performanceTelemetry.retentionValue', { seconds: 60 }],
+] as const
 
 describe('performanceTelemetry.* keys exist in every locale', () => {
   it.each(LOCALES)('%s resolves every plain key to a sentence rather than the key', (locale) => {
@@ -61,5 +65,14 @@ describe('performanceTelemetry.* keys exist in every locale', () => {
     expect(text, `${locale}: ${RATE_KEY}`).not.toBe(RATE_KEY)
     expect(text, `${locale}: ${RATE_KEY}`).toContain('30')
     expect(text, `${locale}: ${RATE_KEY}`).not.toMatch(/\{\{\w+\}\}/)
+  })
+
+  it.each(LOCALES)('%s localizes the sample rate and retention values', (locale) => {
+    for (const [key, values] of VALUE_KEYS) {
+      const text = getTranslation(locale, key, values)
+      expect(text, `${locale}: ${key}`).not.toBe(key)
+      expect(text, `${locale}: ${key}`).not.toMatch(/\{\{\w+\}\}/)
+      expect(text, `${locale}: ${key}`).toMatch(/\d/)
+    }
   })
 })

@@ -1192,5 +1192,7 @@ export const zhTW: TranslationDict = {
     bufferSizeLabel: '緩衝區大小',
     samples: '個樣本',
     telemetryData: '遙測資料',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} 秒',
   },
 }

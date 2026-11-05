@@ -1237,5 +1237,7 @@ export const es: TranslationDict = {
     bufferSizeLabel: 'Tamaño del búfer',
     samples: 'muestras',
     telemetryData: 'Datos de telemetría',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} s',
   },
 }

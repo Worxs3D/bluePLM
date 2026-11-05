@@ -105,6 +105,7 @@ class TelemetryService {
   private buffer: CircularBuffer<TelemetrySnapshot>
   private intervalId: number | null = null
   private listeners: Set<(snapshot: TelemetrySnapshot) => void> = new Set()
+  private stateListeners: Set<(running: boolean) => void> = new Set()
 
   // FPS tracking
   private frameCount = 0
@@ -130,7 +131,12 @@ class TelemetryService {
     this.buffer.resize(newBufferSize)
 
     // Persist config
-    localStorage.setItem('telemetry.config', JSON.stringify(this.config))
+    try {
+      localStorage.setItem('telemetry.config', JSON.stringify(this.config))
+    } catch {
+      // Storage can be unavailable in restricted or private browsing contexts.
+      // Keep the in-memory configuration and active interval usable.
+    }
 
     // Start/stop based on enabled state
     if (this.config.enabled && !wasEnabled) {
@@ -182,6 +188,7 @@ class TelemetryService {
     // Start high-speed sampling
     const intervalMs = 1000 / this.config.sampleRateHz
     this.intervalId = window.setInterval(() => this.sample(), intervalMs)
+    this.notifyStateChange(true)
   }
 
   // Stop collecting
@@ -195,6 +202,7 @@ class TelemetryService {
       this.rafId = null
     }
     this.config.enabled = false
+    this.notifyStateChange(false)
   }
 
   // Check if running
@@ -206,6 +214,21 @@ class TelemetryService {
   subscribe(callback: (snapshot: TelemetrySnapshot) => void): () => void {
     this.listeners.add(callback)
     return () => this.listeners.delete(callback)
+  }
+
+  subscribeState(callback: (running: boolean) => void): () => void {
+    this.stateListeners.add(callback)
+    return () => this.stateListeners.delete(callback)
+  }
+
+  private notifyStateChange(running: boolean): void {
+    for (const listener of this.stateListeners) {
+      try {
+        listener(running)
+      } catch {
+        // Listener error - ignore
+      }
+    }
   }
 
   // Get historical data

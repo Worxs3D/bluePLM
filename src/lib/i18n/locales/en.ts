@@ -2824,5 +2824,7 @@ export const en: TranslationDict = {
     bufferSizeLabel: 'Buffer size',
     samples: 'samples',
     telemetryData: 'Telemetry data',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} s',
   },
 }

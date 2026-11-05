@@ -1244,5 +1244,7 @@ export const fr: TranslationDict = {
     bufferSizeLabel: 'Taille du tampon',
     samples: 'échantillons',
     telemetryData: 'Données de télémétrie',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} s',
   },
 }

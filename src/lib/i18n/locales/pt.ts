@@ -1238,5 +1238,7 @@ export const pt: TranslationDict = {
     bufferSizeLabel: 'Tamanho do buffer',
     samples: 'amostras',
     telemetryData: 'Dados de telemetria',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} s',
   },
 }

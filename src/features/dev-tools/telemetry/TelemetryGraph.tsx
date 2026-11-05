@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { telemetry, TelemetrySnapshot } from '@/lib/telemetry'
 import { Play, Pause, Trash2, Settings2 } from 'lucide-react'
 import { t } from '@/lib/i18n'
+import { getTelemetryTimeAxisX } from './graphScale'
 
 interface TelemetryGraphProps {
   metric: 'fps'
@@ -48,8 +49,12 @@ export function TelemetryGraph({
       setCurrentValue(getValue(snapshot))
       setIsRunning(telemetry.isRunning())
     })
+    const unsubscribeState = telemetry.subscribeState(setIsRunning)
 
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      unsubscribeState()
+    }
   }, [metric])
 
   // Observe container width
@@ -72,9 +77,14 @@ export function TelemetryGraph({
 
     const points: string[] = []
     const maxValue = Math.max(config.max, ...data.map(getValue))
+    const now = Date.now()
+    const retentionSeconds = telemetry.getConfig().retentionSeconds
+    const windowStart = now - retentionSeconds * 1000
+    const visibleData = data.filter((snapshot) => snapshot.timestamp >= windowStart)
+    if (visibleData.length < 2) return ''
 
-    data.forEach((snapshot, i) => {
-      const x = (i / (data.length - 1)) * width
+    visibleData.forEach((snapshot, i) => {
+      const x = getTelemetryTimeAxisX(snapshot.timestamp, now, retentionSeconds, width)
       const value = getValue(snapshot)
       const y = height - (value / maxValue) * (height - 10) - 5
 
@@ -204,18 +214,22 @@ export function TelemetryDashboard() {
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
+    const unsubscribeState = telemetry.subscribeState((running) => {
+      setIsRunning(running)
+      setConfig(telemetry.getConfig())
+    })
     telemetry.loadConfig()
     setConfig(telemetry.getConfig())
     setIsRunning(telemetry.isRunning())
+    return unsubscribeState
   }, [])
 
   const handleToggle = () => {
-    if (isRunning) {
+    if (telemetry.isRunning()) {
       telemetry.stop()
     } else {
       telemetry.start()
     }
-    setIsRunning(!isRunning)
   }
 
   const handleConfigChange = (key: 'sampleRateHz' | 'retentionSeconds', value: number) => {
@@ -284,7 +298,9 @@ export function TelemetryDashboard() {
                 onChange={(e) => handleConfigChange('sampleRateHz', parseInt(e.target.value))}
                 className="w-full h-1.5 bg-plm-border rounded-full appearance-none cursor-pointer accent-plm-accent"
               />
-              <span className="text-[10px] text-plm-fg-muted">{config.sampleRateHz}Hz</span>
+              <span className="text-[10px] text-plm-fg-muted">
+                {t('performanceTelemetry.sampleRateValue', { rate: config.sampleRateHz })}
+              </span>
             </div>
 
             <div>
@@ -300,7 +316,9 @@ export function TelemetryDashboard() {
                 onChange={(e) => handleConfigChange('retentionSeconds', parseInt(e.target.value))}
                 className="w-full h-1.5 bg-plm-border rounded-full appearance-none cursor-pointer accent-plm-accent"
               />
-              <span className="text-[10px] text-plm-fg-muted">{config.retentionSeconds}s</span>
+              <span className="text-[10px] text-plm-fg-muted">
+                {t('performanceTelemetry.retentionValue', { seconds: config.retentionSeconds })}
+              </span>
             </div>
           </div>
         </div>

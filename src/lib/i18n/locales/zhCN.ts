@@ -1192,5 +1192,7 @@ export const zhCN: TranslationDict = {
     bufferSizeLabel: '缓冲区大小',
     samples: '个样本',
     telemetryData: '遥测数据',
+    sampleRateValue: '{{rate}} Hz',
+    retentionValue: '{{seconds}} 秒',
   },
 }
